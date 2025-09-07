@@ -3,9 +3,9 @@
 # -----------------------------
 
 [build]
-  base = "docs"           # Hugo site root
-  publish = "public"      # Folder inside base to deploy
-  command = "hugo"        # Build command
+  base = "docs"              # Hugo site root
+  publish = "public"         # Folder inside base to deploy
+  command = "hugo -e production"  # Use production environment
 
 [context.production.environment]
   HUGO_VERSION = "0.148.1"
@@ -16,20 +16,11 @@
   HUGO_CACHEDIR = "/tmp/hugo_cache"
 
 # -----------------------------
-# Optional: ignore unnecessary folders for clean builds
+# Ignore unnecessary folders for clean builds
 # -----------------------------
 [[ignore]]
   paths = [
-    "docs/node_modules",    # frontend packages
-    "dist",                 # Python build artifacts
-    "*.log"                 # logs
+    "docs/node_modules",
+    "dist",
+    "*.log"
   ]
-
-# -----------------------------
-# Notes
-# -----------------------------
-# - All theme submodules should be properly removed or normal folders.
-# - Bootstrap folder (docs/themes/github.com/twbs/bootstrap) can be safely deleted if using CDN.
-# - Docsy theme remains as a git submodule (themes/docsy).
-# - Hugo build command will use the extended version suitable for Docsy.
-

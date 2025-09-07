@@ -1,1 +1,16 @@
-baseURL = "https://indexly.netlify.app/"
+baseURL = "https://iridescent-halva-048751.netlify.app/"
+languageCode = "en-us"
+title = "Project Indexly"
+theme = "docsy"
+defaultContentLanguage = "en"
+
+# Enable table of contents by default
+[markup]
+  [markup.tableOfContents]
+    startLevel = 2
+    endLevel = 3
+
+# Optional: outputs for JSON API
+[outputs]
+  home = ["HTML", "JSON"]
+
