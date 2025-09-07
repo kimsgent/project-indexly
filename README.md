@@ -144,15 +144,15 @@ project-indexly/
 ## 📚 Documentation
 
 Full usage, configuration, and integration guides:
-👉 Project Indexly Docs
+👉 [Project Indexly Docs](https://iridescent-halva-048751.netlify.app/)
 
 ---
 
 ## 🧑‍💻 Contributing
 
 Contributions are welcome!
-
-Please check CONTRIBUTING.md before submitting pull requests.
+Please check [CONTRIBUTING.md](./CONTRIBUTING.md) before submitting pull requests.
+👉 [Project Indexly on GitHub](https://github.com/yourusername/project-indexly)
 
 ---
 
@@ -167,6 +167,8 @@ Please check CONTRIBUTING.md before submitting pull requests.
 
 **N. K Franklin-Gent**
 Built with 💻, ☕, and 💡 in Dieburg, Germany.
+
+Co-created with **ChatGPT** 🤝
 
 ---
 
