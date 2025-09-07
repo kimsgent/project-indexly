@@ -1,0 +1,16 @@
+{{ $doc := .Page }}
+
+<nav id="TableOfContents" style="border:2px solid red;">
+  <ul>
+    {{ range $doc.Headings }}
+      {{/* replicate render-heading cleaning for anchor */}}
+      {{ $raw := .Title | plainify | htmlUnescape }}
+      {{ $clean := replaceRE "^\\p{So}\\p{Mn}*" "" $raw }}
+      {{ $trimmed := trim $clean " " }}
+      {{ $anchor := urlize $trimmed }}
+
+      <li><a href="#{{ $anchor }}">{{ .Title | safeHTML }}</a></li>
+    {{ end }}
+  </ul>
+</nav>
+

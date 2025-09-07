@@ -1,0 +1,27 @@
+{{ define "main" }}
+  {{ if eq .Kind "home" }}
+    {{ partial "hero.html" . }}
+    {{ partial "home/features.html" . }}
+    {{ partial "home/video.html" . }}
+    <section class="container py-5">
+      <div class="row align-items-center">
+        <div class="col-md-6">
+          <h2 class="mb-4">Index and Search, Fast and Local</h2>
+          <p class="lead">Project Indexly gives you lightning-fast file indexing with full-text search and custom tagging. Lightweight, offline, and built for privacy.</p>
+          <ul class="list-unstyled">
+            <li>✅ Tag and group files your way</li>
+            <li>✅ Search by name, content, or tag</li>
+            <li>✅ Export results to Markdown or CSV</li>
+            <li>✅ Works fully offline on your system</li>
+          </ul>
+          <a href="/en/features/" class="btn btn-outline-primary mt-3">Explore More Features</a>
+        </div>
+        <div class="col-md-6 text-center">
+          <img src="/images/indexly-terminal-screenshot.png" alt="Indexly Terminal View" class="img-fluid rounded shadow">
+        </div>
+      </div>
+    </section>
+  {{ else }}
+    {{ block "main" . }}{{ end }}
+  {{ end }}
+{{ end }}

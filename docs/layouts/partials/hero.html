@@ -1,0 +1,10 @@
+<section class="hero-section text-center">
+  <div class="container hero-content py-5">
+    <h1 class="display-4">{{ .Title }}</h1>
+    <p class="lead">{{ .Params.subtitle }}</p>
+    {{ range .Params.heroButtons }}
+      <a href="{{ .url }}" class="btn btn-{{ .style }} btn-lg m-2">{{ .label }}</a>
+    {{ end }}
+  </div>
+</section>
+

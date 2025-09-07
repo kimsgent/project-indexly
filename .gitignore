@@ -1,0 +1,38 @@
+# ----------------
+# Python
+# ----------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+dist/
+build/
+.venv/
+venv/
+.env
+
+# ----------------
+# Hugo
+# ----------------
+docs/public/
+docs/resources/
+docs/.hugo_build.lock
+
+# ----------------
+# Node / Frontend
+# ----------------
+docs/node_modules/
+docs/package-lock.json
+
+# ----------------
+# OS / Editors
+# ----------------
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# ----------------
+# Logs
+# ----------------
+*.log

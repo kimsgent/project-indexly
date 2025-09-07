@@ -1,0 +1,50 @@
+# Winget manifest to bootstrap development + Indexly environment
+# Run with: winget import -i winget.yaml
+
+Version: 1.0
+Sources:
+  - Packages
+
+Packages:
+  # --- Essentials for Indexly ---
+  - PackageIdentifier: Python.Python.3.13
+  - PackageIdentifier: Git.Git
+  - PackageIdentifier: Tesseract.Tesseract
+  - PackageIdentifier: Gyan.FFmpeg
+  - PackageIdentifier: ImageMagick.ImageMagick
+  - PackageIdentifier: Microsoft.VisualStudioCode
+
+  # --- Browsers ---
+  - PackageIdentifier: Mozilla.Firefox
+  - PackageIdentifier: Google.Chrome
+  - PackageIdentifier: TheBrowserCompany.Arc
+
+  # --- Development / IDEs ---
+  - PackageIdentifier: Microsoft.VisualStudio.2022.Community
+  - PackageIdentifier: EclipseAdoptium.Temurin.21.JDK
+  - PackageIdentifier: Oracle.JavaRuntimeEnvironment
+  - PackageIdentifier: Anaconda.Anaconda3
+  - PackageIdentifier: Microsoft.PowerShell
+  - PackageIdentifier: NuGet.CommandLine
+
+  # --- Productivity / Utilities ---
+  - PackageIdentifier: 7zip.7zip
+  - PackageIdentifier: ShareX.ShareX
+  - PackageIdentifier: Ditto.Ditto
+  - PackageIdentifier: MediaArea.MediaInfo
+  - PackageIdentifier: VideoLAN.VLC
+  - PackageIdentifier: wkhtmltopdf.wkhtmltopdf
+  - PackageIdentifier: neofetch.neofetch
+  - PackageIdentifier: JanDeDobbeleer.OhMyPosh
+  - PackageIdentifier: gerardog.gsudo
+  - PackageIdentifier: Pandoc.Pandoc
+  - PackageIdentifier: Locator.FileLocatorPro
+  - PackageIdentifier: K-LiteCodecPack.Standard
+  - PackageIdentifier: FOSSHub.MiKTeX
+  - PackageIdentifier: Sysinternals.ProcessMonitor
+  - PackageIdentifier: ajeetdsouza.zoxide
+  - PackageIdentifier: Obsidian.Obsidian
+  - PackageIdentifier: Localsend.Localsend
+
+  # --- Optional (peripherals / misc) ---
+  - PackageIdentifier: Logitech.SetPoint

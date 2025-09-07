@@ -1,0 +1,63 @@
+languageCode = "en-us"
+title = "Project Indexly"
+defaultContentLanguage = "en"
+defaultContentLanguageInSubdir = true
+enableGitInfo = false
+pygmentsUseClasses = true
+canonifyURLs = true
+pagination.paperSize = 20
+
+[params]
+  copyright = "Project Indexly"
+  footer = true
+  description = "A local file indexing and search tool."
+  favicon = "images/favicon.png"
+  github_repo = "https://github.com/kimsgent/project-indexly"
+  showVisitedLinks = true
+  themeVariant = "auto"
+
+[markup]
+  [markup.highlight]
+    noClasses = false
+  [markup.goldmark.renderer]
+    unsafe = true
+  [markup.goldmark.parser]
+    autoHeadingID = true
+
+[module]
+  [[module.imports]]
+    path = "github.com/google/docsy"
+
+  [[module.imports]]
+    path = "github.com/FortAwesome/Font-Awesome"
+    disable = true # We copied the files manually, so this avoids loading the module
+
+[languages.en]
+  languageName = "English"
+  weight = 1
+
+  [[languages.en.menus.main]]
+    identifier = "home"
+    name = "Home"
+    pre = "<i class='fa fa-heart'></i>"
+    url = "/en/"
+    weight = 1
+
+  [[languages.en.menus.main]]
+    name = "Documentation"
+    pre = "<i class='fa fa-book'></i>"
+    url = "/en/documentation/"
+    weight = 3
+
+  [[languages.en.menus.main]]
+    name = "Download"
+    pre = "<i class='fa fa-download'></i>"
+    url = "/en/download/"
+    weight = 4
+
+  [[languages.en.menus.main]]
+    name = "Contact"
+    pre = "<i class='fa fa-envelope'></i>"
+    url = "/en/contact/"
+    weight = 6
+

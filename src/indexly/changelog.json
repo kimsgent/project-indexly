@@ -1,0 +1,212 @@
+{
+  "project": "Indexly",
+  "language": "Python",
+  "version": "1.5.0",
+  "release_date": "2025-08-22",
+  "src_dir": "src/indexly",
+  "main_entry": "indexly.py",
+  "modules": [
+    "search_core.py",
+    "search_fts.py",
+    "cli_utils.py",
+    "export_utils.py",
+    "config.py",
+    "utils.py",
+    "filetype_utils.py"
+  ],
+  "implemented_features": {
+    "search": {
+      "fts5_search": {
+        "operators": ["AND", "OR", "NOT", "NEAR", "()", "\"\"", "*"],
+        "snippet_support": true,
+        "input_validation": true,
+        "batch_performance_optimizations": true
+      },
+      "regex_search": {
+        "context_chars": 150,
+        "filetype_filtering": true,
+        "date_range_filtering": true,
+        "tag_filtering": true,
+        "path_filtering": true,
+        "optimized_refresh_logic": true,
+        "no_refresh_write_flag": true,
+        "list_comprehension_optimizations": true
+      }
+    },
+    "cli": {
+      "argparse_subparsers": [
+        "index",
+        "search",
+        "regex",
+        "tag",
+        "watch",
+        "stats",
+        "analyze-csv"
+      ],
+      "features": {
+        "tagging": {
+          "add": true,
+          "remove": true,
+          "filter_search": true
+        },
+        "colored_output": "legacy method restored",
+        "logging_integration": true,
+        "ripple_effect_integration": "debugged, fixed visibility issues"
+      }
+    },
+    "caching": {
+      "persistent_cache": true,
+      "refresh_cache_if_stale": {
+        "no_write_support": true,
+        "batch_refresh": true,
+        "optimized_db_queries": true
+      },
+      "no_cache_flag": true
+    },
+    "metadata_extraction": {
+      "document_attributes": [
+        "title",
+        "author",
+        "subject",
+        "created",
+        "modified"
+      ],
+      "image_attributes": [
+        "camera",
+        "timestamp",
+        "dimensions",
+        "format"
+      ]
+    },
+    "filetype_support": {
+      "documents": [".docx", ".pptx", ".epub", ".odt"],
+      "images": ["jpg", "png", "gif"],
+      "csv": {
+        "delimiter_validation": true,
+        "summary_statistics": [
+          "mean",
+          "median",
+          "sum",
+          "std_dev",
+          "IQR"
+        ],
+        "terminal_table_output": true,
+        "txt_export": true,
+        "md_export": true
+      },
+      "json_support_future": true
+    },
+    "export": {
+      "txt_export": true,
+      "md_export": true,
+      "pdf_export": {
+        "engine": "reportlab",
+        "unicode_fonts": {
+          "japanese": "HeiseiMin-W3 / HeiseiKakuGo-W5",
+          "simplified_chinese": "STSong-Light",
+          "traditional_chinese": "MSung-Light",
+          "korean": "HYSMyeongJo-Medium"
+        },
+        "resource_handling": "importlib.resources.files (deprecated warning noted, migration planned)"
+      }
+    }
+  },
+  "fixed_issues": {
+    "import_errors": "circular import between export_utils and search_core resolved",
+    "cache_bugs": "persistent cache issue fixed with no_refresh_write flag",
+    "cli_transition": "fully migrated from action-based to subparser-based structure",
+    "pdf_fonts": "UnicodeCIDFont correctly registered",
+    "README_warning": "confirmed README.md exists, setup tools warning due to legacy setuptools"
+  },
+  "open_questions": {
+    "setup_tools": "legacy setuptools still in use, migration to pyproject.toml recommended",
+    "importlib_resources": "files() deprecated, needs replacement with importlib.resources.files() fallback strategy"
+  },
+  "changelog": [
+    {
+      "version": "1.5.0",
+      "date": "2025-08-22",
+      "changes": [
+        "Full CLI migration to argparse subparsers",
+        "Enhanced FTS5 search with logical operators, input validation, and snippet support",
+        "Regex search fully integrated with caching and context characters",
+        "Persistent cache with --no-refresh-write and --no-cache flags",
+        "Optimized cache refresh using batch DB checks and list comprehensions",
+        "Added CSV analysis subcommand with delimiter detection, stats, and export",
+        "Extended filetype support: .pptx, .epub, .odt, images with metadata",
+        "Unified metadata extraction for documents and images",
+        "Fixed bugs: import errors, watcher issues, PDF export fonts, cache reuse, relative imports",
+        "Ripple effect integration and colored CLI output restored"
+      ]
+    },
+    {
+      "version": "1.4.0",
+      "date": "2025-07-29",
+      "changes": [
+        "Added CSV file analysis via analyze-csv subcommand with summary export",
+        "Integrated pandas for robust CSV parsing and numeric/statistical summary",
+        "Added support for image metadata extraction (e.g., resolution, timestamp, camera, format)",
+        "Image metadata fields now searchable and filterable via CLI",
+        "Updated README with CSV analysis usage and metadata filtering examples"
+      ]
+    },
+    {
+      "version": "1.3.0",
+      "date": "2025-07-10",
+      "changes": [
+        "Modularized export logic into export_utils.py (pdf/txt/json)",
+        "Modularized filetype extraction into filetype_utils.py",
+        "Added caching system with calculate_query_hash() for search results",
+        "Separated hashing logic into calculate_hash(content) and calculate_query_hash(term, args)",
+        "Integrated .msg and .eml file support with metadata-based virtual tags",
+        "Moved virtual tag extraction logic into extract_virtual_tags() in fts_core.py",
+        "Improved import structure to avoid circular dependencies"
+      ]
+    },
+    {
+      "version": "1.2.0",
+      "date": "2025-07-03",
+      "changes": [
+        "Added fuzzy search support using --fuzzy and --fuzzy-threshold arguments",
+        "Implemented saved search profiles: --save-profile and --profile",
+        "Introduced ripple animation display (ripple.py) during search and indexing wait times",
+        "Added 'stats' subcommand to display indexed file counts, tag usage, and DB size",
+        "Updated README.md with new options and usage examples"
+      ]
+    },
+    {
+      "version": "1.1.1",
+      "date": "2025-05-04",
+      "changes": [
+        "Fixed CLI argument handling for --pdf-lib and --output to prevent errors",
+        "Improved internal argument validation for export options",
+        "Updated README usage examples for --export-pdf, --pdf-lib, and --output combinations",
+        "Clarified usage expectations and corrected mismatched examples"
+      ]
+    },
+    {
+      "version": "1.1.0",
+      "date": "2025-05-03",
+      "changes": [
+        "Implemented CLI filters: --filetype, --date-from, --date-to, --path-contains",
+        "Integrated filters with FTS5 and regex search",
+        "Added PDF export for search results with optional library switch (--pdf-lib)",
+        "Added --export-pdf and --output for flexible output naming",
+        "Improved async indexing logic with file hash column for change detection",
+        "Re-indexing now skips unchanged files based on SHA-256 hash",
+        "Updated README.md with usage examples and feature descriptions"
+      ]
+    },
+    {
+      "version": "1.0.0",
+      "date": "2025-04-29",
+      "changes": [
+        "Initial version with SQLite FTS5 search support",
+        "Added regex search using custom REGEXP function",
+        "Implemented async indexing with asyncio",
+        "Improved terminal output highlighting and snippets",
+        "Supports .txt, .md, .pdf (OCR), .docx, .xlsx, .html, .htm, .js, .json file types"
+      ]
+    }
+  ]
+}

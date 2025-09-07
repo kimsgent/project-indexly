@@ -1,0 +1,24 @@
+/*
+
+Nothing defined here. The Hugo project that uses this theme can override Bootstrap by adding a file to:
+
+assets/scss/_styles_project.scss
+
+*/
+body {
+  padding-top: 4.5rem;
+}
+
+.hero-section {
+  margin-top: 0;
+  padding-top: 2rem;
+}
+
+.td-content {
+  margin-top: 2rem;
+}
+
+footer {
+  background-color: $td-footer-bg-color;
+}
+

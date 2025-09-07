@@ -1,0 +1,47 @@
+/*
+
+Nothing defined here. The Hugo project that uses this theme can override Bootstrap by adding a file to:
+
+assets/scss/_styles_project.scss
+
+*/
+body {
+  padding-top: 5rem; }
+
+.td-content {
+  margin-top: 2rem;
+}
+
+h1, h2, h3, h4 {
+  scroll-margin-top: 6rem;
+}
+
+.navbar-custom {
+  background-color: #1f2937;
+  color: #ccc;
+}
+.navbar-custom a {
+  color: #ccc;
+  text-decoration: none;
+}
+.navbar-custom a:hover {
+  text-decoration: underline;
+}
+
+.hero-section {
+  margin-top: 0 !important;
+  padding-top: 4.5rem !important;
+}
+
+.flex-fill {
+  margin-top: 0 !important;
+}
+
+.td-navbar {
+  top: 0!important;
+  bottom: 800px !important;
+}
+.td-heading-self-link::before {
+  content: "🔗"; /* Or use FontAwesome/SVG if integrated */
+}
+

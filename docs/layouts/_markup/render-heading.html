@@ -1,0 +1,16 @@
+{{/* Strip leading emoji & modifiers from heading for clean ID */}}
+{{- $raw := .Text | plainify | htmlUnescape }}
+{{- $clean := replaceRE "^\\p{So}\\p{Mn}*" "" $raw }}
+{{- $trimmed := trim $clean " " }}
+{{- $anchor := urlize $trimmed }}
+
+<h{{ .Level }} id="{{ $anchor }}"
+  {{- with .Attributes }}
+    {{- range $key, $value := . }}
+      {{ printf " %s=%q" $key $value | safeHTMLAttr }}
+    {{- end }}
+  {{- end }}>
+  {{ .Text | safeHTML }}
+  <a class="td-heading-self-link" href="#{{ $anchor }}" aria-label="Permalink to this heading" title="Permalink to this heading"></a>
+</h{{ .Level }}>
+

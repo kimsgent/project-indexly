@@ -1,0 +1,36 @@
+Metadata-Version: 2.4
+Name: red-black-tree-mod
+Version: 1.22
+Summary: Flexible python implementation of red black trees
+Home-page: http://stromberg.dnsalias.org/~strombrg/red-black-tree-mod/
+Author: Duncan G. Smith, Daniel Richard Stromberg
+Author-email: strombrg@gmail.com
+License: MIT
+Platform: Cross platform
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Intended Audience :: Developers
+Classifier: Programming Language :: Python :: 2
+Classifier: Programming Language :: Python :: 3
+License-File: COPYING
+Dynamic: author
+Dynamic: author-email
+Dynamic: classifier
+Dynamic: description
+Dynamic: home-page
+Dynamic: license
+Dynamic: license-file
+Dynamic: platform
+Dynamic: summary
+
+
+A pair of python modules implementing red black trees is provided.
+
+Red-black trees are a little slower than treaps (some question this), but they give a nice
+low standard deviation in operation times, and this code is rather flexible.
+
+A module is provided for red black trees that enforce uniqueness.
+They allow for set-like use and dictionary-like use.
+
+This code is known to work on CPython 2.x, CPython 3.x, Pypy and Jython.
+
+Much of the work here was done by Duncan G. Smith.  Dan just put some finishing touches on it.

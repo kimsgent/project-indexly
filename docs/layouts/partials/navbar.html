@@ -1,0 +1,39 @@
+{{ $cover := and (.HasShortcode "blocks/cover") (not .Site.Params.ui.navbar_translucent_over_cover_disable) -}}
+{{ $baseURL := urls.Parse $.Site.Params.Baseurl -}}
+
+<nav class="navbar navbar-expand-lg navbar-dark">
+  <div class="container-fluid">
+    <!-- Brand -->
+    <a class="navbar-brand d-flex align-items-center" href="/">
+      <img src="/en/images/logo.png" alt="Logo" style="height:40px;" class="me-2">
+      Project Indexly
+    </a>
+
+    <!-- Hamburger Toggler -->
+    <button class="navbar-toggler custom-toggler" type="button" 
+      data-bs-toggle="collapse" 
+      data-bs-target="#mainNavbar" 
+      aria-controls="mainNavbar" 
+      aria-expanded="false" 
+      aria-label="Toggle navigation">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+
+    <!-- Collapsible Nav Links -->
+    <div class="collapse navbar-collapse" id="mainNavbar">
+      <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
+        {{ $p := . }}
+        {{ range $p.Site.Menus.main -}}
+          <li class="nav-item">
+            {{ $active := or ($p.IsMenuCurrent "main" .) ($p.HasMenuCurrent "main" .) }}
+            <a class="nav-link{{ if $active }} active{{ end }}" href="{{ .URL | relLangURL }}">
+              {{ if .Pre }}{{ .Pre | safeHTML }} {{ end }}
+              <span>{{ .Name }}</span>
+            </a>
+          </li>
+        {{ end -}}
+      </ul>
+    </div>
+  </div>
+</nav>
+

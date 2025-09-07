@@ -1,0 +1,108 @@
+{
+  "project": "FTS5 File Search Tool",
+  "versions": [
+    {
+      "version": "1.0.0",
+      "date": "2025-09-05",
+      "changes": [
+        "Unified snippet logic across FTS5 and regex search",
+        "Aligned regex output with FTS search including colored highlights and tags",
+        "Refactored fuzzy_fallback and search_fts5 with consistent snippet generation and tag enrichment",
+        "Fixed cache stale checks: proper hash computation, tuple unpacking in extract_text_from_file",
+        "Deduplication added in cache refresh to prevent duplicate paths",
+        "Fixed migrate history command: corrected show_migrations argument mismatch",
+        "Refactored handle_regex and handle_search for cleaner flow",
+        "Improved extract_text_from_file consistency (returns text, metadata tuple)",
+        "Introduced setup.ps1 bootstrap script with UpdateOnly, FreshInstall, CheckOnly, and Purge modes",
+        "Added winget.yaml to bootstrap Windows dependencies alongside pip",
+        "Confirmed minimum Python version requirement is 3.9+"
+      ]
+    },
+    {
+      "version": "0.9.8",
+      "date": "2025-08-22",
+      "changes": [
+        "Full CLI migration to argparse subparsers",
+        "Enhanced FTS5 search with logical operators, input validation, and snippet support",
+        "Regex search fully integrated with caching and context characters",
+        "Persistent cache with --no-cache flags",
+        "Optimized cache refresh using batch DB checks and list comprehensions",
+        "Added CSV analysis subcommand with delimiter detection, stats, and export",
+        "Extended filetype support: .pptx, .epub, .odt, images with metadata",
+        "Unified metadata extraction for documents and images",
+        "Fixed bugs: import errors, watcher issues, PDF export fonts, cache reuse, relative imports",
+        "Ripple effect integration and colored CLI output restored"
+      ]
+    },
+    {
+      "version": "0.9.6",
+      "date": "2025-07-29",
+      "changes": [
+        "Added CSV file analysis via analyze-csv subcommand with summary export",
+        "Integrated pandas for robust CSV parsing and numeric/statistical summary",
+        "Added support for image metadata extraction (e.g., resolution, timestamp, camera, format)",
+        "Image metadata fields now searchable and filterable via CLI",
+        "Updated README with CSV analysis usage and metadata filtering examples"
+      ]
+    },
+    {
+      "version": "0.9.4",
+      "date": "2025-07-10",
+      "changes": [
+        "Modularized export logic into export_utils.py (pdf/txt/json)",
+        "Modularized filetype extraction into filetype_utils.py",
+        "Added caching system with calculate_query_hash() for search results",
+        "Separated hashing logic into calculate_hash(content) and calculate_query_hash(term, args)",
+        "Integrated .msg and .eml file support with metadata-based virtual tags",
+        "Moved virtual tag extraction logic into extract_virtual_tags() in fts_core.py",
+        "Improved import structure to avoid circular dependencies"
+      ]
+    },
+    {
+      "version": "0.9.2",
+      "date": "2025-07-03",
+      "changes": [
+        "Added fuzzy search support using --fuzzy and --fuzzy-threshold arguments",
+        "Implemented saved search profiles: --save-profile and --profile",
+        "Introduced ripple animation display (ripple.py) during search and indexing wait times",
+        "Added 'stats' subcommand to display indexed file counts, tag usage, and DB size",
+        "Updated README.md with new options and usage examples"
+      ]
+    },
+    {
+      "version": "0.9.0",
+      "date": "2025-05-04",
+      "changes": [
+        "Fixed CLI argument handling for --pdf-lib and --output to prevent errors",
+        "Improved internal argument validation for export options",
+        "Updated README usage examples for --export-pdf, --pdf-lib, and --output combinations",
+        "Clarified usage expectations and corrected mismatched examples"
+      ]
+    },
+    {
+      "version": "0.8.8",
+      "date": "2025-05-03",
+      "changes": [
+        "Implemented CLI filters: --filetype, --date-from, --date-to, --path-contains",
+        "Integrated filters with FTS5 and regex search",
+        "Added PDF export for search results with optional library switch (--pdf-lib)",
+        "Added --export-pdf and --output for flexible output naming",
+        "Improved async indexing logic with file hash column for change detection",
+        "Re-indexing now skips unchanged files based on SHA-256 hash",
+        "Updated README.md with usage examples and feature descriptions"
+      ]
+    },
+    {
+      "version": "0.8.6",
+      "date": "2025-04-29",
+      "changes": [
+        "Initial version with SQLite FTS5 search support",
+        "Added regex search using custom REGEXP function",
+        "Implemented async indexing with asyncio",
+        "Improved terminal output highlighting and snippets",
+        "Supports .txt, .md, .pdf (OCR), .docx, .xlsx, .html, .htm, .js, .json file types"
+      ]
+    }
+  ]
+}
+

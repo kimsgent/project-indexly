@@ -1,0 +1,33 @@
+<footer class="td-footer row d-print-none navbar-custom">
+  <div class="container-fluid">
+    <div class="row mx-md-2">
+      <div class="td-footer__left col-6 col-sm-4 order-sm-1">
+        {{ partial "footer/left.html"  . }}
+      </div>
+      {{- /* Trim WS */ -}}
+      <div class="td-footer__right col-6 col-sm-4 order-sm-3">
+        {{ partial "footer/right.html"  . }}
+      </div>
+      {{- /* Trim WS */ -}}
+      <div class="td-footer__center col-12 col-sm-4 py-2 order-sm-2">
+	<!-- ./layouts/partials/footer/center.html -->
+      <div class="text-center">
+        <nav class="mb-2">
+          <a href="/" class="mx-2">Home</a>
+          <a href="/en/documentation/" class="mx-2">Documentation</a>
+          <a href="/en/contact/" class="mx-2">Contact</a>
+       </nav>
+      <div class="mb-2">
+        <img src="/en/images/logo.png" alt="Logo" style="height:40px; cursor:pointer;" onclick="location.href='/'">
+      </div>
+     </div>
+        {{ partial "footer/center.html"  . }}
+      </div>
+    </div>
+  </div>
+</footer>
+<!-- Bootstrap JS Bundle -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" 
+        integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" 
+        crossorigin="anonymous"></script>
+
