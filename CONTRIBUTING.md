@@ -12,7 +12,7 @@ Thank you for considering contributing! Your help improves the tool for everyone
    ```bash
    git clone https://github.com/<your-username>/project-indexly.git
    cd project-indexly
-````
+```
 
 3. **Create a virtual environment** (Python 3.9+ recommended) and install dependencies:
 
