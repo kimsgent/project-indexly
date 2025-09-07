@@ -3,23 +3,33 @@
 # -----------------------------
 
 [build]
-  base = "docs"               # Hugo site root
-  publish = "docs/public"     # Folder to deploy
-  command = "hugo"            # Build command
+  base = "docs"           # Hugo site root
+  publish = "public"      # Folder inside base to deploy
+  command = "hugo"        # Build command
 
 [context.production.environment]
-  HUGO_VERSION = "0.148.1"   # Your Hugo version
-  HUGO_EXTENDED = "true"      # Ensure extended build for Docsy
+  HUGO_VERSION = "0.148.1"
+  HUGO_EXTENDED = "true"
 
-# Optional: ignore caching of problematic folders
-# Ensures old submodules or node_modules don’t break builds
 [build.environment]
+  # Cache Hugo resources to speed up builds
   HUGO_CACHEDIR = "/tmp/hugo_cache"
 
-# Optional: skip processing for node_modules, dist, logs
+# -----------------------------
+# Optional: ignore unnecessary folders for clean builds
+# -----------------------------
 [[ignore]]
   paths = [
-    "docs/node_modules",
-    "dist",
-    "*.log"
+    "docs/node_modules",    # frontend packages
+    "dist",                 # Python build artifacts
+    "*.log"                 # logs
   ]
+
+# -----------------------------
+# Notes
+# -----------------------------
+# - All theme submodules should be properly removed or normal folders.
+# - Bootstrap folder (docs/themes/github.com/twbs/bootstrap) can be safely deleted if using CDN.
+# - Docsy theme remains as a git submodule (themes/docsy).
+# - Hugo build command will use the extended version suitable for Docsy.
+
