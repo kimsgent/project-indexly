@@ -1,0 +1,25 @@
+# -----------------------------
+# Netlify configuration for Project Indexly
+# -----------------------------
+
+[build]
+  base = "docs"               # Hugo site root
+  publish = "docs/public"     # Folder to deploy
+  command = "hugo"            # Build command
+
+[context.production.environment]
+  HUGO_VERSION = "0.148.1"   # Your Hugo version
+  HUGO_EXTENDED = "true"      # Ensure extended build for Docsy
+
+# Optional: ignore caching of problematic folders
+# Ensures old submodules or node_modules don’t break builds
+[build.environment]
+  HUGO_CACHEDIR = "/tmp/hugo_cache"
+
+# Optional: skip processing for node_modules, dist, logs
+[[ignore]]
+  paths = [
+    "docs/node_modules",
+    "dist",
+    "*.log"
+  ]
