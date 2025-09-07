@@ -3,7 +3,7 @@ name: Publish Release
 on:
   push:
     tags:
-      - "v*.*.*"   # triggers only on version tags like v1.0.0
+      - "v*.*.*"  # triggers on version tags like v1.0.0
 
 jobs:
   build-and-release:
@@ -21,13 +21,53 @@ jobs:
       - name: Install Hatch
         run: pip install hatch
 
+      - name: Generate Hugo release notes + API
+        run: python generate_releases.py
+
+      - name: Prepare GitHub release notes
+        run: |
+          VERSION="${GITHUB_REF_NAME}"  # e.g., v1.0.0
+          RELEASE_FILE="docs/content/releases/${VERSION}.md"
+          NOTES_FILE="RELEASE_NOTES.md"
+
+          # Only create release notes if the GitHub release does not exist
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            echo "⚠️ Release $VERSION already exists on GitHub, skipping NOTES generation"
+            exit 0
+          fi
+
+          if [ -f "$RELEASE_FILE" ]; then
+            # Strip Hugo front matter (--- blocks)
+            awk '/^---/{flag=!flag; next} !flag {print}' "$RELEASE_FILE" > "$NOTES_FILE"
+          else
+            echo "⚠️ Release file not found, fallback to changelog.json"
+            python - <<PYTHON
+import json
+from pathlib import Path
+
+version = "${VERSION}"
+data_file = Path("docs/data/changelog.json")
+notes_file = Path("${NOTES_FILE}")
+
+data = json.loads(data_file.read_text(encoding="utf-8"))
+for v in data["versions"]:
+    if "v"+v["version"] == version:
+        content = [f"## Release {version} ({v['date']})", "### Changes"]
+        content += [f"- {c}" for c in v["changes"]]
+        notes_file.write_text("\n".join(content), encoding="utf-8")
+        break
+else:
+    notes_file.write_text(f"No release notes found for {version}", encoding="utf-8")
+PYTHON
+
       - name: Build with Hatch
         run: hatch build
 
-      - name: Upload release assets
+      - name: Upload release assets with notes
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*
+          body_path: RELEASE_NOTES.md
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
 

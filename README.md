@@ -152,7 +152,7 @@ Full usage, configuration, and integration guides:
 
 Contributions are welcome!
 Please check [CONTRIBUTING.md](./CONTRIBUTING.md) before submitting pull requests.
-👉 [Project Indexly on GitHub](https://github.com/yourusername/project-indexly)
+👉 [Project Indexly on GitHub](https://github.com/kimsgent/project-indexly)
 
 ---
 
@@ -174,5 +174,5 @@ Co-created with **ChatGPT** 🤝
 
 ## 📝 License
 
-This project is licensed under the **MIT License** — see LICENSE for details.
+This project is licensed under the **MIT License** — see [LICENSE](./LICENSE.txt) for details.
 
