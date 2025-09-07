@@ -41,7 +41,7 @@ Designed to work **100% offline**, it’s perfect for researchers, writers, deve
 
 | Indexing Files | Search Preview |
 |----------------|----------------|
-| ![Index](docs/static/images/indexly_indexing.png) | ![Search](docs/static/images/indexly_search_demo.png) |
+| ![Index](docs/static/images/indexly_indexing.png) | ![Search](docs/static/images/search-demo-placeholder.png) |
 
 ---
 
