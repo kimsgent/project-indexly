@@ -9,21 +9,27 @@ tags:
     - E-Mail
 ---
 
-Have questions or feedback? Fill out the form below 👇
+Have questions or feedback?  
 
-<form name="contact" method="POST" netlify>
+📧 Email: [gentkims@gmail.com](mailto:gentkims@gmail.com) 
+💬 Use our contact form below:
+
+<form
+  name="contact"
+  method="POST"
+  data-netlify="true"
+  data-netlify-recaptcha="true"
+>
   <p>
-    <label>Name:<br />
-    <input type="text" name="name" required></label>
+    <label>Name <input type="text" name="name" required /></label>
   </p>
   <p>
-    <label>Email:<br />
-    <input type="email" name="email" required></label>
+    <label>Email <input type="email" name="email" required /></label>
   </p>
   <p>
-    <label>Message:<br />
-    <textarea name="message" rows="5" required></textarea></label>
+    <label>Message <textarea name="message" required></textarea></label>
   </p>
+  <div data-netlify-recaptcha="true"></div>
   <p>
     <button type="submit">Send</button>
   </p>
@@ -31,8 +37,7 @@ Have questions or feedback? Fill out the form below 👇
 
 ---
 
-📧 Email: [gentkims@gmail.com](mailto:gentkims@gmail.com)  
-🔗 [LinkedIn](https://linkedin.com/in/kimsgent)  
-🌐 [Google Site](https://sites.google.com/view/kimsgent)  
-💻 [GitHub Project Indexly](https://github.com/kimsgent/project-indexly)
-
+🔗 Connect with me:  
+- <i class="fab fa-linkedin"></i> [LinkedIn](https://linkedin.com/in/kimsgent)
+- <i class="fab fa-google"></i> [Google Site](https://sites.google.com/view/kimsgent)
+- <i class="fab fa-github"></i> [GitHub](https://github.com/kimsgent/project-indexly)
