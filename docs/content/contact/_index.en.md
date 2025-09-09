@@ -11,28 +11,25 @@ tags:
 
 Have questions or feedback?  
 
-📧 Email: [gentkims@gmail.com](mailto:gentkims@gmail.com) 
+📧 Email: [gentkims@gmail.com](mailto:gentkims@gmail.com)
+
 💬 Use our contact form below:
 
-<form
-  name="contact"
-  method="POST"
-  data-netlify="true"
-  data-netlify-recaptcha="true"
->
-  <p>
-    <label>Name <input type="text" name="name" required /></label>
-  </p>
-  <p>
-    <label>Email <input type="email" name="email" required /></label>
-  </p>
-  <p>
-    <label>Message <textarea name="message" required></textarea></label>
-  </p>
-  <div data-netlify-recaptcha="true"></div>
-  <p>
-    <button type="submit">Send</button>
-  </p>
+<form name="contact" method="POST" data-netlify="true" data-netlify-recaptcha="true" class="contact-form">
+  <div class="form-group">
+    <label for="name">Name</label>
+    <input type="text" id="name" name="name" required />
+  </div>
+  <div class="form-group">
+    <label for="email">Email</label>
+    <input type="email" id="email" name="email" required />
+  </div>
+  <div class="form-group">
+    <label for="message">Message</label>
+    <textarea id="message" name="message" required></textarea>
+  </div>
+  <div data-netlify-recaptcha="true" class="recaptcha"></div>
+  <button type="submit" class="submit-btn">Send</button>
 </form>
 
 ---

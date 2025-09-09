@@ -236,11 +236,69 @@ body.dark .td-content table code {
   }
 }
 
+/* Scoped to contact form on netlify */
+.contact-form {
+  max-width: 400px;
+  margin: 2em auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1em;
+  background: #444450;
+  padding: 2em 2em 1em;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.form-group label {
+  margin-bottom: 0.4em;
+  font-weight: 500;
+  color: #fff;
+}
+
+.contact-form input,
+.contact-form textarea {
+  padding: 0.7em;
+  border: 1px solid #bbb;
+  border-radius: 4px;
+  font-size: 1em;
+  color: #333;
+  background: #fff;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.contact-form textarea {
+  min-height: 80px;
+  resize: vertical;
+}
+
+.recaptcha {
+  margin-bottom: 1em;
+}
+.submit-btn {
+  background: #2981f5;
+  color: #fff;
+  border: none;
+  padding: 0.8em 0;
+  border-radius: 4px;
+  font-size: 1.1em;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.submit-btn:hover {
+  background: #1551a8;
+}
+
 /* -------------------------
     Copy button for darkmode
  ---------------------------- */
 
-/* Scoped to dark mode (adjust selector to your dark mode class or media query) */
 /* Scoped to dark mode (adjust selector to your dark mode class or media query) */
 body.dark .td-click-to-copy,
 @media (prefers-color-scheme: dark) {
