@@ -2,12 +2,6 @@
 title: "Support Us"
 type: docs
 toc: true
-
-categories:
-    - Donations
-tags:
-    - Donations
-    - PayPal
 ---
 
 If this tool helps you, consider supporting its development. ❤️

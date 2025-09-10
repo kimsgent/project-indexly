@@ -38,3 +38,4 @@ Have questions or feedback?
 - <i class="fab fa-linkedin"></i> [LinkedIn](https://linkedin.com/in/kimsgent)
 - <i class="fab fa-google"></i> [Google Site](https://sites.google.com/view/kimsgent)
 - <i class="fab fa-github"></i> [GitHub](https://github.com/kimsgent/project-indexly)
+- <i class="fab fa-python"></i> [PyPI](https://pypi.org/project/indexly/)

@@ -162,5 +162,7 @@ choco install ripgrep-all
 * [fzf](https://github.com/junegunn/fzf)
 * [Kickstart.nvim](https://github.com/nvim-lua/kickstart.nvim)
 * [ImportExcel](https://github.com/dfinke/ImportExcel)
+* Brett Terpstra — inspiration from [Ripple (GitHub gist)](https://gist.github.com/ttscoff/efe9c1284745c4df956457a5707e7450) and his [homepage article](https://brettterpstra.com/2025/06/30/ripple-an-indeterminate-progress-indicator/)  
+* Michael Bazzel — inspiration drawn from his OSINT books on extraction techniques
 
-> ✨ Created collaboratively with **ChatGPT** based on Nango Kimbeng Franklin-Gent’s prompt.
+> ✨ Created collaboratively with **ChatGPT** based on N. K. Franklin-Gent’s prompt.

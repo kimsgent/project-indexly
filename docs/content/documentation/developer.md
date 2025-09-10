@@ -39,7 +39,7 @@ indexly/
                 README.md  (canonical documentation)
         └───csv/
                 sample.csv
-````
+```
 
 
 ---
@@ -63,10 +63,28 @@ indexly/
 
 ## Dev Setup
 
+First, clone the repository and set up a virtual environment:
+
 ```bash
-git clone https://your-repo-url/indexly.git
-cd indexly
+git clone https://github.com/kimsgent/project-indexly.git
+cd project-indexly
+
+# Create and activate virtual environment
+python -m venv venv
+source venv/bin/activate   # On Linux/Mac
+venv\Scripts\activate      # On Windows
+
+# Install requirements
+pip install indexly
 pip install -r requirements.txt
+
+# If developing, install additional dev requirements
+pip install -r requirements-dev.txt
+
+```
+Quick test run:
+
+```bash
 indexly search "demo"
 ```
 
@@ -93,6 +111,11 @@ graph TD
 ````
 
 ### Using Hatch & Hatchling
+
+
+Indexly also supports Hatch
+for builds and dependency management.
+The project includes a pyproject.toml with general and development requirements.
 
 ```bash
 pip install hatch

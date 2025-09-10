@@ -16,6 +16,14 @@ tags:
 
 ## Installation
 
+You can install **Indexly** directly from [PyPI](https://pypi.org/project/indexly/):
+
+```bash
+pip install indexly
+````
+
+Or install all dependencies from the requirements file:
+
 ```bash
 pip install -r requirements.txt
 ````
