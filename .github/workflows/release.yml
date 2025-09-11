@@ -1,29 +1,51 @@
-name: Release
+name: Publish Release
+
 on:
   push:
     tags:
-      - v*
+      - "v*"  # triggers on version tags like v1.0.0
+
 jobs:
-  release:
+  build-and-release:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v4
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: 3.x
+          python-version: "3.11"
+
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
+          pip install hatch
+          pip install pyyaml
+
+      - name: Generate Hugo release notes + API
+        run: python generate_releases.py
+
       - name: Prepare GitHub release notes
-        run: python .github/scripts/prepare_release_notes.py
-        env:
-          VERSION: ${{ github.ref_name }}
-          NOTES_FILE: RELEASE_NOTES.md
-      - name: Create Release
+        run: python scripts/prepare_release_notes.py "${GITHUB_REF_NAME}"
+
+      - name: Update download page with new version
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          DOWNLOAD_FILE="docs/content/download/_index.en.md"
+          sed -i "s#https://github.com/kimsgent/project-indexly/archive/refs/tags/.*.zip#https://github.com/kimsgent/project-indexly/archive/refs/tags/$VERSION.zip#g" "$DOWNLOAD_FILE"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "$DOWNLOAD_FILE"
+          git commit -m "Update download link for $VERSION" || echo "No changes to commit"
+
+      - name: Build with Hatch
+        run: hatch build
+
+      - name: Upload release assets with notes
         uses: softprops/action-gh-release@v2
         with:
+          files: dist/*
           body_path: RELEASE_NOTES.md
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
