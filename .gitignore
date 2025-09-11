@@ -31,6 +31,8 @@ docs/package-lock.json
 .idea/
 .vscode/
 *.swp
+indexly.code-workspace
+search_cache.json
 
 # ----------------
 # Logs
