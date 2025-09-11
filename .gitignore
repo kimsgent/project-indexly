@@ -10,6 +10,7 @@ build/
 .venv/
 venv/
 .env
+*.sqlite3
 
 # ----------------
 # Hugo
@@ -31,8 +32,13 @@ docs/package-lock.json
 .idea/
 .vscode/
 *.swp
-indexly.code-workspace
+*.code-workspace
 search_cache.json
+
+# ----------------
+# Indexly runtime
+# ----------------
+src/indexly/fts_index.db
 
 # ----------------
 # Logs
