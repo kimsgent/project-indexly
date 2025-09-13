@@ -237,9 +237,10 @@ body.dark .td-content table code {
 }
 
 /* Scoped to contact form on netlify */
+
 .contact-form {
   max-width: 400px;
-  margin: 2em auto;
+  margin: 2em 0 2em 0;
   display: flex;
   flex-direction: column;
   gap: 1em;
@@ -293,6 +294,39 @@ body.dark .td-content table code {
 }
 .submit-btn:hover {
   background: #1551a8;
+}
+
+.thin-line {
+  border: none;
+  border-bottom: 1px solid #ccc; /* thin hairline divider */
+  margin: 0.5em 0 1em 0;
+  width: 100%;
+}
+
+.contact-buttons {
+  display: flex;
+  gap: 1.5em;
+  margin-bottom: 1.5em;
+  flex-wrap: wrap; /* wrap on smaller screens */
+}
+
+.contact-btn {
+  text-decoration: none;
+  color: #2981f5;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  transition: color 0.3s ease;
+}
+
+.contact-btn i {
+  font-size: 1.2em;
+}
+
+/* Hover color */
+.contact-btn:hover {
+  color: #1551a8;
 }
 
 /* -------------------------
