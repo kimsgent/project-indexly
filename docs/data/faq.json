@@ -1,0 +1,19 @@
+[
+  {
+    "question": "What is Project Indexly?",
+    "answer": "Project Indexly is a local file indexing and search tool with tagging, full-text search, and export features."
+  },
+  {
+    "question": "How do I install it?",
+    "answer": "Download the ZIP, extract it, and follow the [installation guide](/en/documentation/)."
+  },
+  {
+    "question": "Does it support macOS and Windows?",
+    "answer": "Yes — we support macOS (Intel & Apple Silicon) and Windows 10/11."
+  },
+  {
+    "question": "Can I contribute to the project?",
+    "answer": "Absolutely! Please visit our [GitHub repository](https://github.com/kimsgent/project-indexly) for contribution guidelines."
+  }
+]
+
