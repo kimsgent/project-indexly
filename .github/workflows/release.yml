@@ -1,51 +1,97 @@
 name: Publish Release
-
 on:
   push:
     tags:
-      - "v*"  # triggers on version tags like v1.0.0
-
+      - v*
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Fake version (for dry-run testing)
+        required: false
+        default: v0.0.0-test
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
       - name: Install dependencies
         run: |
           pip install hatch
           pip install pyyaml
+      - name: Set version variable
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_ENV
+          else
+            echo "VERSION=${GITHUB_REF_NAME}" >> $GITHUB_ENV
+          fi
+        
+      - name: Determine prerelease
+        id: prerelease
+        run: |
+          if [[ "${VERSION}" =~ (alpha|beta|rc|test|-test) ]]; then
+            echo "prerelease=true" >> $GITHUB_OUTPUT
+          else
+            echo "prerelease=false" >> $GITHUB_OUTPUT
+          
+          # Detect dry-run version (v0.0.0-test)
+          if [[ "${VERSION}" == "v0.0.0-test" ]]; then
+            echo "dryrun=true" >> $GITHUB_OUTPUT
+          else
+            echo "dryrun=false" >> $GITHUB_OUTPUT
 
       - name: Generate Hugo release notes + API
         run: python generate_releases.py
-
       - name: Prepare GitHub release notes
-        run: python scripts/prepare_release_notes.py "${GITHUB_REF_NAME}"
-
+        run: python scripts/prepare_release_notes.py "${VERSION}"
       - name: Update download page with new version
-        run: |
-          VERSION="${GITHUB_REF_NAME}"
+        if: github.event_name != 'workflow_dispatch'
+        run: >
           DOWNLOAD_FILE="docs/content/download/_index.en.md"
-          sed -i "s#https://github.com/kimsgent/project-indexly/archive/refs/tags/.*.zip#https://github.com/kimsgent/project-indexly/archive/refs/tags/$VERSION.zip#g" "$DOWNLOAD_FILE"
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add "$DOWNLOAD_FILE"
-          git commit -m "Update download link for $VERSION" || echo "No changes to commit"
 
+          sed -i "s#https://github.com/kimsgent/project-indexly/archive/refs/tags/.*.zip#https://github.com/kimsgent/project-indexly/archive/refs/tags/$VERSION.zip#g" "$DOWNLOAD_FILE"
+
+          git config user.name "github-actions[bot]"
+
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add "$DOWNLOAD_FILE"
+
+          git commit -m "Update download link for $VERSION" || echo "No changes to commit"
       - name: Build with Hatch
         run: hatch build
-
       - name: Upload release assets with notes
+        if: github.event_name != 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*
           body_path: RELEASE_NOTES.md
+          prerelease: ${{ steps.prerelease.outputs.prerelease }}
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+      - name: Upload to TestPyPI (pre-release only)
+        if: steps.prerelease.outputs.prerelease == 'true' && steps.prerelease.outputs.dryrun == 'false'
+        run: |
+          echo "Uploading pre-release to TestPyPI..."
+          pip install twine
+          twine upload --repository testpypi dist/*
+        env:
+          TWINE_USERNAME: ${{ secrets.TESTPYPI_USERNAME }}
+          TWINE_PASSWORD: ${{ secrets.TESTPYPI_PASSWORD }}
+
+      - name: Upload to PyPI (stable only)
+        if: steps.prerelease.outputs.prerelease == 'false' && steps.prerelease.outputs.dryrun == 'false'
+        run: |
+          echo "Uploading stable release to PyPI..."
+          pip install twine
+          twine upload dist/*
+        env:
+          TWINE_USERNAME: ${{ secrets.PYPI_USERNAME }}
+          TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
+
