@@ -139,27 +139,18 @@ from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from textwrap import wrap, fill
-
-
-# Colorama for terminal output
-try:
-    from colorama import init, Fore, Style
-
-    init(autoreset=True)
-    COLORAMA_AVAILABLE = True
-except ImportError:
-    COLORAMA_AVAILABLE = False
-
+import re
 
 def highlight_term(text, term):
-    if COLORAMA_AVAILABLE:
-        return re.sub(
-            f"({re.escape(term)})",
-            f"{Fore.RED}{Style.BRIGHT}\\1{Fore.YELLOW}",  # red match, then restore yellow
-            text,
-            flags=re.IGNORECASE,
-        )
-    return text
+    """
+    Highlight all occurrences of `term` in `text` using Rich markup.
+    Matches appear in bold red; surrounding color is handled by the caller.
+    """
+    if not term:
+        return text
+
+    pattern = re.compile(rf"({re.escape(term)})", re.IGNORECASE)
+    return pattern.sub(r"[bold red]\1[/bold red]", text)
 
 
 def format_tags(path):
