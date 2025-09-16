@@ -19,3 +19,9 @@ Get the latest version of Project Indexly:
 
 
 📚 Check [Documentation](/en/documentation/)  
+
+
+## FAQ
+
+{{< faq >}}
+
