@@ -1,5 +1,6 @@
 ---
 title: "Download"
+description: "Download Indexly and learn how to install, configure, and troubleshoot it on Windows, macOS, and Linux."
 type: docs
 toc: true
 
@@ -19,3 +20,9 @@ Get the latest version of Project Indexly:
 
 
 📚 Check [Documentation](/en/documentation/)  
+
+
+## FAQ
+
+{{< faq >}}
+

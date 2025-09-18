@@ -1,0 +1,107 @@
+<div class="faq-container">
+
+  <!-- Table of Contents -->
+  <div class="faq-toc mb-3">
+    <h4>FAQ Categories</h4>
+    <ul>
+      {{ $categories := slice }}
+      {{ range .Site.Data.faq }}
+        {{ if not (in $categories .category) }}
+          {{ $categories = $categories | append .category }}
+        {{ end }}
+      {{ end }}
+
+      {{ range $catIndex, $cat := $categories }}
+        <li><a href="#faq-{{ $cat | urlize }}" class="faq-link">Indexly {{ $cat | title }} Questions</a></li>
+      {{ end }}
+    </ul>
+    <button class="btn btn-sm btn-outline-primary mt-2" id="expandAll">Expand All</button>
+    <button class="btn btn-sm btn-outline-secondary mt-2" id="collapseAll">Collapse All</button>
+  </div>
+
+  <!-- FAQ Accordion -->
+  <div class="accordion" id="faqAccordion">
+    {{ range $catIndex, $cat := $categories }}
+      <h3 id="faq-{{ $cat | urlize }}" class="faq-category-heading">Indexly {{ $cat | title }} Questions</h3>
+
+      {{ $items := where .Site.Data.faq "category" $cat }}
+      {{ range $index, $item := $items }}
+        <div class="accordion-item">
+          <h2 class="accordion-header" id="{{ $cat }}{{ $index }}-heading">
+            <button class="accordion-button collapsed" type="button"
+                    data-bs-toggle="collapse"
+                    data-bs-target="#{{ $cat }}{{ $index }}"
+                    aria-expanded="false"
+                    aria-controls="{{ $cat }}{{ $index }}">
+              {{ $item.question }}
+            </button>
+          </h2>
+          <div id="{{ $cat }}{{ $index }}" class="accordion-collapse collapse"
+               aria-labelledby="{{ $cat }}{{ $index }}-heading"
+               data-bs-parent="#faqAccordion">
+            <div class="accordion-body">
+              {{ $item.answer | markdownify }}
+            </div>
+          </div>
+        </div>
+      {{ end }}
+    {{ end }}
+  </div>
+</div>
+
+<!-- Smooth Scroll & Expand/Collapse JS -->
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  // Smooth scroll for TOC links
+  document.querySelectorAll(".faq-link").forEach(link => {
+    link.addEventListener("click", e => {
+      e.preventDefault();
+      const target = document.querySelector(link.getAttribute("href"));
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  });
+
+  // Expand All
+  const expandBtn = document.getElementById("expandAll");
+  expandBtn.addEventListener("click", () => {
+    document.querySelectorAll(".accordion-collapse").forEach(item => {
+      item.classList.add("show");
+    });
+  });
+
+  // Collapse All
+  const collapseBtn = document.getElementById("collapseAll");
+  collapseBtn.addEventListener("click", () => {
+    document.querySelectorAll(".accordion-collapse").forEach(item => {
+      item.classList.remove("show");
+    });
+  });
+});
+</script>
+
+<!-- Optional CSS styling for better visual -->
+<style>
+.faq-container {
+  margin-bottom: 2rem;
+}
+
+.faq-toc ul {
+  list-style-type: disc;
+  padding-left: 1.5rem;
+}
+
+.faq-toc ul li {
+  margin-bottom: 0.5rem;
+}
+
+.faq-category-heading {
+  margin-top: 2rem;
+  margin-bottom: 1rem;
+  font-size: 1.25rem;
+}
+
+#expandAll, #collapseAll {
+  margin-right: 0.5rem;
+}
+</style>
+
