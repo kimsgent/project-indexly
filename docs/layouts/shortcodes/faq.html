@@ -5,7 +5,7 @@
     <h4>FAQ Categories</h4>
     <ul>
       {{ $categories := slice }}
-      {{ range .Site.Data.faq }}
+      {{ range site.Data.faq }}
         {{ if not (in $categories .category) }}
           {{ $categories = $categories | append .category }}
         {{ end }}
@@ -24,7 +24,7 @@
     {{ range $catIndex, $cat := $categories }}
       <h3 id="faq-{{ $cat | urlize }}" class="faq-category-heading">Indexly {{ $cat | title }} Questions</h3>
 
-      {{ $items := where .Site.Data.faq "category" $cat }}
+      {{ $items := where site.Data.faq "category" $cat }}
       {{ range $index, $item := $items }}
         <div class="accordion-item">
           <h2 class="accordion-header" id="{{ $cat }}{{ $index }}-heading">
@@ -104,4 +104,3 @@ document.addEventListener("DOMContentLoaded", function() {
   margin-right: 0.5rem;
 }
 </style>
-
