@@ -140,17 +140,25 @@ from reportlab.pdfgen import canvas
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from textwrap import wrap, fill
 import re
+from rich.text import Text
 
+print("DEBUG: updated hightlight_term loaded")
 def highlight_term(text, term):
     """
-    Highlight all occurrences of `term` in `text` using Rich markup.
-    Matches appear in bold red; surrounding color is handled by the caller.
+    Highlight all occurrences of `term` in `text` using Rich Text.
+    Matches appear in bold red; surrounding text can have a different style.
     """
     if not term:
-        return text
+        return Text(text)  # plain Text if nothing to highlight
 
+    t = Text(text)  # base Text object
     pattern = re.compile(rf"({re.escape(term)})", re.IGNORECASE)
-    return pattern.sub(r"[bold red]\1[/bold red]", text)
+
+    for match in pattern.finditer(text):
+        start, end = match.span()
+        t.stylize("bold red", start, end)
+
+    return t
 
 
 def format_tags(path):

@@ -6,23 +6,32 @@ from .db_utils import get_tags_for_file
 
 # printing search results
 
+from rich.console import Console
+from rich.text import Text
+
+console = Console(force_terminal=True)
+
 def print_search_results(results, term, context_chars=150):
-    rprint(f"[bold green]Found {len(results)} matches:[/bold green]")
+    console.print(f"[bold green]Found {len(results)} matches:[/bold green]")
+
     for row in results:
-        rprint(f"[bold cyan]{row['path']}[/bold cyan]")
+        console.print(f"[bold cyan]{row['path']}[/bold cyan]")
 
         tags = get_tags_for_file(row["path"])
         if tags:
-            rprint(f"[dim white][Tags: {', '.join(tags)}][/dim white]")
+            console.print(f"[dim white][Tags: {', '.join(tags)}][/dim white]")
 
-        # Snippet already prebuilt in search_fts5 / search_regex
         snippet = row.get("snippet", "") or row.get("content", "")
+        highlighted = Text(snippet, style="yellow")  # base yellow style
 
-        highlighted = snippet
+        # Highlight each search term in bold red
         for word in re.findall(r"\w+", term):
-            highlighted = highlight_term(highlighted, word)
+            pattern = re.compile(rf"({re.escape(word)})", re.IGNORECASE)
+            for match in pattern.finditer(snippet):
+                start, end = match.span()
+                highlighted.stylize("bold red", start, end)
 
-        rprint(f"[yellow]{highlighted}[/yellow]\n")
+        console.print(highlighted)
 
         
 # printing regex results
