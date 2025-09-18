@@ -1,19 +1,38 @@
 [
   {
-    "question": "What is Project Indexly?",
-    "answer": "Project Indexly is a local file indexing and search tool with tagging, full-text search, and export features."
+    "category": "general",
+    "question": "How do I install Indexly on Windows, macOS, or Linux?",
+    "answer": "You can install Indexly by running pip install indexly in your terminal. On Windows, macOS, and Linux, Python 3.10+ is required. For developers, clone the GitHub repo and run the indexing command from the project folder."
   },
   {
-    "question": "How do I install it?",
-    "answer": "Download the ZIP, extract it, and follow the [installation guide](/en/documentation/)."
+    "category": "general",
+    "question": "What file types are supported by Indexly search?",
+    "answer": "Indexly supports text, PDF, Word (.docx), Excel (.xlsx), CSV, EPUB, ODT, PPTX, images (JPG, PNG, TIFF), and more. Check the documentation for the latest list of supported file types."
   },
   {
-    "question": "Does it support macOS and Windows?",
-    "answer": "Yes — we support macOS (Intel & Apple Silicon) and Windows 10/11."
+    "category": "general",
+    "question": "Where is the Indexly database stored after indexing?",
+    "answer": "The Indexly database (fts_index.db) is created automatically when you run indexing. If installed with pip, it’s stored in your Python site-packages/indexly folder. If cloned from GitHub, it’s located under project-indexly/src/indexly."
   },
   {
-    "question": "Can I contribute to the project?",
-    "answer": "Absolutely! Please visit our [GitHub repository](https://github.com/kimsgent/project-indexly) for contribution guidelines."
+    "category": "general",
+    "question": "Can I use regex and advanced search operators in Indexly?",
+    "answer": "Yes, Indexly supports regex searches and logical operators like AND, OR, NOT, and NEAR. This lets you run advanced queries, match patterns, and refine results easily."
+  },
+  {
+    "category": "general",
+    "question": "Does Indexly work offline for local file search?",
+    "answer": "Yes, Indexly is fully offline and works without internet. Once you’ve indexed your files, searches are fast and private, powered by the local SQLite FTS5 database."
+  },
+  {
+    "category": "troubleshooting",
+    "question": "How can I refresh or update the Indexly database?",
+    "answer": "Run the indexing command again to refresh the Indexly database with new or updated files. If searches feel outdated, clear the cache to ensure fresh results."
+  },
+  {
+    "category": "troubleshooting",
+    "question": "Why does Indexly search return no results?",
+    "answer": "No results usually mean: 1) Indexing hasn’t been run, 2) The database is outdated, 3) The file type isn’t supported, or 4) The cache is stale. Try re-indexing, clearing cache, or using simpler search queries."
   }
 ]
 
