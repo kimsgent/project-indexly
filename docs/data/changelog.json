@@ -6,10 +6,12 @@
       "date": null,
       "changes": [
         "fix: replace Colorama with Rich markup for search term highlighting",
+        "fix: highlight_term(): use Rich Text object for cross-platform color support",
+        "fix: FAQ shortcode use global site.Data instead of .Site.Data to prevent context errors",
         "Removed Colorama-based highlighting that output raw ANSI codes ([31m etc.)",
         "Implemented Rich markup ([bold red]…[/bold red]) for consistent terminal colors",
         "Ensures highlighted search terms render correctly in PowerShell 7+, Linux, and macOS",
-        "Keeps snippet context in yellow while matched terms show in bold red"
+        "Keeps snippet context in yellow while matched terms show in bold red, when using search"
       ]
     },
     {
