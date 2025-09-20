@@ -3,7 +3,7 @@
   "versions": [
     {
       "version": "1.0.1",
-      "date": null,
+      "date": "2025-09-20",
       "changes": [
         "fix: FAQ shortcode use global site.Data instead of .Site.Data to prevent context errors",
         "fix: replace Colorama with Rich markup for search term highlighting",

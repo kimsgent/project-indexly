@@ -5,26 +5,23 @@ toc: true
 weight: 10
 ---
 
+# Release Notes for FTS5 File Search Tool
 
-## Latest Release: v1.0.0 (2025-09-05)
+## Latest Release: v1.0.1 (2025-09-20)
 
 ### Changes
-- Unified snippet logic across FTS5 and regex search
-- Aligned regex output with FTS search including colored highlights and tags
-- Refactored fuzzy_fallback and search_fts5 with consistent snippet generation and tag enrichment
-- Fixed cache stale checks: proper hash computation, tuple unpacking in extract_text_from_file
-- Deduplication added in cache refresh to prevent duplicate paths
-- Fixed migrate history command: corrected show_migrations argument mismatch
-- Refactored handle_regex and handle_search for cleaner flow
-- Improved extract_text_from_file consistency (returns text, metadata tuple)
-- Introduced setup.ps1 bootstrap script with UpdateOnly, FreshInstall, CheckOnly, and Purge modes
-- Added winget.yaml to bootstrap Windows dependencies alongside pip
-- Confirmed minimum Python version requirement is 3.9+
+- fix: FAQ shortcode use global site.Data instead of .Site.Data to prevent context errors
+- fix: replace Colorama with Rich markup for search term highlighting
+- Removed Colorama-based highlighting that output raw ANSI codes ([31m etc.)
+- Implemented Rich markup ([bold red]…[/bold red]) for consistent terminal colors
+- Ensures highlighted search terms render correctly in PowerShell 7+, Linux, and macOS
+- Keeps snippet context in yellow while matched terms show in bold red, when using search
 
 ---
 
 ## Archive
 
+- [Release v1.0.0](/releases/v1.0.0/) (2025-09-05)
 - [Release v0.9.8](/releases/v0.9.8/) (2025-08-22)
 - [Release v0.9.6](/releases/v0.9.6/) (2025-07-29)
 - [Release v0.9.4](/releases/v0.9.4/) (2025-07-10)
