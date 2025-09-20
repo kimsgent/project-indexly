@@ -28,40 +28,32 @@ classifiers = [
     "Topic :: Database",
     "Topic :: Text Processing :: Indexing"
 ]
+
+# Core dependencies (all installable via pip)
 dependencies = [
-    "nltk>=3.8.0",
-    "pymupdf>=1.23.0",
-    "pytesseract>=0.3.13",
-    "Pillow>=11.3.0",
-    "python-docx>=1.2.0",
-    "openpyxl>=3.1.5",
-    "rapidfuzz>=2.16.0",
-    "fpdf2>=2.8.3",
-    "reportlab>=4.4.2",
-    "beautifulsoup4>=4.12.0",
-    "extract_msg>=0.25.0",
-    "eml-parser>=1.0.7",
-    "PyPDF2>=3.0.1",
-    "watchdog>=3.0.0",
-    "colorama>=0.4.6",
-    "python-pptx>=0.6.21",
-    "ebooklib>=0.18",
+    "nltk>=3.8.0",               # Natural language processing
+    "pymupdf>=1.23.0",           # PDF extraction via fitz
+    "pytesseract>=0.3.13",       # OCR for images (already installed)
+    "Pillow>=11.3.0",            # Image processing
+    "python-docx>=1.2.0",        # DOCX extraction (already installed)
+    "openpyxl>=3.1.5",           # XLSX reading (already installed)
+    "rapidfuzz>=2.16.0",         # Fuzzy search
+    "fpdf2>=2.8.3",              # PDF export (already installed)
+    "reportlab>=4.4.2",          # PDF generation (already installed)
+    "beautifulsoup4>=4.12.0",    # HTML parsing
+    "extract_msg>=0.25.0",       # Outlook .msg files
+    "eml-parser>=1.0.7",         # EML files
+    "PyPDF2>=3.0.1",             # PDF parsing (already installed)
+    "watchdog>=3.0.0",           # File watching
+    "colorama>=0.4.6",           # Terminal colors
+    "python-pptx>=0.6.21",       # PPTX files
+    "ebooklib>=0.18",            # EPUB files
     "odfpy>=1.4.1",
     "rich>=13.7.1"
+
 ]
 
-[optional-dependencies]
-exiftool = []
-
-[project.urls]
-Homepage = "https://github.com/kimsgent/indexly"
-Documentation = "https://github.com/kimsgent/indexly#readme"
-Source = "https://github.com/kimsgent/indexly"
-Issues = "https://github.com/kimsgent/indexly/issues"
-
-[project.scripts]
-indexly = "indexly.__main__:main"
-
+# dev dependencies
 [tool.hatch.envs.dev]
 dependencies = [
     "pytest>=7.4.0",
@@ -71,6 +63,19 @@ dependencies = [
     "isort>=5.12.0",
     "mypy>=1.6.0"
 ]
+
+# Optional/external dependencies (external binaries)
+[optional-dependencies]
+exiftool = []
+
+[project.urls]
+Homepage = "https://github.com/kimsgent/indexly"
+Documentation = "https://github.com/kimsgent/indexly#readme"
+Source = "https://github.com/kimsgent/indexly"
+Issues = "https://github.com/kimsgent/indexly/issues"
+
+[tool.hatch.build]
+packages = ["src/indexly"]
 
 [tool.hatch.build.targets.sdist]
 include = [
@@ -83,7 +88,6 @@ include = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/indexly"]
 include = [
     "src/indexly",
     "src/indexly/docs/README.md",
@@ -91,3 +95,6 @@ include = [
     "src/indexly/assets/csv/*.csv"
 ]
 
+
+[project.scripts]
+indexly = "indexly.__main__:main"
