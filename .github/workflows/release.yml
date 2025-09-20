@@ -64,7 +64,12 @@ jobs:
         if: github.event_name != 'workflow_dispatch'
         run: |
           DOWNLOAD_FILE="docs/content/download/_index.en.md"
-          sed -i "s#https://github.com/kimsgent/project-indexly/archive/refs/tags/.*.zip#https://github.com/kimsgent/project-indexly/archive/refs/tags/$VERSION.zip#g" "$DOWNLOAD_FILE"
+
+          # Update the link
+          sed -i "s#archive/refs/tags/v.*.zip#archive/refs/tags/v$VERSION.zip#g" "$DOWNLOAD_FILE"
+
+          # Update the visible label
+          sed -i "s#Download v.* ZIP#Download v$VERSION ZIP#g" "$DOWNLOAD_FILE"
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
