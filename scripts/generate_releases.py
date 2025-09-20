@@ -49,10 +49,10 @@ def main():
     versions = data.get("versions", [])
 
     for v in versions:
-    if not v.get("date"):
-        raise ValueError(
-            f"❌ Missing date in changelog for version {v.get('version')}. "
-            "Please update docs/data/changelog.json with a valid date."
+        if not v.get("date"):
+            raise ValueError(
+                f"❌ Missing date in changelog for version {v.get('version')}. "
+                "Please update docs/data/changelog.json with a valid date."
         )
 
     # Sort by date (newest first)
