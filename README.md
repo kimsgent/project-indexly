@@ -144,7 +144,7 @@ project-indexly/
 ## 📚 Documentation
 
 Full usage, configuration, and integration guides:
-👉 [Project Indexly Docs](https://iridescent-halva-048751.netlify.app/)
+👉 [Project Indexly Docs](https://projectindexly.com)
 
 ---
 
