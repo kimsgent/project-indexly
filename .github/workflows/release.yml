@@ -1,28 +1,33 @@
 name: Publish Release
+
 on:
   push:
     tags:
-      - v*
+      - v*         # triggers on version tags like v1.0.0
   workflow_dispatch:
     inputs:
       version:
         description: Fake version (for dry-run testing)
         required: false
         default: v0.0.0-test
+
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+
       - name: Install dependencies
         run: |
           pip install hatch
           pip install pyyaml
+
       - name: Set version variable
         id: version
         run: |
@@ -31,41 +36,44 @@ jobs:
           else
             echo "VERSION=${GITHUB_REF_NAME}" >> $GITHUB_ENV
           fi
-        
-      - name: Determine prerelease
+
+      - name: Determine prerelease and dry-run
         id: prerelease
         run: |
+          # prerelease detection
           if [[ "${VERSION}" =~ (alpha|beta|rc|test|-test) ]]; then
             echo "prerelease=true" >> $GITHUB_OUTPUT
           else
             echo "prerelease=false" >> $GITHUB_OUTPUT
-          
-          # Detect dry-run version (v0.0.0-test)
+          fi
+
+          # dry-run detection
           if [[ "${VERSION}" == "v0.0.0-test" ]]; then
             echo "dryrun=true" >> $GITHUB_OUTPUT
           else
             echo "dryrun=false" >> $GITHUB_OUTPUT
+          fi
 
       - name: Generate Hugo release notes + API
         run: python generate_releases.py
+
       - name: Prepare GitHub release notes
         run: python scripts/prepare_release_notes.py "${VERSION}"
+
       - name: Update download page with new version
         if: github.event_name != 'workflow_dispatch'
-        run: >
+        run: |
           DOWNLOAD_FILE="docs/content/download/_index.en.md"
-
           sed -i "s#https://github.com/kimsgent/project-indexly/archive/refs/tags/.*.zip#https://github.com/kimsgent/project-indexly/archive/refs/tags/$VERSION.zip#g" "$DOWNLOAD_FILE"
 
           git config user.name "github-actions[bot]"
-
           git config user.email "github-actions[bot]@users.noreply.github.com"
-
           git add "$DOWNLOAD_FILE"
-
           git commit -m "Update download link for $VERSION" || echo "No changes to commit"
+
       - name: Build with Hatch
         run: hatch build
+
       - name: Upload release assets with notes
         if: github.event_name != 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
@@ -75,6 +83,7 @@ jobs:
           prerelease: ${{ steps.prerelease.outputs.prerelease }}
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+
       - name: Upload to TestPyPI (pre-release only)
         if: steps.prerelease.outputs.prerelease == 'true' && steps.prerelease.outputs.dryrun == 'false'
         run: |
