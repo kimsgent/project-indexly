@@ -1,18 +1,24 @@
 {
   "project": "FTS5 File Search Tool",
   "latest": {
-    "version": "1.0.1",
+    "version": "1.0.2",
     "date": "2025-09-20",
     "changes": [
-      "fix: FAQ shortcode use global site.Data instead of .Site.Data to prevent context errors",
-      "fix: replace Colorama with Rich markup for search term highlighting",
-      "Removed Colorama-based highlighting that output raw ANSI codes ([31m etc.)",
-      "Implemented Rich markup ([bold red]\u2026[/bold red]) for consistent terminal colors",
-      "Ensures highlighted search terms render correctly in PowerShell 7+, Linux, and macOS",
-      "Keeps snippet context in yellow while matched terms show in bold red, when using search"
+      "meta: corrected project URLs in pyproject.toml for PyPI",
+      "Homepage now points to Netlify site instead of GitHub",
+      "Documentation link updated to Netlify /docs section",
+      "Source and Issues remain on GitHub",
+      "No code or API changes in this release"
     ]
   },
   "archive": [
+    {
+      "version": "1.0.1",
+      "date": "2025-09-20",
+      "link": "/en/releases/v1.0.1/",
+      "summary": "fix: FAQ shortcode use global site.Data instead of .Site.Data to prevent context errors | fix: replace Colorama with Rich markup for search term highlighting",
+      "prerelease": false
+    },
     {
       "version": "1.0.0",
       "date": "2025-09-05",

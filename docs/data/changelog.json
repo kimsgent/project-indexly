@@ -1,6 +1,18 @@
 {
   "project": "FTS5 File Search Tool",
   "versions": [
+   {
+     "version": "1.0.2",
+      "date": "2025-09-20",
+      "changes": [
+        "meta: corrected project URLs in pyproject.toml for PyPI",
+        "Homepage now points to Netlify site instead of GitHub",
+        "Documentation link updated to Netlify /docs section",
+        "Source and Issues remain on GitHub",
+        "No code or API changes in this release"
+     ]
+    },
+
     {
       "version": "1.0.1",
       "date": "2025-09-20",

@@ -7,20 +7,20 @@ weight: 10
 
 # Release Notes for FTS5 File Search Tool
 
-## Latest Release: v1.0.1 (2025-09-20)
+## Latest Release: v1.0.2 (2025-09-20)
 
 ### Changes
-- fix: FAQ shortcode use global site.Data instead of .Site.Data to prevent context errors
-- fix: replace Colorama with Rich markup for search term highlighting
-- Removed Colorama-based highlighting that output raw ANSI codes ([31m etc.)
-- Implemented Rich markup ([bold red]…[/bold red]) for consistent terminal colors
-- Ensures highlighted search terms render correctly in PowerShell 7+, Linux, and macOS
-- Keeps snippet context in yellow while matched terms show in bold red, when using search
+- meta: corrected project URLs in pyproject.toml for PyPI
+- Homepage now points to Netlify site instead of GitHub
+- Documentation link updated to Netlify /docs section
+- Source and Issues remain on GitHub
+- No code or API changes in this release
 
 ---
 
 ## Archive
 
+- [Release v1.0.1](/releases/v1.0.1/) (2025-09-20)
 - [Release v1.0.0](/releases/v1.0.0/) (2025-09-05)
 - [Release v0.9.8](/releases/v0.9.8/) (2025-08-22)
 - [Release v0.9.6](/releases/v0.9.6/) (2025-07-29)
