@@ -69,10 +69,10 @@ dependencies = [
 exiftool = []
 
 [project.urls]
-Homepage = "https://github.com/kimsgent/indexly"
-Documentation = "https://github.com/kimsgent/indexly#readme"
-Source = "https://github.com/kimsgent/indexly"
-Issues = "https://github.com/kimsgent/indexly/issues"
+Homepage = "https://github.com/kimsgent/project-indexly"
+Documentation = "https://github.com/kimsgent/project-indexly#readme"
+Source = "https://github.com/kimsgent/project-indexly"
+Issues = "https://github.com/kimsgent/project-indexly/issues"
 
 [tool.hatch.build]
 packages = ["src/indexly"]
