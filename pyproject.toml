@@ -69,8 +69,8 @@ dependencies = [
 exiftool = []
 
 [project.urls]
-Homepage = "https://github.com/kimsgent/project-indexly"
-Documentation = "https://github.com/kimsgent/project-indexly#readme"
+Homepage = "https://projectindexly.com"
+Documentation = "https://projectindexly.com"
 Source = "https://github.com/kimsgent/project-indexly"
 Issues = "https://github.com/kimsgent/project-indexly/issues"
 
