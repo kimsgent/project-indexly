@@ -1,6 +1,8 @@
 ---
 title: "Download"
 description: "Download Indexly and learn how to install, configure, and troubleshoot it on Windows, macOS, and Linux."
+subtitle: "Your local file indexing and search tool"
+keywords: ["Word document search", "offline file search", "FTS5 search tool", "research document indexing"]
 type: docs
 toc: true
 
@@ -13,7 +15,7 @@ categories:
 
 Get the latest version of Project Indexly:
 
-- [Download v1.0.0 ZIP](https://github.com/kimsgent/project-indexly/archive/refs/tags/v1.0.0.zip)
+- [Download v1.0.2 ZIP](https://github.com/kimsgent/project-indexly/archive/refs/tags/v1.0.2.zip)
 - [View Release Notes](/releases/_index.en.md)
 
 ## Tools

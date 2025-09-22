@@ -142,7 +142,7 @@ from textwrap import wrap, fill
 import re
 from rich.text import Text
 
-print("DEBUG: updated hightlight_term loaded")
+# print("DEBUG: updated hightlight_term loaded")
 def highlight_term(text, term):
     """
     Highlight all occurrences of `term` in `text` using Rich Text.

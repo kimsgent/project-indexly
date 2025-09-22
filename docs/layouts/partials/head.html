@@ -21,6 +21,17 @@
     {{ .Site.Title -}}
   {{ end -}}
 </title>
+<meta name="description" content="{{ with .Params.description }}{{ . }}{{ else }}{{ .Site.Params.description }}{{ end }}">
+<meta name="keywords" content="{{ with .Params.keywords }}{{ . }}{{ else }}{{ .Site.Params.keywords }}{{ end }}">
+<meta property="og:title" content="{{ if .IsHome }}{{ .Site.Title }}{{ else }}{{ .Title }} | {{ .Site.Title }}{{ end }}">
+<meta property="og:description" content="{{ with .Params.description }}{{ . }}{{ else }}{{ .Site.Params.description }}{{ end }}">
+<meta property="og:url" content="{{ .Permalink }}">
+<meta property="og:image" content="{{ with .Params.images }}{{ index . 0 | relURL }}{{ else }}{{ .Site.Params.opengraphImage | relURL }}{{ end }}">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary\_large\_image">
+<meta name="twitter:title" content="{{ if .IsHome }}{{ .Site.Title }}{{ else }}{{ .Title }} | {{ .Site.Title }}{{ end }}">
+<meta name="twitter:description" content="{{ with .Params.description }}{{ . }}{{ else }}{{ .Site.Params.description }}{{ end }}">
+<meta name="twitter:image" content="{{ with .Params.images }}{{ index . 0 | relURL }}{{ else }}{{ .Site.Params.opengraphImage | relURL }}{{ end }}">
 {{ with .Site.Params.favicon }}
   <link rel="icon" href="{{ . | relURL }}" type="image/png">
 {{ end }}

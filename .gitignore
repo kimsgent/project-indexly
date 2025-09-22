@@ -15,6 +15,24 @@ venv/
 # ----------------
 # Hugo
 # ----------------
+# Ignore everything in docs by default
+docs/*
+
+# But keep these important files/folders tracked:
+!docs/archetypes/
+!docs/assets/
+!docs/config/
+!docs/content/
+!docs/data/
+!docs/layouts/
+!docs/static/
+!docs/themes/
+!docs/go.mod
+!docs/go.sum
+# keep vendored Hugo modules for stable builds
+!docs/_vendor/
+
+# Ignore generated + cache files
 docs/public/
 docs/resources/
 docs/.hugo_build.lock
