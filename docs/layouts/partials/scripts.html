@@ -1,0 +1,31 @@
+{{/* ------------------------------------------------------------------
+  Safe override of Docsy scripts.html partial
+  - Handles empty JS slices
+  - Always includes main.js
+  - Skips minification/fingerprinting to prevent PlantUML/template errors
+------------------------------------------------------------------ */}}
+
+{{- $jsResources := slice -}}  {{/* start empty slice */}}
+
+{{- /* Include any page-specific JS if defined */ -}}
+{{- if .Params.js }}
+  {{- range .Params.js }}
+    {{- with resources.Get . }}
+      {{- $jsResources = $jsResources | append . -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+
+{{- /* Always include main.js */ -}}
+{{- with resources.Get "js/main.js" }}
+  {{- $jsResources = $jsResources | append . -}}
+{{- end -}}
+
+{{- /* Only concatenate if there is at least one JS file */ -}}
+{{- if gt (len $jsResources) 0 -}}
+  {{- $js := $jsResources | resources.Concat "js/bundle.js" -}}
+  {{- /* Skip minification/fingerprint to avoid Hugo template code errors */ -}}
+  <script src="{{ $js.RelPermalink }}"></script>
+{{- end -}}
+
+WARN  found no layout file for "json" for kind "home": You should create a template file which matches Hugo Layouts Lookup Rules for this combination.
