@@ -19,6 +19,7 @@ features:
     title: "Command-Line Friendly"
     description: "Built for the terminal. Simple, fast, powerful."
 video: "videos/demo-indexly.mp4"
+keywords: ["Word document search", "offline file search", "FTS5 search tool", "research document indexing"]
 images:
   - "images/screenshot-1.png"
   - "images/screenshot-2.png"

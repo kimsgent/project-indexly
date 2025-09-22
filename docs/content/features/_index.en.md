@@ -1,5 +1,8 @@
 ---
 title: "✨ Features Overview"
+subtitle: "Your local file indexing and search tool"
+description: "Indexly helps researchers and power users search Word, PDF, and text documents locally. Fast, offline, with tagging and FTS5."
+keywords: ["Word document search", "offline file search", "FTS5 search tool", "research document indexing"]
 weight: 6
 toc: true
 type: docs
