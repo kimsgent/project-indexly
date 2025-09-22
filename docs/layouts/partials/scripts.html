@@ -1,31 +1,26 @@
-{{/* ------------------------------------------------------------------
-  Safe override of Docsy scripts.html partial
-  - Handles empty JS slices
-  - Always includes main.js
-  - Skips minification/fingerprinting to prevent PlantUML/template errors
------------------------------------------------------------------- */}}
+{{/* Safe scripts partial for Docsy with CDN Mermaid */}}
 
-{{- $jsResources := slice -}}  {{/* start empty slice */}}
+<!-- Load Mermaid from CDN and initialize after load -->
+<script>
+  (function() {
+    const script = document.createElement('script');
+    script.src = "https://cdn.jsdelivr.net/npm/mermaid@10.5.1/dist/mermaid.min.js";
+    script.onload = () => {
+      if (typeof mermaid !== "undefined") {
+        mermaid.initialize({ startOnLoad: true });
+      }
+    };
+    document.head.appendChild(script);
+  })();
+</script>
 
-{{- /* Include any page-specific JS if defined */ -}}
+<!-- Load page-specific JS if any -->
 {{- if .Params.js }}
   {{- range .Params.js }}
-    {{- with resources.Get . }}
-      {{- $jsResources = $jsResources | append . -}}
-    {{- end -}}
-  {{- end -}}
-{{- end -}}
+    <script src="{{ . | relURL }}"></script>
+  {{- end }}
+{{- end }}
 
-{{- /* Always include main.js */ -}}
-{{- with resources.Get "js/main.js" }}
-  {{- $jsResources = $jsResources | append . -}}
-{{- end -}}
+<!-- Load main.js last -->
+<script src="{{ "js/main.js" | relURL }}"></script>
 
-{{- /* Only concatenate if there is at least one JS file */ -}}
-{{- if gt (len $jsResources) 0 -}}
-  {{- $js := $jsResources | resources.Concat "js/bundle.js" -}}
-  {{- /* Skip minification/fingerprint to avoid Hugo template code errors */ -}}
-  <script src="{{ $js.RelPermalink }}"></script>
-{{- end -}}
-
-WARN  found no layout file for "json" for kind "home": You should create a template file which matches Hugo Layouts Lookup Rules for this combination.
