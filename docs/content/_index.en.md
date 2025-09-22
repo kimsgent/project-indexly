@@ -21,7 +21,7 @@ features:
 video: "videos/demo-indexly.mp4"
 keywords: ["Word document search", "offline file search", "FTS5 search tool", "research document indexing"]
 images:
-  - "images/screenshot-1.png"
-  - "images/screenshot-2.png"
+  - "images/preview.png"
+  - "images/indexly-terminal-screenshot.png"
 ---
 
