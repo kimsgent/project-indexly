@@ -1,4 +1,4 @@
-baseURL = "https://project-indexly.netlify.app/"
+baseURL = "https://projectindexly.com/"
 languageCode = "en-us"
 title = "Project Indexly"
 theme = "docsy"
