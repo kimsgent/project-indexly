@@ -14,6 +14,7 @@
 [build.environment]
   # Cache Hugo resources to speed up builds
   HUGO_CACHEDIR = "/tmp/hugo_cache"
+  HUGO_ENVIRONMENT = "production"
 
 # -----------------------------
 # Ignore unnecessary folders for clean builds
