@@ -1,7 +1,7 @@
 -r requirements.txt   # install all runtime deps first
 
 # Testing
-pytest>=7.4.0
+pytest>=8.4.2
 pytest-cov>=4.1.0
 
 # Linting & formatting
