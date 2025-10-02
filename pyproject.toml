@@ -49,7 +49,8 @@ dependencies = [
     "python-pptx>=0.6.21",       # PPTX files
     "ebooklib>=0.18",            # EPUB files
     "odfpy>=1.4.1",
-    "rich>=13.7.1"
+    "rich>=13.7.1",
+    "pandas>=2.1.1",
 
 ]
 

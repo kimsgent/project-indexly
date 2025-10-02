@@ -81,13 +81,11 @@ def _extract_mtw(path: str, output_dir: str = None, extended: bool = False):
         try:
             text = raw.decode("utf-8", errors="replace")
 
-            # --- Normalize WorksheetInfo right after decoding ---
-            if "WorksheetInfo" in name:
+            # --- Only process WorksheetInfo if extended flag is set ---
+            if extended and "WorksheetInfo" in name:
                 text = clean_wsinfo_text(text)
 
-            if "WorksheetInfo" in name:  # special handling
                 csv_file = normalize_path(f"{base}_{name}.csv")
-
                 with open(csv_file, "w", encoding="utf-8") as out:
                     out.write(text + "\n")
                 generated_files.append(csv_file)

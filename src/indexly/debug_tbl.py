@@ -68,7 +68,7 @@ def debug_metadata_table():
 
             # --- Test searchability of a metadata term (e.g. source) ---
             print("\n🔎 Test FTS query on 'file_index':")
-            test_term = "Statistics"  # adjust to a term you expect in metadata
+            test_term = "Iceland"  # adjust to a term you expect in metadata
             cursor.execute(
                 "SELECT path, snippet(file_index, 1, '[', ']', '...', 10) AS snippet "
                 "FROM file_index WHERE content MATCH ? LIMIT 5;",
