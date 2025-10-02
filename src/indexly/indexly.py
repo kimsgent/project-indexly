@@ -32,6 +32,7 @@ from .filetype_utils import extract_text_from_file, SUPPORTED_EXTENSIONS
 from .db_utils import connect_db, get_tags_for_file
 from .search_core import search_fts5, search_regex, normalize_near_term
 from .extract_utils import update_file_metadata
+from .mtw_extractor import _extract_mtw
 from .profiles import (
     save_profile,
     apply_profile,
@@ -43,8 +44,7 @@ from .cli_utils import (
     apply_profile_to_args,
     command_titles,
     get_search_term,
-    build_parser
-
+    build_parser,
 )
 from .output_utils import print_search_results, print_regex_results
 from pathlib import Path
@@ -63,13 +63,46 @@ logging.getLogger("extract_msg").setLevel(logging.ERROR)
 logging.getLogger("fontTools").setLevel(logging.ERROR)
 
 
-
-async def async_index_file(full_path):
+async def async_index_file(full_path, mtw_extended=False):
     from .fts_core import calculate_hash
 
     full_path = normalize_path(full_path)
 
     try:
+        # Special case: handle .mtw
+        if full_path.lower().endswith(".mtw"):
+            print(f"📂 Extracting .mtw file for indexing: {full_path}")
+            extracted_files = _extract_mtw(full_path, extended=mtw_extended)
+            if not extracted_files:
+                print(f"⚠️ No extractable content in: {full_path}")
+                return
+
+            # Optionally: index a stub entry for the MTW itself
+            stub_content = f"MTW Archive: {os.path.basename(full_path)}"
+            file_hash = calculate_hash(stub_content)
+            last_modified = datetime.fromtimestamp(
+                os.path.getmtime(full_path)
+            ).isoformat()
+
+            conn = connect_db()
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM file_index WHERE path = ?", (full_path,))
+            cursor.execute(
+                "INSERT INTO file_index (path, content, modified, hash) VALUES (?, ?, ?, ?)",
+                (full_path, stub_content, last_modified, file_hash),
+            )
+            conn.commit()
+            conn.close()
+            print(f"✅ Indexed MTW archive stub: {full_path}")
+
+            # Now index each extracted artifact
+            tasks = [
+                async_index_file(f, mtw_extended=mtw_extended) for f in extracted_files
+            ]
+            await asyncio.gather(*tasks)
+            return
+
+        # Normal case: extract text + metadata
         content, metadata = extract_text_from_file(full_path)
 
         # Fallback: if extractor returned a dict somehow
@@ -81,10 +114,21 @@ async def async_index_file(full_path):
             print(f"⏭️ Skipped (no content and no metadata): {full_path}")
             return
 
-        # Store metadata if present and build FTS content including filename
+        # Store metadata if present
         if metadata:
-            content = update_file_metadata(full_path, metadata)
+            update_file_metadata(full_path, metadata)
             print(f"🖼️ Metadata stored for file: {full_path}")
+            
+            # Build searchable string from selected metadata fields
+            extra_fields = []
+            for key in ("source", "author", "subject", "title", "format", "camera"):
+                val = metadata.get(key)
+                if val:
+                    extra_fields.append(str(val))
+
+            # Append metadata to content, separated with semicolons
+            if extra_fields:
+                content = (content or "") + " ; " + " ; ".join(extra_fields)
 
         # Fallback: ensure there is at least the filename
         if not content:
@@ -118,7 +162,7 @@ async def async_index_file(full_path):
         print(f"⚠️ Failed to index {full_path}: {e}")
 
 
-async def scan_and_index_files(root_dir: str):
+async def scan_and_index_files(root_dir: str, mtw_extended=False):
     root_dir = normalize_path(root_dir)
 
     conn = connect_db()
@@ -132,7 +176,7 @@ async def scan_and_index_files(root_dir: str):
         for f in files
         if Path(f).suffix.lower() in SUPPORTED_EXTENSIONS
     ]
-    tasks = [async_index_file(path) for path in file_paths]
+    tasks = [async_index_file(path, mtw_extended=mtw_extended) for path in file_paths]
     await asyncio.gather(*tasks)
 
     clean_cache_duplicates()
@@ -185,14 +229,14 @@ def run_stats(args):
 
 
 # Configure logging
-#logging.basicConfig(
+# logging.basicConfig(
 #    level=logging.INFO,
 #    format="%(asctime)s - %(levelname)s - %(message)s",
 #    handlers=[
 #        logging.StreamHandler(sys.stdout),
 #        logging.FileHandler("indexly.log", mode="w", encoding="utf-8"),
 #    ],
-#)
+# )
 
 
 def handle_index(args):
@@ -200,7 +244,11 @@ def handle_index(args):
     ripple.start()
     try:
         logging.info("Indexing started.")
-        indexed_files = asyncio.run(scan_and_index_files(normalize_path(args.folder)))
+        indexed_files = asyncio.run(
+            scan_and_index_files(
+                root_dir=normalize_path(args.folder), mtw_extended=args.mtw_extended,
+            )
+        )
         logging.info("Indexing completed.")
 
     finally:
@@ -266,7 +314,6 @@ def handle_search(args):
             no_cache=no_cache_flag,
             near_distance=args.near_distance,
         )
-
 
     finally:
         ripple.stop()
@@ -369,6 +416,7 @@ def handle_tag(args):
         tags = get_tags_for_file(norm)
         print(f"📂 {args.file} has tags: {tags if tags else 'No tags'}")
 
+
 def run_watch(args):
 
     ripple = Ripple(command_titles["watch"], speed="fast", rainbow=True)
@@ -402,10 +450,33 @@ def run_analyze_csv(args):
         ripple.stop()
 
 
+def handle_extract_mtw(args):
+    # Normalize inputs
+    file_path = normalize_path(args.file)
+    output_dir = (
+        normalize_path(args.output) if args.output else os.path.dirname(file_path)
+    )
+
+    print(f"📂 Extracting MTW file: {file_path}")
+
+    try:
+        extracted_files = _extract_mtw(file_path, output_dir)
+    except Exception as e:
+        print(f"❌ Error extracting MTW file: {e}")
+        return
+
+    if not extracted_files:
+        print("⚠️ No files extracted (empty or invalid MTW).")
+        return
+
+    print(f"✅ Files successfully extracted to: {normalize_path(output_dir)}")
+    for f in extracted_files:
+        print(f"   - {normalize_path(f)}")
+
+
 def main():
     parser = build_parser()
     args = parser.parse_args()
-
 
     if hasattr(args, "profile") and args.profile:
         profile_data = apply_profile(args.profile)
@@ -417,7 +488,6 @@ def main():
 
     if hasattr(args, "func"):
         args.func(args)
-
 
 
 if __name__ == "__main__":

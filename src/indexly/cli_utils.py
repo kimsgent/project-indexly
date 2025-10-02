@@ -22,11 +22,11 @@ from .migration_manager import run_migrations
 command_titles = {
     "index": "[I] n  d  e  x  i  n  g",
     "search": "[S] e  a  r  c  h  i  n  g",
-    "regex": "[R] e  g  e  x     S  e  a  r  c  h",
-    "tag": "[T] a  g     M  a  n  a  g  e  m  e  n  t",
+    "regex": "[R] e  g  e  x   S  e  a  r  c  h",
+    "tag": "[T] a  g   M  a  n  a  g  e  m  e  n  t",
     "watch": "[W] a  t  c  h  i  n  g     F  o  l  d  e  r  s",
     "stats": "[S] t  a  t  i  s  t  i  c  s",
-    "analyze-csv": "[C] S  V     A  n  a  l  y  s  i  s",
+    "analyze-csv": "[C] S  V   A  n  a  l  y  s  i  s",
 }
 # --------------------------------------------------------------------------------
 
@@ -68,6 +68,7 @@ def build_parser():
         run_stats,
         run_analyze_csv,
         run_watch,
+        handle_extract_mtw,
     )
 
     parser = argparse.ArgumentParser(
@@ -82,6 +83,11 @@ def build_parser():
     index_parser = subparsers.add_parser("index", help="Index files in a folder")
     index_parser.add_argument("folder", help="Folder to index")
     index_parser.add_argument("--filetype", help="Filter by filetype (e.g. .pdf)")
+    index_parser.add_argument(
+        "--mtw-extended",
+        action="store_true",
+        help="Enable extended MTW extraction (extra streams, extra metadata)",
+    )
     index_parser.set_defaults(func=handle_index)
 
     # Search
@@ -149,7 +155,20 @@ def build_parser():
     stats_parser = subparsers.add_parser("stats", help="Show database statistics")
     stats_parser.set_defaults(func=run_stats)
 
-# Migrate
+    # Extract MTW
+    extract_mtw_parser = subparsers.add_parser(
+        "extract-mtw", help="Extract files from a .mtw file (Minitab Worksheet)"
+    )
+    extract_mtw_parser.add_argument("file", help="Path to the .mtw file")
+    extract_mtw_parser.add_argument(
+        "--output",
+        "-o",
+        default=".",
+        help="Directory to extract files into (default: current folder)",
+    )
+    extract_mtw_parser.set_defaults(func=handle_extract_mtw)
+
+    # Migrate
     migrate_parser = subparsers.add_parser(
         "migrate",
         help="Database migration and schema management (adds missing tables/columns and updates FTS5 prefix/vocab)",
@@ -211,7 +230,6 @@ def build_parser():
             args.db, last=args.last
         )
     )
-
 
     return parser
 

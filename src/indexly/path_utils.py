@@ -4,15 +4,18 @@ import sys
 def normalize_path(path: str) -> str:
     """
     Normalize file paths for consistent comparison and storage.
+
     - Expands ~ and environment variables
     - Converts to absolute, real path
     - Strips any Win32 long path prefix (\\?\)
     - Converts UNC \\server\share -> //server/share
-    - Lowercases only on Windows (case-insensitive FS)
-    - Converts backslashes -> forward slashes for cross-platform consistency
+    - Converts backslashes -> forward slashes
     - Removes trailing slash (except for root or network share root)
+    - Lowercases only on Windows (case-insensitive FS),
+      but preserves drive letter uppercase for readability
     """
     try:
+        # Expand ~ and environment variables
         path = os.path.expandvars(os.path.expanduser(path))
         norm = os.path.abspath(os.path.realpath(path))
 
@@ -27,16 +30,23 @@ def normalize_path(path: str) -> str:
         # Always use forward slashes
         norm = norm.replace("\\", "/")
 
-        # Remove trailing slash (except root "/" or "//server/share")
+        # Remove trailing slash except for "/" or "//server/share"
         if len(norm) > 1 and norm.endswith("/"):
-            # Keep `//server/share` intact
-            if not (norm.startswith("//") and norm.count("/") == 3):
+            parts = norm.rstrip("/").split("/")
+            # Keep //server/share intact
+            if not (norm.startswith("//") and len(parts) == 3):
                 norm = norm.rstrip("/")
 
-        # Lowercase only on Windows (case-insensitive FS)
+        # Lowercase on Windows (case-insensitive FS),
+        # but preserve drive letter uppercase
         if sys.platform.startswith("win"):
-            return norm.lower()
+            if len(norm) >= 2 and norm[1] == ":":
+                norm = norm[0].upper() + norm[1:].lower()
+            else:
+                norm = norm.lower()
 
         return norm
+
     except Exception:
-        return path
+        # Fallback: return absolute path to avoid relative surprises
+        return os.path.abspath(path)
