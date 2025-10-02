@@ -16,7 +16,7 @@ Usage:
 
 import io
 import re
-import os
+import os, struct
 import sqlite3
 import docx
 import extract_msg
@@ -25,7 +25,7 @@ import json
 import fitz  # PyMuPDF
 import pytesseract
 import openpyxl
-
+import pandas as pd
 
 
 from pptx import Presentation
@@ -35,7 +35,7 @@ from odf.opendocument import load
 from odf.text import P
 from PIL import Image, ExifTags
 from datetime import datetime
-
+from .path_utils import normalize_path
 from .config import DB_FILE
 
 
@@ -71,6 +71,7 @@ def _extract_docx(path):
 
 # safe_get helper for .msg and.eml to clean stings
 
+
 def safe_get(obj, key, fallback=""):
     """Safe getter for dicts, objects, and lists with fallback."""
     try:
@@ -90,6 +91,7 @@ def safe_get(obj, key, fallback=""):
 
 def _extract_msg(path):
     from .fts_core import extract_virtual_tags
+
     try:
         msg = extract_msg.Message(path)
 
@@ -98,7 +100,11 @@ def _extract_msg(path):
         to = safe_get(msg, "to", "")
         date = safe_get(msg, "date", "")
         # Prioritize plain > RTF > HTML body
-        body = safe_get(msg, "body") or safe_get(msg, "bodyRTF") or safe_get(msg, "bodyHTML")
+        body = (
+            safe_get(msg, "body")
+            or safe_get(msg, "bodyRTF")
+            or safe_get(msg, "bodyHTML")
+        )
 
         content = f"Subject: {subject}\nFrom: {sender}\nTo: {to}\nDate: {date}\n{body}"
         content = re.sub(r"\s+", " ", content)
@@ -114,6 +120,7 @@ def _extract_msg(path):
 
 def _extract_eml(path):
     from .fts_core import extract_virtual_tags
+
     try:
         with open(path, "rb") as f:
             raw_email = f.read()
@@ -138,7 +145,6 @@ def _extract_eml(path):
     except Exception as e:
         print(f"❌ Failed to extract .eml: {e}")
         return ""
-
 
 
 def _extract_pptx(path):
@@ -350,7 +356,7 @@ def update_file_metadata(file_path, metadata):
         "title",
         "author",
         "subject",
-        "last_modified_by",
+        "last_modified_by",        
         "gps",
     ]:
         if metadata.get(key):

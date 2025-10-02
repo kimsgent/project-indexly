@@ -47,21 +47,40 @@ def debug_metadata_table():
         try:
             cursor.execute("""
                 SELECT 
-                    file_metadata.path,
-                    title,
-                    author,
-                    camera,
-                    created,
-                    dimensions,
-                    format,
-                    gps,
-                    file_index.content
-                FROM file_metadata
-                LEFT JOIN file_index ON file_metadata.path = file_index.path
-                LIMIT 3;
+                    fm.path,
+                    fm.title,
+                    fm.author,
+                    fm.camera,
+                    fm.created,
+                    fm.dimensions,
+                    fm.format,
+                    fm.gps,
+                    fi.content
+                FROM file_metadata fm
+                LEFT JOIN file_index fi ON fm.path = fi.path
+                LIMIT 10;
             """)
-            for row in cursor.fetchall():
+            rows = cursor.fetchall()
+            if not rows:
+                print("⚠️ No rows found in file_metadata or file_index.")
+            for row in rows:
                 print(dict(row))
+
+            # --- Test searchability of a metadata term (e.g. source) ---
+            print("\n🔎 Test FTS query on 'file_index':")
+            test_term = "Statistics"  # adjust to a term you expect in metadata
+            cursor.execute(
+                "SELECT path, snippet(file_index, 1, '[', ']', '...', 10) AS snippet "
+                "FROM file_index WHERE content MATCH ? LIMIT 5;",
+                (test_term,)
+            )
+            test_results = cursor.fetchall()
+            if test_results:
+                for r in test_results:
+                    print(dict(r))
+            else:
+                print(f"⚠️ No FTS matches for test term: {test_term}")
+
         except Exception as e:
             print(f"⚠️ Error fetching metadata rows: {e}")
     else:
