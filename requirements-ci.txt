@@ -17,6 +17,7 @@ python-pptx>=0.6.21
 ebooklib>=0.18
 odfpy>=1.4.1
 rich>=13.7.1
+pandas>=2.2.0
 
 # Dev/test tools
 pytest>=8.4.2
