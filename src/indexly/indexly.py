@@ -370,7 +370,7 @@ def handle_regex(args):
         print("🔍 No regex matches found.")
 
 
-def handle_tag(args):
+def handle_tag(args, db_path=None):
     # Trap missing files/tags early
     if args.tag_action in {"add", "remove"}:
         if not args.files:
@@ -399,9 +399,9 @@ def handle_tag(args):
         for file in all_files:
             for tag in args.tags:
                 if args.tag_action == "add":
-                    add_tag_to_file(file, tag)
+                    add_tag_to_file(file, tag, db_path=db_path)
                 elif args.tag_action == "remove":
-                    remove_tag_from_file(file, tag)
+                    remove_tag_from_file(file, tag, db_path=db_path)
 
         action_emoji = "🏷️" if args.tag_action == "add" else "❌"
         print(
@@ -413,7 +413,7 @@ def handle_tag(args):
             print("⚠️ Please provide a file with --file when using 'list'.")
             return
         norm = normalize_path(args.file)
-        tags = get_tags_for_file(norm)
+        tags = get_tags_for_file(norm, db_path=db_path)
         print(f"📂 {args.file} has tags: {tags if tags else 'No tags'}")
 
 

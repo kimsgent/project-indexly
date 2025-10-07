@@ -255,7 +255,7 @@ def search_fts5(
         print("✅ Returning cached results without refresh")
         return cached
 
-    conn = connect_db()
+    conn = connect_db(db_path)
     cursor = conn.cursor()
 
     fts_term = normalize_near_term(term, near_distance=near_distance)
@@ -380,7 +380,7 @@ def search_regex(
         else:
             print("⚠️ Cached result was empty. Falling back to DB...")
 
-    conn = connect_db()
+    conn = connect_db(db_path)
     cursor = conn.cursor()
 
     words = list(set(re.findall(r"[a-zA-ZÄÖÜäöüß]{4,}", pattern)))

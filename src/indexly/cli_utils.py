@@ -234,17 +234,16 @@ def build_parser():
     return parser
 
 
-def add_tags_to_file(file_path, tags):
+def add_tags_to_file(file_path, tags, db_path=None):
     file_path = normalize_path(file_path)
     tags = [t.strip().lower() for t in tags if t.strip()]
 
-    conn = connect_db()
+    conn = connect_db(db_path)
     cursor = conn.cursor()
     cursor.execute("SELECT tags FROM file_tags WHERE path = ?", (file_path,))
     existing_tags = (row := cursor.fetchone()) and row["tags"].split(",") or []
     existing_tags = [t.strip().lower() for t in existing_tags if t.strip()]
 
-    # Merge and deduplicate
     all_tags = sorted(set(existing_tags + tags))
     tag_str = ",".join(all_tags)
 
@@ -256,11 +255,11 @@ def add_tags_to_file(file_path, tags):
     conn.close()
 
 
-def add_tag_to_file(file_path, new_tag):
+def add_tag_to_file(file_path, new_tag, db_path=None):
     file_path = normalize_path(file_path)
     new_tag = new_tag.strip().lower()
 
-    conn = connect_db()
+    conn = connect_db(db_path)
     cursor = conn.cursor()
     cursor.execute("SELECT tags FROM file_tags WHERE path = ?", (file_path,))
     tags = (row := cursor.fetchone()) and row["tags"].split(",") or []
@@ -288,21 +287,20 @@ def add_tag_to_file(file_path, new_tag):
     conn.close()
 
 
-def filter_files_by_tag(tag):
-    conn = connect_db()
+def filter_files_by_tag(tag, db_path=None):
+    conn = connect_db(db_path)
     cursor = conn.cursor()
     cursor.execute("SELECT path FROM file_tags WHERE tags LIKE ?", (f"%{tag}%",))
     rows = cursor.fetchall()
     conn.close()
-    # normalize results on read
     return [normalize_path(row["path"]) for row in rows]
 
 
-def remove_tag_from_file(file_path, tag_to_remove):
+def remove_tag_from_file(file_path, tag_to_remove, db_path=None):
     file_path = normalize_path(file_path)
     tag_to_remove = tag_to_remove.strip().lower()
 
-    conn = connect_db()
+    conn = connect_db(db_path)
     cursor = conn.cursor()
     cursor.execute("SELECT tags FROM file_tags WHERE path = ?", (file_path,))
     if (row := cursor.fetchone()) and row["tags"]:
