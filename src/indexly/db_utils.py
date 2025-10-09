@@ -13,6 +13,7 @@ Usage:
 """
 
 import sqlite3
+import os
 import re
 import signal
 from .config import DB_FILE
@@ -58,7 +59,7 @@ def connect_db(db_path: str | None = None):
     else:
         path = config.DB_FILE
 
-    print(f"[debug] Using DB: {path}")
+    # print(f"[debug] Using DB: {path}")
 
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
@@ -109,6 +110,41 @@ def connect_db(db_path: str | None = None):
 
     conn.commit()
     return conn
+
+def _sync_path_in_db(old_path: str, new_path: str):
+    """
+    Synchronize a renamed file in all database tables, preserving content hash and metadata.
+    This prevents duplicates when files are renamed.
+    """
+    try:
+        conn = connect_db()
+        cur = conn.cursor()
+
+        old_path_str = str(old_path)
+        new_path_str = str(new_path)
+
+        # --- Update file_index (main index) ---
+        cur.execute("""
+            UPDATE file_index
+            SET path = ?
+            WHERE path = ?
+        """, (new_path_str, old_path_str))
+
+        # --- Update related tables (optional presence) ---
+        for table in ("file_tags", "file_metadata", "file_cache"):
+            try:
+                cur.execute(f"UPDATE {table} SET path = ? WHERE path = ?", (new_path_str, old_path_str))
+            except sqlite3.OperationalError:
+                # Table might not exist (e.g., file_cache optional)
+                continue
+
+        conn.commit()
+        conn.close()
+        print(f"🗄️ Synced rename in DB: {old_path_str} → {new_path_str}")
+
+    except Exception as e:
+        print(f"⚠️ DB sync failed for rename: {e}")
+
 
 
 def regexp(pattern, string):

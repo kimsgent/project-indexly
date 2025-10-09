@@ -37,6 +37,7 @@ from PIL import Image, ExifTags
 from datetime import datetime
 from .path_utils import normalize_path
 from .config import DB_FILE
+from contextlib import suppress
 
 
 def _extract_docx(path):
@@ -199,20 +200,116 @@ def _extract_xlsx(path):
     return "\n\n".join(text)
 
 
-def _extract_pdf(path):
-    doc = fitz.open(path)
-    full_text = []
-    for page in doc:
-        text = page.get_text()
-        if text.strip():
-            full_text.append(text)
-        else:
-            # OCR fallback
-            pix = page.get_pixmap()
-            img = Image.open(io.BytesIO(pix.tobytes()))
-            ocr_text = pytesseract.image_to_string(img, lang="deu+eng")
-            full_text.append(ocr_text)
-    return "\n\n".join(full_text)
+def _extract_pdf(
+    path: str,
+    ocr_enabled: bool = True,
+    lang: str = "deu+eng",
+    max_ocr_pages: int = 3,
+    max_pages_for_ocr: int = 10,
+    max_size_for_ocr_mb: float = 50.0,
+):
+    """
+    Extract text and metadata from a PDF file.
+    Uses PyMuPDF (fitz) for text, with OCR fallback for image-only pages.
+    Stores extracted metadata into file_metadata table.
+    Smart OCR: skips OCR for large PDFs automatically or when --no-ocr is used.
+    """
+    text_pages = []
+    metadata = {
+        "title": None,
+        "author": None,
+        "subject": None,
+        "created": None,
+        "last_modified": None,
+        "last_modified_by": None,
+        "camera": None,
+        "image_created": None,
+        "dimensions": None,
+        "format": "PDF",
+        "gps": None,
+    }
+
+    try:
+        file_size_mb = os.path.getsize(path) / (1024 * 1024)
+
+        with fitz.open(path) as doc:
+            num_pages = len(doc)
+
+            # --- Extract metadata from PDF info dictionary ---
+            pdf_info = doc.metadata or {}
+            metadata.update(
+                {
+                    "title": pdf_info.get("title"),
+                    "author": pdf_info.get("author"),
+                    "subject": pdf_info.get("subject"),
+                    "created": _normalize_pdf_date(pdf_info.get("creationDate")),
+                    "last_modified": _normalize_pdf_date(pdf_info.get("modDate")),
+                    "last_modified_by": pdf_info.get("creator")
+                    or pdf_info.get("producer"),
+                }
+            )
+
+            # --- Smart OCR decision ---
+            if ocr_enabled and (
+                num_pages > max_pages_for_ocr or file_size_mb > max_size_for_ocr_mb
+            ):
+                ocr_enabled = False
+                print(
+                    f"⚡ Skipping OCR for large PDF ({num_pages} pages, {file_size_mb:.1f} MB): {path}"
+                )
+
+            # --- Page text + OCR fallback ---
+            for page_num, page in enumerate(doc, start=1):
+                page_text = page.get_text("text")
+                if page_text.strip():
+                    text_pages.append(page_text)
+                elif ocr_enabled and page_num <= max_ocr_pages:
+                    try:
+                        pix = page.get_pixmap(dpi=200)
+                        with Image.open(io.BytesIO(pix.tobytes("png"))) as img:
+                            ocr_text = pytesseract.image_to_string(img, lang=lang)
+                            if ocr_text.strip():
+                                text_pages.append(ocr_text)
+                    except Exception as e:
+                        print(f"⚠️ OCR failed on page {page_num} of {path}: {e}")
+                else:
+                    text_pages.append("")
+
+            # --- Fallback to filesystem timestamps ---
+            stat = os.stat(path)
+            metadata.setdefault(
+                "created", datetime.fromtimestamp(stat.st_ctime).isoformat()
+            )
+            metadata.setdefault(
+                "last_modified", datetime.fromtimestamp(stat.st_mtime).isoformat()
+            )
+
+            # --- Store metadata in DB ---
+            store_metadata(path, metadata)
+
+            # --- Return text and metadata ---
+            full_text = "\n\n".join(text_pages).strip()
+            return {"text": full_text, "metadata": metadata}
+
+    except Exception as e:
+        print(f"⚠️ Error extracting text from {path}: {e}")
+        return {"text": "", "metadata": metadata}
+
+
+def _normalize_pdf_date(date_str):
+    """Normalize PDF date strings like 'D:20240512143000Z' to ISO 8601."""
+    if not date_str:
+        return None
+    try:
+        date_str = date_str.strip()
+        if date_str.startswith("D:"):
+            date_str = date_str[2:]
+        # Remove timezone or trailing junk
+        date_str = date_str.rstrip("Z").split("+")[0].split("-")[0]
+        # Parse common PDF formats
+        return datetime.strptime(date_str[:14], "%Y%m%d%H%M%S").isoformat()
+    except Exception:
+        return None
 
 
 def _extract_html(path):
@@ -356,7 +453,7 @@ def update_file_metadata(file_path, metadata):
         "title",
         "author",
         "subject",
-        "last_modified_by",        
+        "last_modified_by",
         "gps",
     ]:
         if metadata.get(key):

@@ -68,7 +68,7 @@ def debug_metadata_table():
 
             # --- Test searchability of a metadata term (e.g. source) ---
             print("\n🔎 Test FTS query on 'file_index':")
-            test_term = "Iceland"  # adjust to a term you expect in metadata
+            test_term = "SQLServerWriter"  # adjust to a term you expect in metadata
             cursor.execute(
                 "SELECT path, snippet(file_index, 1, '[', ']', '...', 10) AS snippet "
                 "FROM file_index WHERE content MATCH ? LIMIT 5;",
@@ -90,7 +90,7 @@ def debug_metadata_table():
     if "file_tags" in tables:
         print("\n🏷️ Sample entries in file_tags:")
         try:
-            cursor.execute("SELECT path, tags FROM file_tags LIMIT 20;")
+            cursor.execute("SELECT path, tags FROM file_tags LIMIT 3;")
             for row in cursor.fetchall():
                 print(dict(row))
         except Exception as e:

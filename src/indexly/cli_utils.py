@@ -17,6 +17,7 @@ from .config import PROFILE_FILE
 from .cache_utils import save_cache, load_cache
 from .path_utils import normalize_path
 from .migration_manager import run_migrations
+from .rename_utils import rename_file, rename_files_in_dir
 
 # CLI display configurations here
 command_titles = {
@@ -69,6 +70,7 @@ def build_parser():
         run_analyze_csv,
         run_watch,
         handle_extract_mtw,
+        handle_rename_file,
     )
 
     parser = argparse.ArgumentParser(
@@ -167,6 +169,41 @@ def build_parser():
         help="Directory to extract files into (default: current folder)",
     )
     extract_mtw_parser.set_defaults(func=handle_extract_mtw)
+
+    # Rename File(s)
+    rename_file_parser = subparsers.add_parser(
+        "rename-file",
+        help="Rename a file or all files in a directory according to a pattern"
+    )
+    rename_file_parser.add_argument(
+        "path",
+        help="Path to a file or directory to rename"
+    )
+    rename_file_parser.add_argument(
+        "--pattern",
+        help="Renaming pattern (supports {date}, {title}, {counter})"
+    )
+    rename_file_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show what would be renamed without making changes"
+    )
+    rename_file_parser.add_argument(
+        "--db-sync",
+        action="store_true",
+        help="Update database paths after renaming"
+    )
+    rename_file_parser.add_argument(
+        "--recursive",
+        action="store_true",
+        help="Recursively rename all files in the given directory"
+    )
+    rename_file_parser.add_argument(
+        "--no-ocr",
+        action="store_true",
+        help="Smart OCR control: skips OCR automatically for large PDFs, but allows OCR for small PDFs."
+    )
+    rename_file_parser.set_defaults(func=handle_rename_file)
 
     # Migrate
     migrate_parser = subparsers.add_parser(

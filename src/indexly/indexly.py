@@ -33,6 +33,7 @@ from .db_utils import connect_db, get_tags_for_file
 from .search_core import search_fts5, search_regex, normalize_near_term
 from .extract_utils import update_file_metadata
 from .mtw_extractor import _extract_mtw
+from .rename_utils import rename_file, rename_files_in_dir
 from .profiles import (
     save_profile,
     apply_profile,
@@ -118,7 +119,7 @@ async def async_index_file(full_path, mtw_extended=False):
         if metadata:
             update_file_metadata(full_path, metadata)
             print(f"🖼️ Metadata stored for file: {full_path}")
-            
+
             # Build searchable string from selected metadata fields
             extra_fields = []
             for key in ("source", "author", "subject", "title", "format", "camera"):
@@ -141,7 +142,36 @@ async def async_index_file(full_path, mtw_extended=False):
         conn = connect_db()
         cursor = conn.cursor()
 
-        # Skip unchanged files
+        # Detect renamed file by hash (identical content under new path)
+        cursor.execute("SELECT path FROM file_index WHERE hash = ?", (file_hash,))
+        if row := cursor.fetchone():
+            existing_path = row["path"]
+            if existing_path != full_path:
+                print(f"🔄 Detected renamed file: {existing_path} → {full_path}")
+
+                # Update path in main FTS index
+                cursor.execute(
+                    "UPDATE file_index SET path = ? WHERE hash = ?",
+                    (full_path, file_hash),
+                )
+
+                # Also update metadata table if entry exists
+                cursor.execute(
+                    "UPDATE file_metadata SET path = ? WHERE path = ?",
+                    (full_path, existing_path),
+                )
+
+                # Optional: also sync tags if you use file_tags table
+                cursor.execute(
+                    "UPDATE file_tags SET path = ? WHERE path = ?",
+                    (full_path, existing_path),
+                )
+
+                conn.commit()
+                conn.close()
+                return
+
+        # Skip unchanged files (same hash, same path)
         cursor.execute("SELECT hash FROM file_index WHERE path = ?", (full_path,))
         if (row := cursor.fetchone()) and row["hash"] == file_hash:
             print(f"⏭️ Skipped (unchanged): {full_path}")
@@ -154,6 +184,16 @@ async def async_index_file(full_path, mtw_extended=False):
             "INSERT INTO file_index (path, content, modified, hash) VALUES (?, ?, ?, ?)",
             (full_path, content, last_modified, file_hash),
         )
+
+        # Ensure metadata is linked to this path
+        cursor.execute(
+            """
+            INSERT OR IGNORE INTO file_metadata (path)
+            VALUES (?)
+            """,
+            (full_path,),
+        )
+
         conn.commit()
         conn.close()
         print(f"✅ Indexed: {full_path}")
@@ -246,7 +286,8 @@ def handle_index(args):
         logging.info("Indexing started.")
         indexed_files = asyncio.run(
             scan_and_index_files(
-                root_dir=normalize_path(args.folder), mtw_extended=args.mtw_extended,
+                root_dir=normalize_path(args.folder),
+                mtw_extended=args.mtw_extended,
             )
         )
         logging.info("Indexing completed.")
@@ -472,6 +513,34 @@ def handle_extract_mtw(args):
     print(f"✅ Files successfully extracted to: {normalize_path(output_dir)}")
     for f in extracted_files:
         print(f"   - {normalize_path(f)}")
+
+
+def handle_rename_file(args):
+    path = args.path
+    if Path(path).is_dir():
+        rename_files_in_dir(
+            path,
+            pattern=args.pattern,
+            dry_run=args.dry_run,
+            db_sync=args.db_sync,
+            recursive=args.recursive,
+        )
+    else:
+        new_path = rename_file(
+            path,
+            pattern=args.pattern,
+            dry_run=args.dry_run,
+            db_sync=args.db_sync,
+        )
+
+        # 🧩 Sync rename in DB if requested and not a dry-run
+        if args.db_sync and not args.dry_run:
+            from .db_utils import _sync_path_in_db
+
+            try:
+                _sync_path_in_db(path, new_path)
+            except Exception as e:
+                print(f"⚠️ DB sync after rename failed: {e}")
 
 
 def main():

@@ -93,7 +93,9 @@ def extract_text_from_file(file_path):
         elif ext == ".xlsx":
             raw_text = _extract_xlsx(file_path)
         elif ext == ".pdf":
-            raw_text = _extract_pdf(file_path)
+            result = _extract_pdf(file_path)
+            raw_text = result.get("text")
+            metadata = result.get("metadata")
         elif ext == ".pptx":
             raw_text = _extract_pptx(file_path)
         elif ext == ".epub":
