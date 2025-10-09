@@ -64,142 +64,92 @@ logging.getLogger("extract_msg").setLevel(logging.ERROR)
 logging.getLogger("fontTools").setLevel(logging.ERROR)
 
 
+db_lock = asyncio.Lock()
+
+
 async def async_index_file(full_path, mtw_extended=False):
     from .fts_core import calculate_hash
-
+    """
+    Index a single file asynchronously without attempting to sync renames in the DB.
+    """
     full_path = normalize_path(full_path)
 
     try:
-        # Special case: handle .mtw
+        # --- Handle MTW archives ---
         if full_path.lower().endswith(".mtw"):
-            print(f"📂 Extracting .mtw file for indexing: {full_path}")
             extracted_files = _extract_mtw(full_path, extended=mtw_extended)
             if not extracted_files:
                 print(f"⚠️ No extractable content in: {full_path}")
                 return
 
-            # Optionally: index a stub entry for the MTW itself
             stub_content = f"MTW Archive: {os.path.basename(full_path)}"
             file_hash = calculate_hash(stub_content)
-            last_modified = datetime.fromtimestamp(
-                os.path.getmtime(full_path)
-            ).isoformat()
+            last_modified = datetime.fromtimestamp(os.path.getmtime(full_path)).isoformat()
 
-            conn = connect_db()
-            cursor = conn.cursor()
-            cursor.execute("DELETE FROM file_index WHERE path = ?", (full_path,))
-            cursor.execute(
-                "INSERT INTO file_index (path, content, modified, hash) VALUES (?, ?, ?, ?)",
-                (full_path, stub_content, last_modified, file_hash),
-            )
-            conn.commit()
-            conn.close()
-            print(f"✅ Indexed MTW archive stub: {full_path}")
+            async with db_lock:
+                conn = connect_db()
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM file_index WHERE path = ?", (full_path,))
+                cursor.execute(
+                    "INSERT INTO file_index (path, content, modified, hash) VALUES (?, ?, ?, ?)",
+                    (full_path, stub_content, last_modified, file_hash),
+                )
+                conn.commit()
+                conn.close()
 
-            # Now index each extracted artifact
-            tasks = [
-                async_index_file(f, mtw_extended=mtw_extended) for f in extracted_files
-            ]
+            # Index extracted files
+            tasks = [async_index_file(f, mtw_extended=mtw_extended) for f in extracted_files]
             await asyncio.gather(*tasks)
             return
 
-        # Normal case: extract text + metadata
+        # --- Extract content & metadata ---
         content, metadata = extract_text_from_file(full_path)
-
-        # Fallback: if extractor returned a dict somehow
         if isinstance(content, dict):
             content = " ".join(f"{k}:{v}" for k, v in content.items())
-
-        # Skip files without indexable content or metadata
         if not content and not metadata:
-            print(f"⏭️ Skipped (no content and no metadata): {full_path}")
+            print(f"⏭️ Skipped (no content or metadata): {full_path}")
             return
 
-        # Store metadata if present
         if metadata:
             update_file_metadata(full_path, metadata)
-            print(f"🖼️ Metadata stored for file: {full_path}")
-
-            # Build searchable string from selected metadata fields
-            extra_fields = []
-            for key in ("source", "author", "subject", "title", "format", "camera"):
-                val = metadata.get(key)
-                if val:
-                    extra_fields.append(str(val))
-
-            # Append metadata to content, separated with semicolons
+            extra_fields = [str(metadata[k]) for k in ("source","author","subject","title","format","camera") if metadata.get(k)]
             if extra_fields:
                 content = (content or "") + " ; " + " ; ".join(extra_fields)
 
-        # Fallback: ensure there is at least the filename
         if not content:
-            content = f"Image: {os.path.basename(full_path)}"
+            content = f"File: {os.path.basename(full_path)}"
 
-        # Compute file hash
         file_hash = calculate_hash(content)
         last_modified = datetime.fromtimestamp(os.path.getmtime(full_path)).isoformat()
 
-        conn = connect_db()
-        cursor = conn.cursor()
+        # --- DB operations serialized ---
+        async with db_lock:
+            conn = connect_db()
+            cursor = conn.cursor()
 
-        # Detect renamed file by hash (identical content under new path)
-        cursor.execute("SELECT path FROM file_index WHERE hash = ?", (file_hash,))
-        if row := cursor.fetchone():
-            existing_path = row["path"]
-            if existing_path != full_path:
-                print(f"🔄 Detected renamed file: {existing_path} → {full_path}")
-
-                # Update path in main FTS index
-                cursor.execute(
-                    "UPDATE file_index SET path = ? WHERE hash = ?",
-                    (full_path, file_hash),
-                )
-
-                # Also update metadata table if entry exists
-                cursor.execute(
-                    "UPDATE file_metadata SET path = ? WHERE path = ?",
-                    (full_path, existing_path),
-                )
-
-                # Optional: also sync tags if you use file_tags table
-                cursor.execute(
-                    "UPDATE file_tags SET path = ? WHERE path = ?",
-                    (full_path, existing_path),
-                )
-
-                conn.commit()
+            # Skip unchanged file
+            cursor.execute("SELECT hash FROM file_index WHERE path = ?", (full_path,))
+            row = cursor.fetchone()
+            if row and row["hash"] == file_hash:
                 conn.close()
+                print(f"⏭️ Skipped unchanged: {full_path}")
                 return
 
-        # Skip unchanged files (same hash, same path)
-        cursor.execute("SELECT hash FROM file_index WHERE path = ?", (full_path,))
-        if (row := cursor.fetchone()) and row["hash"] == file_hash:
-            print(f"⏭️ Skipped (unchanged): {full_path}")
+            # Insert/update index and ensure metadata exists
+            cursor.execute("DELETE FROM file_index WHERE path = ?", (full_path,))
+            cursor.execute(
+                "INSERT INTO file_index (path, content, modified, hash) VALUES (?, ?, ?, ?)",
+                (full_path, content, last_modified, file_hash),
+            )
+            cursor.execute("INSERT OR REPLACE INTO file_metadata (path) VALUES (?)", (full_path,))
+            conn.commit()
             conn.close()
-            return
 
-        # Insert/update FTS index
-        cursor.execute("DELETE FROM file_index WHERE path = ?", (full_path,))
-        cursor.execute(
-            "INSERT INTO file_index (path, content, modified, hash) VALUES (?, ?, ?, ?)",
-            (full_path, content, last_modified, file_hash),
-        )
-
-        # Ensure metadata is linked to this path
-        cursor.execute(
-            """
-            INSERT OR IGNORE INTO file_metadata (path)
-            VALUES (?)
-            """,
-            (full_path,),
-        )
-
-        conn.commit()
-        conn.close()
         print(f"✅ Indexed: {full_path}")
 
     except Exception as e:
         print(f"⚠️ Failed to index {full_path}: {e}")
+
 
 
 async def scan_and_index_files(root_dir: str, mtw_extended=False):
@@ -516,31 +466,43 @@ def handle_extract_mtw(args):
 
 
 def handle_rename_file(args):
-    path = args.path
-    if Path(path).is_dir():
+    """
+    Handle renaming of a file or all files in a directory.
+    Fully DB-free; no writes or checks related to database.
+    """
+    path = Path(args.path)
+    if not path.exists():
+        print(f"⚠️ Path not found: {path}")
+        return
+
+    if path.is_dir():
+        # Rename all files in directory
         rename_files_in_dir(
-            path,
+            str(path),
             pattern=args.pattern,
             dry_run=args.dry_run,
-            db_sync=args.db_sync,
             recursive=args.recursive,
         )
     else:
+        # Rename single file
         new_path = rename_file(
-            path,
+            str(path),
             pattern=args.pattern,
             dry_run=args.dry_run,
-            db_sync=args.db_sync,
         )
 
-        # 🧩 Sync rename in DB if requested and not a dry-run
-        if args.db_sync and not args.dry_run:
-            from .db_utils import _sync_path_in_db
+        # Print final result for dry-run or actual rename
+        if args.dry_run:
+            if new_path.name == path.name:
+                print(f"[Dry-run] No rename needed: {path.name}")
+            else:
+                print(f"[Dry-run] Would rename: {path} → {new_path}")
+        else:
+            if new_path.name != path.name:
+                print(f"✅ Renamed: {path} → {new_path}")
+            else:
+                print(f"✅ Skipped (already correct): {path}")
 
-            try:
-                _sync_path_in_db(path, new_path)
-            except Exception as e:
-                print(f"⚠️ DB sync after rename failed: {e}")
 
 
 def main():

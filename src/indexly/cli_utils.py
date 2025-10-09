@@ -17,7 +17,7 @@ from .config import PROFILE_FILE
 from .cache_utils import save_cache, load_cache
 from .path_utils import normalize_path
 from .migration_manager import run_migrations
-from .rename_utils import rename_file, rename_files_in_dir
+
 
 # CLI display configurations here
 command_titles = {
@@ -187,11 +187,6 @@ def build_parser():
         "--dry-run",
         action="store_true",
         help="Show what would be renamed without making changes"
-    )
-    rename_file_parser.add_argument(
-        "--db-sync",
-        action="store_true",
-        help="Update database paths after renaming"
     )
     rename_file_parser.add_argument(
         "--recursive",
