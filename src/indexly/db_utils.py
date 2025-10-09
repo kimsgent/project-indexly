@@ -16,8 +16,12 @@ import sqlite3
 import os
 import re
 import signal
+import logging
 from .config import DB_FILE
 from .path_utils import normalize_path
+
+
+logger = logging.getLogger(__name__)
 
 
 user_interrupted = False
@@ -73,7 +77,8 @@ def connect_db(db_path: str | None = None):
             path, 
             content, 
             clean_content, 
-            modified, 
+            modified,
+            alias, 
             hash, 
             tag, 
             tokenize = 'porter', 
@@ -110,6 +115,65 @@ def connect_db(db_path: str | None = None):
 
     conn.commit()
     return conn
+
+def _sync_path_in_db(old_path: str, new_path: str):
+    """
+    Fully synchronize a renamed file across all DB tables:
+    - Updates path in all tables
+    - Preserves hash, metadata, and tags
+    - Writes old filename into alias column
+    """
+    from pathlib import Path
+
+    old_path_str = normalize_path(old_path)
+    new_path_str = normalize_path(new_path)
+    old_name = Path(old_path_str).name
+
+    try:
+        conn = connect_db()
+        cur = conn.cursor()
+
+        # --- file_index ---
+        cur.execute(
+            """
+            UPDATE file_index
+            SET path = ?, alias = ?
+            WHERE path = ?
+            """,
+            (new_path_str, old_name, old_path_str),
+        )
+
+        # --- file_metadata ---
+        cur.execute(
+            """
+            UPDATE file_metadata
+            SET path = ?
+            WHERE path = ?
+            """,
+            (new_path_str, old_path_str),
+        )
+
+        # --- file_tags ---
+        cur.execute(
+            """
+            UPDATE file_tags
+            SET path = ?
+            WHERE path = ?
+            """,
+            (new_path_str, old_path_str),
+        )
+
+        conn.commit()
+        conn.close()
+
+        logger.info(f"🗄️ DB fully synced for rename: {old_path_str} → {new_path_str}")
+        return True
+
+    except Exception as e:
+        logger.error(f"⚠️ DB sync failed for rename {old_path_str} → {new_path_str}: {e}")
+        return False
+
+
 
 
 def regexp(pattern, string):

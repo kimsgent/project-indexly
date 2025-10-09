@@ -29,7 +29,7 @@ from .ripple import Ripple
 from rich import print as rprint
 from rapidfuzz import fuzz
 from .filetype_utils import extract_text_from_file, SUPPORTED_EXTENSIONS
-from .db_utils import connect_db, get_tags_for_file
+from .db_utils import connect_db, get_tags_for_file, _sync_path_in_db
 from .search_core import search_fts5, search_regex, normalize_near_term
 from .extract_utils import update_file_metadata
 from .mtw_extractor import _extract_mtw
@@ -467,42 +467,42 @@ def handle_extract_mtw(args):
 
 def handle_rename_file(args):
     """
-    Handle renaming of a file or all files in a directory.
-    Fully DB-free; no writes or checks related to database.
+    Handle renaming of a file or all files in a directory,
+    and immediately update DB to reflect the change.
     """
+
     path = Path(args.path)
     if not path.exists():
         print(f"⚠️ Path not found: {path}")
         return
 
     if path.is_dir():
-        # Rename all files in directory
         rename_files_in_dir(
             str(path),
             pattern=args.pattern,
             dry_run=args.dry_run,
             recursive=args.recursive,
         )
+        return
+
+    new_path = rename_file(
+        str(path),
+        pattern=args.pattern,
+        dry_run=args.dry_run,
+    )
+
+    # --- Sync rename in DB immediately ---
+    if not args.dry_run:
+        try:
+            _sync_path_in_db(str(path), str(new_path))
+        except Exception as e:
+            print(f"⚠️ DB sync after rename failed: {e}")
+
+    # --- Output ---
+    if args.dry_run:
+        print(f"[Dry-run] Would rename: {path} → {new_path}")
     else:
-        # Rename single file
-        new_path = rename_file(
-            str(path),
-            pattern=args.pattern,
-            dry_run=args.dry_run,
-        )
-
-        # Print final result for dry-run or actual rename
-        if args.dry_run:
-            if new_path.name == path.name:
-                print(f"[Dry-run] No rename needed: {path.name}")
-            else:
-                print(f"[Dry-run] Would rename: {path} → {new_path}")
-        else:
-            if new_path.name != path.name:
-                print(f"✅ Renamed: {path} → {new_path}")
-            else:
-                print(f"✅ Skipped (already correct): {path}")
-
+        print(f"✅ Renamed and synced: {path} → {new_path}")
 
 
 def main():

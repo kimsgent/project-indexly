@@ -5,6 +5,7 @@ import unicodedata
 from pathlib import Path
 from datetime import datetime
 from .path_utils import normalize_path
+from .db_utils import _sync_path_in_db
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +16,6 @@ DEFAULT_PATTERN = "{date}-{title}"
 # -------------------------------------------------
 
 def slugify(text: str) -> str:
-    """Normalize string to ascii lowercase, hyphen-separated, no special chars."""
     text = str(text or "")
     text = unicodedata.normalize("NFKD", text)
     text = text.encode("ascii", "ignore").decode("ascii")
@@ -25,26 +25,26 @@ def slugify(text: str) -> str:
     text = re.sub(r"-+", "-", text)
     return text.strip("-")
 
+
 def _extract_date_prefix(filename: str) -> str | None:
-    """Detect YYYYMMDD or YYYY-MM-DD prefix at the start of a filename."""
     if not filename:
         return None
     m = re.match(r"^(?P<date>\d{4}-\d{2}-\d{2}|\d{8})[-_\s]?", filename)
     return m.group("date").replace("-", "") if m else None
 
+
 def _remove_leading_date_from_string(s: str) -> str:
-    """Remove an initial date and following separators from a string."""
     if not s:
         return s
     return re.sub(r"^(?:\d{4}-\d{2}-\d{2}|\d{8})[-_\s]*", "", s)
 
+
 def _clean_filename_component(s: str) -> str:
-    """Collapse repeated hyphens and trim hyphens."""
     s = re.sub(r"-{2,}", "-", s)
     return s.strip("-")
 
-def generate_new_filename(file_path: Path, pattern: str = None, counter: int = 0):
-    """Generate a standardized filename from stem, date, counter, pattern."""
+
+def generate_new_filename(file_path: Path, pattern: str = None, counter: int = 0) -> str:
     if not file_path.exists() or file_path.stat().st_size == 0:
         logger.warning(f"⚠️ Skipping empty or missing file: {file_path}")
         return file_path.name
@@ -73,12 +73,12 @@ def generate_new_filename(file_path: Path, pattern: str = None, counter: int = 0
 
     return f"{new_name}{ext}"
 
+
 # -------------------------------------------------
-# Core Rename Logic
+# Core Rename Logic (with DB sync)
 # -------------------------------------------------
 
-def rename_file(path: str, pattern: str = None, dry_run: bool = True):
-    """Rename a single file according to pattern. Returns new Path or None."""
+def rename_file(path: str, pattern: str = None, dry_run: bool = True) -> Path | None:
     file_path = Path(normalize_path(path))
     if not file_path.exists():
         print(f"⚠️ File not found: {file_path}")
@@ -108,18 +108,46 @@ def rename_file(path: str, pattern: str = None, dry_run: bool = True):
             print(f"✅ Skipped (already correct): {file_path}")
         else:
             shutil.move(str(file_path), str(new_path))
+            _sync_path_in_db(file_path, new_path)
             print(f"✅ Renamed:\n  {file_path} → {new_path}")
 
     return new_path
 
+
 def rename_files_in_dir(directory: str, pattern: str = None, dry_run: bool = True, recursive: bool = False):
-    """Rename all files in a directory according to pattern."""
+    """
+    Rename all files in a directory:
+    - Applies counter for collisions
+    - Fully syncs DB on each rename
+    - Supports recursive renaming
+    """
     dir_path = Path(normalize_path(directory))
     if not dir_path.exists() or not dir_path.is_dir():
         print(f"⚠️ Directory not found: {dir_path}")
         return
 
-    files = dir_path.rglob("*") if recursive else dir_path.glob("*")
+    files = sorted(dir_path.rglob("*") if recursive else dir_path.glob("*"))
     for f in files:
         if f.is_file():
-            rename_file(str(f), pattern, dry_run)
+            # Apply incremental counter until the name is unique in folder
+            counter = 0
+            while True:
+                new_name = generate_new_filename(f, pattern, counter)
+                new_path = f.parent / new_name
+                if new_path.exists() and new_path != f:
+                    counter += 1
+                    continue
+                break
+
+            if dry_run:
+                if new_name != f.name:
+                    print(f"[Dry-run] Would rename:\n  {f} → {new_path}")
+                else:
+                    print(f"[Dry-run] No rename needed: {f.name}")
+            else:
+                if new_name != f.name:
+                    shutil.move(str(f), str(new_path))
+                    _sync_path_in_db(f, new_path)
+                    print(f"✅ Renamed:\n  {f} → {new_path}")
+                else:
+                    print(f"✅ Skipped (already correct): {f.name}")
