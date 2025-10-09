@@ -17,7 +17,7 @@ from .config import PROFILE_FILE
 from .cache_utils import save_cache, load_cache
 from .path_utils import normalize_path
 from .migration_manager import run_migrations
-
+from .rename_utils import SUPPORTED_DATE_FORMATS
 
 # CLI display configurations here
 command_titles = {
@@ -173,31 +173,42 @@ def build_parser():
     # Rename File(s)
     rename_file_parser = subparsers.add_parser(
         "rename-file",
-        help="Rename a file or all files in a directory according to a pattern"
+        help="Rename a file or all files in a directory according to a pattern",
     )
     rename_file_parser.add_argument(
-        "path",
-        help="Path to a file or directory to rename"
+        "path", help="Path to a file or directory to rename"
     )
     rename_file_parser.add_argument(
-        "--pattern",
-        help="Renaming pattern (supports {date}, {title}, {counter})"
+        "--pattern", help="Renaming pattern (supports {date}, {title}, {counter})"
     )
     rename_file_parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Show what would be renamed without making changes"
+        help="Show what would be renamed without making changes",
     )
     rename_file_parser.add_argument(
         "--recursive",
         action="store_true",
-        help="Recursively rename all files in the given directory"
+        help="Recursively rename all files in the given directory",
     )
     rename_file_parser.add_argument(
-        "--no-ocr",
+        "--update-db",
         action="store_true",
-        help="Smart OCR control: skips OCR automatically for large PDFs, but allows OCR for small PDFs."
+        help="Also update database paths after renaming",
     )
+    rename_file_parser.add_argument(
+        "--date-format",
+        type=str,
+        choices=SUPPORTED_DATE_FORMATS,
+        default="%Y%m%d",
+        help="Specify date format to use in filename (default: %%Y%%m%%d)",
+    )
+    rename_file_parser.add_argument(
+        "--counter-format",
+        default="d",
+        help="Format for counter (e.g. 02d, 03d, d). Default: plain integer.",
+    )
+
     rename_file_parser.set_defaults(func=handle_rename_file)
 
     # Migrate

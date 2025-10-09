@@ -33,7 +33,7 @@ from .db_utils import connect_db, get_tags_for_file, _sync_path_in_db
 from .search_core import search_fts5, search_regex, normalize_near_term
 from .extract_utils import update_file_metadata
 from .mtw_extractor import _extract_mtw
-from .rename_utils import rename_file, rename_files_in_dir
+from .rename_utils import rename_file, rename_files_in_dir, SUPPORTED_DATE_FORMATS
 from .profiles import (
     save_profile,
     apply_profile,
@@ -69,6 +69,7 @@ db_lock = asyncio.Lock()
 
 async def async_index_file(full_path, mtw_extended=False):
     from .fts_core import calculate_hash
+
     """
     Index a single file asynchronously without attempting to sync renames in the DB.
     """
@@ -84,7 +85,9 @@ async def async_index_file(full_path, mtw_extended=False):
 
             stub_content = f"MTW Archive: {os.path.basename(full_path)}"
             file_hash = calculate_hash(stub_content)
-            last_modified = datetime.fromtimestamp(os.path.getmtime(full_path)).isoformat()
+            last_modified = datetime.fromtimestamp(
+                os.path.getmtime(full_path)
+            ).isoformat()
 
             async with db_lock:
                 conn = connect_db()
@@ -98,7 +101,9 @@ async def async_index_file(full_path, mtw_extended=False):
                 conn.close()
 
             # Index extracted files
-            tasks = [async_index_file(f, mtw_extended=mtw_extended) for f in extracted_files]
+            tasks = [
+                async_index_file(f, mtw_extended=mtw_extended) for f in extracted_files
+            ]
             await asyncio.gather(*tasks)
             return
 
@@ -112,7 +117,11 @@ async def async_index_file(full_path, mtw_extended=False):
 
         if metadata:
             update_file_metadata(full_path, metadata)
-            extra_fields = [str(metadata[k]) for k in ("source","author","subject","title","format","camera") if metadata.get(k)]
+            extra_fields = [
+                str(metadata[k])
+                for k in ("source", "author", "subject", "title", "format", "camera")
+                if metadata.get(k)
+            ]
             if extra_fields:
                 content = (content or "") + " ; " + " ; ".join(extra_fields)
 
@@ -141,7 +150,9 @@ async def async_index_file(full_path, mtw_extended=False):
                 "INSERT INTO file_index (path, content, modified, hash) VALUES (?, ?, ?, ?)",
                 (full_path, content, last_modified, file_hash),
             )
-            cursor.execute("INSERT OR REPLACE INTO file_metadata (path) VALUES (?)", (full_path,))
+            cursor.execute(
+                "INSERT OR REPLACE INTO file_metadata (path) VALUES (?)", (full_path,)
+            )
             conn.commit()
             conn.close()
 
@@ -149,7 +160,6 @@ async def async_index_file(full_path, mtw_extended=False):
 
     except Exception as e:
         print(f"⚠️ Failed to index {full_path}: {e}")
-
 
 
 async def scan_and_index_files(root_dir: str, mtw_extended=False):
@@ -476,19 +486,39 @@ def handle_rename_file(args):
         print(f"⚠️ Path not found: {path}")
         return
 
+    # Determine valid date format
+    date_format = (
+        args.date_format
+        if hasattr(args, "date_format") and args.date_format in SUPPORTED_DATE_FORMATS
+        else "%Y%m%d"
+    )
+
+    # Determine counter format (default = plain integer)
+    counter_format = (
+        args.counter_format if hasattr(args, "counter_format") else "d"
+    )
+
+    # --- Directory handling ---
     if path.is_dir():
         rename_files_in_dir(
             str(path),
             pattern=args.pattern,
             dry_run=args.dry_run,
             recursive=args.recursive,
+            update_db=args.update_db,
+            date_format=date_format,
+            counter_format=counter_format,
         )
         return
 
+    # --- Single file handling ---
     new_path = rename_file(
         str(path),
         pattern=args.pattern,
         dry_run=args.dry_run,
+        update_db=args.update_db,
+        date_format=date_format,
+        counter_format=counter_format,
     )
 
     # --- Sync rename in DB immediately ---
