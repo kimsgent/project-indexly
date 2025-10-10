@@ -259,17 +259,18 @@ def handle_index(args):
 def handle_search(args):
     term_cli = get_search_term(args)
 
-    # Profile-only search
-    prof = None
+    if not term_cli:
+        print("❌ No search term provided.")
+        return
+
+    # Profile-only mode
     if getattr(args, "profile", None):
         from .profiles import load_profile, filter_saved_results
 
         prof = load_profile(args.profile)
         if prof and prof.get("results"):
             results = filter_saved_results(prof["results"], term_cli)
-            print(
-                f"Searching '{term_cli or prof.get('term') or ''}' (profile-only: {args.profile})"
-            )
+            print(f"Searching '{term_cli or prof.get('term')}' (profile-only: {args.profile})")
             if results:
                 print_search_results(results, term_cli or prof.get("term", ""))
                 if args.export_format:
@@ -283,22 +284,13 @@ def handle_search(args):
                 print("🔍 No matches found in saved profile results.")
             return
 
-    # DB/FTS search
-    term = term_cli
-    if not term:
-        print("❌ No search term provided.")
-        return
-
-    no_cache_flag = True if getattr(args, "profile", None) else args.no_cache
-    fts_term = normalize_near_term(term, near_distance=args.near_distance)
-
-    ripple = Ripple(f"Searching '{term}'", speed="medium", rainbow=True)
+    ripple = Ripple(f"Searching '{term_cli}'", speed="medium", rainbow=True)
     ripple.start()
 
     try:
         results = search_fts5(
-            term=term,
-            query=fts_term,
+            term=term_cli,
+            query=None,  # ← no need to pass normalized term
             db_path=getattr(args, "db", DB_FILE),
             context_chars=args.context,
             filetypes=args.filetype,
@@ -312,21 +304,20 @@ def handle_search(args):
             camera=getattr(args, "camera", None),
             image_created=getattr(args, "image_created", None),
             format=getattr(args, "format", None),
-            no_cache=no_cache_flag,
+            no_cache=args.no_cache,
             near_distance=args.near_distance,
         )
-
     finally:
         ripple.stop()
 
     if results:
-        print_search_results(results, term, context_chars=args.context)
+        print_search_results(results, term_cli, context_chars=args.context)
         if args.export_format:
             export_results_to_format(
                 results,
                 args.output or f"search_results.{args.export_format}",
                 args.export_format,
-                term,
+                term_cli,
             )
     else:
         print("🔍 No matches found.")

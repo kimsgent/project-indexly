@@ -136,7 +136,7 @@ def rename_file(
         return None
 
     parent_dir = file_path.parent
-    counter = 1
+    counter = 0
 
     while True:
         new_name = generate_new_filename(
@@ -194,7 +194,7 @@ def rename_files_in_dir(
     files = sorted(dir_path.rglob("*") if recursive else dir_path.glob("*"))
     
     last_date = None
-    counter = 1
+    counter = 0
 
     for f in files:
         if f.is_file():
@@ -215,7 +215,7 @@ def rename_files_in_dir(
 
             # Reset counter if date changed
             if date_str != last_date:
-                counter = 1
+                counter = 0
                 last_date = date_str
 
             # Generate unique filename with counter (collision-aware)
