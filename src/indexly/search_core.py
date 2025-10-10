@@ -16,6 +16,7 @@ import os
 import re
 import time
 import signal
+import sqlite3
 from datetime import datetime
 from .ripple import Ripple
 from .utils import build_snippet
@@ -205,12 +206,16 @@ def fuzzy_fallback(term, threshold=80, topn=5, context_chars=150, max_snippets=3
     dedup = {r["path"]: r for r in results}
     return list(dedup.values())
 
+
+# ---------------------------------------------------------------------
+# --- Expression utilities
+# ---------------------------------------------------------------------
+
 def sanitize_fts_term(term: str) -> str:
     """
     Allow only safe characters and known logical operator tokens
     for inline MATCH expressions.
     """
-    # Permit letters, digits, quotes, parentheses, operators, * and whitespace
     if not re.match(r'^[\w\s"\'()*+:\-~<>/NEARANDORNOT]+$', term, re.IGNORECASE):
         raise ValueError(f"Unsafe FTS term: {term}")
     return term
@@ -221,32 +226,22 @@ def contains_fts_operators(term: str) -> bool:
     term_upper = term.upper()
     return bool(re.search(r'\b(AND|OR|NOT|NEAR/?\d*)\b|\*|\(|\)|"', term_upper))
 
-# --- Main FTS5 search ---
-# --- Main FTS5 search with unified snippet handling ---
-
-import re
 
 def normalize_logical_expression(expr: str, near_distance: int = 5) -> str:
     """
     Normalize a user search expression for SQLite FTS5:
-      - Normalize whitespace and smart quotes
-      - Handle NEAR and NEAR(n)
       - Uppercase AND/OR/NOT
-      - Quote all search terms (so AND isn't matched literally)
-      - Preserve parentheses and quoted phrases
+      - Normalize NEAR(x) -> NEAR/x
+      - Quote multi-word phrases only (not individual words)
     """
     if not expr:
         return ""
 
-    # Normalize quotes and spaces
-    expr = (expr.replace("“", '"')
-                 .replace("”", '"')
-                 .replace("‘", "'")
-                 .replace("’", "'")
-                 .strip())
-    expr = re.sub(r"\s+", " ", expr)
+    expr = expr.replace("“", '"').replace("”", '"')
+    expr = expr.replace("‘", "'").replace("’", "'")
+    expr = re.sub(r"\s+", " ", expr.strip())
 
-    # Handle NEAR normalization (e.g., NEAR(10) -> NEAR/10)
+    # Normalize NEAR
     def _near_repl(m):
         n = m.group(1)
         return f"NEAR/{n or near_distance}"
@@ -255,11 +250,8 @@ def normalize_logical_expression(expr: str, near_distance: int = 5) -> str:
     # Uppercase logical operators
     expr = re.sub(r'\b(and|or|not)\b', lambda m: m.group(1).upper(), expr, flags=re.I)
 
-    # Tokenize preserving quotes, parentheses, NEAR, AND/OR/NOT
-    token_re = re.compile(
-        r'"[^"]*"|\(|\)|\bNEAR/\d+\b|\bAND\b|\bOR\b|\bNOT\b|[^"\s()]+',
-        flags=re.I
-    )
+    # Tokenize preserving quotes and parentheses
+    token_re = re.compile(r'"[^"]*"|\(|\)|\bNEAR/\d+\b|\bAND\b|\bOR\b|\bNOT\b|[^"\s()]+', flags=re.I)
     tokens = token_re.findall(expr)
 
     out_tokens = []
@@ -267,26 +259,23 @@ def normalize_logical_expression(expr: str, near_distance: int = 5) -> str:
         t = tok.strip()
         if not t:
             continue
-
-        # Keep quoted phrases, parentheses, and operators as-is
-        if re.fullmatch(r'"[^"]*"', t) or t in ("(", ")") or re.fullmatch(r'NEAR/\d+', t, flags=re.I):
+        # Keep operators and special constructs
+        if t.upper() in ("AND", "OR", "NOT") or re.fullmatch(r'NEAR/\d+', t, flags=re.I) or t in ("(", ")"):
             out_tokens.append(t)
-            continue
+        elif re.match(r'^".+"$', t):  # already quoted
+            out_tokens.append(t)
+        elif " " in t:  # multi-word phrase
+            out_tokens.append(f'"{t}"')
+        else:
+            # single word: leave unquoted
+            out_tokens.append(t)
 
-        # Logical operators stay uppercase
-        if t.upper() in ("AND", "OR", "NOT"):
-            out_tokens.append(t.upper())
-            continue
+    return " ".join(out_tokens).strip()
 
-        # Everything else (terms) gets quoted to avoid literal AND matches
-        safe_tok = t.replace('"', '""')
-        out_tokens.append(f'"{safe_tok}"')
 
-    normalized = " ".join(out_tokens)
-    normalized = re.sub(r"\s+", " ", normalized).strip()
-
-    return normalized
-
+# ---------------------------------------------------------------------
+# --- Main FTS5 search
+# ---------------------------------------------------------------------
 
 def search_fts5(
     term,
@@ -307,15 +296,16 @@ def search_fts5(
     image_created=None,
     format=None,
 ):
-    import re, time, sqlite3
+    import re, sqlite3, time
+    from rich.console import Console
+    console = Console()
+
 
     # --- Load or skip cache ---
     cache = load_cache() if not no_cache else {}
-
     args_dict = {
         "term": term,
         "query": query,
-        "fts_term": normalize_near_term(term, near_distance=near_distance),
         "context_chars": context_chars,
         "filetypes": filetypes,
         "date_from": date_from,
@@ -332,35 +322,40 @@ def search_fts5(
     }
 
     key = calculate_query_hash(term, args_dict)
-    print(f"🔑 Cache key: {key}")
+    console.print(f"[bold green]Cache key:[/bold green] {key}")
 
-    # --- Return from cache if exists ---
     if key in cache:
         cached = cache[key].get("results", []) if isinstance(cache[key], dict) else cache[key]
-        print("✅ Returning cached results without refresh")
+        console.print("[green]✅ Returning cached results (no refresh)[/green]")
         return cached
 
     conn = connect_db(db_path)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
-    # --- Normalize and detect operators ---
-    fts_expr = normalize_logical_expression(term, near_distance)
-    print(f"DEBUG: normalized FTS expression -> {fts_expr}")
+    # --- Normalize FTS5 expression ---
+    fts_expr = normalize_logical_expression(query or term or "", near_distance)
+    if not fts_expr.strip():
+        console.print("[red]⚠️ Empty or invalid FTS expression, falling back to quoted term[/red]")
+        fts_expr = f'"{term.strip()}"'
+    console.print(f"[cyan]Normalized FTS expression:[/cyan] [white]{fts_expr}[/white]")
 
     # --- Build base query ---
     query_parts = ["SELECT fi.path, fi.content FROM file_index fi"]
     if any([author, camera, image_created, format]):
         query_parts.append("JOIN file_metadata fm ON fi.path = fm.path")
 
-    # --- Base MATCH clause (parameterized) ---
-    query_parts.append("WHERE fi.content MATCH ?")
-    params = [fts_expr]
+    # DO NOT use parameter substitution for MATCH
+    query_parts.append(f"WHERE fi.content MATCH {fts_expr!r}")
 
-    # --- Apply filters ---
+    params = []
+
+    # --- Apply filters (each step debug printed) ---
     if tag_filter:
+        console.print(f"[magenta]Tag filter active:[/magenta] {tag_filter}")
         allowed_paths = filter_files_by_tag(tag_filter)
         if not allowed_paths:
+            console.print("[yellow]⚠️ No files match the given tag filter[/yellow]")
             conn.close()
             return []
         placeholders = ",".join("?" for _ in allowed_paths)
@@ -368,53 +363,58 @@ def search_fts5(
         params.extend(allowed_paths)
 
     if filetypes:
+        console.print(f"[magenta]Filetype filter:[/magenta] {filetypes}")
         query_parts.append(f"AND ({' OR '.join('fi.path LIKE ?' for _ in filetypes)})")
         params.extend([f"%.{ext.lstrip('.')}" for ext in filetypes])
 
     if date_from:
+        console.print(f"[magenta]Date from:[/magenta] {date_from}")
         query_parts.append("AND fi.modified >= ?")
         params.append(date_from)
     if date_to:
+        console.print(f"[magenta]Date to:[/magenta] {date_to}")
         query_parts.append("AND fi.modified <= ?")
         params.append(date_to)
     if path_contains:
+        console.print(f"[magenta]Path filter:[/magenta] {path_contains}")
         query_parts.append("AND fi.path LIKE ?")
         params.append(f"%{path_contains}%")
     if author:
+        console.print(f"[magenta]Author filter:[/magenta] {author}")
         query_parts.append("AND fm.author LIKE ?")
         params.append(f"%{author}%")
     if camera:
+        console.print(f"[magenta]Camera filter:[/magenta] {camera}")
         query_parts.append("AND fm.camera LIKE ?")
         params.append(f"%{camera}%")
     if image_created:
+        console.print(f"[magenta]Image date filter:[/magenta] {image_created}")
         query_parts.append("AND fm.image_created LIKE ?")
         params.append(f"%{image_created}%")
     if format:
+        console.print(f"[magenta]Format filter:[/magenta] {format}")
         query_parts.append("AND fm.format LIKE ?")
         params.append(f"%{format}%")
 
     query_parts.append("ORDER BY rank")
     query_str = "\n".join(query_parts)
 
-    print(f"DEBUG: SQL query ->\n{query_str}")
-    print(f"DEBUG: SQL params -> {params}")
 
-    # --- Execute query with safe fallback ---
+    # --- Execute query safely ---
     try:
         cursor.execute(query_str, params)
         rows = cursor.fetchall()
+        console.print(f"[green]✅ Query executed successfully ({len(rows)} rows)[/green]")
     except sqlite3.OperationalError as e:
-        print(f"⚠️ FTS syntax issue ({e}). Retrying as fallback literal search...")
-        literal_query = " ".join([f'"{w}"' for w in re.findall(r'\w+', term)])
-        fallback_query = (
-            "SELECT fi.path, fi.content FROM file_index fi "
-            f"WHERE fi.content MATCH ? ORDER BY rank"
-        )
+        console.print(f"[red]⚠️ OperationalError:[/red] {e}")
+        literal_query = " ".join(re.findall(r'\w+', term))
+        console.print(f"[yellow]Retrying with fallback literal query:[/yellow] {literal_query}")
+        fallback_query = "SELECT fi.path, fi.content FROM file_index fi WHERE fi.content MATCH ? ORDER BY rank"
         try:
             cursor.execute(fallback_query, [literal_query])
             rows = cursor.fetchall()
         except Exception as e2:
-            print(f"❌ MATCH query failed even after fallback: {e2}")
+            console.print(f"[red]❌ Fallback failed:[/red] {e2}")
             conn.close()
             return []
 
@@ -423,13 +423,16 @@ def search_fts5(
     # --- Handle no results / fuzzy fallback ---
     if not rows:
         if use_fuzzy:
-            print("🔁 No exact match. Trying fuzzy fallback...")
+            console.print("[yellow]🔁 No results, attempting fuzzy fallback...[/yellow]")
             return fuzzy_fallback(term, threshold=fuzzy_threshold, context_chars=context_chars)
-        print("❌ No results. Nothing cached.")
+        console.print("[red]❌ No results found, nothing cached.[/red]")
         return []
 
-    # --- Extract snippets ---
-    search_terms = [t[0] or t[1] for t in re.findall(r'"([^"]+)"|\b([\w-]+)\b', term) if t[0] or t[1]]
+    # --- Extract search tokens ---
+    all_tokens = [t[0] or t[1] for t in re.findall(r'"([^"]+)"|\b([\w-]+)\b', term) if t[0] or t[1]]
+    search_terms = [t for t in all_tokens if t.upper() not in ("AND", "OR", "NOT")]
+
+    # --- Build results ---
     serializable_results = [
         {
             "path": normalize_path(row["path"]),
@@ -443,8 +446,10 @@ def search_fts5(
     # --- Cache results ---
     cache[key] = {"timestamp": time.time(), "results": serializable_results}
     save_cache(cache)
+    console.print("[green]💾 Cached results successfully.[/green]")
 
     return serializable_results
+
 
 
 def search_regex(
