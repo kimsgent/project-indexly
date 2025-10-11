@@ -106,32 +106,6 @@ def refresh_cache_if_stale(cache_key, cache_entry, no_write=False):
 
     return updated_entries
 
-# --- NEAR normalization & auto-quote multi-word terms ---
-def normalize_near_term(term, near_distance=5):
-    # Respect user-provided NEAR(x)
-    if re.search(r'\bNEAR\(\d+\)\b', term, re.IGNORECASE):
-        return term
-
-    # Split on NEAR keyword
-    parts = re.split(r'\bNEAR\b', term, flags=re.IGNORECASE)
-    if len(parts) == 1:
-        return ' '.join(
-            f'"{p.strip()}"' if ' ' in p.strip() else p.strip()
-            for p in re.findall(r'\S+', term)
-        )
-
-    normalized_parts = []
-    for i, part in enumerate(parts):
-        words = part.strip().split()
-        if not words:
-            continue
-        quoted = f'"{part.strip()}"' if len(words) > 1 else part.strip()
-        normalized_parts.append(quoted)
-        if i < len(parts) - 1:
-            normalized_parts.append(f'NEAR({near_distance})')
-    return ' '.join(normalized_parts)
-
-
 
 # --- Hybrid fuzzy fallback (vocab expansion + refined snippets) ---
 def fuzzy_fallback(term, threshold=80, topn=5, context_chars=150, max_snippets=3):
@@ -211,14 +185,57 @@ def fuzzy_fallback(term, threshold=80, topn=5, context_chars=150, max_snippets=3
 # --- Expression utilities
 # ---------------------------------------------------------------------
 
+# --- Precompiled regex patterns for performance ---
+_RE_NEAR = re.compile(r'\bNEAR\s*\(?\s*(\d+)?\s*\)?\b', re.IGNORECASE)
+_RE_LOGICAL = re.compile(r'\b(and|or|not)\b', re.IGNORECASE)
+_RE_TOKENIZER = re.compile(
+    r'"[^"]*"|\(|\)|\bNEAR/\d+\b|\bAND\b|\bOR\b|\bNOT\b|[^"\s()]+',
+    flags=re.IGNORECASE,
+)
+_RE_SAFE = re.compile(r'^[\w\s"\'()*+:\-~<>/]+$', re.IGNORECASE)
+
+
 def sanitize_fts_term(term: str) -> str:
-    """
-    Allow only safe characters and known logical operator tokens
-    for inline MATCH expressions.
-    """
-    if not re.match(r'^[\w\s"\'()*+:\-~<>/NEARANDORNOT]+$', term, re.IGNORECASE):
-        raise ValueError(f"Unsafe FTS term: {term}")
+    """Ensure term contains only safe characters and valid operators."""
+    if not term or not isinstance(term, str):
+        raise ValueError("FTS term must be a non-empty string.")
+    if not _RE_SAFE.match(term):
+        raise ValueError(f"Unsafe or invalid FTS term: {term!r}")
     return term
+
+
+# --- NEAR normalization & auto-quote multi-word terms ---
+def normalize_near_term(expr: str, near_distance: int = 5) -> str:
+    """
+    Normalize NEAR constructs:
+    - Converts `NEAR(5)` → `NEAR/5` (if supported)
+    - Falls back to plain NEAR if NEAR/x is unsupported
+    - Ensures there is a space after NEAR
+    """
+    if not expr:
+        return ""
+
+    # Replace any NEAR() or NEAR constructs with NEAR/x
+    def _near_repl(match):
+        n = match.group(1)
+        return f"NEAR/{n or near_distance} "
+
+    normalized = _RE_NEAR.sub(_near_repl, expr)
+    normalized = re.sub(r"\s{2,}", " ", normalized).strip()
+
+    # --- Runtime check for NEAR/x support ---
+    try:
+        import sqlite3
+        conn = sqlite3.connect(":memory:")
+        conn.execute("CREATE VIRTUAL TABLE t USING fts5(c)")
+        # If this fails, NEAR/x is not supported
+        conn.execute("SELECT * FROM t WHERE c MATCH 'a NEAR/5 b'")
+        conn.close()
+    except sqlite3.OperationalError:
+        # Downgrade NEAR/x → NEAR if unsupported
+        normalized = re.sub(r"NEAR/\d+", "NEAR", normalized, flags=re.IGNORECASE)
+
+    return normalized
 
 
 def contains_fts_operators(term: str) -> bool:
@@ -227,50 +244,50 @@ def contains_fts_operators(term: str) -> bool:
     return bool(re.search(r'\b(AND|OR|NOT|NEAR/?\d*)\b|\*|\(|\)|"', term_upper))
 
 
-def normalize_logical_expression(expr: str, near_distance: int = 5) -> str:
+def normalize_logical_expression(query: str, near_distance: int = 5) -> str:
     """
-    Normalize a user search expression for SQLite FTS5:
-      - Uppercase AND/OR/NOT
-      - Normalize NEAR(x) -> NEAR/x
-      - Quote multi-word phrases only (not individual words)
+    Normalize FTS5 logical query and safely apply NEAR where possible.
+    Falls back gracefully if NEAR/N not supported.
     """
-    if not expr:
+    import re, sqlite3
+
+    if not query or not query.strip():
         return ""
 
-    expr = expr.replace("“", '"').replace("”", '"')
-    expr = expr.replace("‘", "'").replace("’", "'")
-    expr = re.sub(r"\s+", " ", expr.strip())
+    # Basic sanitization
+    if not re.match(r'^[\w\s"\'()*+:\-~<>/]+$', query):
+        raise ValueError(f"Unsafe FTS term: {query}")
 
-    # Normalize NEAR
-    def _near_repl(m):
-        n = m.group(1)
-        return f"NEAR/{n or near_distance}"
-    expr = re.sub(r'\bNEAR\s*\(?\s*(\d+)?\s*\)?\b', _near_repl, expr, flags=re.I)
+    q = re.sub(r'\s+', ' ', query.strip())
+
+    # Try to detect if NEAR/N is supported in this SQLite build
+    supports_near_n = False
+    try:
+        conn = sqlite3.connect(":memory:")
+        conn.execute("CREATE VIRTUAL TABLE t USING fts5(x);")
+        conn.execute("INSERT INTO t (x) VALUES ('a b c d e f g h i j k l');")
+        conn.execute("SELECT * FROM t WHERE x MATCH 'a NEAR/3 d';")
+        supports_near_n = True
+    except sqlite3.OperationalError:
+        supports_near_n = False
+    finally:
+        conn.close()
+
+    # Apply NEAR distance only if supported
+    if supports_near_n:
+        q = re.sub(r'\bNEAR\b(?!/\d+)', f'NEAR/{near_distance}', q, flags=re.IGNORECASE)
+    else:
+        # Just ensure NEAR is uppercased and spacing normalized
+        q = re.sub(r'\bNEAR\b(?!/\d+)', 'NEAR', q, flags=re.IGNORECASE)
 
     # Uppercase logical operators
-    expr = re.sub(r'\b(and|or|not)\b', lambda m: m.group(1).upper(), expr, flags=re.I)
+    q = re.sub(r'\b(and|or|not|near(?:/\d+)?)\b', lambda m: m.group(1).upper(), q, flags=re.IGNORECASE)
 
-    # Tokenize preserving quotes and parentheses
-    token_re = re.compile(r'"[^"]*"|\(|\)|\bNEAR/\d+\b|\bAND\b|\bOR\b|\bNOT\b|[^"\s()]+', flags=re.I)
-    tokens = token_re.findall(expr)
+    # Quote single terms safely
+    if not any(op in q.upper() for op in ("AND", "OR", "NOT", "NEAR")) and not re.search(r'["()]', q):
+        q = f'"{q}"'
 
-    out_tokens = []
-    for tok in tokens:
-        t = tok.strip()
-        if not t:
-            continue
-        # Keep operators and special constructs
-        if t.upper() in ("AND", "OR", "NOT") or re.fullmatch(r'NEAR/\d+', t, flags=re.I) or t in ("(", ")"):
-            out_tokens.append(t)
-        elif re.match(r'^".+"$', t):  # already quoted
-            out_tokens.append(t)
-        elif " " in t:  # multi-word phrase
-            out_tokens.append(f'"{t}"')
-        else:
-            # single word: leave unquoted
-            out_tokens.append(t)
-
-    return " ".join(out_tokens).strip()
+    return q
 
 
 # ---------------------------------------------------------------------
@@ -449,7 +466,6 @@ def search_fts5(
     console.print("[green]💾 Cached results successfully.[/green]")
 
     return serializable_results
-
 
 
 def search_regex(

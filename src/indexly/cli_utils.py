@@ -47,7 +47,12 @@ def add_common_arguments(parser):
     parser.add_argument(
         "--context", type=int, default=150, help="Context characters around match"
     )
-    parser.add_argument("--no-cache", action="store_true", help="Disable cache")
+    parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Skip reading/writing cached search results",
+    )
+
     parser.add_argument(
         "--export-format", choices=["txt", "md", "pdf", "json"], help="Export format"
     )
@@ -111,7 +116,9 @@ def build_parser():
     )
     search_parser.add_argument("--author", help="Filter by author metadata")
     search_parser.add_argument("--camera", help="Filter by camera metadata")
-    search_parser.add_argument("--image_created", help="Filter by image creation date")
+    search_parser.add_argument(
+        "--image-created", dest="image_created", help="Filter by image creation date"
+    )
     search_parser.add_argument("--format", help="Filter by format")
     search_parser.add_argument("--save-profile", help="Save search profile name")
     search_parser.add_argument("--profile", help="Load search profile name")
