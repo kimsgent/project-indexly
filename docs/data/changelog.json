@@ -23,6 +23,7 @@
        "opt(fts5): fine-tune FTS5 logical expression normalization with runtime NEAR/N detection for improved search accuracy",
 
        "docs: added comprehensive Hugo documentation and examples for rename-file usage and pattern customization"
+    ]
    },
 
    {
