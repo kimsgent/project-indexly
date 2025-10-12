@@ -1,6 +1,25 @@
 ---
 title: "Indexly Usage Guide"
-weight: 9
+slug: "usage-guide"
+icon: "mdi:play-circle"
+weight: 2
+date: 2025-10-12
+summary: "Learn how to install, index, search, tag, and export data efficiently using Indexly’s powerful CLI tools."
+description: "A complete usage guide for Indexly. Discover installation steps, Windows Terminal setup, indexing, search, tagging, filtering, and exporting results in PDF, Markdown, or text formats."
+keywords: [
+  "Indexly usage guide",
+  "Indexly install",
+  "Indexly search",
+  "Indexly tagging",
+  "Indexly export",
+  "Python CLI tool",
+  "file indexing",
+  "document search",
+  "command line guide",
+  "Indexly tutorial"
+]
+cta: "Get started with Indexly"
+link: "/docs/usage/"
 type: docs
 toc: true
 categories:

@@ -1,7 +1,25 @@
 ---
 title: "Indexly Developer Guide"
-weight: 8
-toc: true
+slug: "developer-guide"
+icon: "mdi:code-braces"
+weight: 5
+date: 2025-10-12
+summary: "Dive into Indexly’s source structure, core modules, and developer setup using Hatch, Hatchling, and Python tools for custom extensions."
+description: "A complete guide for developers to explore Indexly’s architecture, modules, and build process. Learn how to extend search features, add filetype support, and contribute effectively."
+keywords: [
+  "Indexly developer guide",
+  "Indexly source code",
+  "Indexly modules",
+  "Python CLI app",
+  "build with Hatch",
+  "extend search filters",
+  "open source tools",
+  "real-time indexing",
+  "filetype parser",
+  "Indexly dev setup"
+]
+cta: "Start building with Indexly"
+link: "/docs/developer-guide/"
 type: docs
 categories:
     - Development 

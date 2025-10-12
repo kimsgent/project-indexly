@@ -1,7 +1,24 @@
 ---
 title: "Indexly Configuration & Features"
-weight: 7
-toc: true
+slug: "configuration"
+icon: "mdi:cog-outline"
+weight: 4
+date: 2025-10-12
+summary: "Explore how Indexly profiles, filters, tagging, and watchdog features boost search speed, accuracy, and workflow efficiency."
+description: "Learn how to configure Indexly for optimal performance. Discover search profiles, real-time indexing, tagging, caching, and CSV analysis to streamline data management."
+keywords: [
+  "Indexly configuration",
+  "Indexly search filters",
+  "file tagging",
+  "real-time indexing",
+  "smart caching",
+  "CSV analysis",
+  "search optimization",
+  "productivity tools",
+  "Indexly watchdog"
+]
+cta: "Optimize your Indexly setup"
+link: "/docs/configuration/"
 type: docs
 categories:
     - Features 
@@ -86,8 +103,10 @@ indexly analyze-csv --file data.csv --format md --output summary.md
 * Auto-detect delimiters
 * Computes stats: mean, median, min, max, stddev, IQR
 * Outputs in Markdown or TXT
+* Analyse [Minitab MTW files](mtw-parser.md) after extraction
 
 > ![CSV stats placeholder](/images/csv-stats.png)
+
 
 ---
 

@@ -72,6 +72,8 @@ flowchart TD
 * [Exporting](usage.md#exporting)
 * [Watchdog](config.md#watchdog-real-time-indexing)
 * [Advanced Options](config.md#advanced-options)
+* New in v1.0.3: [Renaming Files with Patterns →](rename-file.md)
+* New in v1.0.3: [Extracting Minitab MTW files →](mtw-parser.md)
 * [Developer Notes](developer.md)
 * [License & Credits](#license-credits)
 
