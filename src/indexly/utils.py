@@ -89,6 +89,7 @@ check_and_install_packages(
         ("pptx", "python-pptx"),
         ("ebooklib", "ebooklib"),
         ("odf", "odfpy"),
+        ("pandas", "pandas"),
     ]
 )
 

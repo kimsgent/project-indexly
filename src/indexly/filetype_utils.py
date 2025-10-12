@@ -22,7 +22,6 @@ import os
 from pathlib import Path
 from .extract_utils import (
     _extract_docx,
-    extract_image_metadata,
     _extract_msg,
     _extract_eml,
     _extract_html,
@@ -31,8 +30,10 @@ from .extract_utils import (
     _extract_epub,
     _extract_odt,
     _extract_pptx,
+    extract_image_metadata,
 )
 from .utils import clean_text
+from .mtw_extractor import _extract_mtw
 
 # ✅ Single source of truth
 SUPPORTED_EXTENSIONS = {
@@ -60,6 +61,7 @@ SUPPORTED_EXTENSIONS = {
     ".png",
     ".tiff",
     ".bmp",
+    ".mtw",
 }
 
 
@@ -91,7 +93,9 @@ def extract_text_from_file(file_path):
         elif ext == ".xlsx":
             raw_text = _extract_xlsx(file_path)
         elif ext == ".pdf":
-            raw_text = _extract_pdf(file_path)
+            result = _extract_pdf(file_path)
+            raw_text = result.get("text")
+            metadata = result.get("metadata")
         elif ext == ".pptx":
             raw_text = _extract_pptx(file_path)
         elif ext == ".epub":
@@ -106,6 +110,23 @@ def extract_text_from_file(file_path):
             metadata = extract_image_metadata(file_path)
         elif ext in [".zip", ".exe", ".bin"]:
             return None, None  # skip binaries
+        
+        elif ext == ".mtw":
+        # Special handling for MTW
+            print(f"📂 Extracting .mtw file: {file_path} ...")
+            extracted_files = _extract_mtw(file_path, os.path.dirname(file_path))
+            print("✅ Extraction complete. Indexing extracted contents...")
+
+            combined_text = []
+            for f in extracted_files:
+                try:
+                    with open(f, "r", encoding="utf-8") as ef:
+                        combined_text.append(ef.read())
+                except Exception as e:
+                    print(f"⚠️ Failed to read extracted file {f}: {e}")
+
+            raw_text = "\n".join(combined_text) if combined_text else ""
+
 
         text_content = clean_text(raw_text) if raw_text else None
         return text_content, metadata

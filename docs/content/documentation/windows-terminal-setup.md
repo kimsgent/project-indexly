@@ -1,9 +1,26 @@
 ---
 title: "Customizing Windows Terminal"
-weight: 12
-toc: true
+slug: "customizing-windows-terminal"
+icon: "mdi:microsoft-windows"
+weight: 4
+date: 2025-10-12
+summary: "Set up Windows Terminal like a pro — featuring Chocolatey, Scoop, Oh My Posh, Neovim, fzf, and PowerShell enhancements."
+description: "Learn how to fully customize Windows Terminal for productivity and aesthetics. This step-by-step guide covers installing Chocolatey, Scoop, Oh My Posh, Neovim, PowerShell modules, fzf, and fonts to build a powerful Linux-like development environment on Windows. Created collaboratively with ChatGPT."
+keywords: [
+  "Windows Terminal customization",
+  "PowerShell productivity setup",
+  "Oh My Posh configuration",
+  "Chocolatey install guide",
+  "Scoop package manager tutorial",
+  "Neovim on Windows setup",
+  "fzf PowerShell integration",
+  "Windows developer environment",
+  "Chris Titus PowerShell setup",
+  "modern terminal tools"
+]
+cta: "Transform your terminal experience"
+link: "/docs/windows-terminal-setup/"
 type: docs
-toc: true
 categories:
     - Platform Setup 
     - Usage

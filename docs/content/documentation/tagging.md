@@ -1,8 +1,15 @@
 ---
-title: "Tagging System"
-weight: 6
-toc: true
+title: "Indexly Tagging System"
+slug: "file-tagging"
 type: docs
+icon: "mdi:tag-multiple"
+weight: 2
+date: 2025-10-12
+summary: "Organize your files smarter with Indexly's tagging system — add, remove, and search tags across indexed files and folders for faster file discovery."
+description: "Learn how to use Indexly's powerful file tagging system to categorize, organize, and search files effortlessly. Supports bulk tagging, recursive folder tagging, and instant tag lookups."
+keywords: ["Indexly", "file tagging", "file organization", "tagging system", "search files", "folder tagging", "data indexing", "productivity tools"]
+cta: "Learn how to manage tags"
+link: "/docs/tagging/"
 categories:
     - Core Features
 tags:
@@ -13,7 +20,6 @@ tags:
     - metadata-extraction
 ---
 
-# Indexly Tagging System Documentation
 
 The **Indexly Tagging System** allows you to add, remove, and list tags for files and folders. Tags can be applied to single files, multiple files, or recursively to entire folders.
 

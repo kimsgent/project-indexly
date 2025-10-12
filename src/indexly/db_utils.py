@@ -13,10 +13,15 @@ Usage:
 """
 
 import sqlite3
+import os
 import re
 import signal
+import logging
 from .config import DB_FILE
 from .path_utils import normalize_path
+
+
+logger = logging.getLogger(__name__)
 
 
 user_interrupted = False
@@ -35,12 +40,36 @@ signal.signal(signal.SIGINT, handle_interrupt)
 ### 🔧 FILE: db_utils.py — Update `connect_db()`
 
 
-def connect_db():
-    conn = sqlite3.connect(DB_FILE)
+def connect_db(db_path: str | None = None):
+    """
+    Connect to the SQLite database.
+
+    - In production, always uses config.DB_FILE.
+    - In tests, pytest fixtures may override config.DB_FILE or pass a temporary db_path.
+    - Prevents accidental fallback to wrong database file.
+    """
+    import importlib
+    import os
+    from . import config
+
+    # Only reload config in pytest to pick up monkeypatched DB_FILE
+    if "PYTEST_CURRENT_TEST" in os.environ:
+        importlib.reload(config)
+
+    # ✅ Production always uses config.DB_FILE
+    # Only respect db_path if we’re in a test or explicitly told to
+    if "PYTEST_CURRENT_TEST" in os.environ and db_path:
+        path = db_path
+    else:
+        path = config.DB_FILE
+
+    # print(f"[debug] Using DB: {path}")
+
+    conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
     conn.create_function("REGEXP", 2, regexp)
 
-    # ✅ Ensure FTS5 search index exists
+    # Ensure required tables exist (idempotent)
     conn.execute(
         """
         CREATE VIRTUAL TABLE IF NOT EXISTS file_index
@@ -48,7 +77,8 @@ def connect_db():
             path, 
             content, 
             clean_content, 
-            modified, 
+            modified,
+            alias, 
             hash, 
             tag, 
             tokenize = 'porter', 
@@ -58,24 +88,12 @@ def connect_db():
     )
 
     cursor = conn.cursor()
-
-    # ✅ Ensure vocabulary table exists for fuzzy/autocomplete
     cursor.execute(
-        """
-        CREATE VIRTUAL TABLE IF NOT EXISTS file_index_vocab
-        USING fts5vocab(file_index, 'row');
-        """
+        "CREATE VIRTUAL TABLE IF NOT EXISTS file_index_vocab USING fts5vocab(file_index, 'row');"
     )
-
     cursor.execute(
-        """
-        CREATE TABLE IF NOT EXISTS file_tags (
-            path TEXT PRIMARY KEY,
-            tags TEXT
-        );
-        """
+        "CREATE TABLE IF NOT EXISTS file_tags (path TEXT PRIMARY KEY, tags TEXT);"
     )
-
     cursor.execute(
         """
         CREATE TABLE IF NOT EXISTS file_metadata (
@@ -95,7 +113,68 @@ def connect_db():
         """
     )
 
+    conn.commit()
     return conn
+
+def _sync_path_in_db(old_path: str, new_path: str):
+    """
+    Fully synchronize a renamed file across all DB tables:
+    - Updates path in all tables
+    - Preserves hash, metadata, and tags
+    - Writes old filename into alias column
+    """
+    from pathlib import Path
+
+    old_path_str = normalize_path(old_path)
+    new_path_str = normalize_path(new_path)
+    old_name = Path(old_path_str).name
+
+    try:
+        conn = connect_db()
+        cur = conn.cursor()
+
+        # --- file_index ---
+        cur.execute(
+            """
+            UPDATE file_index
+            SET path = ?, alias = ?
+            WHERE path = ?
+            """,
+            (new_path_str, old_name, old_path_str),
+        )
+
+        # --- file_metadata ---
+        cur.execute(
+            """
+            UPDATE file_metadata
+            SET path = ?
+            WHERE path = ?
+            """,
+            (new_path_str, old_path_str),
+        )
+
+        # --- file_tags ---
+        cur.execute(
+            """
+            UPDATE file_tags
+            SET path = ?
+            WHERE path = ?
+            """,
+            (new_path_str, old_path_str),
+        )
+
+        conn.commit()
+        conn.close()
+
+        logger.info(f"🗄️ DB fully synced for rename: {old_path_str} → {new_path_str}")
+        return True
+
+    except Exception as e:
+        logger.error(f"⚠️ DB sync failed for rename {old_path_str} → {new_path_str}: {e}")
+        return False
+
+
+
 
 def regexp(pattern, string):
     if user_interrupted:
@@ -109,9 +188,9 @@ def regexp(pattern, string):
         return False
 
 
-def get_tags_for_file(file_path):
+def get_tags_for_file(file_path, db_path=None):
     file_path = normalize_path(file_path)
-    conn = connect_db()
+    conn = connect_db(db_path)
     cursor = conn.cursor()
     cursor.execute("SELECT tags FROM file_tags WHERE path = ?", (file_path,))
     row = cursor.fetchone()

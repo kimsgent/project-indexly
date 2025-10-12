@@ -1,28 +1,34 @@
 ---
 title: "Release Notes - FTS5 File Search Tool"
-subtitle: "Your local file indexing and search tool"
-description: "Indexly helps researchers and power users search Word, PDF, and text documents locally. Fast, offline, with tagging and FTS5."
-keywords: ["Word document search", "offline file search", "FTS5 search tool", "research document indexing"]
 type: docs
 toc: true
 weight: 10
 ---
 
-# Release Notes for FTS5 File Search Tool
-
-## Latest Release: v1.0.2 (2025-09-20)
+## Latest Release: v1.0.3 (2025-10-12)
 
 ### Changes
-- meta: corrected project URLs in pyproject.toml for PyPI
-- Homepage now points to Netlify site instead of GitHub
-- Documentation link updated to Netlify /docs section
-- Source and Issues remain on GitHub
-- No code or API changes in this release
+- feat(rename-file): added support for pattern-based file renaming with placeholders {date}, {title}, and {counter}
+- feat(rename-file): implemented --counter-format flag for customizable numeric padding
+- feat(rename-file): added --date-format option with validation and flexible date structures
+- feat(rename-file): introduced --dry-run preview mode for safe rename simulation
+- feat(rename-file): added directory and recursive renaming capabilities
+- feat(rename-file): enabled automatic database sync via --update-db flag
+- feat(rename-file): added per-date counters with formatting and improved collision handling
+- refactor(rename-file): optimized filename cleaning, path normalization, and DB synchronization during rename operations
+- feat(mtw): add new MTW (Minitab Worksheet) extraction feature with independent WorksheetInfo metadata and cleaning refinements
+- feat(mtw): refine MTW metadata extraction with improved structure validation and isolation for more accurate indexing
+- fix(search): correct metadata JOIN logic and cache refresh handling for more stable and accurate search results
+- fix: replace Colorama with Rich markup for consistent cross-platform search term highlighting
+- opt(fts5): improve logical expression parsing, sanitization, and query performance for complex search operators (AND, OR, NOT, NEAR)
+- opt(fts5): fine-tune FTS5 logical expression normalization with runtime NEAR/N detection for improved search accuracy
+- docs: added comprehensive Hugo documentation and examples for rename-file usage and pattern customization
 
 ---
 
 ## Archive
 
+- [Release v1.0.2](/releases/v1.0.2/) (2025-09-20)
 - [Release v1.0.1](/releases/v1.0.1/) (2025-09-20)
 - [Release v1.0.0](/releases/v1.0.0/) (2025-09-05)
 - [Release v0.9.8](/releases/v0.9.8/) (2025-08-22)

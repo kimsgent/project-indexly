@@ -1,8 +1,27 @@
 ---
 title: "Virtual Tag Detection — Examples & Tips"
+slug: "virtual-tag-detection"
+icon: "mdi:tag-multiple"
+weight: 3
+date: 2025-10-12
+summary: "Automatically detect and assign virtual tags using regex patterns during indexing."
+description: "Learn how Indexly detects virtual tags from documents using customizable regex rules. Includes practical examples, editable fields in fts_core.py, and tips for refining OCR-based tag extraction."
+keywords: [
+  "Indexly virtual tags",
+  "regex tag detection",
+  "auto tagging",
+  "metadata extraction",
+  "Indexly regex examples",
+  "document tagging automation",
+  "Python regex guide",
+  "Indexly OCR tagging",
+  "fts_core.py customization",
+  "Indexly tagging system"
+]
+cta: "Enhance your tagging system"
+link: "/docs/virtual-tags-examples/"
 type: docs
 toc: true
-weight: 15
 categories:
     - Features 
     - Advanced Usage

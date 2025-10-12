@@ -16,6 +16,7 @@ import os
 import re
 import time
 import signal
+import sqlite3
 from datetime import datetime
 from .ripple import Ripple
 from .utils import build_snippet
@@ -105,31 +106,6 @@ def refresh_cache_if_stale(cache_key, cache_entry, no_write=False):
 
     return updated_entries
 
-# --- NEAR normalization & auto-quote multi-word terms ---
-def normalize_near_term(term, near_distance=5):
-    # Respect user-provided NEAR(x)
-    if re.search(r'\bNEAR\(\d+\)\b', term, re.IGNORECASE):
-        return term
-
-    # Split on NEAR keyword
-    parts = re.split(r'\bNEAR\b', term, flags=re.IGNORECASE)
-    if len(parts) == 1:
-        return ' '.join(
-            f'"{p.strip()}"' if ' ' in p.strip() else p.strip()
-            for p in re.findall(r'\S+', term)
-        )
-
-    normalized_parts = []
-    for i, part in enumerate(parts):
-        words = part.strip().split()
-        if not words:
-            continue
-        quoted = f'"{part.strip()}"' if len(words) > 1 else part.strip()
-        normalized_parts.append(quoted)
-        if i < len(parts) - 1:
-            normalized_parts.append(f'NEAR({near_distance})')
-    return ' '.join(normalized_parts)
-
 
 # --- Hybrid fuzzy fallback (vocab expansion + refined snippets) ---
 def fuzzy_fallback(term, threshold=80, topn=5, context_chars=150, max_snippets=3):
@@ -205,8 +181,119 @@ def fuzzy_fallback(term, threshold=80, topn=5, context_chars=150, max_snippets=3
     return list(dedup.values())
 
 
-# --- Main FTS5 search ---
-# --- Main FTS5 search with unified snippet handling ---
+# ---------------------------------------------------------------------
+# --- Expression utilities
+# ---------------------------------------------------------------------
+
+# --- Precompiled regex patterns for performance ---
+_RE_NEAR = re.compile(r'\bNEAR\s*\(?\s*(\d+)?\s*\)?\b', re.IGNORECASE)
+_RE_LOGICAL = re.compile(r'\b(and|or|not)\b', re.IGNORECASE)
+_RE_TOKENIZER = re.compile(
+    r'"[^"]*"|\(|\)|\bNEAR/\d+\b|\bAND\b|\bOR\b|\bNOT\b|[^"\s()]+',
+    flags=re.IGNORECASE,
+)
+_RE_SAFE = re.compile(r'^[\w\s"\'()*+:\-~<>/]+$', re.IGNORECASE)
+
+
+def sanitize_fts_term(term: str) -> str:
+    """Ensure term contains only safe characters and valid operators."""
+    if not term or not isinstance(term, str):
+        raise ValueError("FTS term must be a non-empty string.")
+    if not _RE_SAFE.match(term):
+        raise ValueError(f"Unsafe or invalid FTS term: {term!r}")
+    return term
+
+
+# --- NEAR normalization & auto-quote multi-word terms ---
+def normalize_near_term(expr: str, near_distance: int = 5) -> str:
+    """
+    Normalize NEAR constructs:
+    - Converts `NEAR(5)` → `NEAR/5` (if supported)
+    - Falls back to plain NEAR if NEAR/x is unsupported
+    - Ensures there is a space after NEAR
+    """
+    if not expr:
+        return ""
+
+    # Replace any NEAR() or NEAR constructs with NEAR/x
+    def _near_repl(match):
+        n = match.group(1)
+        return f"NEAR/{n or near_distance} "
+
+    normalized = _RE_NEAR.sub(_near_repl, expr)
+    normalized = re.sub(r"\s{2,}", " ", normalized).strip()
+
+    # --- Runtime check for NEAR/x support ---
+    try:
+        import sqlite3
+        conn = sqlite3.connect(":memory:")
+        conn.execute("CREATE VIRTUAL TABLE t USING fts5(c)")
+        # If this fails, NEAR/x is not supported
+        conn.execute("SELECT * FROM t WHERE c MATCH 'a NEAR/5 b'")
+        conn.close()
+    except sqlite3.OperationalError:
+        # Downgrade NEAR/x → NEAR if unsupported
+        normalized = re.sub(r"NEAR/\d+", "NEAR", normalized, flags=re.IGNORECASE)
+
+    return normalized
+
+
+def contains_fts_operators(term: str) -> bool:
+    """Detect FTS5 logical operators and NEAR constructs."""
+    term_upper = term.upper()
+    return bool(re.search(r'\b(AND|OR|NOT|NEAR/?\d*)\b|\*|\(|\)|"', term_upper))
+
+
+def normalize_logical_expression(query: str, near_distance: int = 5) -> str:
+    """
+    Normalize FTS5 logical query and safely apply NEAR where possible.
+    Falls back gracefully if NEAR/N not supported.
+    """
+    import re, sqlite3
+
+    if not query or not query.strip():
+        return ""
+
+    # Basic sanitization
+    if not re.match(r'^[\w\s"\'()*+:\-~<>/]+$', query):
+        raise ValueError(f"Unsafe FTS term: {query}")
+
+    q = re.sub(r'\s+', ' ', query.strip())
+
+    # Try to detect if NEAR/N is supported in this SQLite build
+    supports_near_n = False
+    try:
+        conn = sqlite3.connect(":memory:")
+        conn.execute("CREATE VIRTUAL TABLE t USING fts5(x);")
+        conn.execute("INSERT INTO t (x) VALUES ('a b c d e f g h i j k l');")
+        conn.execute("SELECT * FROM t WHERE x MATCH 'a NEAR/3 d';")
+        supports_near_n = True
+    except sqlite3.OperationalError:
+        supports_near_n = False
+    finally:
+        conn.close()
+
+    # Apply NEAR distance only if supported
+    if supports_near_n:
+        q = re.sub(r'\bNEAR\b(?!/\d+)', f'NEAR/{near_distance}', q, flags=re.IGNORECASE)
+    else:
+        # Just ensure NEAR is uppercased and spacing normalized
+        q = re.sub(r'\bNEAR\b(?!/\d+)', 'NEAR', q, flags=re.IGNORECASE)
+
+    # Uppercase logical operators
+    q = re.sub(r'\b(and|or|not|near(?:/\d+)?)\b', lambda m: m.group(1).upper(), q, flags=re.IGNORECASE)
+
+    # Quote single terms safely
+    if not any(op in q.upper() for op in ("AND", "OR", "NOT", "NEAR")) and not re.search(r'["()]', q):
+        q = f'"{q}"'
+
+    return q
+
+
+# ---------------------------------------------------------------------
+# --- Main FTS5 search
+# ---------------------------------------------------------------------
+
 def search_fts5(
     term,
     query,
@@ -226,12 +313,16 @@ def search_fts5(
     image_created=None,
     format=None,
 ):
-    cache = load_cache() if not no_cache else {}
+    import re, sqlite3, time
+    from rich.console import Console
+    console = Console()
 
+
+    # --- Load or skip cache ---
+    cache = load_cache() if not no_cache else {}
     args_dict = {
         "term": term,
         "query": query,
-        "fts_term": normalize_near_term(term, near_distance=near_distance),
         "context_chars": context_chars,
         "filetypes": filetypes,
         "date_from": date_from,
@@ -248,28 +339,40 @@ def search_fts5(
     }
 
     key = calculate_query_hash(term, args_dict)
-    print(f"🔑 Cache key: {key}")
+    console.print(f"[bold green]Cache key:[/bold green] {key}")
 
     if key in cache:
         cached = cache[key].get("results", []) if isinstance(cache[key], dict) else cache[key]
-        print("✅ Returning cached results without refresh")
+        console.print("[green]✅ Returning cached results (no refresh)[/green]")
         return cached
 
-    conn = connect_db()
+    conn = connect_db(db_path)
+    conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
-    fts_term = normalize_near_term(term, near_distance=near_distance)
+    # --- Normalize FTS5 expression ---
+    fts_expr = normalize_logical_expression(query or term or "", near_distance)
+    if not fts_expr.strip():
+        console.print("[red]⚠️ Empty or invalid FTS expression, falling back to quoted term[/red]")
+        fts_expr = f'"{term.strip()}"'
+    console.print(f"[cyan]Normalized FTS expression:[/cyan] [white]{fts_expr}[/white]")
 
+    # --- Build base query ---
     query_parts = ["SELECT fi.path, fi.content FROM file_index fi"]
     if any([author, camera, image_created, format]):
         query_parts.append("JOIN file_metadata fm ON fi.path = fm.path")
 
-    query_parts.append("WHERE fi.content MATCH ?")
-    params = [fts_term]
+    # DO NOT use parameter substitution for MATCH
+    query_parts.append(f"WHERE fi.content MATCH {fts_expr!r}")
 
+    params = []
+
+    # --- Apply filters (each step debug printed) ---
     if tag_filter:
+        console.print(f"[magenta]Tag filter active:[/magenta] {tag_filter}")
         allowed_paths = filter_files_by_tag(tag_filter)
         if not allowed_paths:
+            console.print("[yellow]⚠️ No files match the given tag filter[/yellow]")
             conn.close()
             return []
         placeholders = ",".join("?" for _ in allowed_paths)
@@ -277,54 +380,76 @@ def search_fts5(
         params.extend(allowed_paths)
 
     if filetypes:
+        console.print(f"[magenta]Filetype filter:[/magenta] {filetypes}")
         query_parts.append(f"AND ({' OR '.join('fi.path LIKE ?' for _ in filetypes)})")
         params.extend([f"%.{ext.lstrip('.')}" for ext in filetypes])
 
     if date_from:
+        console.print(f"[magenta]Date from:[/magenta] {date_from}")
         query_parts.append("AND fi.modified >= ?")
         params.append(date_from)
     if date_to:
+        console.print(f"[magenta]Date to:[/magenta] {date_to}")
         query_parts.append("AND fi.modified <= ?")
         params.append(date_to)
     if path_contains:
+        console.print(f"[magenta]Path filter:[/magenta] {path_contains}")
         query_parts.append("AND fi.path LIKE ?")
         params.append(f"%{path_contains}%")
     if author:
+        console.print(f"[magenta]Author filter:[/magenta] {author}")
         query_parts.append("AND fm.author LIKE ?")
         params.append(f"%{author}%")
     if camera:
+        console.print(f"[magenta]Camera filter:[/magenta] {camera}")
         query_parts.append("AND fm.camera LIKE ?")
         params.append(f"%{camera}%")
     if image_created:
+        console.print(f"[magenta]Image date filter:[/magenta] {image_created}")
         query_parts.append("AND fm.image_created LIKE ?")
         params.append(f"%{image_created}%")
     if format:
+        console.print(f"[magenta]Format filter:[/magenta] {format}")
         query_parts.append("AND fm.format LIKE ?")
         params.append(f"%{format}%")
 
     query_parts.append("ORDER BY rank")
     query_str = "\n".join(query_parts)
 
+
+    # --- Execute query safely ---
     try:
         cursor.execute(query_str, params)
         rows = cursor.fetchall()
-    except Exception as e:
-        print(f"❌ MATCH query failed: {e}")
-        conn.close()
-        return []
+        console.print(f"[green]✅ Query executed successfully ({len(rows)} rows)[/green]")
+    except sqlite3.OperationalError as e:
+        console.print(f"[red]⚠️ OperationalError:[/red] {e}")
+        literal_query = " ".join(re.findall(r'\w+', term))
+        console.print(f"[yellow]Retrying with fallback literal query:[/yellow] {literal_query}")
+        fallback_query = "SELECT fi.path, fi.content FROM file_index fi WHERE fi.content MATCH ? ORDER BY rank"
+        try:
+            cursor.execute(fallback_query, [literal_query])
+            rows = cursor.fetchall()
+        except Exception as e2:
+            console.print(f"[red]❌ Fallback failed:[/red] {e2}")
+            conn.close()
+            return []
 
     conn.close()
 
+    # --- Handle no results / fuzzy fallback ---
     if not rows:
         if use_fuzzy:
-            print("🔁 No exact match. Trying fuzzy fallback...")
+            console.print("[yellow]🔁 No results, attempting fuzzy fallback...[/yellow]")
             return fuzzy_fallback(term, threshold=fuzzy_threshold, context_chars=context_chars)
-        print("❌ No results. Nothing cached.")
+        console.print("[red]❌ No results found, nothing cached.[/red]")
         return []
 
-    # --- Unified snippet extraction ---
-    search_terms = [t[0] or t[1] for t in re.findall(r'"([^"]+)"|\b([\w-]+)\b', term) if t[0] or t[1]]
+    # --- Extract search tokens ---
+    all_tokens = [t[0] or t[1] for t in re.findall(r'"([^"]+)"|\b([\w-]+)\b', term) if t[0] or t[1]]
+    search_terms = [t for t in all_tokens if t.upper() not in ("AND", "OR", "NOT")]
 
+    # --- Build results ---
     serializable_results = [
         {
             "path": normalize_path(row["path"]),
@@ -333,12 +458,12 @@ def search_fts5(
         }
         for row in rows
     ]
-
     serializable_results = enrich_results_with_tags(serializable_results)
 
-    # Save to cache
+    # --- Cache results ---
     cache[key] = {"timestamp": time.time(), "results": serializable_results}
     save_cache(cache)
+    console.print("[green]💾 Cached results successfully.[/green]")
 
     return serializable_results
 
@@ -380,7 +505,7 @@ def search_regex(
         else:
             print("⚠️ Cached result was empty. Falling back to DB...")
 
-    conn = connect_db()
+    conn = connect_db(db_path)
     cursor = conn.cursor()
 
     words = list(set(re.findall(r"[a-zA-ZÄÖÜäöüß]{4,}", pattern)))

@@ -17,16 +17,17 @@ from .config import PROFILE_FILE
 from .cache_utils import save_cache, load_cache
 from .path_utils import normalize_path
 from .migration_manager import run_migrations
+from .rename_utils import SUPPORTED_DATE_FORMATS
 
 # CLI display configurations here
 command_titles = {
     "index": "[I] n  d  e  x  i  n  g",
     "search": "[S] e  a  r  c  h  i  n  g",
-    "regex": "[R] e  g  e  x     S  e  a  r  c  h",
-    "tag": "[T] a  g     M  a  n  a  g  e  m  e  n  t",
+    "regex": "[R] e  g  e  x   S  e  a  r  c  h",
+    "tag": "[T] a  g   M  a  n  a  g  e  m  e  n  t",
     "watch": "[W] a  t  c  h  i  n  g     F  o  l  d  e  r  s",
     "stats": "[S] t  a  t  i  s  t  i  c  s",
-    "analyze-csv": "[C] S  V     A  n  a  l  y  s  i  s",
+    "analyze-csv": "[C] S  V   A  n  a  l  y  s  i  s",
 }
 # --------------------------------------------------------------------------------
 
@@ -46,7 +47,12 @@ def add_common_arguments(parser):
     parser.add_argument(
         "--context", type=int, default=150, help="Context characters around match"
     )
-    parser.add_argument("--no-cache", action="store_true", help="Disable cache")
+    parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Skip reading/writing cached search results",
+    )
+
     parser.add_argument(
         "--export-format", choices=["txt", "md", "pdf", "json"], help="Export format"
     )
@@ -68,6 +74,8 @@ def build_parser():
         run_stats,
         run_analyze_csv,
         run_watch,
+        handle_extract_mtw,
+        handle_rename_file,
     )
 
     parser = argparse.ArgumentParser(
@@ -82,6 +90,11 @@ def build_parser():
     index_parser = subparsers.add_parser("index", help="Index files in a folder")
     index_parser.add_argument("folder", help="Folder to index")
     index_parser.add_argument("--filetype", help="Filter by filetype (e.g. .pdf)")
+    index_parser.add_argument(
+        "--mtw-extended",
+        action="store_true",
+        help="Enable extended MTW extraction (extra streams, extra metadata)",
+    )
     index_parser.set_defaults(func=handle_index)
 
     # Search
@@ -103,7 +116,9 @@ def build_parser():
     )
     search_parser.add_argument("--author", help="Filter by author metadata")
     search_parser.add_argument("--camera", help="Filter by camera metadata")
-    search_parser.add_argument("--image_created", help="Filter by image creation date")
+    search_parser.add_argument(
+        "--image-created", dest="image_created", help="Filter by image creation date"
+    )
     search_parser.add_argument("--format", help="Filter by format")
     search_parser.add_argument("--save-profile", help="Save search profile name")
     search_parser.add_argument("--profile", help="Load search profile name")
@@ -149,7 +164,61 @@ def build_parser():
     stats_parser = subparsers.add_parser("stats", help="Show database statistics")
     stats_parser.set_defaults(func=run_stats)
 
-# Migrate
+    # Extract MTW
+    extract_mtw_parser = subparsers.add_parser(
+        "extract-mtw", help="Extract files from a .mtw file (Minitab Worksheet)"
+    )
+    extract_mtw_parser.add_argument("file", help="Path to the .mtw file")
+    extract_mtw_parser.add_argument(
+        "--output",
+        "-o",
+        default=".",
+        help="Directory to extract files into (default: current folder)",
+    )
+    extract_mtw_parser.set_defaults(func=handle_extract_mtw)
+
+    # Rename File(s)
+    rename_file_parser = subparsers.add_parser(
+        "rename-file",
+        help="Rename a file or all files in a directory according to a pattern",
+    )
+    rename_file_parser.add_argument(
+        "path", help="Path to a file or directory to rename"
+    )
+    rename_file_parser.add_argument(
+        "--pattern", help="Renaming pattern (supports {date}, {title}, {counter})"
+    )
+    rename_file_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show what would be renamed without making changes",
+    )
+    rename_file_parser.add_argument(
+        "--recursive",
+        action="store_true",
+        help="Recursively rename all files in the given directory",
+    )
+    rename_file_parser.add_argument(
+        "--update-db",
+        action="store_true",
+        help="Also update database paths after renaming",
+    )
+    rename_file_parser.add_argument(
+        "--date-format",
+        type=str,
+        choices=SUPPORTED_DATE_FORMATS,
+        default="%Y%m%d",
+        help="Specify date format to use in filename (default: %%Y%%m%%d)",
+    )
+    rename_file_parser.add_argument(
+        "--counter-format",
+        default="d",
+        help="Format for counter (e.g. 02d, 03d, d). Default: plain integer.",
+    )
+
+    rename_file_parser.set_defaults(func=handle_rename_file)
+
+    # Migrate
     migrate_parser = subparsers.add_parser(
         "migrate",
         help="Database migration and schema management (adds missing tables/columns and updates FTS5 prefix/vocab)",
@@ -212,21 +281,19 @@ def build_parser():
         )
     )
 
-
     return parser
 
 
-def add_tags_to_file(file_path, tags):
+def add_tags_to_file(file_path, tags, db_path=None):
     file_path = normalize_path(file_path)
     tags = [t.strip().lower() for t in tags if t.strip()]
 
-    conn = connect_db()
+    conn = connect_db(db_path)
     cursor = conn.cursor()
     cursor.execute("SELECT tags FROM file_tags WHERE path = ?", (file_path,))
     existing_tags = (row := cursor.fetchone()) and row["tags"].split(",") or []
     existing_tags = [t.strip().lower() for t in existing_tags if t.strip()]
 
-    # Merge and deduplicate
     all_tags = sorted(set(existing_tags + tags))
     tag_str = ",".join(all_tags)
 
@@ -238,11 +305,11 @@ def add_tags_to_file(file_path, tags):
     conn.close()
 
 
-def add_tag_to_file(file_path, new_tag):
+def add_tag_to_file(file_path, new_tag, db_path=None):
     file_path = normalize_path(file_path)
     new_tag = new_tag.strip().lower()
 
-    conn = connect_db()
+    conn = connect_db(db_path)
     cursor = conn.cursor()
     cursor.execute("SELECT tags FROM file_tags WHERE path = ?", (file_path,))
     tags = (row := cursor.fetchone()) and row["tags"].split(",") or []
@@ -270,21 +337,20 @@ def add_tag_to_file(file_path, new_tag):
     conn.close()
 
 
-def filter_files_by_tag(tag):
-    conn = connect_db()
+def filter_files_by_tag(tag, db_path=None):
+    conn = connect_db(db_path)
     cursor = conn.cursor()
     cursor.execute("SELECT path FROM file_tags WHERE tags LIKE ?", (f"%{tag}%",))
     rows = cursor.fetchall()
     conn.close()
-    # normalize results on read
     return [normalize_path(row["path"]) for row in rows]
 
 
-def remove_tag_from_file(file_path, tag_to_remove):
+def remove_tag_from_file(file_path, tag_to_remove, db_path=None):
     file_path = normalize_path(file_path)
     tag_to_remove = tag_to_remove.strip().lower()
 
-    conn = connect_db()
+    conn = connect_db(db_path)
     cursor = conn.cursor()
     cursor.execute("SELECT tags FROM file_tags WHERE path = ?", (file_path,))
     if (row := cursor.fetchone()) and row["tags"]:

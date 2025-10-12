@@ -29,9 +29,11 @@ from .ripple import Ripple
 from rich import print as rprint
 from rapidfuzz import fuzz
 from .filetype_utils import extract_text_from_file, SUPPORTED_EXTENSIONS
-from .db_utils import connect_db, get_tags_for_file
+from .db_utils import connect_db, get_tags_for_file, _sync_path_in_db
 from .search_core import search_fts5, search_regex, normalize_near_term
 from .extract_utils import update_file_metadata
+from .mtw_extractor import _extract_mtw
+from .rename_utils import rename_file, rename_files_in_dir, SUPPORTED_DATE_FORMATS
 from .profiles import (
     save_profile,
     apply_profile,
@@ -43,8 +45,7 @@ from .cli_utils import (
     apply_profile_to_args,
     command_titles,
     get_search_term,
-    build_parser
-
+    build_parser,
 )
 from .output_utils import print_search_results, print_regex_results
 from pathlib import Path
@@ -63,62 +64,105 @@ logging.getLogger("extract_msg").setLevel(logging.ERROR)
 logging.getLogger("fontTools").setLevel(logging.ERROR)
 
 
+db_lock = asyncio.Lock()
 
-async def async_index_file(full_path):
+
+async def async_index_file(full_path, mtw_extended=False):
     from .fts_core import calculate_hash
 
+    """
+    Index a single file asynchronously without attempting to sync renames in the DB.
+    """
     full_path = normalize_path(full_path)
 
     try:
-        content, metadata = extract_text_from_file(full_path)
+        # --- Handle MTW archives ---
+        if full_path.lower().endswith(".mtw"):
+            extracted_files = _extract_mtw(full_path, extended=mtw_extended)
+            if not extracted_files:
+                print(f"⚠️ No extractable content in: {full_path}")
+                return
 
-        # Fallback: if extractor returned a dict somehow
-        if isinstance(content, dict):
-            content = " ".join(f"{k}:{v}" for k, v in content.items())
+            stub_content = f"MTW Archive: {os.path.basename(full_path)}"
+            file_hash = calculate_hash(stub_content)
+            last_modified = datetime.fromtimestamp(
+                os.path.getmtime(full_path)
+            ).isoformat()
 
-        # Skip files without indexable content or metadata
-        if not content and not metadata:
-            print(f"⏭️ Skipped (no content and no metadata): {full_path}")
+            async with db_lock:
+                conn = connect_db()
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM file_index WHERE path = ?", (full_path,))
+                cursor.execute(
+                    "INSERT INTO file_index (path, content, modified, hash) VALUES (?, ?, ?, ?)",
+                    (full_path, stub_content, last_modified, file_hash),
+                )
+                conn.commit()
+                conn.close()
+
+            # Index extracted files
+            tasks = [
+                async_index_file(f, mtw_extended=mtw_extended) for f in extracted_files
+            ]
+            await asyncio.gather(*tasks)
             return
 
-        # Store metadata if present and build FTS content including filename
+        # --- Extract content & metadata ---
+        content, metadata = extract_text_from_file(full_path)
+        if isinstance(content, dict):
+            content = " ".join(f"{k}:{v}" for k, v in content.items())
+        if not content and not metadata:
+            print(f"⏭️ Skipped (no content or metadata): {full_path}")
+            return
+
         if metadata:
-            content = update_file_metadata(full_path, metadata)
-            print(f"🖼️ Metadata stored for file: {full_path}")
+            update_file_metadata(full_path, metadata)
+            extra_fields = [
+                str(metadata[k])
+                for k in ("source", "author", "subject", "title", "format", "camera")
+                if metadata.get(k)
+            ]
+            if extra_fields:
+                content = (content or "") + " ; " + " ; ".join(extra_fields)
 
-        # Fallback: ensure there is at least the filename
         if not content:
-            content = f"Image: {os.path.basename(full_path)}"
+            content = f"File: {os.path.basename(full_path)}"
 
-        # Compute file hash
         file_hash = calculate_hash(content)
         last_modified = datetime.fromtimestamp(os.path.getmtime(full_path)).isoformat()
 
-        conn = connect_db()
-        cursor = conn.cursor()
+        # --- DB operations serialized ---
+        async with db_lock:
+            conn = connect_db()
+            cursor = conn.cursor()
 
-        # Skip unchanged files
-        cursor.execute("SELECT hash FROM file_index WHERE path = ?", (full_path,))
-        if (row := cursor.fetchone()) and row["hash"] == file_hash:
-            print(f"⏭️ Skipped (unchanged): {full_path}")
+            # Skip unchanged file
+            cursor.execute("SELECT hash FROM file_index WHERE path = ?", (full_path,))
+            row = cursor.fetchone()
+            if row and row["hash"] == file_hash:
+                conn.close()
+                print(f"⏭️ Skipped unchanged: {full_path}")
+                return
+
+            # Insert/update index and ensure metadata exists
+            cursor.execute("DELETE FROM file_index WHERE path = ?", (full_path,))
+            cursor.execute(
+                "INSERT INTO file_index (path, content, modified, hash) VALUES (?, ?, ?, ?)",
+                (full_path, content, last_modified, file_hash),
+            )
+            cursor.execute(
+                "INSERT OR REPLACE INTO file_metadata (path) VALUES (?)", (full_path,)
+            )
+            conn.commit()
             conn.close()
-            return
 
-        # Insert/update FTS index
-        cursor.execute("DELETE FROM file_index WHERE path = ?", (full_path,))
-        cursor.execute(
-            "INSERT INTO file_index (path, content, modified, hash) VALUES (?, ?, ?, ?)",
-            (full_path, content, last_modified, file_hash),
-        )
-        conn.commit()
-        conn.close()
         print(f"✅ Indexed: {full_path}")
 
     except Exception as e:
         print(f"⚠️ Failed to index {full_path}: {e}")
 
 
-async def scan_and_index_files(root_dir: str):
+async def scan_and_index_files(root_dir: str, mtw_extended=False):
     root_dir = normalize_path(root_dir)
 
     conn = connect_db()
@@ -132,7 +176,7 @@ async def scan_and_index_files(root_dir: str):
         for f in files
         if Path(f).suffix.lower() in SUPPORTED_EXTENSIONS
     ]
-    tasks = [async_index_file(path) for path in file_paths]
+    tasks = [async_index_file(path, mtw_extended=mtw_extended) for path in file_paths]
     await asyncio.gather(*tasks)
 
     clean_cache_duplicates()
@@ -185,14 +229,14 @@ def run_stats(args):
 
 
 # Configure logging
-#logging.basicConfig(
+# logging.basicConfig(
 #    level=logging.INFO,
 #    format="%(asctime)s - %(levelname)s - %(message)s",
 #    handlers=[
 #        logging.StreamHandler(sys.stdout),
 #        logging.FileHandler("indexly.log", mode="w", encoding="utf-8"),
 #    ],
-#)
+# )
 
 
 def handle_index(args):
@@ -200,7 +244,12 @@ def handle_index(args):
     ripple.start()
     try:
         logging.info("Indexing started.")
-        indexed_files = asyncio.run(scan_and_index_files(normalize_path(args.folder)))
+        indexed_files = asyncio.run(
+            scan_and_index_files(
+                root_dir=normalize_path(args.folder),
+                mtw_extended=args.mtw_extended,
+            )
+        )
         logging.info("Indexing completed.")
 
     finally:
@@ -210,17 +259,18 @@ def handle_index(args):
 def handle_search(args):
     term_cli = get_search_term(args)
 
-    # Profile-only search
-    prof = None
+    if not term_cli:
+        print("❌ No search term provided.")
+        return
+
+    # Profile-only mode
     if getattr(args, "profile", None):
         from .profiles import load_profile, filter_saved_results
 
         prof = load_profile(args.profile)
         if prof and prof.get("results"):
             results = filter_saved_results(prof["results"], term_cli)
-            print(
-                f"Searching '{term_cli or prof.get('term') or ''}' (profile-only: {args.profile})"
-            )
+            print(f"Searching '{term_cli or prof.get('term')}' (profile-only: {args.profile})")
             if results:
                 print_search_results(results, term_cli or prof.get("term", ""))
                 if args.export_format:
@@ -234,22 +284,13 @@ def handle_search(args):
                 print("🔍 No matches found in saved profile results.")
             return
 
-    # DB/FTS search
-    term = term_cli
-    if not term:
-        print("❌ No search term provided.")
-        return
-
-    no_cache_flag = True if getattr(args, "profile", None) else args.no_cache
-    fts_term = normalize_near_term(term, near_distance=args.near_distance)
-
-    ripple = Ripple(f"Searching '{term}'", speed="medium", rainbow=True)
+    ripple = Ripple(f"Searching '{term_cli}'", speed="medium", rainbow=True)
     ripple.start()
 
     try:
         results = search_fts5(
-            term=term,
-            query=fts_term,
+            term=term_cli,
+            query=None,  # ← no need to pass normalized term
             db_path=getattr(args, "db", DB_FILE),
             context_chars=args.context,
             filetypes=args.filetype,
@@ -263,22 +304,20 @@ def handle_search(args):
             camera=getattr(args, "camera", None),
             image_created=getattr(args, "image_created", None),
             format=getattr(args, "format", None),
-            no_cache=no_cache_flag,
+            no_cache=args.no_cache,
             near_distance=args.near_distance,
         )
-
-
     finally:
         ripple.stop()
 
     if results:
-        print_search_results(results, term, context_chars=args.context)
+        print_search_results(results, term_cli, context_chars=args.context)
         if args.export_format:
             export_results_to_format(
                 results,
                 args.output or f"search_results.{args.export_format}",
                 args.export_format,
-                term,
+                term_cli,
             )
     else:
         print("🔍 No matches found.")
@@ -323,7 +362,7 @@ def handle_regex(args):
         print("🔍 No regex matches found.")
 
 
-def handle_tag(args):
+def handle_tag(args, db_path=None):
     # Trap missing files/tags early
     if args.tag_action in {"add", "remove"}:
         if not args.files:
@@ -352,9 +391,9 @@ def handle_tag(args):
         for file in all_files:
             for tag in args.tags:
                 if args.tag_action == "add":
-                    add_tag_to_file(file, tag)
+                    add_tag_to_file(file, tag, db_path=db_path)
                 elif args.tag_action == "remove":
-                    remove_tag_from_file(file, tag)
+                    remove_tag_from_file(file, tag, db_path=db_path)
 
         action_emoji = "🏷️" if args.tag_action == "add" else "❌"
         print(
@@ -366,8 +405,9 @@ def handle_tag(args):
             print("⚠️ Please provide a file with --file when using 'list'.")
             return
         norm = normalize_path(args.file)
-        tags = get_tags_for_file(norm)
+        tags = get_tags_for_file(norm, db_path=db_path)
         print(f"📂 {args.file} has tags: {tags if tags else 'No tags'}")
+
 
 def run_watch(args):
 
@@ -402,10 +442,93 @@ def run_analyze_csv(args):
         ripple.stop()
 
 
+def handle_extract_mtw(args):
+    # Normalize inputs
+    file_path = normalize_path(args.file)
+    output_dir = (
+        normalize_path(args.output) if args.output else os.path.dirname(file_path)
+    )
+
+    print(f"📂 Extracting MTW file: {file_path}")
+
+    try:
+        extracted_files = _extract_mtw(file_path, output_dir)
+    except Exception as e:
+        print(f"❌ Error extracting MTW file: {e}")
+        return
+
+    if not extracted_files:
+        print("⚠️ No files extracted (empty or invalid MTW).")
+        return
+
+    print(f"✅ Files successfully extracted to: {normalize_path(output_dir)}")
+    for f in extracted_files:
+        print(f"   - {normalize_path(f)}")
+
+
+def handle_rename_file(args):
+    """
+    Handle renaming of a file or all files in a directory,
+    and immediately update DB to reflect the change.
+    """
+
+    path = Path(args.path)
+    if not path.exists():
+        print(f"⚠️ Path not found: {path}")
+        return
+
+    # Determine valid date format
+    date_format = (
+        args.date_format
+        if hasattr(args, "date_format") and args.date_format in SUPPORTED_DATE_FORMATS
+        else "%Y%m%d"
+    )
+
+    # Determine counter format (default = plain integer)
+    counter_format = (
+        args.counter_format if hasattr(args, "counter_format") else "d"
+    )
+
+    # --- Directory handling ---
+    if path.is_dir():
+        rename_files_in_dir(
+            str(path),
+            pattern=args.pattern,
+            dry_run=args.dry_run,
+            recursive=args.recursive,
+            update_db=args.update_db,
+            date_format=date_format,
+            counter_format=counter_format,
+        )
+        return
+
+    # --- Single file handling ---
+    new_path = rename_file(
+        str(path),
+        pattern=args.pattern,
+        dry_run=args.dry_run,
+        update_db=args.update_db,
+        date_format=date_format,
+        counter_format=counter_format,
+    )
+
+    # --- Sync rename in DB immediately ---
+    if not args.dry_run:
+        try:
+            _sync_path_in_db(str(path), str(new_path))
+        except Exception as e:
+            print(f"⚠️ DB sync after rename failed: {e}")
+
+    # --- Output ---
+    if args.dry_run:
+        print(f"[Dry-run] Would rename: {path} → {new_path}")
+    else:
+        print(f"✅ Renamed and synced: {path} → {new_path}")
+
+
 def main():
     parser = build_parser()
     args = parser.parse_args()
-
 
     if hasattr(args, "profile") and args.profile:
         profile_data = apply_profile(args.profile)
@@ -417,7 +540,6 @@ def main():
 
     if hasattr(args, "func"):
         args.func(args)
-
 
 
 if __name__ == "__main__":
