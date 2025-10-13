@@ -18,6 +18,7 @@ from .cache_utils import save_cache, load_cache
 from .path_utils import normalize_path
 from .migration_manager import run_migrations
 from .rename_utils import SUPPORTED_DATE_FORMATS
+from .db_update import check_schema, apply_migrations
 
 # CLI display configurations here
 command_titles = {
@@ -76,6 +77,7 @@ def build_parser():
         run_watch,
         handle_extract_mtw,
         handle_rename_file,
+        handle_update_db,
     )
 
     parser = argparse.ArgumentParser(
@@ -280,6 +282,29 @@ def build_parser():
             args.db, last=args.last
         )
     )
+    
+    # -------------------------------------------------------------------
+    # update-db command
+    # -------------------------------------------------------------------
+    update_db = subparsers.add_parser(
+        "update-db",
+        help="Quickly check or apply database schema updates (without backups)."
+    )
+
+    update_db.add_argument(
+        "--db",
+        type=str,
+        default=None,
+        help="Path to database file (default: uses DB_FILE from config)"
+    )
+
+    update_db.add_argument(
+        "--apply",
+        action="store_true",
+        help="Apply schema fixes instead of just checking."
+    )
+
+    update_db.set_defaults(func=lambda args: handle_update_db(args))
 
     return parser
 

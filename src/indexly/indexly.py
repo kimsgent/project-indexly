@@ -52,6 +52,7 @@ from pathlib import Path
 
 from .config import DB_FILE
 from .path_utils import normalize_path
+from .db_update import check_schema, apply_migrations
 
 
 # Force UTF-8 output encoding (Recommended for Python 3.7+)
@@ -525,6 +526,21 @@ def handle_rename_file(args):
     else:
         print(f"✅ Renamed and synced: {path} → {new_path}")
 
+def handle_update_db(args):
+    """Handle the update-db CLI command."""
+    import sqlite3
+    from indexly.db_utils import connect_db
+
+    print("🔧 Checking database schema...")
+    conn = connect_db(args.db) if args.db else connect_db()
+
+    if args.apply:
+        print("🛠️ Applying schema updates...")
+        apply_migrations(conn)
+    else:
+        check_schema(conn)
+    conn.close()
+    print("✅ Done.")
 
 def main():
     parser = build_parser()
