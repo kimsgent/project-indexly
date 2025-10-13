@@ -22,7 +22,6 @@ EXPECTED_SCHEMA = {
             content,
             clean_content,
             modified,
-            alias,
             hash,
             tag,
             tokenize='porter',
@@ -48,9 +47,8 @@ EXPECTED_SCHEMA = {
     """,
     "file_tags": """
         CREATE TABLE IF NOT EXISTS file_tags (
-            path TEXT,
-            tag TEXT,
-            PRIMARY KEY (path, tag)
+            path TEXT PRIMARY KEY,
+            tags TEXT
         );
     """,
 }

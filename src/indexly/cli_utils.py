@@ -78,6 +78,7 @@ def build_parser():
         handle_extract_mtw,
         handle_rename_file,
         handle_update_db,
+        handle_show_help,
     )
 
     parser = argparse.ArgumentParser(
@@ -131,6 +132,16 @@ def build_parser():
     regex_parser.add_argument("pattern", help="Regex pattern")
     regex_parser.add_argument("--db", default="index.db", help="Database path")
     add_common_arguments(regex_parser)
+
+    # Add profile save/load support
+    regex_parser.add_argument(
+        "--save-profile",
+        help="Save this regex search as a profile (parameters + results)",
+    )
+    regex_parser.add_argument(
+        "--profile", help="Load a saved profile and optionally filter its results"
+    )
+
     regex_parser.set_defaults(func=handle_regex)
 
     # Tag
@@ -282,29 +293,44 @@ def build_parser():
             args.db, last=args.last
         )
     )
-    
+
     # -------------------------------------------------------------------
     # update-db command
     # -------------------------------------------------------------------
     update_db = subparsers.add_parser(
         "update-db",
-        help="Quickly check or apply database schema updates (without backups)."
+        help="Quickly check or apply database schema updates (without backups).",
     )
 
     update_db.add_argument(
         "--db",
         type=str,
         default=None,
-        help="Path to database file (default: uses DB_FILE from config)"
+        help="Path to database file (default: uses DB_FILE from config)",
     )
 
     update_db.add_argument(
         "--apply",
         action="store_true",
-        help="Apply schema fixes instead of just checking."
+        help="Apply schema fixes instead of just checking.",
     )
 
     update_db.set_defaults(func=lambda args: handle_update_db(args))
+
+    # -------------------------------------------------------------------
+    # show-help command
+    # -------------------------------------------------------------------
+
+    show_help_parser = subparsers.add_parser(
+        "show-help", help="Display help for all Indexly commands"
+    )
+    show_help_parser.add_argument(
+        "--markdown", action="store_true", help="Output as Markdown for docs"
+    )
+    show_help_parser.add_argument(
+        "--details", action="store_true", help="Show detailed help for each command"
+    )
+    show_help_parser.set_defaults(func=handle_show_help)
 
     return parser
 

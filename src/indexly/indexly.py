@@ -258,16 +258,23 @@ def handle_index(args):
 
 
 def handle_search(args):
+    """Handle the `indexly search` command."""
+    from .profiles import (
+        load_profile,
+        filter_saved_results,
+        save_profile,
+    )
+
     term_cli = get_search_term(args)
 
     if not term_cli:
         print("❌ No search term provided.")
         return
 
-    # Profile-only mode
+    # ─────────────────────────────────────────────
+    # PROFILE-ONLY MODE: reuse stored results
+    # ─────────────────────────────────────────────
     if getattr(args, "profile", None):
-        from .profiles import load_profile, filter_saved_results
-
         prof = load_profile(args.profile)
         if prof and prof.get("results"):
             results = filter_saved_results(prof["results"], term_cli)
@@ -285,13 +292,16 @@ def handle_search(args):
                 print("🔍 No matches found in saved profile results.")
             return
 
+    # ─────────────────────────────────────────────
+    # LIVE SEARCH MODE
+    # ─────────────────────────────────────────────
     ripple = Ripple(f"Searching '{term_cli}'", speed="medium", rainbow=True)
     ripple.start()
 
     try:
         results = search_fts5(
             term=term_cli,
-            query=None,  # ← no need to pass normalized term
+            query=None,  # normalized term not required
             db_path=getattr(args, "db", DB_FILE),
             context_chars=args.context,
             filetypes=args.filetype,
@@ -311,6 +321,9 @@ def handle_search(args):
     finally:
         ripple.stop()
 
+    # ─────────────────────────────────────────────
+    # DISPLAY RESULTS
+    # ─────────────────────────────────────────────
     if results:
         print_search_results(results, term_cli, context_chars=args.context)
         if args.export_format:
@@ -320,11 +333,18 @@ def handle_search(args):
                 args.export_format,
                 term_cli,
             )
+
+        # 🟢 SAVE PROFILE if requested
+        if getattr(args, "save_profile", None):
+            save_profile(args.save_profile, args, results)
+            print(f"💾 Profile '{args.save_profile}' saved with {len(results)} result(s).")
+
     else:
         print("🔍 No matches found.")
 
 
 def handle_regex(args):
+    from .profiles import save_profile  # ensure import
     ripple = Ripple("Regex Search", speed="fast", rainbow=True)
     ripple.start()
 
@@ -359,6 +379,10 @@ def handle_regex(args):
         if getattr(args, "export_format", None):
             output_file = args.output or f"regex_results.{args.export_format}"
             export_results_to_format(results, output_file, args.export_format, pattern)
+
+        # ✅ Save profile if requested
+        if getattr(args, "save_profile", None):
+            save_profile(args.save_profile, args, results)
     else:
         print("🔍 No regex matches found.")
 
@@ -542,6 +566,98 @@ def handle_update_db(args):
     conn.close()
     print("✅ Done.")
 
+def handle_show_help(args):
+    """Display CLI help for all commands, with optional Markdown or detailed output."""
+    import argparse
+    from textwrap import indent
+    from indexly.indexly import build_parser  # adjust import if needed
+
+    parser = build_parser()
+
+    categories = {
+        "Indexing & Watching": ["index", "watch"],
+        "Searching": ["search", "regex"],
+        "Tagging & File Operations": ["tag", "rename-file"],
+        "Analysis & Extraction": ["analyze-csv", "extract-mtw"],
+        "Database Maintenance": ["update-db", "migrate", "stats"],
+        "Meta": ["show-help"],
+    }
+
+    # collect subcommands
+    subparsers = {}
+    for action in parser._subparsers._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            subparsers.update(action.choices)
+
+    def extract_summary(subparser):
+        """Return the first meaningful line of help text."""
+        help_lines = subparser.format_help().splitlines()
+        for line in help_lines:
+            line = line.strip()
+            if not line or line.lower().startswith("usage:") or line.lower().startswith("options"):
+                continue
+            return line
+        return "(no description)"
+
+    # Markdown output
+    if getattr(args, "markdown", False):
+        print("# 🧭 Indexly Command Reference\n")
+        print("A categorized overview of all Indexly commands and their purpose.\n")
+        for category, cmd_list in categories.items():
+            print(f"## {category}\n")
+            print("| Command | Description |")
+            print("|----------|-------------|")
+            for cmd in cmd_list:
+                sp = subparsers.get(cmd)
+                if not sp:
+                    continue
+                desc = extract_summary(sp)
+                print(f"| `{cmd}` | {desc} |")
+            print()
+        print("_Use `indexly <command> --help` for detailed usage instructions._\n")
+        return
+
+    # CLI output (terminal)
+    print("\n📚 **Indexly Commands Overview**\n")
+
+    for category, cmd_list in categories.items():
+        print(f"🔹 {category}")
+        for cmd in cmd_list:
+            sp = subparsers.get(cmd)
+            if not sp:
+                continue
+            desc = extract_summary(sp)
+            print(f"   • {cmd:<15} — {desc}")
+
+            if getattr(args, "details", False):
+                # Only show the concise usage block, not the entire argparse dump
+                usage_line = next(
+                    (l.strip() for l in sp.format_help().splitlines() if l.strip().startswith("usage:")),
+                    None,
+                )
+                if usage_line:
+                    print(indent(f"\n{usage_line}\n", "      "))
+
+                # Show only the "options" section in indented style
+                help_lines = sp.format_help().splitlines()
+                options_section = []
+                capture = False
+                for line in help_lines:
+                    if line.strip().lower().startswith("options"):
+                        capture = True
+                        continue
+                    if capture:
+                        if line.strip() == "":
+                            break
+                        options_section.append(line)
+                if options_section:
+                    print(indent("\n".join(options_section) + "\n", "      "))
+
+        print()
+
+    print("💡 Tip: Use `indexly <command> --help` for full details.\n")
+
+
 def main():
     parser = build_parser()
     args = parser.parse_args()
@@ -550,9 +666,6 @@ def main():
         profile_data = apply_profile(args.profile)
         if profile_data:
             args = apply_profile_to_args(args, profile_data)
-
-    if getattr(args, "save_profile", None):
-        save_profile(args.save_profile, args)
 
     if hasattr(args, "func"):
         args.func(args)
