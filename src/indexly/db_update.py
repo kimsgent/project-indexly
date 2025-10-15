@@ -171,8 +171,27 @@ def apply_migrations(conn, dry_run=False):
 
     for table, msg, missing_cols in diffs:
         print(f"\n🔧 Updating {table}: {msg}")
+
+        # ⚠️ FTS5-specific warning before rebuild
         if "FTS5" in msg:
-            _rebuild_fts5_table(conn, table, EXPECTED_SCHEMA[table])
+            print("\n⚠️ WARNING: Rebuilding FTS5 tables will overwrite all existing `path` values with `None`.")
+            print("   Searches will still function, but file paths will be lost until re-indexed.")
+            print("   This operation is irreversible without a backup.\n")
+
+            user_input = input("Proceed with FTS rebuild for this table? (y/N): ").strip().lower()
+            if user_input != "y":
+                print(f"🚫 Skipping rebuild of {table} by user choice.")
+                continue
+
+            db_path = None
+            try:
+                # Get database path from the connection if possible
+                db_path = conn.execute("PRAGMA database_list;").fetchone()[2]
+            except Exception:
+                pass
+
+            _rebuild_fts5_table(conn, table, EXPECTED_SCHEMA[table], Path(db_path) if db_path else None)
+
         elif "ALTER" in msg:
             for col in missing_cols:
                 try:
@@ -180,6 +199,7 @@ def apply_migrations(conn, dry_run=False):
                     print(f"  ➕ Added column '{col}' to {table}")
                 except sqlite3.OperationalError as e:
                     print(f"  ⚠️ Could not add {col}: {e}")
+
         elif "Missing table" in msg:
             conn.execute(EXPECTED_SCHEMA[table])
             print(f"  🆕 Created new table: {table}")
@@ -205,6 +225,9 @@ def _rebuild_fts5_table(conn, table_name: str, expected_sql: str, db_path: Path 
     cursor = conn.cursor()
     tmp_table = f"{table_name}_new"
     print(f"  🔄 Attempting safe rebuild of FTS5 table '{table_name}'...")
+
+    if table_name == "file_index":
+        print("⚠️ Confirmed rebuild of file_index — paths will reset to None. Ensure you re-run `indexly index` after migration.")
 
     # Step 0: Create a timestamped backup before touching data
     if db_path and db_path.exists():

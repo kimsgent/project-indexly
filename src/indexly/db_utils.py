@@ -103,7 +103,7 @@ def connect_db(db_path: str | None = None):
             created TEXT,
             last_modified TEXT,
             last_modified_by TEXT,
-            alias, TEXT
+            alias TEXT,
             camera TEXT,
             image_created TEXT,
             dimensions TEXT,
