@@ -552,17 +552,16 @@ def handle_rename_file(args):
 
 def handle_update_db(args):
     """Handle the update-db CLI command."""
-    import sqlite3
-    from indexly.db_utils import connect_db
 
     print("🔧 Checking database schema...")
     conn = connect_db(args.db) if args.db else connect_db()
 
     if args.apply:
         print("🛠️ Applying schema updates...")
-        apply_migrations(conn)
+        apply_migrations(conn, dry_run=False)
     else:
-        check_schema(conn)
+        apply_migrations(conn, dry_run=True)
+
     conn.close()
     print("✅ Done.")
 

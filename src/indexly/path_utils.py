@@ -1,7 +1,7 @@
 import os
 import sys
 
-def normalize_path(path: str) -> str:
+def normalize_path(path: str | None) -> str | None:
     """
     Normalize file paths for consistent comparison and storage.
 
@@ -14,6 +14,11 @@ def normalize_path(path: str) -> str:
     - Lowercases only on Windows (case-insensitive FS),
       but preserves drive letter uppercase for readability
     """
+
+    # ✅ Handle None or empty strings gracefully
+    if not path:
+        return None
+
     try:
         # Expand ~ and environment variables
         path = os.path.expandvars(os.path.expanduser(path))
@@ -47,6 +52,10 @@ def normalize_path(path: str) -> str:
 
         return norm
 
-    except Exception:
-        # Fallback: return absolute path to avoid relative surprises
-        return os.path.abspath(path)
+    except Exception as e:
+        print(f"⚠️ Failed to normalize path '{path}': {e}")
+        try:
+            # Fallback: return absolute path if possible
+            return os.path.abspath(path)
+        except Exception:
+            return None

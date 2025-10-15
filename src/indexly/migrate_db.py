@@ -12,6 +12,7 @@ Features:
 """
 
 import os
+import sys
 import sqlite3
 from pathlib import Path
 from typing import List
@@ -125,9 +126,15 @@ if __name__ == "__main__":
     parser.add_argument("--source-db", required=True, help="Source database path")
     parser.add_argument("--target-db", required=True, help="Target database path")
     parser.add_argument("--table", required=True, help="Table name to migrate")
-    parser.add_argument("--dry-run", action="store_true", default=True,
+    parser.add_argument("--dry-run", action="store_true", default=False,
                         help="Preview changes without applying")
     args = parser.parse_args()
+    
+    if not args.dry_run:
+        ans = input("You are about to modify the target DB. Continue? [y/N]: ").strip().lower()
+        if ans not in ("y","yes"):
+            print("Aborting.")
+            sys.exit(0)
 
     migrate_table(
         source_db=args.source_db,
