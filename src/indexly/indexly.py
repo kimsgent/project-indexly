@@ -53,7 +53,8 @@ from pathlib import Path
 from .config import DB_FILE
 from .path_utils import normalize_path
 from .db_update import check_schema, apply_migrations
-
+from .csv_analyzer import analyze_csv, export_results
+from .visualize_csv import visualize_data
 
 # Force UTF-8 output encoding (Recommended for Python 3.7+)
 sys.stdout.reconfigure(encoding="utf-8")
@@ -450,21 +451,40 @@ def run_watch(args):
 
 
 def run_analyze_csv(args):
-
-    ripple = Ripple(command_titles["analyze-csv"], speed="fast", rainbow=True)
+    
+    ripple = Ripple("CSV Analysis", speed="fast", rainbow=True)
     ripple.start()
-    try:
-        from .csv_analyzer import analyze_csv, export_results
 
-        result = analyze_csv(args.file)
-        if result:
-            print(result)
-            if args.export_path:
-                export_results(result, args.export_path, args.format)
+    try:
+        time.sleep(0.3)  # Minimal delay to show banner
+
+        raw_df, df_stats, table_output = analyze_csv(args.file)
+        if df_stats is not None:
+            ripple.stop()  # stop the animation before printing table
+            print("\n")   # spacing
+            print(table_output)
+
+            # Export text summary
+            if getattr(args, "export_path", None):
+                export_results(table_output, args.export_path, getattr(args, "format", "txt"))
+
+            # Optional visualization
+            if getattr(args, "show_chart", None):
+                visualize_data(
+                    summary_df=df_stats,
+                    mode=args.show_chart,
+                    chart_type=getattr(args, "chart_type", None),
+                    output=getattr(args, "export_plot", None),
+                    raw_df=raw_df
+                )
         else:
+            ripple.stop()
             print("⚠️ No data to analyze or invalid file format.")
+
     finally:
         ripple.stop()
+        print("\n")
+
 
 
 def handle_extract_mtw(args):

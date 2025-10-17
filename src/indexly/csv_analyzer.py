@@ -6,10 +6,13 @@ import csv
 import importlib.util
 import subprocess
 import argparse
-from pathlib import Path
 import importlib.util
 import subprocess
-
+import pandas as pd
+import numpy as np
+from pathlib import Path
+from tabulate import tabulate
+from scipy.stats import iqr
 
 REQUIRED_PACKAGES = ["pandas", "numpy", "scipy", "tabulate"]
 
@@ -46,20 +49,25 @@ def check_requirements():
 
 
 def detect_delimiter(file_path):
-    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+    """Detect CSV delimiter safely."""
+    import csv
+    with open(file_path, 'r', encoding='utf-8') as f:
         sample = f.read(2048)
-    sniffer = csv.Sniffer()
-    try:
-        dialect = sniffer.sniff(sample)
-        return dialect.delimiter
-    except csv.Error:
-        return ','
+        sniffer = csv.Sniffer()
+        try:
+            return sniffer.sniff(sample).delimiter
+        except csv.Error:
+            for delim in [';', ',', '\t', '|']:
+                if delim in sample:
+                    return delim
+            return ','
 
 
 def analyze_csv(file_path):
+    """Analyze CSV and return numeric DF, stats DF, and table output."""
     if not Path(file_path).exists():
         print(f"[!] File not found: {file_path}")
-        return None
+        return None, None, None
 
     delimiter = detect_delimiter(file_path)
 
@@ -67,40 +75,58 @@ def analyze_csv(file_path):
         df = pd.read_csv(file_path, delimiter=delimiter)
     except Exception as e:
         print(f"[!] Failed to read CSV: {e}")
-        return None
+        return None, None, None
 
     if df.empty:
         print("[!] CSV file is empty.")
-        return None
+        return None, None, None
+
+    # Convert numeric columns safely
+    for col in df.columns:
+        try:
+            df[col] = pd.to_numeric(df[col])
+        except (ValueError, TypeError):
+            pass
 
     numeric_df = df.select_dtypes(include=[np.number])
-
     if numeric_df.empty:
-        print("[!] No numeric columns found for analysis.")
-        return None
+        print("⚠️ No numeric columns found in the CSV.")
+        return None, None, None
 
     stats = []
     for col in numeric_df.columns:
         values = numeric_df[col].dropna()
+        if values.empty:
+            continue
+
         q1 = values.quantile(0.25)
         q3 = values.quantile(0.75)
-        col_iqr = iqr(values) if iqr else (q3 - q1)
+        col_iqr = iqr(values) if callable(iqr) else (q3 - q1)
 
         stats.append([
             col,
             values.count(),
-            values.isnull().sum(),
+            df[col].isnull().sum(),
             round(values.mean(), 3),
             round(values.median(), 3),
             round(values.std(), 3),
             round(values.sum(), 3),
             round(values.min(), 3),
             round(values.max(), 3),
+            round(q1, 3),
+            round(q3, 3),
             round(col_iqr, 3)
         ])
 
-    headers = ["Column", "Count", "Nulls", "Mean", "Median", "Std Dev", "Sum", "Min", "Max", "IQR"]
-    return tabulate(stats, headers=headers, tablefmt="grid")
+    headers = [
+        "Column", "Count", "Nulls", "Mean", "Median", "Std Dev",
+        "Sum", "Min", "Max", "Q1", "Q3", "IQR"
+    ]
+
+    df_stats = pd.DataFrame(stats, columns=headers)
+    table_output = tabulate(df_stats, headers="keys", tablefmt="grid", showindex=False)
+
+    return numeric_df, df_stats, table_output
 
 
 def export_results(results, export_path, export_format):

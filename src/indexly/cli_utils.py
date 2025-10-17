@@ -169,8 +169,23 @@ def build_parser():
     # Analyze CSV
     csv_parser = subparsers.add_parser("analyze-csv", help="Analyze a CSV file")
     csv_parser.add_argument("file")
-    csv_parser.add_argument("--export-path")
+    csv_parser.add_argument("--export-path", help="Export analysis table to file (txt or md)")
     csv_parser.add_argument("--format", choices=["txt", "md"], default="txt")
+    csv_parser.add_argument(
+        "--show-chart",
+        choices=["ascii", "static", "interactive"],
+        help="Visualize CSV data in terminal, static image, or interactive HTML"
+    )
+    csv_parser.add_argument(
+        "--export-plot",
+        help="Export chart to file (png, svg, html depending on chart mode)"
+    )
+    csv_parser.add_argument(
+        "--chart-type",
+        choices=["bar", "line", "box", "hist"],
+        default="bar",
+        help="Chart type to use when visualizing numeric data"
+    )
     csv_parser.set_defaults(func=run_analyze_csv)
 
     # Stats
