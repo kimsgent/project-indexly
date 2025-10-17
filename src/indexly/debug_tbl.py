@@ -3,7 +3,7 @@ Debug tool for indexly database configuration and content.
 
 Usage:
     python -m indexly.debug_tbl                          # ✅ default: debug metadata and file_index tables
-    python -m indexly.debug_tbl --show-index              # ✅ show file_index with alias and other details
+    python -m indexly.debug_tbl --show-index              # ✅ show file_index with details (alias now in file_metadata)
     python -m indexly.debug_tbl --show-migrations         # ✅ show all migration history
     python -m indexly.debug_tbl --show-migrations --last 5  # ✅ show last 5 migrations
 """
@@ -15,6 +15,9 @@ from .config import DB_FILE
 from .db_utils import connect_db
 
 
+# -----------------------------------------------------------------------------
+# FILE INDEX DEBUG (now joins alias from file_metadata)
+# -----------------------------------------------------------------------------
 def debug_file_index_table():
     print("\n📁 Debugging file_index table...\n")
 
@@ -44,18 +47,19 @@ def debug_file_index_table():
     total = cursor.fetchone()["total"]
     print(f"\n📊 Total rows: {total}")
 
-    # Show sample entries (focus on alias)
-    print("\n🔍 Sample entries (showing alias and metadata fields):")
+    # Show sample entries (join alias from file_metadata)
+    print("\n🔍 Sample entries (joining alias from file_metadata):")
     try:
         cursor.execute("""
             SELECT 
-                path, 
-                alias,
-                tag,
-                modified,
-                substr(content, 1, 80) AS snippet
-            FROM file_index
-            ORDER BY modified DESC
+                fi.path,
+                fm.alias,
+                fi.tag,
+                fi.modified,
+                substr(fi.content, 1, 80) AS snippet
+            FROM file_index fi
+            LEFT JOIN file_metadata fm ON fi.path = fm.path
+            ORDER BY fi.modified DESC
             LIMIT 5;
         """)
         rows = cursor.fetchall()
@@ -70,14 +74,14 @@ def debug_file_index_table():
     except Exception as e:
         print(f"⚠️ Error fetching file_index rows: {e}")
 
-    # Show alias summary (count of distinct values)
-    print("📦 Alias summary:")
+    # Show alias summary (from file_metadata, not file_index)
+    print("📦 Alias summary (from file_metadata):")
     try:
         cursor.execute("""
             SELECT 
                 COUNT(*) AS total_aliases,
                 COUNT(DISTINCT alias) AS unique_aliases
-            FROM file_index
+            FROM file_metadata
             WHERE alias IS NOT NULL AND alias != '';
         """)
         stats = cursor.fetchone()
@@ -89,6 +93,9 @@ def debug_file_index_table():
     conn.close()
 
 
+# -----------------------------------------------------------------------------
+# FILE METADATA + TAGS DEBUG
+# -----------------------------------------------------------------------------
 def debug_metadata_table():
     print("📂 Database file check:")
     if os.path.exists(DB_FILE):
@@ -116,26 +123,26 @@ def debug_metadata_table():
         for col in cursor.fetchall():
             print(f"  - {col['name']}")
 
-        print("\n🔍 Sample entries (with FTS content):")
+        print("\n🔍 Sample entries (including alias and core metadata):")
         try:
             cursor.execute("""
                 SELECT 
-                    fm.path,
-                    fm.title,
-                    fm.author,
-                    fm.camera,
-                    fm.created,
-                    fm.dimensions,
-                    fm.format,
-                    fm.gps,
-                    fi.alias
-                FROM file_metadata fm
-                LEFT JOIN file_index fi ON fm.path = fi.path
+                    path,
+                    alias,
+                    title,
+                    author,
+                    camera,
+                    created,
+                    dimensions,
+                    format,
+                    gps
+                FROM file_metadata
+                ORDER BY created DESC
                 LIMIT 3;
             """)
             rows = cursor.fetchall()
             if not rows:
-                print("⚠️ No rows found in file_metadata or file_index.")
+                print("⚠️ No rows found in file_metadata.")
             for row in rows:
                 print(dict(row))
         except Exception as e:
@@ -158,9 +165,13 @@ def debug_metadata_table():
     conn.close()
 
 
-def show_migrations(last: int | None = None):
-    if not os.path.exists(DB_FILE):
-        print(f"❌ DB file not found at: {DB_FILE}")
+# -----------------------------------------------------------------------------
+# MIGRATION HISTORY
+# -----------------------------------------------------------------------------
+def show_migrations(db: str | None = None, last: int | None = None):
+    db_path = db or DB_FILE
+    if not os.path.exists(db_path):
+        print(f"❌ DB file not found at: {db_path}")
         return
 
     conn = connect_db()
@@ -196,9 +207,12 @@ def show_migrations(last: int | None = None):
     conn.close()
 
 
+# -----------------------------------------------------------------------------
+# MAIN CLI HANDLER
+# -----------------------------------------------------------------------------
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Debug indexly database tables and migrations")
-    parser.add_argument("--show-index", action="store_true", help="Show file_index table with alias and stats")
+    parser.add_argument("--show-index", action="store_true", help="Show file_index table with stats (alias from file_metadata)")
     parser.add_argument("--show-migrations", action="store_true", help="Show migration history")
     parser.add_argument("--last", type=int, help="Show only the last N migrations (requires --show-migrations)")
 

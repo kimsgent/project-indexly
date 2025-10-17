@@ -57,6 +57,7 @@ search_cache.json
 # Indexly runtime
 # ----------------
 src/indexly/fts_index.db
+src/indexly/profiles.json
 
 # ----------------
 # Logs
