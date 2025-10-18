@@ -451,7 +451,6 @@ def run_watch(args):
 
 
 def run_analyze_csv(args):
-    
     ripple = Ripple("CSV Analysis", speed="fast", rainbow=True)
     ripple.start()
 
@@ -470,16 +469,21 @@ def run_analyze_csv(args):
 
             # Optional visualization
             if getattr(args, "show_chart", None):
+                transform_mode = getattr(args, "transform", "none").lower()
+                auto_transform = transform_mode == "auto"
+
                 visualize_data(
                     summary_df=df_stats,
                     mode=args.show_chart,
                     chart_type=getattr(args, "chart_type", None),
                     output=getattr(args, "export_plot", None),
-                    raw_df=raw_df
+                    raw_df=raw_df,
+                    transform="auto" if auto_transform else transform_mode,
+                    scale=getattr(args, "bar_scale", "sqrt")
                 )
         else:
             ripple.stop()
-            print("⚠️ No data to analyze or invalid file format.")
+            print("⚠️ No data to analyze or invalid file format.", style="bold red")
 
     finally:
         ripple.stop()
