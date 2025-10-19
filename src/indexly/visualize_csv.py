@@ -94,7 +94,7 @@ def _ascii_histogram(
     width=50,
     transform="none",
     bin_edges=None,
-    scale="log",  # new option: "sqrt" or "log"
+    scale="log",
 ):
     values = pd.Series(values).dropna()
     if values.empty:
@@ -106,14 +106,16 @@ def _ascii_histogram(
     median = values.median()
     q1, q3 = np.percentile(values, [25, 75])
 
-    # ---------------- Bin edges ----------------
+    # --- Bin edges ---
     if bin_edges is None:
         if transform != "none" or abs(skew_val) <= 1:
             bin_edges = np.linspace(vmin, vmax, bins + 1)
-        else:
+        elif abs(skew_val) > 5:  # extreme long-tail
             bin_edges = np.unique(np.percentile(values, np.linspace(0, 100, bins + 1)))
+        else:
+            bin_edges = np.linspace(vmin, vmax, bins + 1)
 
-    # ---------------- Histogram counts ----------------
+    # --- Histogram counts ---
     hist_counts, _ = np.histogram(values, bins=bin_edges)
     total = hist_counts.sum()
     if total == 0:
@@ -122,18 +124,21 @@ def _ascii_histogram(
 
     percents = hist_counts / total * 100
 
-    # ---------------- Scaling bars ----------------
+    # --- Scaling ---
+    count_ratio = (hist_counts.max() / max(1, hist_counts.min())) if hist_counts.min() > 0 else np.inf
     if scale == "sqrt":
         scaled = np.sqrt(hist_counts)
-    elif scale == "log":
-        # log scaling: add 1 to avoid log(0)
+    elif scale == "log" or count_ratio > 1000:  # auto log-scaling for extreme skew
         scaled = np.log1p(hist_counts)
     else:
-        scaled = hist_counts  # linear fallback
+        scaled = hist_counts
 
     scaled_max = scaled.max() if scaled.any() else 1
 
-    # ---------------- Print min/max/median/Q1/Q3 ----------------
+    # --- Adaptive decimals ---
+    bin_width = bin_edges[1] - bin_edges[0]
+    decimals = max(2, int(-np.floor(np.log10(bin_width))) if bin_width < 1 else 2)
+
     console.print(
         f"\n[col]{col_name}[/col] (skew={skew_val:.2f}, transform={transform}, scale={scale})",
         style="bold cyan",
@@ -143,13 +148,13 @@ def _ascii_histogram(
         style="dim yellow",
     )
 
-    # ---------------- Print histogram ----------------
+    # --- Plot ---
     tiny_percent_threshold = 0.1
     tiny_count_threshold = 10
 
     for i in range(len(hist_counts)):
         if hist_counts[i] <= 0:
-            continue  # skip truly empty bins
+            continue
 
         bar_len = max(1, int((scaled[i] / scaled_max) * width))
         bar = "█" * bar_len
@@ -165,8 +170,9 @@ def _ascii_histogram(
             else f"{hist_counts[i]}"
         )
 
-        label = f"[{bin_edges[i]:.2f}, {bin_edges[i+1]:.2f}]"
+        label = f"[{bin_edges[i]:.{decimals}f}, {bin_edges[i+1]:.{decimals}f}]"
         console.print(f"{label:<24} {bar:<{width}} {display_percent} ({display_count})")
+
 
 
 # ---------------- Visualization Core ----------------
@@ -203,6 +209,7 @@ def visualize_data(
     comparison_data = []
     transform_map = {}
 
+    # ---------------- Transformation & Stats ----------------
     if raw_df is not None:
         for col in numeric_cols:
             col_values = raw_df[col].dropna()
@@ -237,7 +244,7 @@ def visualize_data(
                 }
             )
 
-        # Print transformation summary table
+        # --- Print transformation summary ---
         table = Table(title="Transformation Impact Summary", show_lines=True)
         table.add_column("Column", style="bold cyan")
         for name in [
@@ -272,7 +279,7 @@ def visualize_data(
         )
         console.print(table)
 
-    # ---------------- ASCII Charts ----------------
+    # ---------------- ASCII Visualization ----------------
     if mode == "ascii":
         if chart_type == "box":
             console.print(
@@ -284,6 +291,7 @@ def visualize_data(
                     transformed_df[col].dropna(),
                     transform_name=transform_map.get(col, transform),
                 )
+
         elif chart_type == "hist":
             console.print(
                 "\n📊 ASCII Histogram Summary\n" + "─" * 60, style="bold magenta"
@@ -293,17 +301,59 @@ def visualize_data(
                 transformed_skew = transformed_df[col].skew()
                 skew_delta = transformed_skew - raw_skew
                 values = transformed_df[col].dropna()
+                applied_transform = transform_map.get(col, transform)
+                auto_flag = " (auto)" if transform.lower() == "auto" else ""
                 bin_edges = np.linspace(values.min(), values.max(), bins + 1)
+
                 _ascii_histogram(
-                    col_name=f"{col} (Δskew={skew_delta:.2f})",
+                    col_name=f"{col} (Δskew={skew_delta:+.2f}{auto_flag})",
                     values=values,
                     bins=bins,
                     width=50,
-                    transform=transform_map.get(col, transform),
+                    transform=applied_transform,
                     bin_edges=bin_edges,
-                    scale=scale
+                    scale=scale,
                 )
         else:
             console.print(
                 f"⚠️ Unsupported ASCII chart type: {chart_type}", style="bold red"
             )
+
+    # ---------------- Static Visualization (Matplotlib) ----------------
+    elif mode == "static":
+        ensure_optional_packages(["matplotlib"])
+        import matplotlib.pyplot as plt
+
+        ax = getattr(summary_df.plot, chart_type)(
+            x="Column", y="Mean", figsize=(10, 6), legend=False
+        )
+        ax.set_title(f"{chart_type.capitalize()} Chart of Mean Values per Column")
+        plt.tight_layout()
+        if output:
+            plt.savefig(output)
+            console.print(f"[+] Chart exported as {output}", style="green")
+        else:
+            plt.show()
+        return
+
+    # ---------------- Interactive Visualization (Plotly) ----------------
+    elif mode == "interactive":
+        ensure_optional_packages(["plotly"])
+        import plotly.express as px
+
+        if chart_type == "hist":
+            fig = px.histogram(summary_df, x="Mean", nbins=10,
+                               title="Distribution of Mean Values")
+        elif chart_type == "box":
+            fig = px.box(summary_df, y="Mean", title="Boxplot of Mean Values")
+        else:
+            fig = px.bar(summary_df, x="Column", y="Mean",
+                         title=f"{chart_type.capitalize()} Chart of Mean Values")
+
+        if output:
+            fig.write_html(output)
+            console.print(f"[+] Interactive HTML chart saved as {output}", style="green")
+        else:
+            fig.show()
+        return
+
