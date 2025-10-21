@@ -19,6 +19,7 @@ from .path_utils import normalize_path
 from .migration_manager import run_migrations
 from .rename_utils import SUPPORTED_DATE_FORMATS
 from .db_update import check_schema, apply_migrations
+from .clean_csv import clear_cleaned_data
 
 # CLI display configurations here
 command_titles = {
@@ -200,8 +201,37 @@ def build_parser():
         default="sqrt",
         help="Scaling method for ASCII histogram bars: square root (default) or logarithmic.",
     )
+    # Cleaning options
+    csv_parser.add_argument(
+        "--auto-clean",
+        action="store_true",
+        help="Run robust cleaning pipeline before analysis",
+    )
+    csv_parser.add_argument(
+        "--fill-method",
+        choices=["mean", "median"],
+        default="mean",
+        help="Method to fill missing numeric values during cleaning",
+    )
+    csv_parser.add_argument(
+        "--use-cleaned",
+        action="store_true",
+        help="Load previously saved cleaned dataset",
+    )
+    csv_parser.add_argument(
+        "--save-data", action="store_true", help="Save cleaned data to DB for reuse"
+    )
 
     csv_parser.set_defaults(func=run_analyze_csv)
+
+    ## removal option
+    clear_parser = subparsers.add_parser(
+        "clear-data", help="Remove saved cleaned dataset for a specific file"
+    )
+    clear_parser.add_argument(
+        "file", help="CSV file whose cleaned data should be removed"
+    )
+    clear_parser.set_defaults(func=lambda args: clear_cleaned_data(args.file))
 
     # Stats
     stats_parser = subparsers.add_parser("stats", help="Show database statistics")

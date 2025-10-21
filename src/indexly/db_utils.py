@@ -112,9 +112,10 @@ def connect_db(db_path: str | None = None):
         );
         """
     )
-
+    
     conn.commit()
     return conn
+
 
 def _sync_path_in_db(old_path: str, new_path: str):
     """
@@ -160,7 +161,9 @@ def _sync_path_in_db(old_path: str, new_path: str):
         return True
 
     except Exception as e:
-        logger.error(f"⚠️ DB sync failed for rename {old_path_str} → {new_path_str}: {e}")
+        logger.error(
+            f"⚠️ DB sync failed for rename {old_path_str} → {new_path_str}: {e}"
+        )
         return False
 
 

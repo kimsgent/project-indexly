@@ -24,6 +24,8 @@ import argparse
 import logging
 import time
 import sqlite3
+import pandas as pd
+from rich.console import Console
 from datetime import datetime
 from .ripple import Ripple
 from rich import print as rprint
@@ -34,6 +36,8 @@ from .search_core import search_fts5, search_regex, normalize_near_term
 from .extract_utils import update_file_metadata
 from .mtw_extractor import _extract_mtw
 from .rename_utils import rename_file, rename_files_in_dir, SUPPORTED_DATE_FORMATS
+from .cleaning.auto_clean import auto_clean_csv, load_cleaned_data
+from .clean_csv import clear_cleaned_data
 from .profiles import (
     save_profile,
     apply_profile,
@@ -53,7 +57,7 @@ from pathlib import Path
 from .config import DB_FILE
 from .path_utils import normalize_path
 from .db_update import check_schema, apply_migrations
-from .csv_analyzer import analyze_csv, export_results
+from .csv_analyzer import analyze_csv, export_results, detect_delimiter
 from .visualize_csv import visualize_data
 
 # Force UTF-8 output encoding (Recommended for Python 3.7+)
@@ -279,7 +283,9 @@ def handle_search(args):
         prof = load_profile(args.profile)
         if prof and prof.get("results"):
             results = filter_saved_results(prof["results"], term_cli)
-            print(f"Searching '{term_cli or prof.get('term')}' (profile-only: {args.profile})")
+            print(
+                f"Searching '{term_cli or prof.get('term')}' (profile-only: {args.profile})"
+            )
             if results:
                 print_search_results(results, term_cli or prof.get("term", ""))
                 if args.export_format:
@@ -338,7 +344,9 @@ def handle_search(args):
         # 🟢 SAVE PROFILE if requested
         if getattr(args, "save_profile", None):
             save_profile(args.save_profile, args, results)
-            print(f"💾 Profile '{args.save_profile}' saved with {len(results)} result(s).")
+            print(
+                f"💾 Profile '{args.save_profile}' saved with {len(results)} result(s)."
+            )
 
     else:
         print("🔍 No matches found.")
@@ -346,6 +354,7 @@ def handle_search(args):
 
 def handle_regex(args):
     from .profiles import save_profile  # ensure import
+
     ripple = Ripple("Regex Search", speed="fast", rainbow=True)
     ripple.start()
 
@@ -451,44 +460,93 @@ def run_watch(args):
 
 
 def run_analyze_csv(args):
+    """
+    Handles `indexly analyze-csv` command, including auto-cleaning, loading, and analysis.
+    Fully backward-compatible with visualization and fill-method.
+    """
+
+    console = Console()
     ripple = Ripple("CSV Analysis", speed="fast", rainbow=True)
     ripple.start()
+    time.sleep(0.3)
 
+    df = None  # Will hold cleaned DataFrame
+    raw_csv_df = None  # Keep raw CSV for visualization
+
+    # Step 0: Load raw CSV for later use
     try:
-        time.sleep(0.3)  # Minimal delay to show banner
+        raw_csv_df = pd.read_csv(
+            args.file, delimiter=detect_delimiter(args.file), encoding="utf-8"
+        )
+    except Exception:
+        raw_csv_df = None
 
-        raw_df, df_stats, table_output = analyze_csv(args.file)
-        if df_stats is not None:
-            ripple.stop()  # stop the animation before printing table
-            print("\n")   # spacing
-            print(table_output)
-
-            # Export text summary
-            if getattr(args, "export_path", None):
-                export_results(table_output, args.export_path, getattr(args, "format", "txt"))
-
-            # Optional visualization
-            if getattr(args, "show_chart", None):
-                transform_mode = getattr(args, "transform", "none").lower()
-                auto_transform = transform_mode == "auto"
-
-                visualize_data(
-                    summary_df=df_stats,
-                    mode=args.show_chart,
-                    chart_type=getattr(args, "chart_type", None),
-                    output=getattr(args, "export_plot", None),
-                    raw_df=raw_df,
-                    transform="auto" if auto_transform else transform_mode,
-                    scale=getattr(args, "bar_scale", "sqrt")
-                )
-        else:
-            ripple.stop()
-            print("⚠️ No data to analyze or invalid file format.", style="bold red")
-
-    finally:
+    # Step 1: Handle cleaning logic
+    if getattr(args, "clear_data", None):
+        clear_cleaned_data(args.clear_data)
         ripple.stop()
-        print("\n")
+        return
 
+    if getattr(args, "use_cleaned", False):
+        df = load_cleaned_data(args.file)
+        if df is None:
+            console.print(
+                "[yellow]⚠️ No saved cleaned data found. Falling back to raw CSV.[/yellow]"
+            )
+
+    elif getattr(args, "auto_clean", False):
+        df = auto_clean_csv(
+            args.file,
+            fill_method=getattr(args, "fill_method", "mean"),
+            persist=getattr(args, "save_data", True),
+            verbose=True,
+        )
+
+    # Step 2: Run analysis
+    if df is None:
+        # Raw CSV analysis
+        raw_df, df_stats, table_output = analyze_csv(args.file)
+        raw_for_plot = raw_csv_df if raw_csv_df is not None else raw_df
+    else:
+        # Cleaned DataFrame analysis
+        _, df_stats, table_output = analyze_csv(df, from_df=True)
+        console.print(
+            "[bold cyan]ℹ️ Displaying statistics for cleaned dataset[/bold cyan]"
+        )
+        raw_for_plot = (
+            raw_csv_df if raw_csv_df is not None else df
+        )  # preserve raw for plots
+
+    ripple.stop()
+
+    if df_stats is not None:
+        print("\n")
+        print(table_output)
+
+        # Optional export
+        if getattr(args, "export_path", None):
+            export_results(
+                table_output, args.export_path, getattr(args, "format", "txt")
+            )
+
+        # Optional visualization
+        if getattr(args, "show_chart", None):
+            transform_mode = getattr(args, "transform", "none").lower()
+            auto_transform = transform_mode == "auto"
+
+            visualize_data(
+                summary_df=df_stats,
+                mode=args.show_chart,
+                chart_type=getattr(args, "chart_type", None),
+                output=getattr(args, "export_plot", None),
+                raw_df=raw_for_plot,
+                transform="auto" if auto_transform else transform_mode,
+                scale=getattr(args, "bar_scale", "sqrt"),
+            )
+    else:
+        console.print("[red]⚠️ No data to analyze or invalid file format.[/red]")
+
+    print("\n")
 
 
 def handle_extract_mtw(args):
@@ -534,9 +592,7 @@ def handle_rename_file(args):
     )
 
     # Determine counter format (default = plain integer)
-    counter_format = (
-        args.counter_format if hasattr(args, "counter_format") else "d"
-    )
+    counter_format = args.counter_format if hasattr(args, "counter_format") else "d"
 
     # --- Directory handling ---
     if path.is_dir():
@@ -574,6 +630,7 @@ def handle_rename_file(args):
     else:
         print(f"✅ Renamed and synced: {path} → {new_path}")
 
+
 def handle_update_db(args):
     """Handle the update-db CLI command."""
 
@@ -588,6 +645,7 @@ def handle_update_db(args):
 
     conn.close()
     print("✅ Done.")
+
 
 def handle_show_help(args):
     """Display CLI help for all commands, with optional Markdown or detailed output."""
@@ -617,7 +675,11 @@ def handle_show_help(args):
         help_lines = subparser.format_help().splitlines()
         for line in help_lines:
             line = line.strip()
-            if not line or line.lower().startswith("usage:") or line.lower().startswith("options"):
+            if (
+                not line
+                or line.lower().startswith("usage:")
+                or line.lower().startswith("options")
+            ):
                 continue
             return line
         return "(no description)"
@@ -655,7 +717,11 @@ def handle_show_help(args):
             if getattr(args, "details", False):
                 # Only show the concise usage block, not the entire argparse dump
                 usage_line = next(
-                    (l.strip() for l in sp.format_help().splitlines() if l.strip().startswith("usage:")),
+                    (
+                        l.strip()
+                        for l in sp.format_help().splitlines()
+                        if l.strip().startswith("usage:")
+                    ),
                     None,
                 )
                 if usage_line:

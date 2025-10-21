@@ -206,6 +206,45 @@ def show_migrations(db: str | None = None, last: int | None = None):
         print("⚠️ No migrations recorded yet.")
     conn.close()
 
+# -----------------------------------------------------------------------------
+# CLEANED DATA  
+# -----------------------------------------------------------------------------
+
+def debug_cleaned_data_table(limit: int = 10):
+    from .cleaning.auto_clean import _get_db_connection
+
+    print("\n🧹 Debugging cleaned_data table...\n")
+    
+    conn = _get_db_connection()
+    cursor = conn.cursor()
+
+    # Check if table exists
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='cleaned_data';")
+    if not cursor.fetchone():
+        print("⚠️ cleaned_data table not found.")
+        conn.close()
+        return
+
+    # Show column info
+    print("📋 Columns in cleaned_data:")
+    cursor.execute("PRAGMA table_info(cleaned_data);")
+    for col in cursor.fetchall():
+        print(f"  - {col['name']}")
+
+    # Show total rows
+    cursor.execute("SELECT COUNT(*) AS total FROM cleaned_data;")
+    total = cursor.fetchone()[0]
+    print(f"\n📊 Total rows: {total}")
+
+    # Show sample entries (all fields)
+    print(f"\n🔍 Sample {limit} entries:")
+    cursor.execute(f"SELECT * FROM cleaned_data ORDER BY cleaned_at DESC LIMIT {limit};")
+    rows = cursor.fetchall()
+    for row in rows:
+        print(dict(zip([c[0] for c in cursor.description], row)))
+
+    conn.close()
+
 
 # -----------------------------------------------------------------------------
 # MAIN CLI HANDLER
@@ -215,6 +254,7 @@ if __name__ == "__main__":
     parser.add_argument("--show-index", action="store_true", help="Show file_index table with stats (alias from file_metadata)")
     parser.add_argument("--show-migrations", action="store_true", help="Show migration history")
     parser.add_argument("--last", type=int, help="Show only the last N migrations (requires --show-migrations)")
+    parser.add_argument("--show-cleaned", action="store_true", help="Show cleaned_data table entries")
 
     args = parser.parse_args()
 
@@ -222,6 +262,8 @@ if __name__ == "__main__":
         show_migrations(last=args.last)
     elif args.show_index:
         debug_file_index_table()
+    elif getattr(args, "show_cleaned", False):
+        debug_cleaned_data_table()
     else:
         debug_metadata_table()
         debug_file_index_table()
