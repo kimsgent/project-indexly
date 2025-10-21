@@ -58,7 +58,7 @@ from .config import DB_FILE
 from .path_utils import normalize_path
 from .db_update import check_schema, apply_migrations
 from .csv_analyzer import analyze_csv, export_results, detect_delimiter
-from .visualize_csv import visualize_data
+from .visualize_csv import visualize_data, visualize_scatter_plotly
 
 # Force UTF-8 output encoding (Recommended for Python 3.7+)
 sys.stdout.reconfigure(encoding="utf-8")
@@ -461,8 +461,9 @@ def run_watch(args):
 
 def run_analyze_csv(args):
     """
-    Handles `indexly analyze-csv` command, including auto-cleaning, loading, and analysis.
-    Fully backward-compatible with visualization and fill-method.
+    Handles `indexly analyze-csv` command, including auto-cleaning, loading, exporting, and visualization.
+    Backward-compatible with all previous arguments and adds support for exporting cleaned data
+    and scatter visualization via Plotly.
     """
 
     console = Console()
@@ -470,10 +471,10 @@ def run_analyze_csv(args):
     ripple.start()
     time.sleep(0.3)
 
-    df = None  # Will hold cleaned DataFrame
-    raw_csv_df = None  # Keep raw CSV for visualization
+    df = None
+    raw_csv_df = None
 
-    # Step 0: Load raw CSV for later use
+    # --- Step 0: Load raw CSV for reference ---
     try:
         raw_csv_df = pd.read_csv(
             args.file, delimiter=detect_delimiter(args.file), encoding="utf-8"
@@ -481,7 +482,7 @@ def run_analyze_csv(args):
     except Exception:
         raw_csv_df = None
 
-    # Step 1: Handle cleaning logic
+    # --- Step 1: Handle cleaning logic ---
     if getattr(args, "clear_data", None):
         clear_cleaned_data(args.clear_data)
         ripple.stop()
@@ -502,20 +503,34 @@ def run_analyze_csv(args):
             verbose=True,
         )
 
-    # Step 2: Run analysis
+        # Optional: Export cleaned data to user-specified format
+        if getattr(args, "export_cleaned", None):
+            export_path = args.export_cleaned
+            export_fmt = getattr(args, "export_format", "csv")
+
+            console.print(f"[cyan]Exporting cleaned dataset to {export_path} ({export_fmt})...[/cyan]")
+
+            try:
+                if export_fmt == "csv":
+                    df.to_csv(export_path, index=False)
+                elif export_fmt == "json":
+                    df.to_json(export_path, orient="records", indent=2)
+                elif export_fmt == "parquet":
+                    df.to_parquet(export_path, index=False)
+                elif export_fmt == "excel":
+                    df.to_excel(export_path, index=False)
+                console.print("[green]✅ Cleaned data exported successfully![/green]")
+            except Exception as e:
+                console.print(f"[red]❌ Export failed: {e}[/red]")
+
+    # --- Step 2: Analysis ---
     if df is None:
-        # Raw CSV analysis
         raw_df, df_stats, table_output = analyze_csv(args.file)
         raw_for_plot = raw_csv_df if raw_csv_df is not None else raw_df
     else:
-        # Cleaned DataFrame analysis
         _, df_stats, table_output = analyze_csv(df, from_df=True)
-        console.print(
-            "[bold cyan]ℹ️ Displaying statistics for cleaned dataset[/bold cyan]"
-        )
-        raw_for_plot = (
-            raw_csv_df if raw_csv_df is not None else df
-        )  # preserve raw for plots
+        console.print("[bold cyan]ℹ️ Displaying statistics for cleaned dataset[/bold cyan]")
+        raw_for_plot = raw_csv_df if raw_csv_df is not None else df
 
     ripple.stop()
 
@@ -523,31 +538,41 @@ def run_analyze_csv(args):
         print("\n")
         print(table_output)
 
-        # Optional export
+        # --- Optional export ---
         if getattr(args, "export_path", None):
             export_results(
                 table_output, args.export_path, getattr(args, "format", "txt")
             )
 
-        # Optional visualization
+        # --- Optional visualization ---
         if getattr(args, "show_chart", None):
+
             transform_mode = getattr(args, "transform", "none").lower()
             auto_transform = transform_mode == "auto"
 
-            visualize_data(
-                summary_df=df_stats,
-                mode=args.show_chart,
-                chart_type=getattr(args, "chart_type", None),
-                output=getattr(args, "export_plot", None),
-                raw_df=raw_for_plot,
-                transform="auto" if auto_transform else transform_mode,
-                scale=getattr(args, "bar_scale", "sqrt"),
-            )
+            if args.chart_type == "scatter":
+                visualize_scatter_plotly(
+                    df=raw_for_plot,
+                    x_col=getattr(args, "x_col", None),
+                    y_col=getattr(args, "y_col", None),
+                    mode=args.show_chart,
+                    output=getattr(args, "export_plot", None),
+                )
+            else:
+                visualize_data(
+                    summary_df=df_stats,
+                    mode=args.show_chart,
+                    chart_type=getattr(args, "chart_type", None),
+                    output=getattr(args, "export_plot", None),
+                    raw_df=raw_for_plot,
+                    transform="auto" if auto_transform else transform_mode,
+                    scale=getattr(args, "bar_scale", "sqrt"),
+                )
+
     else:
         console.print("[red]⚠️ No data to analyze or invalid file format.[/red]")
 
     print("\n")
-
 
 def handle_extract_mtw(args):
     # Normalize inputs

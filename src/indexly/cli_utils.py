@@ -174,6 +174,8 @@ def build_parser():
         "--export-path", help="Export analysis table to file (txt or md)"
     )
     csv_parser.add_argument("--format", choices=["txt", "md"], default="txt")
+
+    # Visualization options
     csv_parser.add_argument(
         "--show-chart",
         choices=["ascii", "static", "interactive"],
@@ -185,9 +187,17 @@ def build_parser():
     )
     csv_parser.add_argument(
         "--chart-type",
-        choices=["bar", "line", "box", "hist"],
+        choices=["bar", "line", "box", "hist", "scatter"],
         default="bar",
-        help="Chart type to use when visualizing numeric data",
+        help="Chart type for visualizing numeric data",
+    )
+    csv_parser.add_argument(
+        "--x-col",
+        help="X-axis column for scatter plot (required if chart-type=scatter)",
+    )
+    csv_parser.add_argument(
+        "--y-col",
+        help="Y-axis column for scatter plot (required if chart-type=scatter)",
     )
     csv_parser.add_argument(
         "--transform",
@@ -199,8 +209,9 @@ def build_parser():
         "--bar-scale",
         choices=["sqrt", "log"],
         default="sqrt",
-        help="Scaling method for ASCII histogram bars: square root (default) or logarithmic.",
+        help="Scaling method for ASCII histogram bars.",
     )
+
     # Cleaning options
     csv_parser.add_argument(
         "--auto-clean",
@@ -220,6 +231,16 @@ def build_parser():
     )
     csv_parser.add_argument(
         "--save-data", action="store_true", help="Save cleaned data to DB for reuse"
+    )
+    csv_parser.add_argument(
+        "--export-cleaned",
+        help="Path to export cleaned dataset (e.g. cleaned.csv, cleaned.parquet)",
+    )
+    csv_parser.add_argument(
+        "--export-format",
+        choices=["csv", "json", "parquet", "excel"],
+        default="csv",
+        help="Format to export cleaned dataset (default: csv)",
     )
 
     csv_parser.set_defaults(func=run_analyze_csv)

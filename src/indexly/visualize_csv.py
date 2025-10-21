@@ -20,14 +20,20 @@ console = Console()
 
 
 def ensure_optional_packages(packages):
-    """Ensure optional packages are installed."""
+    """Ensure optional packages are installed and importable."""
     for pkg in packages:
-        if importlib.util.find_spec(pkg) is None:
+        try:
+            importlib.import_module(pkg)
+        except ImportError:
             console.print(
                 f"📦 Installing missing package: [yellow]{pkg}[/yellow]...",
                 style="bold green",
             )
-            subprocess.check_call([sys.executable, "-m", "pip", "install", pkg])
+            # Handle special cases explicitly
+            if pkg.lower() == "kaleido":
+                subprocess.check_call([sys.executable, "-m", "pip", "install", "kaleido==0.2.1"])
+            else:
+                subprocess.check_call([sys.executable, "-m", "pip", "install", pkg])
 
 
 # ---------------- Transformation Logic ----------------
@@ -356,4 +362,92 @@ def visualize_data(
         else:
             fig.show()
         return
+
+
+# --------------------------------------------------------------------
+# visualize_scatter_plotly() 
+# --------------------------------------------------------------------
+
+def visualize_scatter_plotly(df, x_col, y_col, mode="interactive", output=None):
+    """
+    Create a scatter plot for the given DataFrame using Plotly.
+    Works in both static (PNG/SVG) and interactive (HTML) modes.
+    """
+    ensure_optional_packages(["plotly"])
+    import plotly.express as px
+    import os
+    from rich.console import Console
+
+    console = Console()
+
+    if not x_col or not y_col:
+        console.print("[red]❌ Scatter plot requires --x-col and --y-col arguments.[/red]")
+        return
+
+    if x_col not in df.columns or y_col not in df.columns:
+        console.print(f"[red]❌ Columns '{x_col}' or '{y_col}' not found in dataset.[/red]")
+        return
+
+    console.print(f"[cyan]Generating scatter plot: {x_col} vs {y_col}[/cyan]")
+
+    fig = px.scatter(
+        df,
+        x=x_col,
+        y=y_col,
+        title=f"Scatter Plot of {x_col} vs {y_col}",
+        color_discrete_sequence=["#007BFF"],
+        opacity=0.7,
+        height=600,
+        template="plotly_white",
+    )
+
+    # --- Interactive Mode ---
+    if mode == "interactive":
+        if not output:
+            fig.show()
+            return
+
+        ext = os.path.splitext(output)[1].lower()
+
+        if ext in [".html", ".htm"]:
+            fig.write_html(output)
+            console.print(f"[green]✅ Interactive scatter plot saved as HTML: {output}[/green]")
+
+        elif ext in [".png", ".jpg", ".jpeg", ".svg", ".pdf"]:
+            try:
+                # Ensure Kaleido is properly installed before using it
+                ensure_optional_packages(["kaleido"])
+                fig.write_image(output)
+                console.print(f"[green]✅ Interactive scatter plot exported to image: {output}[/green]")
+            except Exception as e:
+                fallback = output + ".html"
+                fig.write_html(fallback)
+                console.print(
+                    f"[yellow]⚠️ Image export failed ({type(e).__name__}: {e}). "
+                    f"Fallback saved as HTML: {fallback}[/yellow]"
+                )
+
+        else:
+            # Default fallback
+            fallback = f"{output}.html"
+            fig.write_html(fallback)
+            console.print(f"[yellow]💡 Unrecognized extension. Saved as {fallback}[/yellow]")
+
+    # --- Static Mode (force Kaleido image output) ---
+    elif mode == "static":
+        try:
+            ensure_optional_packages(["kaleido"])
+            file_path = output or f"scatter_{x_col}_vs_{y_col}.png"
+            fig.write_image(file_path)
+            console.print(f"[green]✅ Static scatter plot exported to {file_path}[/green]")
+        except Exception as e:
+            fallback = (output or f"scatter_{x_col}_vs_{y_col}") + ".html"
+            fig.write_html(fallback)
+            console.print(
+                f"[yellow]⚠️ Static export failed ({type(e).__name__}: {e}). "
+                f"Fallback saved as HTML: {fallback}[/yellow]"
+            )
+
+    else:
+        console.print("[yellow]⚠️ Unsupported mode for scatter plot.[/yellow]")
 

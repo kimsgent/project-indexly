@@ -123,6 +123,56 @@ def _summarize_cleaning_results(summary_records):
 
     console.print(table)
 
+def _handle_datetime_columns(df, verbose=False):
+    """
+    Detect, clean, and normalize datetime columns.
+    Derive features: year, month, day, weekday, hour.
+    Returns modified df and summary records.
+    """
+    import warnings
+    datetime_summary = []
+
+    candidate_cols = [
+        c for c in df.columns
+        if any(k in c.lower() for k in ["date", "time", "created", "modified", "timestamp"])
+    ]
+
+    for col in candidate_cols:
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", UserWarning)
+                converted = pd.to_datetime(df[col], errors="coerce", utc=True)
+
+            valid_ratio = converted.notna().mean()
+            if valid_ratio > 0.6:
+                n_invalid = converted.isna().sum()
+                df[col] = converted
+
+                # Derived columns
+                df[f"{col}_year"] = df[col].dt.year
+                df[f"{col}_month"] = df[col].dt.month
+                df[f"{col}_day"] = df[col].dt.day
+                df[f"{col}_weekday"] = df[col].dt.day_name()
+                df[f"{col}_hour"] = df[col].dt.hour
+
+                datetime_summary.append({
+                    "column": col,
+                    "dtype": "datetime",
+                    "action": "converted and derived",
+                    "n_filled": n_invalid,
+                    "strategy": "utc-normalized"
+                })
+
+                if verbose:
+                    console.print(f"[blue]🕒 Column '{col}' converted to datetime with {n_invalid} invalid rows[/blue]")
+
+        except Exception as e:
+            if verbose:
+                console.print(f"[yellow]⚠️ Failed to convert column '{col}' to datetime: {e}[/yellow]")
+
+    return df, datetime_summary
+
+
 
 # --- Public Entry Points ---
 
@@ -148,9 +198,19 @@ def auto_clean_csv(
     else:
         raise ValueError("file_or_df must be a CSV path or a pandas DataFrame")
 
+    # --- Initialize summary records ---
     summary_records = []
 
+    # --- Date/Time handling first ---
+    df, datetime_summary = _handle_datetime_columns(df, verbose=verbose)
+    summary_records.extend(datetime_summary)
+
+    # --- Loop through all columns for further cleaning ---
     for col in df.columns:
+        # Skip original datetime and derived columns
+        if col in [rec["column"] for rec in datetime_summary] or col.endswith(("_year", "_month", "_day", "_weekday", "_hour")):
+            continue
+
         action = "none"
         strategy = "-"
         n_filled = 0
@@ -186,10 +246,15 @@ def auto_clean_csv(
             if pd.api.types.is_numeric_dtype(df[col]):
                 fill_value = df[col].median() if fill_method == "median" else df[col].mean()
                 strategy = "median" if fill_method == "median" else "mean"
+            elif pd.api.types.is_datetime64_any_dtype(df[col]):
+                # Fill missing datetime with earliest date
+                fill_value = df[col].min()
+                strategy = "earliest date"
             else:
                 mode_val = df[col].mode(dropna=True)
                 fill_value = mode_val.iloc[0] if not mode_val.empty else "Unknown"
                 strategy = "mode" if not mode_val.empty else "Unknown"
+
             df[col] = df[col].fillna(fill_value)
             action = "filled missing values"
             n_filled = n_before
