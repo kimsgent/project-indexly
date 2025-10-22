@@ -8,11 +8,7 @@ import subprocess
 import argparse
 import importlib.util
 import subprocess
-import pandas as pd
-import numpy as np
 from pathlib import Path
-from tabulate import tabulate
-from scipy.stats import iqr
 from rich.console import Console
 
 REQUIRED_PACKAGES = ["pandas", "numpy", "scipy", "tabulate"]
@@ -28,6 +24,7 @@ ensure_packages(REQUIRED_PACKAGES)
 # ✅ Now safe to import
 import pandas as pd
 import numpy as np
+import shutil
 from scipy.stats import iqr
 from tabulate import tabulate
 
@@ -71,26 +68,47 @@ def analyze_csv(file_or_df, from_df=False):
     - Otherwise, file_or_df is treated as a file path to read CSV
     Returns: df, df_stats, table_output
     """
+    file_path = None  
+    console = Console()
+
     if from_df:
         df = file_or_df.copy()
     else:
-        file_path = Path(file_or_df)
-        if not file_path.exists():
-            print(f"[!] File not found: {file_or_df}")
+        # --- Resolve and validate file path ---
+        try:
+            file_path = Path(file_or_df).expanduser().resolve(strict=False)
+        except Exception:
+            print(f"[!] Invalid file path: {file_or_df}")
             return None, None, None
 
-        delimiter = detect_delimiter(file_path)
+        # --- Handle missing file clearly ---
+        if not file_path.exists():
+            print(f"[!] File not found: {file_or_df}")
+            # Try relative to current working directory as fallback
+            alt_path = Path.cwd() / file_or_df
+            if alt_path.exists():
+                file_path = alt_path
+                print(f"ℹ️ Using fallback path: {alt_path}")
+            else:
+                return None, None, None
+
+        # --- Detect delimiter and read CSV safely ---
         try:
+            delimiter = detect_delimiter(file_path)
             df = pd.read_csv(file_path, delimiter=delimiter, encoding="utf-8")
+        except FileNotFoundError:
+            print(f"[!] Could not locate file after fallback: {file_path}")
+            return None, None, None
         except Exception as e:
             print(f"[!] Failed to read CSV: {e}")
             return None, None, None
 
+    # --- Handle empty DataFrame case ---
     if df.empty:
         print("[!] No data to analyze.")
         return None, None, None
 
-    # Convert numeric columns safely
+    # --- Convert numeric columns safely ---
     for col in df.columns:
         try:
             df[col] = pd.to_numeric(df[col])
@@ -99,23 +117,18 @@ def analyze_csv(file_or_df, from_df=False):
 
     # --- Enhanced numeric column detection including datetime-derived timestamps ---
     numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-    console = Console()
-    # If no numeric columns, check datetime-derived timestamps
+
     if not numeric_cols:
         datetime_numeric_cols = [c for c in df.columns if c.endswith("_timestamp")]
         if datetime_numeric_cols:
             numeric_cols = datetime_numeric_cols
-            console.print(
-                "ℹ️ Using datetime-derived numeric columns for analysis...",
-                style="bold cyan"
-            )
+            console.print("ℹ️ Using datetime-derived numeric columns for analysis...", style="bold cyan")
 
     if not numeric_cols:
         console.print("⚠️ No numeric or datetime-derived columns found.", style="bold yellow")
         return df, None, None
 
     numeric_df = df[numeric_cols]
-
 
     stats = []
     for col in numeric_df.columns:
@@ -131,15 +144,15 @@ def analyze_csv(file_or_df, from_df=False):
             col,
             values.count(),
             df[col].isnull().sum(),
-            round(values.mean(), 3),
-            round(values.median(), 3),
-            round(values.std(), 3),
-            round(values.sum(), 3),
-            round(values.min(), 3),
-            round(values.max(), 3),
-            round(q1, 3),
-            round(q3, 3),
-            round(col_iqr, 3),
+            values.mean(),
+            values.median(),
+            values.std(),
+            values.sum(),
+            values.min(),
+            values.max(),
+            q1,
+            q3,
+            col_iqr,
         ])
 
     headers = [
@@ -147,6 +160,32 @@ def analyze_csv(file_or_df, from_df=False):
         "Sum", "Min", "Max", "Q1", "Q3", "IQR"
     ]
     df_stats = pd.DataFrame(stats, columns=headers)
+
+    # --- 👇 NEW: auto-fit table and compact large numbers ---
+    def format_number(val):
+        """Compact numeric representation."""
+        if isinstance(val, (int, float, np.number)):
+            if np.isnan(val):
+                return "-"
+            if abs(val) >= 1e6 or abs(val) < 1e-3:
+                return f"{val:.3e}"
+            return f"{val:,.3f}".rstrip('0').rstrip('.')
+        return str(val)
+
+    df_stats = df_stats.apply(lambda col: col.map(format_number))
+
+    # Determine terminal width and adjust per-column max width
+    term_width = shutil.get_terminal_size((120, 20)).columns
+    max_width = term_width - 4
+    col_count = len(df_stats.columns)
+    max_col_width = max(8, int(max_width / col_count))
+
+    for c in df_stats.columns:
+        df_stats[c] = df_stats[c].apply(
+            lambda v: v[:max_col_width - 1] + "…" if len(str(v)) > max_col_width else v
+        )
+
+    # Render the compact ASCII table
     table_output = tabulate(df_stats, headers="keys", tablefmt="grid", showindex=False)
 
     return df, df_stats, table_output

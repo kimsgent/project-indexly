@@ -13,6 +13,7 @@ import numpy as np
 from datetime import datetime
 from rich.console import Console
 from rich.table import Table
+from pathlib import Path
 
 
 console = Console()
@@ -318,7 +319,7 @@ def _handle_datetime_columns(df, verbose=False, user_formats=None, derive_level=
                     df[f"{col}_Minute"] = df[col].dt.minute
                     df[f"{col}_ISO"] = df[col].dt.strftime("%Y-%m-%dT%H:%M:%SZ")
                     
-                df[f"{col}_timestamp"] = df[col].view("int64") // 10**9
+                df[f"{col}_timestamp"] = df[col].astype("int64") // 10**9
                 datetime_summary.append(
                     {
                         "column": col,
@@ -376,8 +377,24 @@ def auto_clean_csv(
 
     # Load DataFrame if input is a file path
     if isinstance(file_or_df, (str, bytes, os.PathLike)):
-        df = pd.read_csv(file_or_df)
-        df._source_file_path = os.path.abspath(str(file_or_df))
+        file_path = Path(file_or_df).expanduser().resolve(strict=False)
+
+        if not file_path.exists():
+            # Try relative to current working directory
+            alt_path = Path.cwd() / Path(file_or_df)
+            if alt_path.exists():
+                console.print(f"ℹ️ Using fallback path: {alt_path}", style="bold cyan")
+                file_path = alt_path
+            else:
+                console.print(f"[!] File not found: {file_or_df}", style="bold red")
+                return None, None  # gracefully stop
+
+        try:
+            df = pd.read_csv(file_path)
+            df._source_file_path = str(file_path)
+        except Exception as e:
+            console.print(f"[!] Failed to read CSV: {e}", style="bold red")
+            return None, None
     elif isinstance(file_or_df, pd.DataFrame):
         df = file_or_df.copy()
         if not hasattr(df, "_source_file_path"):

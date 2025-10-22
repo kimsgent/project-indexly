@@ -330,9 +330,21 @@ def visualize_data(
         ensure_optional_packages(["matplotlib"])
         import matplotlib.pyplot as plt
 
-        ax = getattr(summary_df.plot, chart_type)(
-            x="Column", y="Mean", figsize=(10, 6), legend=False
-        )
+        # Ensure numeric plotting DataFrame
+        plot_df = raw_df.copy() if raw_df is not None else summary_df.copy()
+        if plot_df.select_dtypes(include=np.number).empty:
+            console.print("⚠️ No numeric data available to plot.", style="bold red")
+            return
+
+        ax = getattr(plot_df.plot, chart_type)(figsize=(10, 6), legend=False)
+        ax.set_title(f"{chart_type.capitalize()} Chart")
+        plt.tight_layout()
+        if output:
+            plt.savefig(output)
+            console.print(f"[+] Chart exported as {output}", style="green")
+        else:
+            plt.show()
+
         ax.set_title(f"{chart_type.capitalize()} Chart of Mean Values per Column")
         plt.tight_layout()
         if output:

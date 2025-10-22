@@ -25,6 +25,7 @@ import logging
 import time
 import sqlite3
 import pandas as pd
+import numpy as np
 from rich.console import Console
 from datetime import datetime
 from .ripple import Ripple
@@ -542,7 +543,12 @@ def run_analyze_csv(args):
         console.print(
             "[bold cyan]ℹ️ Displaying statistics for cleaned dataset[/bold cyan]"
         )
-        raw_for_plot = raw_csv_df if raw_csv_df is not None else df
+
+        # --- Patch: Use cleaned data for plotting if auto-clean was run ---
+        if getattr(args, "auto_clean", False):
+            raw_for_plot = df  # <-- use cleaned df
+        else:
+            raw_for_plot = raw_csv_df if raw_csv_df is not None else df
 
     ripple.stop()
 
@@ -574,15 +580,27 @@ def run_analyze_csv(args):
             transform_mode = getattr(args, "transform", "none").lower()
             auto_transform = transform_mode == "auto"
 
-            if args.chart_type == "scatter":
-                visualize_scatter_plotly(
-                    df=raw_for_plot,
-                    x_col=getattr(args, "x_col", None),
-                    y_col=getattr(args, "y_col", None),
-                    mode=args.show_chart,
-                    output=getattr(args, "export_plot", None),
-                )
+            # Ensure numeric df for static charts
+            if args.show_chart == "static" and args.chart_type != "scatter":
+                # For static bar/hist/box: use numeric DataFrame (cleaned if auto_clean)
+                numeric_df_for_plot = raw_for_plot.select_dtypes(include=np.number)
+                if numeric_df_for_plot.empty:
+                    console.print(
+                        "⚠️ No numeric columns available for plotting. Skipping chart.",
+                        style="bold red",
+                    )
+                else:
+                    visualize_data(
+                        summary_df=df_stats,  # for table/labels
+                        mode=args.show_chart,
+                        chart_type=getattr(args, "chart_type", None),
+                        output=getattr(args, "export_plot", None),
+                        raw_df=numeric_df_for_plot,  # numeric data for plotting
+                        transform="auto" if auto_transform else transform_mode,
+                        scale=getattr(args, "bar_scale", "sqrt"),
+                    )
             else:
+                # Scatter or interactive plots can use full df
                 visualize_data(
                     summary_df=df_stats,
                     mode=args.show_chart,
