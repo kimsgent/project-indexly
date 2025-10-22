@@ -225,6 +225,24 @@ def build_parser():
         help="Method to fill missing numeric values during cleaning",
     )
     csv_parser.add_argument(
+        "--datetime-formats",
+        nargs="+",
+        metavar="FMT",
+        help="Optional list of datetime formats to apply (e.g. '%Y-%m-%d' '%d/%m/%Y %H:%M').",
+    )
+    csv_parser.add_argument(
+        "--derive-dates",
+        choices=["all", "minimal", "none"],
+        default="all",
+        help="Control how many derived datetime features to generate (default: all).",
+    )
+    csv_parser.add_argument(
+        "--date-threshold",
+        type=float,
+        default=0.3,
+        help="Minimum valid ratio (0–1) for date detection. Default=0.3"
+    )
+    csv_parser.add_argument(
         "--use-cleaned",
         action="store_true",
         help="Load previously saved cleaned dataset",
@@ -241,6 +259,11 @@ def build_parser():
         choices=["csv", "json", "parquet", "excel"],
         default="csv",
         help="Format to export cleaned dataset (default: csv)",
+    )
+    csv_parser.add_argument(
+        "--show-summary",
+        action="store_true",
+        help="Display an extended summary of detected columns and derived fields.",
     )
 
     csv_parser.set_defaults(func=run_analyze_csv)

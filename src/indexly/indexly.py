@@ -36,7 +36,11 @@ from .search_core import search_fts5, search_regex, normalize_near_term
 from .extract_utils import update_file_metadata
 from .mtw_extractor import _extract_mtw
 from .rename_utils import rename_file, rename_files_in_dir, SUPPORTED_DATE_FORMATS
-from .cleaning.auto_clean import auto_clean_csv, load_cleaned_data
+from .cleaning.auto_clean import (
+    auto_clean_csv,
+    load_cleaned_data,
+    _summarize_cleaning_results,
+)
 from .clean_csv import clear_cleaned_data
 from .profiles import (
     save_profile,
@@ -461,9 +465,8 @@ def run_watch(args):
 
 def run_analyze_csv(args):
     """
-    Handles `indexly analyze-csv` command, including auto-cleaning, loading, exporting, and visualization.
-    Backward-compatible with all previous arguments and adds support for exporting cleaned data
-    and scatter visualization via Plotly.
+    Handles `indexly analyze-csv` command including auto-cleaning, exporting, and visualization.
+    Compatible with --auto-clean, --datetime-formats, --show-summary, etc.
     """
 
     console = Console()
@@ -473,6 +476,7 @@ def run_analyze_csv(args):
 
     df = None
     raw_csv_df = None
+    summary_records = []  # ✅ ensure always defined
 
     # --- Step 0: Load raw CSV for reference ---
     try:
@@ -482,12 +486,13 @@ def run_analyze_csv(args):
     except Exception:
         raw_csv_df = None
 
-    # --- Step 1: Handle cleaning logic ---
+    # --- Step 1: Cleaning logic ---
     if getattr(args, "clear_data", None):
         clear_cleaned_data(args.clear_data)
         ripple.stop()
         return
 
+    # Try to load previously cleaned data
     if getattr(args, "use_cleaned", False):
         df = load_cleaned_data(args.file)
         if df is None:
@@ -495,21 +500,26 @@ def run_analyze_csv(args):
                 "[yellow]⚠️ No saved cleaned data found. Falling back to raw CSV.[/yellow]"
             )
 
-    elif getattr(args, "auto_clean", False):
-        df = auto_clean_csv(
+    # --- Step 1b: Handle new cleaning run ---
+    if getattr(args, "auto_clean", False):
+        df, summary_records = auto_clean_csv(
             args.file,
             fill_method=getattr(args, "fill_method", "mean"),
             persist=getattr(args, "save_data", True),
             verbose=True,
+            derive_dates=getattr(args, "derive_dates", "all"),
+            user_datetime_formats=getattr(args, "datetime_formats", None),
+            date_threshold=getattr(args, "date_threshold", 0.3),
         )
 
-        # Optional: Export cleaned data to user-specified format
+        # --- Optional export of cleaned dataset ---
         if getattr(args, "export_cleaned", None):
             export_path = args.export_cleaned
             export_fmt = getattr(args, "export_format", "csv")
 
-            console.print(f"[cyan]Exporting cleaned dataset to {export_path} ({export_fmt})...[/cyan]")
-
+            console.print(
+                f"[cyan]Exporting cleaned dataset to {export_path} ({export_fmt})...[/cyan]"
+            )
             try:
                 if export_fmt == "csv":
                     df.to_csv(export_path, index=False)
@@ -529,24 +539,38 @@ def run_analyze_csv(args):
         raw_for_plot = raw_csv_df if raw_csv_df is not None else raw_df
     else:
         _, df_stats, table_output = analyze_csv(df, from_df=True)
-        console.print("[bold cyan]ℹ️ Displaying statistics for cleaned dataset[/bold cyan]")
+        console.print(
+            "[bold cyan]ℹ️ Displaying statistics for cleaned dataset[/bold cyan]"
+        )
         raw_for_plot = raw_csv_df if raw_csv_df is not None else df
 
     ripple.stop()
 
+    # --- Step 3: Show results ---
     if df_stats is not None:
         print("\n")
         print(table_output)
 
-        # --- Optional export ---
+        if getattr(args, "show_summary", False):
+            if summary_records:
+                _summarize_cleaning_results(summary_records)
+            else:
+                console.print(
+                    "[dim]ℹ️ No cleaning summary available (used pre-cleaned data).[/dim]"
+                )
+
+            console.print("\n📊 Extended Data Types Overview", style="bold green")
+            for col, dtype in df.dtypes.items():
+                console.print(f"• {col}: {dtype}")
+
+        # --- Optional export of analysis results ---
         if getattr(args, "export_path", None):
             export_results(
                 table_output, args.export_path, getattr(args, "format", "txt")
             )
 
-        # --- Optional visualization ---
+        # --- Visualization ---
         if getattr(args, "show_chart", None):
-
             transform_mode = getattr(args, "transform", "none").lower()
             auto_transform = transform_mode == "auto"
 
@@ -568,11 +592,11 @@ def run_analyze_csv(args):
                     transform="auto" if auto_transform else transform_mode,
                     scale=getattr(args, "bar_scale", "sqrt"),
                 )
-
     else:
         console.print("[red]⚠️ No data to analyze or invalid file format.[/red]")
 
     print("\n")
+
 
 def handle_extract_mtw(args):
     # Normalize inputs

@@ -13,6 +13,7 @@ import numpy as np
 from pathlib import Path
 from tabulate import tabulate
 from scipy.stats import iqr
+from rich.console import Console
 
 REQUIRED_PACKAGES = ["pandas", "numpy", "scipy", "tabulate"]
 
@@ -96,10 +97,25 @@ def analyze_csv(file_or_df, from_df=False):
         except (ValueError, TypeError):
             pass
 
-    numeric_df = df.select_dtypes(include=[np.number])
-    if numeric_df.empty:
-        print("⚠️ No numeric columns found in the dataset.")
+    # --- Enhanced numeric column detection including datetime-derived timestamps ---
+    numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+    console = Console()
+    # If no numeric columns, check datetime-derived timestamps
+    if not numeric_cols:
+        datetime_numeric_cols = [c for c in df.columns if c.endswith("_timestamp")]
+        if datetime_numeric_cols:
+            numeric_cols = datetime_numeric_cols
+            console.print(
+                "ℹ️ Using datetime-derived numeric columns for analysis...",
+                style="bold cyan"
+            )
+
+    if not numeric_cols:
+        console.print("⚠️ No numeric or datetime-derived columns found.", style="bold yellow")
         return df, None, None
+
+    numeric_df = df[numeric_cols]
+
 
     stats = []
     for col in numeric_df.columns:
