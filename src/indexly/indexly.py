@@ -601,15 +601,27 @@ def run_analyze_csv(args):
                     )
             else:
                 # Scatter or interactive plots can use full df
-                visualize_data(
-                    summary_df=df_stats,
-                    mode=args.show_chart,
-                    chart_type=getattr(args, "chart_type", None),
-                    output=getattr(args, "export_plot", None),
-                    raw_df=raw_for_plot,
-                    transform="auto" if auto_transform else transform_mode,
-                    scale=getattr(args, "bar_scale", "sqrt"),
-                )
+                chart_type = getattr(args, "chart_type", None)
+                if chart_type == "scatter":
+                    visualize_scatter_plotly(
+                        df=raw_for_plot,
+                        x_col=getattr(args, "x_col", None),
+                        y_col=getattr(args, "y_col", None),
+                        mode=args.show_chart,
+                        output=getattr(args, "export_plot", None),
+                    )
+                else:
+                    visualize_data(
+                        summary_df=df_stats,
+                        mode=args.show_chart,
+                        chart_type=chart_type,
+                        output=getattr(args, "export_plot", None),
+                        raw_df=raw_for_plot,
+                        transform=(
+                            "auto" if transform_mode == "auto" else transform_mode
+                        ),
+                        scale=getattr(args, "bar_scale", "sqrt"),
+                    )
     else:
         console.print("[red]⚠️ No data to analyze or invalid file format.[/red]")
 
