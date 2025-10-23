@@ -63,7 +63,12 @@ from .config import DB_FILE
 from .path_utils import normalize_path
 from .db_update import check_schema, apply_migrations
 from .csv_analyzer import analyze_csv, export_results, detect_delimiter
-from .visualize_csv import visualize_data, visualize_scatter_plotly
+from .visualize_csv import (
+    visualize_data,
+    visualize_scatter_plotly,
+    visualize_pie_plot,
+    visualize_bar_plot,
+)
 
 # Force UTF-8 output encoding (Recommended for Python 3.7+)
 sys.stdout.reconfigure(encoding="utf-8")
@@ -579,53 +584,110 @@ def run_analyze_csv(args):
         if getattr(args, "show_chart", None):
             transform_mode = getattr(args, "transform", "none").lower()
             auto_transform = transform_mode == "auto"
+            chart_type = getattr(args, "chart_type", None)
+            mode = args.show_chart
+            x_col = getattr(args, "x_col", None)
+            y_col = getattr(args, "y_col", None)
+            output_path = getattr(args, "export_plot", None)
 
-            # Ensure numeric df for static charts
-            if args.show_chart == "static" and args.chart_type != "scatter":
-                # For static bar/hist/box: use numeric DataFrame (cleaned if auto_clean)
-                numeric_df_for_plot = raw_for_plot.select_dtypes(include=np.number)
-                if numeric_df_for_plot.empty:
+            # Use cleaned or raw data (already handled above)
+            plot_df = raw_for_plot
+
+            # --- Handle specific chart types ---
+            if chart_type == "scatter":
+                # Scatter uses full dataframe
+                visualize_scatter_plotly(
+                    df=plot_df,
+                    x_col=x_col,
+                    y_col=y_col,
+                    mode=mode,
+                    output=output_path,
+                )
+
+            elif chart_type == "bar":
+                # --- Bar chart requires x and y columns ---
+                if not x_col or not y_col:
                     console.print(
-                        "⚠️ No numeric columns available for plotting. Skipping chart.",
-                        style="bold red",
+                        "[red]⚠️ --x-col and --y-col are required for bar charts.[/red]"
+                    )
+                elif x_col not in plot_df.columns or y_col not in plot_df.columns:
+                    console.print(
+                        f"[red]⚠️ Invalid columns: '{x_col}' or '{y_col}' not found in dataset.[/red]"
                     )
                 else:
-                    visualize_data(
-                        summary_df=df_stats,  # for table/labels
-                        mode=args.show_chart,
-                        chart_type=getattr(args, "chart_type", None),
-                        output=getattr(args, "export_plot", None),
-                        raw_df=numeric_df_for_plot,  # numeric data for plotting
-                        transform="auto" if auto_transform else transform_mode,
-                        scale=getattr(args, "bar_scale", "sqrt"),
+                    visualize_bar_plot(
+                        df=plot_df,
+                        x_col=x_col,
+                        y_col=y_col,
+                        mode=mode,
+                        output=output_path,
+                        title=f"Bar Chart: {y_col} by {x_col}",
                     )
+
+            elif chart_type == "pie":
+                # --- Pie chart also requires x and y ---
+                if not x_col or not y_col:
+                    console.print(
+                        "[red]⚠️ --x-col and --y-col are required for pie charts.[/red]"
+                    )
+                elif x_col not in plot_df.columns or y_col not in plot_df.columns:
+                    console.print(
+                        f"[red]⚠️ Invalid columns: '{x_col}' or '{y_col}' not found in dataset.[/red]"
+                    )
+                else:
+                    # Aggregate data by x_col for pie chart
+                    try:
+                        agg_df = (
+                            plot_df.groupby(x_col)[y_col]
+                            .sum(numeric_only=True)
+                            .reset_index()
+                            .sort_values(by=y_col, ascending=False)
+                        )
+                        visualize_pie_plot(
+                            df=agg_df,
+                            x_col=x_col,
+                            y_col=y_col,
+                            mode=mode,
+                            output=output_path,
+                            title=f"Pie Chart: {y_col} by {x_col}",
+                        )
+                    except Exception as e:
+                        console.print(f"[red]❌ Failed to create pie chart: {e}[/red]")
+
             else:
-                # Scatter or interactive plots can use full df
-                chart_type = getattr(args, "chart_type", None)
-                if chart_type == "scatter":
-                    visualize_scatter_plotly(
-                        df=raw_for_plot,
-                        x_col=getattr(args, "x_col", None),
-                        y_col=getattr(args, "y_col", None),
-                        mode=args.show_chart,
-                        output=getattr(args, "export_plot", None),
-                    )
+                # --- Default branch: hist, box, line, etc. ---
+                # For static non-scatter charts, ensure numeric data
+                if mode == "static" and chart_type not in ("scatter", "bar", "pie"):
+                    numeric_df_for_plot = plot_df.select_dtypes(include=np.number)
+                    if numeric_df_for_plot.empty:
+                        console.print(
+                            "⚠️ No numeric columns available for plotting. Skipping chart.",
+                            style="bold red",
+                        )
+                    else:
+                        visualize_data(
+                            summary_df=df_stats,
+                            mode=mode,
+                            chart_type=chart_type,
+                            output=output_path,
+                            raw_df=numeric_df_for_plot,
+                            transform="auto" if auto_transform else transform_mode,
+                            scale=getattr(args, "bar_scale", "sqrt"),
+                        )
                 else:
                     visualize_data(
                         summary_df=df_stats,
-                        mode=args.show_chart,
+                        mode=mode,
                         chart_type=chart_type,
-                        output=getattr(args, "export_plot", None),
-                        raw_df=raw_for_plot,
-                        transform=(
-                            "auto" if transform_mode == "auto" else transform_mode
-                        ),
+                        output=output_path,
+                        raw_df=plot_df,
+                        transform=("auto" if auto_transform else transform_mode),
                         scale=getattr(args, "bar_scale", "sqrt"),
                     )
-    else:
-        console.print("[red]⚠️ No data to analyze or invalid file format.[/red]")
+        else:
+            console.print("[red]⚠️ No data to analyze or invalid file format.[/red]")
 
-    print("\n")
+        print("\n")
 
 
 def handle_extract_mtw(args):

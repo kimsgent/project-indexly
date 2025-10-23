@@ -11,14 +11,12 @@ Usage:
     indexly analyze-csv --clear-data data.csv
 """
 
-
 import json
 import pandas as pd
 import numpy as np
 from datetime import datetime
 from pathlib import Path
 from .cleaning.auto_clean import _get_db_connection
-
 
 
 # ---------------------

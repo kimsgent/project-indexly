@@ -463,3 +463,87 @@ def visualize_scatter_plotly(df, x_col, y_col, mode="interactive", output=None):
     else:
         console.print("[yellow]⚠️ Unsupported mode for scatter plot.[/yellow]")
 
+# ============================================
+# 📊 Bar Chart Visualization
+# ============================================
+def visualize_bar_plot(df, x_col, y_col, mode="static", output=None, title=None):
+    """
+    Render a bar chart using either matplotlib (static) or plotly (interactive).
+    """
+    if not x_col or not y_col:
+        raise ValueError("--x-col and --y-col are required for bar charts.")
+
+    if mode == "interactive":
+        ensure_optional_packages(["plotly.express"])
+        import plotly.express as px
+
+        fig = px.bar(df, x=x_col, y=y_col, title=title or f"Bar chart: {y_col} by {x_col}")
+        fig.update_layout(template="plotly_white")
+        if output:
+            fig.write_html(output)
+        fig.show()
+    else:
+        ensure_optional_packages(["matplotlib"])
+        import matplotlib.pyplot as plt
+
+        plt.figure(figsize=(10, 6))
+        plt.bar(df[x_col], df[y_col], color="skyblue")
+        plt.title(title or f"{y_col} by {x_col}")
+        plt.xlabel(x_col)
+        plt.ylabel(y_col)
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+
+        if output:
+            plt.savefig(output)
+        plt.show()
+
+
+# ============================================
+# 🥧 Pie Chart Visualization
+# ============================================
+def visualize_pie_plot(df, x_col, y_col, mode="static", output=None, agg_func="sum", title=None):
+    """
+    Render a pie chart based on aggregate data.
+    Groups df[y_col] by df[x_col] using agg_func (sum by default).
+    """
+    if not x_col or not y_col:
+        raise ValueError("--x-col and --y-col are required for pie charts.")
+
+    # Aggregate data
+    grouped = df.groupby(x_col, dropna=False)[y_col].agg(agg_func).reset_index()
+
+    if mode == "interactive":
+        ensure_optional_packages(["plotly.express"])
+        import plotly.express as px
+
+        fig = px.pie(
+            grouped,
+            names=x_col,
+            values=y_col,
+            title=title or f"Pie chart: {y_col} by {x_col}",
+            hole=0.3,  # donut style, visually cleaner
+        )
+        fig.update_traces(textposition="inside", textinfo="percent+label")
+        fig.update_layout(template="plotly_white")
+        if output:
+            fig.write_html(output)
+        fig.show()
+    else:
+        ensure_optional_packages(["matplotlib"])
+        import matplotlib.pyplot as plt
+
+        plt.figure(figsize=(8, 8))
+        plt.pie(
+            grouped[y_col],
+            labels=grouped[x_col],
+            autopct="%1.1f%%",
+            startangle=90,
+            colors=plt.cm.Paired.colors,
+        )
+        plt.title(title or f"{y_col} distribution by {x_col}")
+        plt.tight_layout()
+
+        if output:
+            plt.savefig(output)
+        plt.show()
