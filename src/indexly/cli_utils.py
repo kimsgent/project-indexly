@@ -248,6 +248,17 @@ def build_parser():
         help="Load previously saved cleaned dataset",
     )
     csv_parser.add_argument(
+        "--normalize",
+        action="store_true",
+        help="Normalize numeric columns after cleaning (requires --auto-clean)."
+    )
+
+    csv_parser.add_argument(
+        "--remove-outliers",
+        action="store_true",
+        help="Remove outliers from numeric columns after cleaning (requires --auto-clean)."
+    )
+    csv_parser.add_argument(
         "--save-data", action="store_true", help="Save cleaned data to DB for reuse"
     )
     csv_parser.add_argument(

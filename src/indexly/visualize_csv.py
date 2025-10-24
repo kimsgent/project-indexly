@@ -179,6 +179,42 @@ def _ascii_histogram(
         label = f"[{bin_edges[i]:.{decimals}f}, {bin_edges[i+1]:.{decimals}f}]"
         console.print(f"{label:<24} {bar:<{width}} {display_percent} ({display_count})")
 
+# ---------------- Visualize Post Clean --------------
+
+def _visualize_post_clean(df, chart_type="box", mode="static"):
+    """
+    Visualize numeric distributions after normalization or outlier removal.
+    """
+    import matplotlib.pyplot as plt
+    import plotext as pltxt
+    import plotly.express as px
+    from rich.console import Console
+
+    console = Console()
+    numeric_cols = df.select_dtypes(include=[np.number]).columns
+    if numeric_cols.empty:
+        console.print("[yellow]No numeric columns available for visualization.[/yellow]")
+        return
+
+    if mode == "ascii":
+        pltxt.clear_figure()
+        for col in numeric_cols:
+            pltxt.hist(df[col], bins=20, label=col)
+        pltxt.title(f"ASCII {chart_type.capitalize()} Plot (Post-clean)")
+        pltxt.show()
+
+    elif mode == "static":
+        df[numeric_cols].plot(kind="box" if chart_type == "box" else "hist", subplots=True, layout=(len(numeric_cols), 1))
+        plt.suptitle(f"{chart_type.capitalize()} Plot of Numeric Columns (Post-clean)")
+        plt.tight_layout()
+        plt.show()
+
+    elif mode == "interactive":
+        if chart_type == "box":
+            fig = px.box(df, y=numeric_cols, title="Interactive Box Plot (Post-clean)")
+        else:
+            fig = px.histogram(df, x=numeric_cols[0], title="Interactive Histogram (Post-clean)")
+        fig.show()
 
 
 # ---------------- Visualization Core ----------------
@@ -547,3 +583,4 @@ def visualize_pie_plot(df, x_col, y_col, mode="static", output=None, agg_func="s
         if output:
             plt.savefig(output)
         plt.show()
+

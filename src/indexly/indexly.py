@@ -42,7 +42,7 @@ from .cleaning.auto_clean import (
     load_cleaned_data,
     _summarize_cleaning_results,
 )
-from .clean_csv import clear_cleaned_data
+from .clean_csv import clear_cleaned_data, _summarize_post_clean, _remove_outliers, _normalize_numeric
 from .profiles import (
     save_profile,
     apply_profile,
@@ -578,6 +578,25 @@ def run_analyze_csv(args):
         if getattr(args, "export_path", None):
             export_results(
                 table_output, args.export_path, getattr(args, "format", "txt")
+            )
+        # --- Optional post-clean numeric transformations ---
+        if getattr(args, "normalize", False):
+            df, norm_summary = _normalize_numeric(df)
+            console.print("[cyan]→ Normalization applied to numeric columns.[/cyan]")
+            _summarize_post_clean(norm_summary, "📏 Normalization Summary")
+
+        if getattr(args, "remove_outliers", False):
+            df, out_summary = _remove_outliers(df)
+            console.print("[magenta]→ Outliers removed using IQR/z-score thresholds.[/magenta]")
+            _summarize_post_clean(out_summary, "📉 Outlier Removal Summary")
+
+        # Optional visualization of post-clean numeric data
+        if (getattr(args, "normalize", False) or getattr(args, "remove_outliers", False)) and getattr(args, "show_chart", None):
+            from indexly.visualize_csv import _visualize_post_clean
+            _visualize_post_clean(
+                df,
+                chart_type=getattr(args, "chart_type", "box"),
+                mode=getattr(args, "show_chart", "static"),
             )
 
         # --- Visualization ---

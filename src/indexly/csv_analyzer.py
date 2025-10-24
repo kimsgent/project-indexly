@@ -46,19 +46,48 @@ def check_requirements():
             os.system(f"{sys.executable} -m pip install scipy")
 
 
+
 def detect_delimiter(file_path):
-    """Detect CSV delimiter safely."""
+    import re
     import csv
-    with open(file_path, 'r', encoding='utf-8') as f:
-        sample = f.read(2048)
-        sniffer = csv.Sniffer()
-        try:
-            return sniffer.sniff(sample).delimiter
-        except csv.Error:
-            for delim in [';', ',', '\t', '|']:
-                if delim in sample:
-                    return delim
-            return ','
+
+    """
+    Detects CSV delimiter using regex scoring and csv.Sniffer fallback.
+    Handles irregular/mixed CSVs more reliably.
+    """
+    with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+        sample = f.read(4096)
+
+    # --- Step 1: Regex-based scoring ---
+    possible_delims = [",", ";", "\t", "|", ":", "~"]
+    line_splits = [re.split(r"[\r\n]+", sample.strip())[:10]]  # first 10 lines
+    freq_scores = {}
+
+    for delim in possible_delims:
+        counts = [line.count(delim) for line in line_splits[0] if line]
+        if counts:
+            avg = sum(counts) / len(counts)
+            variance = sum((c - avg) ** 2 for c in counts) / len(counts)
+            # Lower variance + higher avg = more consistent delimiter
+            freq_scores[delim] = avg / (1 + variance)
+
+    if freq_scores:
+        best_delim = max(freq_scores, key=freq_scores.get)
+    else:
+        best_delim = None
+
+    # --- Step 2: Validate with Sniffer ---
+    try:
+        sniffer_delim = csv.Sniffer().sniff(sample).delimiter
+    except csv.Error:
+        sniffer_delim = None
+
+    # --- Step 3: Merge logic ---
+    delimiter = best_delim or sniffer_delim or ","
+
+    print(f"📄 Detected delimiter (regex): '{delimiter}'")
+    return delimiter
+
 
 
 def analyze_csv(file_or_df, from_df=False):

@@ -24,4 +24,5 @@ pandas>=2.1.1
 numpy>=1.26.0
 matplotlib>=3.8.0
 plotly>=5.22.0
-
+# ASCII terminal visualization (lightweight, no GUI)
+plotext>=5.2.8

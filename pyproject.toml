@@ -52,14 +52,18 @@ dependencies = [
     "rich>=13.7.1",
     "pandas>=2.1.1",
 
-    # --- Visualization Support ---
-    # ASCII charts (terminal-based) already use `rich`
-    # Static plotting (matplotlib)
+    # --- Visualization & Analysis Support ---
+    # Terminal-based ASCII plots
+    "plotext>=5.2.8",
+    # Static plotting
     "matplotlib>=3.8.0",
-    # Interactive visualizations (Plotly)
+    # Interactive web-based visualizations
     "plotly>=5.22.0",
-    # Numeric/scientific utilities (for transforms, scaling, etc.)
-    "numpy>=1.26.0"
+    # Numeric & scientific utilities
+    "numpy>=1.26.0",
+    # Optional stats & data profiling tools (recommended for analyze-csv)
+    "scipy>=1.12.0",
+    "statsmodels>=0.14.0",
 ]
 
 [tool.hatch.envs.dev]

@@ -26,6 +26,7 @@ pandas>=2.2.0
 # --- Lightweight visualization (for test_bin_dist, CSV stats, etc.) ---
 numpy>=1.26.0
 matplotlib>=3.8.0
+plotext>=5.2.8  # ASCII terminal visualization (lightweight, no GUI)
 
 # NOTE:
 # Plotly excluded from CI to reduce setup time and dependency weight.
