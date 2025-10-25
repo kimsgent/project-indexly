@@ -42,7 +42,12 @@ from .cleaning.auto_clean import (
     load_cleaned_data,
     _summarize_cleaning_results,
 )
-from .clean_csv import clear_cleaned_data, _summarize_post_clean, _remove_outliers, _normalize_numeric
+from .clean_csv import (
+    clear_cleaned_data,
+    _summarize_post_clean,
+    _remove_outliers,
+    _normalize_numeric,
+)
 from .profiles import (
     save_profile,
     apply_profile,
@@ -474,7 +479,6 @@ def run_analyze_csv(args):
     Handles `indexly analyze-csv` command including auto-cleaning, exporting, and visualization.
     Compatible with --auto-clean, --datetime-formats, --show-summary, etc.
     """
-
     console = Console()
     ripple = Ripple("CSV Analysis", speed="fast", rainbow=True)
     ripple.start()
@@ -492,6 +496,16 @@ def run_analyze_csv(args):
     except Exception:
         raw_csv_df = None
 
+    # Fallback: misparsed single-column CSV (common delimiter issue)
+    if raw_csv_df is not None and raw_csv_df.shape[1] == 1:
+        first_col_name = raw_csv_df.columns[0]
+        if ";" in first_col_name or "," in first_col_name:
+            console.print(
+                "🔁 Retrying CSV load with dynamic delimiter detection...", style="bold yellow"
+            )
+            delimiter = detect_delimiter(args.file)
+            raw_csv_df = pd.read_csv(args.file, delimiter=delimiter, encoding="utf-8")
+            
     # --- Step 1: Cleaning logic ---
     if getattr(args, "clear_data", None):
         clear_cleaned_data(args.clear_data)
@@ -544,24 +558,36 @@ def run_analyze_csv(args):
         raw_df, df_stats, table_output = analyze_csv(args.file)
         raw_for_plot = raw_csv_df if raw_csv_df is not None else raw_df
     else:
+        # Use cleaned dataframe
         _, df_stats, table_output = analyze_csv(df, from_df=True)
-        console.print(
-            "[bold cyan]ℹ️ Displaying statistics for cleaned dataset[/bold cyan]"
-        )
-
-        # --- Patch: Use cleaned data for plotting if auto-clean was run ---
-        if getattr(args, "auto_clean", False):
-            raw_for_plot = df  # <-- use cleaned df
-        else:
-            raw_for_plot = raw_csv_df if raw_csv_df is not None else df
+        raw_for_plot = df if getattr(args, "auto_clean", False) else (raw_csv_df if raw_csv_df is not None else df)
 
     ripple.stop()
 
     # --- Step 3: Show results ---
-    if df_stats is not None:
-        print("\n")
-        print(table_output)
+    def _is_valid_stats(stats_obj):
+        """Safely determine if df_stats is non-empty and usable."""
+        if stats_obj is None:
+            return False
+        if isinstance(stats_obj, (pd.DataFrame, pd.Series)):
+            return not stats_obj.empty
+        if isinstance(stats_obj, (list, tuple, dict)):
+            return len(stats_obj) > 0
+        if isinstance(stats_obj, str):
+            return bool(stats_obj.strip())
+        return True
 
+    if _is_valid_stats(df_stats):
+        console.print("\n")
+
+        # ✅ Only print table once
+        if isinstance(table_output, str) and table_output.strip():
+            console.print("[bold cyan]ℹ️ Displaying statistics for dataset[/bold cyan]\n")
+            print(table_output)  # controlled single print
+        else:
+            console.print("[dim]ℹ️ No formatted output table available.[/dim]")
+
+        # Table is printed inside analyze_csv; no need to print again
         if getattr(args, "show_summary", False):
             if summary_records:
                 _summarize_cleaning_results(summary_records)
@@ -579,6 +605,7 @@ def run_analyze_csv(args):
             export_results(
                 table_output, args.export_path, getattr(args, "format", "txt")
             )
+
         # --- Optional post-clean numeric transformations ---
         if getattr(args, "normalize", False):
             df, norm_summary = _normalize_numeric(df)
@@ -587,17 +614,10 @@ def run_analyze_csv(args):
 
         if getattr(args, "remove_outliers", False):
             df, out_summary = _remove_outliers(df)
-            console.print("[magenta]→ Outliers removed using IQR/z-score thresholds.[/magenta]")
-            _summarize_post_clean(out_summary, "📉 Outlier Removal Summary")
-
-        # Optional visualization of post-clean numeric data
-        if (getattr(args, "normalize", False) or getattr(args, "remove_outliers", False)) and getattr(args, "show_chart", None):
-            from indexly.visualize_csv import _visualize_post_clean
-            _visualize_post_clean(
-                df,
-                chart_type=getattr(args, "chart_type", "box"),
-                mode=getattr(args, "show_chart", "static"),
+            console.print(
+                "[magenta]→ Outliers removed using IQR/z-score thresholds.[/magenta]"
             )
+            _summarize_post_clean(out_summary, "📉 Outlier Removal Summary")
 
         # --- Visualization ---
         if getattr(args, "show_chart", None):
@@ -609,12 +629,9 @@ def run_analyze_csv(args):
             y_col = getattr(args, "y_col", None)
             output_path = getattr(args, "export_plot", None)
 
-            # Use cleaned or raw data (already handled above)
             plot_df = raw_for_plot
 
-            # --- Handle specific chart types ---
             if chart_type == "scatter":
-                # Scatter uses full dataframe
                 visualize_scatter_plotly(
                     df=plot_df,
                     x_col=x_col,
@@ -622,9 +639,7 @@ def run_analyze_csv(args):
                     mode=mode,
                     output=output_path,
                 )
-
             elif chart_type == "bar":
-                # --- Bar chart requires x and y columns ---
                 if not x_col or not y_col:
                     console.print(
                         "[red]⚠️ --x-col and --y-col are required for bar charts.[/red]"
@@ -642,9 +657,7 @@ def run_analyze_csv(args):
                         output=output_path,
                         title=f"Bar Chart: {y_col} by {x_col}",
                     )
-
             elif chart_type == "pie":
-                # --- Pie chart also requires x and y ---
                 if not x_col or not y_col:
                     console.print(
                         "[red]⚠️ --x-col and --y-col are required for pie charts.[/red]"
@@ -654,7 +667,6 @@ def run_analyze_csv(args):
                         f"[red]⚠️ Invalid columns: '{x_col}' or '{y_col}' not found in dataset.[/red]"
                     )
                 else:
-                    # Aggregate data by x_col for pie chart
                     try:
                         agg_df = (
                             plot_df.groupby(x_col)[y_col]
@@ -672,10 +684,8 @@ def run_analyze_csv(args):
                         )
                     except Exception as e:
                         console.print(f"[red]❌ Failed to create pie chart: {e}[/red]")
-
             else:
-                # --- Default branch: hist, box, line, etc. ---
-                # For static non-scatter charts, ensure numeric data
+                # Default: hist, box, line, etc.
                 if mode == "static" and chart_type not in ("scatter", "bar", "pie"):
                     numeric_df_for_plot = plot_df.select_dtypes(include=np.number)
                     if numeric_df_for_plot.empty:
@@ -703,10 +713,12 @@ def run_analyze_csv(args):
                         transform=("auto" if auto_transform else transform_mode),
                         scale=getattr(args, "bar_scale", "sqrt"),
                     )
-        else:
-            console.print("[red]⚠️ No data to analyze or invalid file format.[/red]")
 
-        print("\n")
+    elif df_stats is None or getattr(df_stats, "empty", True):
+        console.print(
+            "[yellow]⚠️ No valid numeric or date columns available for analysis. "
+            "The dataset may be textual or empty after cleaning.[/yellow]"
+        )
 
 
 def handle_extract_mtw(args):

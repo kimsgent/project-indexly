@@ -97,54 +97,62 @@ def analyze_csv(file_or_df, from_df=False):
     - Otherwise, file_or_df is treated as a file path to read CSV
     Returns: df, df_stats, table_output
     """
-    file_path = None  
-    console = Console()
 
+    console = Console()
+    file_path = None
+
+    # ---------------------------
+    # 📂 Load DataFrame
+    # ---------------------------
     if from_df:
         df = file_or_df.copy()
     else:
-        # --- Resolve and validate file path ---
         try:
             file_path = Path(file_or_df).expanduser().resolve(strict=False)
         except Exception:
-            print(f"[!] Invalid file path: {file_or_df}")
+            console.print(f"[!] Invalid file path: {file_or_df}", style="bold red")
             return None, None, None
 
-        # --- Handle missing file clearly ---
         if not file_path.exists():
-            print(f"[!] File not found: {file_or_df}")
-            # Try relative to current working directory as fallback
+            console.print(f"[!] File not found: {file_or_df}", style="bold red")
             alt_path = Path.cwd() / file_or_df
             if alt_path.exists():
                 file_path = alt_path
-                print(f"ℹ️ Using fallback path: {alt_path}")
+                console.print(f"ℹ️ Using fallback path: {alt_path}", style="bold cyan")
             else:
                 return None, None, None
 
-        # --- Detect delimiter and read CSV safely ---
         try:
             delimiter = detect_delimiter(file_path)
+            console.print(f"📄 Detected delimiter: '{delimiter}'", style="bold cyan")
             df = pd.read_csv(file_path, delimiter=delimiter, encoding="utf-8")
-        except FileNotFoundError:
-            print(f"[!] Could not locate file after fallback: {file_path}")
-            return None, None, None
         except Exception as e:
-            print(f"[!] Failed to read CSV: {e}")
+            console.print(f"[!] Failed to read CSV: {e}", style="bold red")
             return None, None, None
 
-    # --- Handle empty DataFrame case ---
+    # ---------------------------
+    # 🚨 Empty dataset check
+    # ---------------------------
     if df.empty:
-        print("[!] No data to analyze.")
+        console.print("[!] No data to analyze.", style="bold red")
         return None, None, None
 
-    # --- Convert numeric columns safely ---
+    # ---------------------------
+    # 🔢 Robust numeric inference
+    # ---------------------------
     for col in df.columns:
-        try:
-            df[col] = pd.to_numeric(df[col])
-        except (ValueError, TypeError):
-            pass
+        # Skip columns already numeric
+        if pd.api.types.is_numeric_dtype(df[col]):
+            continue
+        # Attempt conversion, coercing invalids to NaN
+        converted = pd.to_numeric(df[col], errors="coerce")
+        # If most values convert successfully, adopt this column as numeric
+        if converted.notna().mean() > 0.8:
+            df[col] = converted
 
-    # --- Enhanced numeric column detection including datetime-derived timestamps ---
+    # ---------------------------
+    # 🧮 Numeric & datetime detection
+    # ---------------------------
     numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
 
     if not numeric_cols:
@@ -154,19 +162,21 @@ def analyze_csv(file_or_df, from_df=False):
             console.print("ℹ️ Using datetime-derived numeric columns for analysis...", style="bold cyan")
 
     if not numeric_cols:
-        console.print("⚠️ No numeric or datetime-derived columns found.", style="bold yellow")
+        console.print("⚠️ No valid numeric or date columns available for analysis.", style="bold yellow")
         return df, None, None
 
     numeric_df = df[numeric_cols]
 
+    # ---------------------------
+    # 📊 Compute statistics
+    # ---------------------------
     stats = []
     for col in numeric_df.columns:
         values = numeric_df[col].dropna()
         if values.empty:
             continue
 
-        q1 = values.quantile(0.25)
-        q3 = values.quantile(0.75)
+        q1, q3 = values.quantile(0.25), values.quantile(0.75)
         col_iqr = iqr(values) if callable(iqr) else (q3 - q1)
 
         stats.append([
@@ -190,9 +200,10 @@ def analyze_csv(file_or_df, from_df=False):
     ]
     df_stats = pd.DataFrame(stats, columns=headers)
 
-    # --- 👇 NEW: auto-fit table and compact large numbers ---
+    # ---------------------------
+    # 🧠 Smart number formatting
+    # ---------------------------
     def format_number(val):
-        """Compact numeric representation."""
         if isinstance(val, (int, float, np.number)):
             if np.isnan(val):
                 return "-"
@@ -203,7 +214,9 @@ def analyze_csv(file_or_df, from_df=False):
 
     df_stats = df_stats.apply(lambda col: col.map(format_number))
 
-    # Determine terminal width and adjust per-column max width
+    # ---------------------------
+    # 🖥️ Adaptive table width
+    # ---------------------------
     term_width = shutil.get_terminal_size((120, 20)).columns
     max_width = term_width - 4
     col_count = len(df_stats.columns)
@@ -211,13 +224,16 @@ def analyze_csv(file_or_df, from_df=False):
 
     for c in df_stats.columns:
         df_stats[c] = df_stats[c].apply(
-            lambda v: v[:max_col_width - 1] + "…" if len(str(v)) > max_col_width else v
+            lambda v: str(v)[:max_col_width - 1] + "…" if len(str(v)) > max_col_width else str(v)
         )
 
-    # Render the compact ASCII table
+    # ---------------------------
+    # 📋 Render table
+    # ---------------------------
     table_output = tabulate(df_stats, headers="keys", tablefmt="grid", showindex=False)
 
     return df, df_stats, table_output
+
 
 
 def export_results(results, export_path, export_format):

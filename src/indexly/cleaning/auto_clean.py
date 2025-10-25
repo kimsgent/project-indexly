@@ -353,10 +353,11 @@ def auto_clean_csv(
       - Regex precompilation
       - Safe pandas 3.0 assignments (no inplace chains)
     """
-    import os, re
-    from pathlib import Path
+    import os, re, csv
     import pandas as pd
     import numpy as np
+    from io import StringIO
+    from pathlib import Path
     from rich.console import Console
     from indexly.clean_csv import save_cleaned_data
 
@@ -368,9 +369,55 @@ def auto_clean_csv(
             style="bold cyan",
         )
 
-    # ---------------------------
-    # 📂 Load DataFrame
-    # ---------------------------
+
+
+    # ----------------------------------------
+    # 🔧 Internal helper: robust delimiter detector
+    # ----------------------------------------
+    def _detect_delimiter_safely(file_path: Path, sample_size: int = 4096) -> str:
+        """
+        Detect CSV delimiter using multiple strategies:
+          1. csv.Sniffer (standard detection)
+          2. Regex frequency heuristic
+          3. Defaults to ',' if uncertain
+        """
+        try:
+            with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                sample = f.read(sample_size)
+                sample = sample.strip()
+                if not sample:
+                    return ","
+            # --- First: try csv.Sniffer
+            try:
+                dialect = csv.Sniffer().sniff(sample)
+                if dialect.delimiter:
+                    return dialect.delimiter
+            except Exception:
+                pass
+
+            # --- Second: regex heuristic (count likely delimiters)
+            candidates = [",", ";", "\t", "|", ":", " "]
+            counts = {c: sample.count(c) for c in candidates}
+            detected = max(counts, key=counts.get)
+            # Avoid space-only false positives
+            if detected == " " and counts[detected] < max(counts.values()) * 0.5:
+                detected = ","
+            return detected or ","
+        except Exception:
+            return ","
+
+    # ----------------------------------------
+    # 🚀 Verbose startup message
+    # ----------------------------------------
+    if verbose:
+        console.print(
+            f"Running robust cleaning pipeline using [bold]{fill_method.upper()}[/bold] fill method...",
+            style="bold cyan",
+        )
+
+    # ----------------------------------------
+    # 📂 Load DataFrame (supports both path and DataFrame input)
+    # ----------------------------------------
     if isinstance(file_or_df, (str, bytes, os.PathLike)):
         file_path = Path(file_or_df).expanduser().resolve(strict=False)
         if not file_path.exists():
@@ -381,12 +428,26 @@ def auto_clean_csv(
             else:
                 console.print(f"[!] File not found: {file_or_df}", style="bold red")
                 return None, None
+
+        # --- Detect delimiter robustly
+        delimiter = _detect_delimiter_safely(file_path)
+        if verbose:
+            console.print(f"📄 Detected delimiter: '{delimiter}'", style="bold cyan")
+
+        # --- Read CSV with fallback strategy
         try:
-            df = pd.read_csv(file_path)
-            df._source_file_path = str(file_path)
+            df = pd.read_csv(file_path, delimiter=delimiter)
         except Exception as e:
-            console.print(f"[!] Failed to read CSV: {e}", style="bold red")
-            return None, None
+            # Try fallback encoding and delimiter
+            console.print(f"[!] Primary read failed ({e}), retrying with fallback...", style="bold yellow")
+            try:
+                df = pd.read_csv(file_path, sep=None, engine="python", encoding_errors="ignore")
+            except Exception as e2:
+                console.print(f"[!] Failed to read CSV: {e2}", style="bold red")
+                return None, None
+
+        df._source_file_path = str(file_path)
+
     elif isinstance(file_or_df, pd.DataFrame):
         df = file_or_df.copy()
         if not hasattr(df, "_source_file_path"):
@@ -394,18 +455,18 @@ def auto_clean_csv(
     else:
         raise ValueError("file_or_df must be a CSV path or a pandas DataFrame")
 
-    # ---------------------------
+    # ----------------------------------------
     # 🧩 Derived Column Guard
-    # ---------------------------
+    # ----------------------------------------
     derived_map = {}
 
     def _make_clean_name(col: str) -> str:
         base = re.sub(r"_cleaned(_\d+)*$", "", col)
         return f"{base}_cleaned"
 
-    # ---------------------------
+    # ----------------------------------------
     # 🧹 Date/Time Handling
-    # ---------------------------
+    # ----------------------------------------
     summary_records = []
 
     # 1️⃣ Pre-parse dates
@@ -438,19 +499,23 @@ def auto_clean_csv(
                 "valid_ratio": rec.get("valid_ratio", 1.0)
             })
 
-    # ---------------------------
+    # ----------------------------------------
     # ⚡ Regex precompile for text cleaning
-    # ---------------------------
+    # ----------------------------------------
     nan_re = re.compile(r"^(nan|NaN|None|NULL|\s*)$", flags=re.IGNORECASE)
 
-    # ---------------------------
-    # 🔄 Main Cleaning Loop
-    # ---------------------------
+    # ----------------------------------------
+    # 🔄 Main Cleaning Loop (continued in existing logic)
+    # ----------------------------------------
     type_map = df.dtypes.to_dict()
     datetime_cols = {rec["column"] for rec in datetime_summary}
 
     for col, dtype in type_map.items():
-        if col in datetime_cols or col.endswith(("_year", "_month", "_day", "_weekday", "_hour", "_quarter", "_week", "_minute", "_iso", "_timestamp")):
+        # Skip datetime-derived columns
+        if col in datetime_cols or col.endswith((
+            "_year", "_month", "_day", "_weekday", "_hour",
+            "_quarter", "_week", "_minute", "_iso", "_timestamp"
+        )):
             continue
 
         clean_name = _make_clean_name(col)
@@ -460,16 +525,32 @@ def auto_clean_csv(
 
         action, strategy, n_filled = "none", "-", 0
 
-        # Numeric conversion
+        # 🧮 Improved Numeric Conversion
         if pd.api.types.is_object_dtype(dtype):
-            converted = pd.to_numeric(df[col], errors="coerce")
-            if converted.notna().sum() > 0:
+            # Clean common numeric artifacts (commas, spaces)
+            converted = pd.to_numeric(
+                df[col].astype(str)
+                .str.replace(',', '', regex=False)
+                .str.replace(' ', '', regex=False),
+                errors="coerce"
+            )
+            valid_ratio = converted.notna().mean()
+
+            # Convert only if column is majority numeric
+            if valid_ratio >= 0.5:
                 df[col] = converted
                 dtype = "numeric"
-                action = "converted to numeric"
+                action = f"converted to numeric ({valid_ratio*100:.1f}% valid)"
 
-        # Text normalization
-        if pd.api.types.is_object_dtype(dtype):
+        # 🔀 Mixed-Type Column Handling
+        if pd.api.types.is_object_dtype(df[col].dtype):
+            try:
+                df[col] = df[col].infer_objects()
+            except Exception:
+                pass  # fallback silently if anything goes wrong
+
+        # 🧹 Text Normalization
+        if pd.api.types.is_object_dtype(df[col].dtype):
             s = df[col].astype(str).str.strip()
             s = s.mask(s.str.match(nan_re), None)
             df[col] = s
@@ -477,7 +558,7 @@ def auto_clean_csv(
             if action == "none":
                 action = "normalized text"
 
-        # Fill missing values
+        # 🩹 Fill Missing Values
         n_before = df[col].isna().sum()
         if n_before > 0:
             if pd.api.types.is_numeric_dtype(df[col]):
@@ -497,7 +578,7 @@ def auto_clean_csv(
 
         summary_records.append({
             "column": col,
-            "dtype": str(dtype),
+            "dtype": str(df[col].dtype),
             "action": action,
             "n_filled": n_filled,
             "strategy": strategy
@@ -519,15 +600,18 @@ def auto_clean_csv(
     # 💾 Save cleaned data
     # ---------------------------
     if persist:
-        if df._source_file_path:
+        if hasattr(df, "_source_file_path") and df._source_file_path:
             file_name = df._source_file_path
         elif isinstance(file_or_df, (str, bytes, os.PathLike)):
             file_name = os.path.abspath(str(file_or_df))
         else:
-            file_name = "cleaned_data.csv"
+            file_name = "cleaned_data.csv"  # fallback name
 
-        save_cleaned_data(df, file_name)
-        console.print("[dim]💾 Cleaned data saved for future reuse[/dim]")
+        try:
+            save_cleaned_data(df, file_name)
+            console.print("[dim]💾 Cleaned data saved for future reuse[/dim]")
+        except Exception as e:
+            console.print(f"[red]❌ Failed to save cleaned data: {e}[/red]")
 
     return df, summary_records
 
