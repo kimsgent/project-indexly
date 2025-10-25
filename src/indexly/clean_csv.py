@@ -186,14 +186,29 @@ def save_cleaned_data(df, file_path: str):
     print(f"✅ Cleaned data saved to DB for: {abs_path}")
 
 
-def clear_cleaned_data(file_path: str):
+def clear_cleaned_data(file_path: str = None, remove_all: bool = False):
     """
-    Remove entries for a specific CSV file from cleaned_data table.
-    Uses absolute path to match saved record.
+    Remove entries from cleaned_data table.
+    - If remove_all=True, deletes all records.
+    - Otherwise, deletes the specific file_path record.
     """
     conn = _get_db_connection()
-    abs_path = str(Path(file_path).resolve())
     cur = conn.cursor()
+
+    if remove_all:
+        cur.execute("DELETE FROM cleaned_data")
+        deleted_rows = cur.rowcount
+        conn.commit()
+        conn.close()
+        print(f"🧹 Cleared all cleaned data entries ({deleted_rows} records removed).")
+        return
+
+    if not file_path:
+        print("❌ Please provide a file path or use --all to remove all entries.")
+        conn.close()
+        return
+
+    abs_path = str(Path(file_path).resolve())
     cur.execute("DELETE FROM cleaned_data WHERE file_name = ?", (abs_path,))
     deleted_rows = cur.rowcount
     conn.commit()
@@ -203,3 +218,4 @@ def clear_cleaned_data(file_path: str):
         print(f"🧹 Cleared cleaned data entry for: {abs_path}")
     else:
         print(f"⚠️ No cleaned data found for: {abs_path}")
+

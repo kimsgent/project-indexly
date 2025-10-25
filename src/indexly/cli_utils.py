@@ -182,14 +182,14 @@ def build_parser():
         help="Visualize CSV data in terminal, static image, or interactive HTML",
     )
     csv_parser.add_argument(
-        "--export-plot",
-        help="Export chart to file (png, svg, html depending on chart mode)",
-    )
-    csv_parser.add_argument(
         "--chart-type",
         choices=["bar", "line", "box", "hist", "scatter", "pie"],
-        default="bar",
+        default="None",
         help="Chart type for visualizing numeric data",
+    )
+    csv_parser.add_argument(
+        "--export-plot",
+        help="Export chart to file (png, svg, html depending on chart mode)",
     )
     csv_parser.add_argument(
         "--x-col",
@@ -240,7 +240,7 @@ def build_parser():
         "--date-threshold",
         type=float,
         default=0.3,
-        help="Minimum valid ratio (0–1) for date detection. Default=0.3"
+        help="Minimum valid ratio (0–1) for date detection. Default=0.3",
     )
     csv_parser.add_argument(
         "--use-cleaned",
@@ -250,13 +250,13 @@ def build_parser():
     csv_parser.add_argument(
         "--normalize",
         action="store_true",
-        help="Normalize numeric columns after cleaning (requires --auto-clean)."
+        help="Normalize numeric columns after cleaning (requires --auto-clean).",
     )
 
     csv_parser.add_argument(
         "--remove-outliers",
         action="store_true",
-        help="Remove outliers from numeric columns after cleaning (requires --auto-clean)."
+        help="Remove outliers from numeric columns after cleaning (requires --auto-clean).",
     )
     csv_parser.add_argument(
         "--save-data", action="store_true", help="Save cleaned data to DB for reuse"
@@ -284,9 +284,18 @@ def build_parser():
         "clear-data", help="Remove saved cleaned dataset for a specific file"
     )
     clear_parser.add_argument(
-        "file", help="CSV file whose cleaned data should be removed"
+        "file", nargs="?", help="CSV file whose cleaned data should be removed"
     )
-    clear_parser.set_defaults(func=lambda args: clear_cleaned_data(args.file))
+    clear_parser.add_argument(
+        "--all",
+        action="store_true",
+        help="Remove all cleaned datasets",
+    )
+    clear_parser.set_defaults(
+        func=lambda args: clear_cleaned_data(
+            file_path=args.file, remove_all=getattr(args, "all", False)
+        )
+    )
 
     # Stats
     stats_parser = subparsers.add_parser("stats", help="Show database statistics")

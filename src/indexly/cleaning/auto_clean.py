@@ -759,50 +759,49 @@ def auto_clean_csv(
             action = "filled missing values"
 
         summary_records.append(
-            {
-                "column": col,
-                "dtype": str(df[col].dtype),
-                "action": action,
-                "n_filled": n_filled,
-                "strategy": strategy,
-            }
-        )
+        {
+            "column": col,
+            "dtype": str(df[col].dtype),
+            "action": action,
+            "n_filled": n_filled,
+            "strategy": strategy,
+        }
+    )
 
-        # ---------------------------
-        # 🧹 Remove duplicates
-        # ---------------------------
-        before_dupes = len(df)
-        df.drop_duplicates(inplace=True)
-        removed = before_dupes - len(df)
-        console.print(
-            f"✅ Cleaning complete: {len(df)} rows remain ({removed} duplicates removed)",
-            style="bold green",
-        )
+    # ---------------------------
+    # 🧹 Remove duplicates
+    # ---------------------------
+    before_dupes = len(df)
+    df.drop_duplicates(inplace=True)
+    removed = before_dupes - len(df)
+    console.print(
+        f"✅ Cleaning complete: {len(df)} rows remain ({removed} duplicates removed)",
+        style="bold green",
+    )
 
-        remaining_nans = [col for col in df.columns if df[col].isna().any()]
-        if remaining_nans:
-            console.print(
-                f"⚠️ Still has NaNs in: {', '.join(remaining_nans)}", style="yellow"
-            )
+    remaining_nans = [col for col in df.columns if df[col].isna().any()]
+    if remaining_nans:
+        console.print(f"⚠️ Still has NaNs in: {', '.join(remaining_nans)}", style="yellow")
 
-        # ---------------------------
-        # 💾 Save cleaned data
-        # ---------------------------
-        if persist:
-            if hasattr(df, "_source_file_path") and df._source_file_path:
-                file_name = df._source_file_path
-            elif isinstance(file_or_df, (str, bytes, os.PathLike)):
-                file_name = os.path.abspath(str(file_or_df))
-            else:
-                file_name = "cleaned_data.csv"  # fallback name
+    # ---------------------------
+    # 💾 Save cleaned data
+    # ---------------------------
+    if persist:
+        if hasattr(df, "_source_file_path") and df._source_file_path:
+            file_name = df._source_file_path
+        elif isinstance(file_or_df, (str, bytes, os.PathLike)):
+            file_name = os.path.abspath(str(file_or_df))
+        else:
+            file_name = "cleaned_data.csv"  # fallback name
 
-            try:
-                save_cleaned_data(df, file_name)
-                console.print("[dim]💾 Cleaned data saved for future reuse[/dim]")
-            except Exception as e:
-                console.print(f"[red]❌ Failed to save cleaned data: {e}[/red]")
+        try:
+            save_cleaned_data(df, file_name)
+            console.print("[dim]💾 Cleaned data saved for future reuse[/dim]")
+        except Exception as e:
+            console.print(f"[red]❌ Failed to save cleaned data: {e}[/red]")
 
-        return df, summary_records
+    # ✅ Final consistent return (always executed)
+    return df, summary_records
 
 
 def load_cleaned_data(file_name):

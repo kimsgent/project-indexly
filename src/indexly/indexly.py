@@ -474,6 +474,15 @@ def run_watch(args):
         ripple.stop()
 
 
+def clear_cleaned_data_handler(args):
+    if getattr(args, "all", False):
+        clear_cleaned_data(remove_all=True)
+    elif getattr(args, "file", None):
+        clear_cleaned_data(file_path=args.file)
+    else:
+        print("⚠️ Please provide a file path or use --all to remove all entries.")
+
+
 def run_analyze_csv(args):
     """
     Handles `indexly analyze-csv` command including auto-cleaning, exporting, and visualization.
@@ -508,10 +517,10 @@ def run_analyze_csv(args):
             raw_csv_df = pd.read_csv(args.file, delimiter=delimiter, encoding="utf-8")
 
     # --- Step 1: Cleaning logic ---
-    if getattr(args, "clear_data", None):
-        clear_cleaned_data(args.clear_data)
-        ripple.stop()
-        return
+    # if getattr(args, "clear_data", None):
+    #    clear_cleaned_data(args.clear_data)
+    #    ripple.stop()
+    #    return
 
     # Try to load previously cleaned data
     if getattr(args, "use_cleaned", False):
@@ -632,48 +641,43 @@ def run_analyze_csv(args):
             )
             _summarize_post_clean(out_summary, "📉 Outlier Removal Summary")
 
-        # --- Visualization ---
-        if getattr(args, "show_chart", None):
-            transform_mode = getattr(args, "transform", "none").lower()
-            auto_transform = transform_mode == "auto"
-            chart_type = getattr(args, "chart_type", None)
-            mode = args.show_chart
+        # ============================================
+        # 🎨 Visualization (Only if explicitly requested)
+        # ============================================
+        show_chart = getattr(args, "show_chart", None)
+        chart_type = getattr(args, "chart_type", None)
+
+        # Only proceed if user explicitly asked for visualization
+        if show_chart or chart_type:
+            mode = show_chart or getattr(args, "mode", "static")
             x_col = getattr(args, "x_col", None)
             y_col = getattr(args, "y_col", None)
             output_path = getattr(args, "export_plot", None)
+            transform_mode = getattr(args, "transform", "none").lower()
+            auto_transform = transform_mode == "auto"
 
-            plot_df = raw_for_plot
+            # --- Prepare dataset for plotting ---
+            plot_df = raw_for_plot.copy()
+            plot_df.columns = [c.strip() for c in plot_df.columns]
 
-            if chart_type == "scatter":
-                visualize_scatter_plotly(
-                    df=plot_df,
-                    x_col=x_col,
-                    y_col=y_col,
-                    mode=mode,
-                    output=output_path,
-                )
-            elif chart_type == "bar":
+            # --- Auto-coerce object columns that look numeric (e.g. "$84,500,000.00") ---
+            for col in plot_df.columns:
+                if plot_df[col].dtype == "object":
+                    cleaned = (
+                        plot_df[col]
+                        .astype(str)
+                        .str.replace(r"[\$,]", "", regex=True)
+                        .str.strip()
+                    )
+                    numeric_col = pd.to_numeric(cleaned, errors="coerce")
+                    if numeric_col.notna().mean() > 0.5:
+                        plot_df[col] = numeric_col
+
+            # --- Chart Rendering ---
+            if chart_type in {"bar", "pie", "scatter"}:
                 if not x_col or not y_col:
                     console.print(
-                        "[red]⚠️ --x-col and --y-col are required for bar charts.[/red]"
-                    )
-                elif x_col not in plot_df.columns or y_col not in plot_df.columns:
-                    console.print(
-                        f"[red]⚠️ Invalid columns: '{x_col}' or '{y_col}' not found in dataset.[/red]"
-                    )
-                else:
-                    visualize_bar_plot(
-                        df=plot_df,
-                        x_col=x_col,
-                        y_col=y_col,
-                        mode=mode,
-                        output=output_path,
-                        title=f"Bar Chart: {y_col} by {x_col}",
-                    )
-            elif chart_type == "pie":
-                if not x_col or not y_col:
-                    console.print(
-                        "[red]⚠️ --x-col and --y-col are required for pie charts.[/red]"
+                        f"[red]⚠️ --x-col and --y-col are required for {chart_type} charts.[/red]"
                     )
                 elif x_col not in plot_df.columns or y_col not in plot_df.columns:
                     console.print(
@@ -681,57 +685,77 @@ def run_analyze_csv(args):
                     )
                 else:
                     try:
-                        agg_df = (
-                            plot_df.groupby(x_col)[y_col]
-                            .sum(numeric_only=True)
-                            .reset_index()
-                            .sort_values(by=y_col, ascending=False)
-                        )
-                        visualize_pie_plot(
-                            df=agg_df,
-                            x_col=x_col,
-                            y_col=y_col,
-                            mode=mode,
-                            output=output_path,
-                            title=f"Pie Chart: {y_col} by {x_col}",
-                        )
+                        if chart_type == "scatter":
+                            visualize_scatter_plotly(
+                                plot_df, x_col, y_col, mode, output_path
+                            )
+
+                        elif chart_type == "bar":
+                            visualize_bar_plot(
+                                df=plot_df,
+                                x_col=x_col,
+                                y_col=y_col,
+                                mode=mode,
+                                output=output_path,
+                                title=f"Bar Chart: {y_col} by {x_col}",
+                            )
+
+                        elif chart_type == "pie":
+                            agg_df = (
+                                plot_df.groupby(x_col)[y_col]
+                                .sum(numeric_only=True)
+                                .reset_index()
+                                .sort_values(by=y_col, ascending=False)
+                            )
+                            visualize_pie_plot(
+                                df=agg_df,
+                                x_col=x_col,
+                                y_col=y_col,
+                                mode=mode,
+                                output=output_path,
+                                title=f"Pie Chart: {y_col} by {x_col}",
+                            )
                     except Exception as e:
-                        console.print(f"[red]❌ Failed to create pie chart: {e}[/red]")
-            else:
-                # Default: hist, box, line, etc.
-                if mode == "static" and chart_type not in ("scatter", "bar", "pie"):
-                    numeric_df_for_plot = plot_df.select_dtypes(include=np.number)
-                    if numeric_df_for_plot.empty:
                         console.print(
-                            "⚠️ No numeric columns available for plotting. Skipping chart.",
-                            style="bold red",
+                            f"[red]❌ Failed to create {chart_type} chart: {e}[/red]"
                         )
-                    else:
-                        visualize_data(
-                            summary_df=df_stats,
-                            mode=mode,
-                            chart_type=chart_type,
-                            output=output_path,
-                            raw_df=numeric_df_for_plot,
-                            transform="auto" if auto_transform else transform_mode,
-                            scale=getattr(args, "bar_scale", "sqrt"),
-                        )
+
+        else:
+            # ✅ Default fallback (hist, box, line, etc.)
+            if mode == "static" and chart_type not in ("scatter", "bar", "pie"):
+                numeric_df_for_plot = plot_df.select_dtypes(include=np.number)
+                if numeric_df_for_plot.empty:
+                    console.print(
+                        "⚠️ No numeric columns available for plotting. Skipping chart.",
+                        style="bold red",
+                    )
                 else:
                     visualize_data(
                         summary_df=df_stats,
                         mode=mode,
                         chart_type=chart_type,
                         output=output_path,
-                        raw_df=plot_df,
-                        transform=("auto" if auto_transform else transform_mode),
+                        raw_df=numeric_df_for_plot,
+                        transform="auto" if auto_transform else transform_mode,
                         scale=getattr(args, "bar_scale", "sqrt"),
                     )
+            else:
+                visualize_data(
+                    summary_df=df_stats,
+                    mode=mode,
+                    chart_type=chart_type,
+                    output=output_path,
+                    raw_df=plot_df,
+                    transform=("auto" if auto_transform else transform_mode),
+                    scale=getattr(args, "bar_scale", "sqrt"),
+                )
 
-    elif df_stats is None or getattr(df_stats, "empty", True):
-        console.print(
-            "[yellow]⚠️ No valid numeric or date columns available for analysis. "
-            "The dataset may be textual or empty after cleaning.[/yellow]"
-        )
+        # --- Safety check: no valid data ---
+        if df_stats is None or getattr(df_stats, "empty", True):
+            console.print(
+                "[yellow]⚠️ No valid numeric or date columns available for analysis. "
+                "The dataset may be textual or empty after cleaning.[/yellow]"
+            )
 
 
 def handle_extract_mtw(args):

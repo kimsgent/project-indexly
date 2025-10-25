@@ -500,14 +500,37 @@ def visualize_scatter_plotly(df, x_col, y_col, mode="interactive", output=None):
         console.print("[yellow]⚠️ Unsupported mode for scatter plot.[/yellow]")
 
 # ============================================
-# 📊 Bar Chart Visualization
+# 📊 Bar Chart Visualization (Improved)
 # ============================================
 def visualize_bar_plot(df, x_col, y_col, mode="static", output=None, title=None):
     """
     Render a bar chart using either matplotlib (static) or plotly (interactive).
+    Automatically coerces numeric columns (e.g., '$123,000.00') to floats.
     """
+    import pandas as pd
+    import numpy as np
+    from rich.console import Console
+    console = Console()
+
     if not x_col or not y_col:
         raise ValueError("--x-col and --y-col are required for bar charts.")
+
+    # ✅ Auto-clean numeric-like string columns (e.g. '$1,000,000')
+    if y_col in df.columns and df[y_col].dtype == "object":
+        console.print(f"[dim]🔢 Converting '{y_col}' to numeric (auto-detected as object)[/dim]")
+        df[y_col] = (
+            df[y_col]
+            .astype(str)
+            .str.replace(r"[^0-9.\-]", "", regex=True)  # remove $, commas, etc.
+            .replace("", np.nan)
+        )
+        df[y_col] = pd.to_numeric(df[y_col], errors="coerce")
+
+    # Drop rows with NaN in x or y
+    df = df.dropna(subset=[x_col, y_col])
+    if df.empty:
+        console.print(f"[red]❌ No valid data to plot for {x_col} vs {y_col}[/red]")
+        return
 
     if mode == "interactive":
         ensure_optional_packages(["plotly.express"])
@@ -527,7 +550,7 @@ def visualize_bar_plot(df, x_col, y_col, mode="static", output=None, title=None)
         plt.title(title or f"{y_col} by {x_col}")
         plt.xlabel(x_col)
         plt.ylabel(y_col)
-        plt.xticks(rotation=45)
+        plt.xticks(rotation=45, ha="right")
         plt.tight_layout()
 
         if output:
@@ -536,18 +559,41 @@ def visualize_bar_plot(df, x_col, y_col, mode="static", output=None, title=None)
 
 
 # ============================================
-# 🥧 Pie Chart Visualization
+# 🥧 Pie Chart Visualization (Improved)
 # ============================================
 def visualize_pie_plot(df, x_col, y_col, mode="static", output=None, agg_func="sum", title=None):
     """
     Render a pie chart based on aggregate data.
     Groups df[y_col] by df[x_col] using agg_func (sum by default).
+    Automatically coerces numeric-like strings (e.g., '$123,000.00') to floats.
     """
+    import pandas as pd
+    import numpy as np
+    from rich.console import Console
+    console = Console()
+
     if not x_col or not y_col:
         raise ValueError("--x-col and --y-col are required for pie charts.")
 
-    # Aggregate data
-    grouped = df.groupby(x_col, dropna=False)[y_col].agg(agg_func).reset_index()
+    # ✅ Auto-clean numeric-like string columns
+    if y_col in df.columns and df[y_col].dtype == "object":
+        console.print(f"[dim]🔢 Converting '{y_col}' to numeric (auto-detected as object)[/dim]")
+        df[y_col] = (
+            df[y_col]
+            .astype(str)
+            .str.replace(r"[^0-9.\-]", "", regex=True)
+            .replace("", np.nan)
+        )
+        df[y_col] = pd.to_numeric(df[y_col], errors="coerce")
+
+    # Group and aggregate data
+    grouped = df.groupby(x_col, dropna=False, observed=True)[y_col].agg(agg_func).reset_index()
+    grouped = grouped.dropna(subset=[y_col])
+    grouped = grouped.sort_values(by=y_col, ascending=False)
+
+    if grouped.empty:
+        console.print(f"[red]❌ No valid data to plot for pie chart ({x_col} vs {y_col})[/red]")
+        return
 
     if mode == "interactive":
         ensure_optional_packages(["plotly.express"])
