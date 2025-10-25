@@ -19,7 +19,7 @@ keywords: [
   "Indexly tutorial"
 ]
 cta: "Get started with Indexly"
-link: "/docs/usage/"
+link: "/docs/content/documentation/usage.md"
 type: docs
 toc: true
 categories:
