@@ -501,11 +501,12 @@ def run_analyze_csv(args):
         first_col_name = raw_csv_df.columns[0]
         if ";" in first_col_name or "," in first_col_name:
             console.print(
-                "🔁 Retrying CSV load with dynamic delimiter detection...", style="bold yellow"
+                "🔁 Retrying CSV load with dynamic delimiter detection...",
+                style="bold yellow",
             )
             delimiter = detect_delimiter(args.file)
             raw_csv_df = pd.read_csv(args.file, delimiter=delimiter, encoding="utf-8")
-            
+
     # --- Step 1: Cleaning logic ---
     if getattr(args, "clear_data", None):
         clear_cleaned_data(args.clear_data)
@@ -560,7 +561,11 @@ def run_analyze_csv(args):
     else:
         # Use cleaned dataframe
         _, df_stats, table_output = analyze_csv(df, from_df=True)
-        raw_for_plot = df if getattr(args, "auto_clean", False) else (raw_csv_df if raw_csv_df is not None else df)
+        raw_for_plot = (
+            df
+            if getattr(args, "auto_clean", False)
+            else (raw_csv_df if raw_csv_df is not None else df)
+        )
 
     ripple.stop()
 
@@ -582,7 +587,9 @@ def run_analyze_csv(args):
 
         # ✅ Only print table once
         if isinstance(table_output, str) and table_output.strip():
-            console.print("[bold cyan]ℹ️ Displaying statistics for dataset[/bold cyan]\n")
+            console.print(
+                "[bold cyan]ℹ️ Displaying statistics for dataset[/bold cyan]\n"
+            )
             print(table_output)  # controlled single print
         else:
             console.print("[dim]ℹ️ No formatted output table available.[/dim]")
@@ -597,8 +604,14 @@ def run_analyze_csv(args):
                 )
 
             console.print("\n📊 Extended Data Types Overview", style="bold green")
-            for col, dtype in df.dtypes.items():
-                console.print(f"• {col}: {dtype}")
+
+            if df is None or not hasattr(df, "dtypes"):
+                console.print(
+                    "[yellow]⚠️ No valid DataFrame available for extended type overview.[/yellow]"
+                )
+            else:
+                for col, dtype in df.dtypes.items():
+                    console.print(f"• {col}: {dtype}")
 
         # --- Optional export of analysis results ---
         if getattr(args, "export_path", None):
