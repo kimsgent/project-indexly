@@ -18,6 +18,8 @@ from .cache_utils import save_cache, load_cache
 from .path_utils import normalize_path
 from .migration_manager import run_migrations
 from .rename_utils import SUPPORTED_DATE_FORMATS
+from .db_update import check_schema, apply_migrations
+from .clean_csv import clear_cleaned_data
 
 # CLI display configurations here
 command_titles = {
@@ -76,6 +78,8 @@ def build_parser():
         run_watch,
         handle_extract_mtw,
         handle_rename_file,
+        handle_update_db,
+        handle_show_help,
     )
 
     parser = argparse.ArgumentParser(
@@ -129,6 +133,16 @@ def build_parser():
     regex_parser.add_argument("pattern", help="Regex pattern")
     regex_parser.add_argument("--db", default="index.db", help="Database path")
     add_common_arguments(regex_parser)
+
+    # Add profile save/load support
+    regex_parser.add_argument(
+        "--save-profile",
+        help="Save this regex search as a profile (parameters + results)",
+    )
+    regex_parser.add_argument(
+        "--profile", help="Load a saved profile and optionally filter its results"
+    )
+
     regex_parser.set_defaults(func=handle_regex)
 
     # Tag
@@ -156,9 +170,132 @@ def build_parser():
     # Analyze CSV
     csv_parser = subparsers.add_parser("analyze-csv", help="Analyze a CSV file")
     csv_parser.add_argument("file")
-    csv_parser.add_argument("--export-path")
+    csv_parser.add_argument(
+        "--export-path", help="Export analysis table to file (txt or md)"
+    )
     csv_parser.add_argument("--format", choices=["txt", "md"], default="txt")
+
+    # Visualization options
+    csv_parser.add_argument(
+        "--show-chart",
+        choices=["ascii", "static", "interactive"],
+        help="Visualize CSV data in terminal, static image, or interactive HTML",
+    )
+    csv_parser.add_argument(
+        "--chart-type",
+        choices=["bar", "line", "box", "hist", "scatter", "pie"],
+        default="None",
+        help="Chart type for visualizing numeric data",
+    )
+    csv_parser.add_argument(
+        "--export-plot",
+        help="Export chart to file (png, svg, html depending on chart mode)",
+    )
+    csv_parser.add_argument(
+        "--x-col",
+        help="X-axis column for scatter plot (required if chart-type=scatter)",
+    )
+    csv_parser.add_argument(
+        "--y-col",
+        help="Y-axis column for scatter plot (required if chart-type=scatter)",
+    )
+    csv_parser.add_argument(
+        "--transform",
+        choices=["none", "log", "sqrt", "softplus", "exp-log", "auto"],
+        default="none",
+        help="Apply data transformation before visualization (logarithmic or square root).",
+    )
+    csv_parser.add_argument(
+        "--bar-scale",
+        choices=["sqrt", "log"],
+        default="sqrt",
+        help="Scaling method for ASCII histogram bars.",
+    )
+
+    # Cleaning options
+    csv_parser.add_argument(
+        "--auto-clean",
+        action="store_true",
+        help="Run robust cleaning pipeline before analysis",
+    )
+    csv_parser.add_argument(
+        "--fill-method",
+        choices=["mean", "median"],
+        default="mean",
+        help="Method to fill missing numeric values during cleaning",
+    )
+    csv_parser.add_argument(
+        "--datetime-formats",
+        nargs="+",
+        metavar="FMT",
+        help="Optional list of datetime formats to apply (e.g. '%%Y-%%m-%%d' '%%d/%%m/%%Y %%H:%%M').",
+    )
+    csv_parser.add_argument(
+        "--derive-dates",
+        choices=["all", "minimal", "none"],
+        default="all",
+        help="Control how many derived datetime features to generate (default: all).",
+    )
+    csv_parser.add_argument(
+        "--date-threshold",
+        type=float,
+        default=0.3,
+        help="Minimum valid ratio (0–1) for date detection. Default=0.3",
+    )
+    csv_parser.add_argument(
+        "--use-cleaned",
+        action="store_true",
+        help="Load previously saved cleaned dataset",
+    )
+    csv_parser.add_argument(
+        "--normalize",
+        action="store_true",
+        help="Normalize numeric columns after cleaning (requires --auto-clean).",
+    )
+
+    csv_parser.add_argument(
+        "--remove-outliers",
+        action="store_true",
+        help="Remove outliers from numeric columns after cleaning (requires --auto-clean).",
+    )
+    csv_parser.add_argument(
+        "--save-data", action="store_true", help="Save cleaned data to DB for reuse"
+    )
+    csv_parser.add_argument(
+        "--export-cleaned",
+        help="Path to export cleaned dataset (e.g. cleaned.csv, cleaned.parquet)",
+    )
+    csv_parser.add_argument(
+        "--export-format",
+        choices=["csv", "json", "parquet", "excel"],
+        default="csv",
+        help="Format to export cleaned dataset (default: csv)",
+    )
+    csv_parser.add_argument(
+        "--show-summary",
+        action="store_true",
+        help="Display an extended summary of detected columns and derived fields.",
+    )
+
     csv_parser.set_defaults(func=run_analyze_csv)
+
+    ## removal option
+    clear_parser = subparsers.add_parser(
+        "clear-data", help="Remove saved cleaned dataset for a specific file"
+    )
+    clear_parser.add_argument(
+        "file", nargs="?", help="CSV file whose cleaned data should be removed"
+    )
+    clear_parser.add_argument(
+        "--all",
+        action="store_true",
+        help="Remove all cleaned datasets",
+    )
+    clear_parser.set_defaults(
+        func=lambda args: clear_cleaned_data(
+            file_path=args.file, remove_all=getattr(args, "all", False)
+        )
+    )
 
     # Stats
     stats_parser = subparsers.add_parser("stats", help="Show database statistics")
@@ -280,6 +417,44 @@ def build_parser():
             args.db, last=args.last
         )
     )
+
+    # -------------------------------------------------------------------
+    # update-db command
+    # -------------------------------------------------------------------
+    update_db = subparsers.add_parser(
+        "update-db",
+        help="Quickly check or apply database schema updates (without backups).",
+    )
+
+    update_db.add_argument(
+        "--db",
+        type=str,
+        default=None,
+        help="Path to database file (default: uses DB_FILE from config)",
+    )
+
+    update_db.add_argument(
+        "--apply",
+        action="store_true",
+        help="Apply schema fixes instead of just checking.",
+    )
+
+    update_db.set_defaults(func=lambda args: handle_update_db(args))
+
+    # -------------------------------------------------------------------
+    # show-help command
+    # -------------------------------------------------------------------
+
+    show_help_parser = subparsers.add_parser(
+        "show-help", help="Display help for all Indexly commands"
+    )
+    show_help_parser.add_argument(
+        "--markdown", action="store_true", help="Output as Markdown for docs"
+    )
+    show_help_parser.add_argument(
+        "--details", action="store_true", help="Show detailed help for each command"
+    )
+    show_help_parser.set_defaults(func=handle_show_help)
 
     return parser
 

@@ -18,7 +18,7 @@ keywords: [
   "Indexly watchdog"
 ]
 cta: "Optimize your Indexly setup"
-link: "/docs/configuration/"
+link: "/docs/content/documentation/config.md"
 type: docs
 categories:
     - Features 
@@ -103,6 +103,8 @@ indexly analyze-csv --file data.csv --format md --output summary.md
 * Auto-detect delimiters
 * Computes stats: mean, median, min, max, stddev, IQR
 * Outputs in Markdown or TXT
+* [Cleaning CSV Data →](clean-csv-data.md)
+* [Analyze CSV →](data-analysis.md)
 * Analyse [Minitab MTW files](mtw-parser.md) after extraction
 
 > ![CSV stats placeholder](/images/csv-stats.png)
@@ -112,6 +114,7 @@ indexly analyze-csv --file data.csv --format md --output summary.md
 
 ## Advanced Options
 
+* [`DB Update & Migration Utilities →`](db-migration-utility.md)
 * `indexly stats` → DB overview
 * `fts_index.db` → full-text index
 * `profiles.json` → saved searches

@@ -19,6 +19,38 @@ SUPPORTED_DATE_FORMATS = [
 
 DEFAULT_PATTERN = "{date}-{title}"
 
+
+def _check_alias_column_in_metadata():
+    """Ensure file_metadata table includes alias column before DB sync."""
+    import sqlite3
+    from .config import DB_FILE
+
+    if not Path(DB_FILE).exists():
+        print(f"❌ Database not found at: {DB_FILE}")
+        return False
+
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA table_info(file_metadata);")
+        columns = [row[1] for row in cursor.fetchall()]
+        conn.close()
+        if "alias" not in columns:
+            print("\n❌ The 'alias' column is missing in file_metadata table.\n")
+            print("👉 Please run the Update-db script to update your database schema:")
+            print(
+                '\n   indexly update-db --db "path\\to\\database"          # to check'
+            )
+            print(
+                '   indexly update-db --db "path\\to\\database" --apply   # to apply changes\n'
+            )
+            return False
+        return True
+    except Exception as e:
+        print(f"⚠️ Database schema check failed: {e}")
+        return False
+
+
 # -------------------------------------------------
 # Helpers
 # -------------------------------------------------
@@ -162,9 +194,13 @@ def rename_file(
     else:
         if new_name == file_path.name:
             print(f"✅ Skipped (already correct): {file_path}")
+
         else:
             shutil.move(str(file_path), str(new_path))
             if update_db:
+                if not _check_alias_column_in_metadata():
+                    print("⏹️  Rename aborted due to missing alias column.")
+                    return
                 _sync_path_in_db(file_path, new_path)
             print(f"✅ Renamed:\n  {file_path} → {new_path}")
 
@@ -192,7 +228,7 @@ def rename_files_in_dir(
         return
 
     files = sorted(dir_path.rglob("*") if recursive else dir_path.glob("*"))
-    
+
     last_date = None
     counter = 0
 
@@ -209,9 +245,13 @@ def rename_files_in_dir(
                     )
                     date_str = parsed_dt.strftime(date_format)
                 except ValueError:
-                    date_str = datetime.fromtimestamp(f.stat().st_mtime).strftime(date_format)
+                    date_str = datetime.fromtimestamp(f.stat().st_mtime).strftime(
+                        date_format
+                    )
             else:
-                date_str = datetime.fromtimestamp(f.stat().st_mtime).strftime(date_format)
+                date_str = datetime.fromtimestamp(f.stat().st_mtime).strftime(
+                    date_format
+                )
 
             # Reset counter if date changed
             if date_str != last_date:
@@ -240,6 +280,10 @@ def rename_files_in_dir(
                 else:
                     print(f"[Dry-run] No rename needed: {f.name}")
             else:
+                if not _check_alias_column_in_metadata():
+                    print("⏹️  Rename aborted due to missing alias column.")
+                    return
+
                 if new_name != f.name:
                     shutil.move(str(f), str(new_path))
                     if update_db:

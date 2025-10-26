@@ -3,18 +3,22 @@ Debug tool for indexly database configuration and content.
 
 Usage:
     python -m indexly.debug_tbl                          # ✅ default: debug metadata and file_index tables
-    python -m indexly.debug_tbl --show-index              # ✅ show file_index with alias and other details
+    python -m indexly.debug_tbl --show-index              # ✅ show file_index with details (alias now in file_metadata)
     python -m indexly.debug_tbl --show-migrations         # ✅ show all migration history
     python -m indexly.debug_tbl --show-migrations --last 5  # ✅ show last 5 migrations
 """
 
 import os
+import json
 import sqlite3
 import argparse
 from .config import DB_FILE
 from .db_utils import connect_db
 
 
+# -----------------------------------------------------------------------------
+# FILE INDEX DEBUG (now joins alias from file_metadata)
+# -----------------------------------------------------------------------------
 def debug_file_index_table():
     print("\n📁 Debugging file_index table...\n")
 
@@ -27,7 +31,9 @@ def debug_file_index_table():
     cursor = conn.cursor()
 
     # Check if table exists
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='file_index';")
+    cursor.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='file_index';"
+    )
     if not cursor.fetchone():
         print("❌ file_index table not found.")
         conn.close()
@@ -44,20 +50,23 @@ def debug_file_index_table():
     total = cursor.fetchone()["total"]
     print(f"\n📊 Total rows: {total}")
 
-    # Show sample entries (focus on alias)
-    print("\n🔍 Sample entries (showing alias and metadata fields):")
+    # Show sample entries (join alias from file_metadata)
+    print("\n🔍 Sample entries (joining alias from file_metadata):")
     try:
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT 
-                path, 
-                alias,
-                tag,
-                modified,
-                substr(content, 1, 80) AS snippet
-            FROM file_index
-            ORDER BY modified DESC
+                fi.path,
+                fm.alias,
+                fi.tag,
+                fi.modified,
+                substr(fi.content, 1, 80) AS snippet
+            FROM file_index fi
+            LEFT JOIN file_metadata fm ON fi.path = fm.path
+            ORDER BY fi.modified DESC
             LIMIT 5;
-        """)
+        """
+        )
         rows = cursor.fetchall()
         if not rows:
             print("⚠️ No entries found in file_index.")
@@ -70,16 +79,18 @@ def debug_file_index_table():
     except Exception as e:
         print(f"⚠️ Error fetching file_index rows: {e}")
 
-    # Show alias summary (count of distinct values)
-    print("📦 Alias summary:")
+    # Show alias summary (from file_metadata, not file_index)
+    print("📦 Alias summary (from file_metadata):")
     try:
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT 
                 COUNT(*) AS total_aliases,
                 COUNT(DISTINCT alias) AS unique_aliases
-            FROM file_index
+            FROM file_metadata
             WHERE alias IS NOT NULL AND alias != '';
-        """)
+        """
+        )
         stats = cursor.fetchone()
         print(f"  Total aliases: {stats['total_aliases']}")
         print(f"  Unique aliases: {stats['unique_aliases']}")
@@ -89,6 +100,9 @@ def debug_file_index_table():
     conn.close()
 
 
+# -----------------------------------------------------------------------------
+# FILE METADATA + TAGS DEBUG
+# -----------------------------------------------------------------------------
 def debug_metadata_table():
     print("📂 Database file check:")
     if os.path.exists(DB_FILE):
@@ -116,26 +130,28 @@ def debug_metadata_table():
         for col in cursor.fetchall():
             print(f"  - {col['name']}")
 
-        print("\n🔍 Sample entries (with FTS content):")
+        print("\n🔍 Sample entries (including alias and core metadata):")
         try:
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT 
-                    fm.path,
-                    fm.title,
-                    fm.author,
-                    fm.camera,
-                    fm.created,
-                    fm.dimensions,
-                    fm.format,
-                    fm.gps,
-                    fi.alias
-                FROM file_metadata fm
-                LEFT JOIN file_index fi ON fm.path = fi.path
+                    path,
+                    alias,
+                    title,
+                    author,
+                    camera,
+                    created,
+                    dimensions,
+                    format,
+                    gps
+                FROM file_metadata
+                ORDER BY created DESC
                 LIMIT 3;
-            """)
+            """
+            )
             rows = cursor.fetchall()
             if not rows:
-                print("⚠️ No rows found in file_metadata or file_index.")
+                print("⚠️ No rows found in file_metadata.")
             for row in rows:
                 print(dict(row))
         except Exception as e:
@@ -158,19 +174,25 @@ def debug_metadata_table():
     conn.close()
 
 
-def show_migrations(last: int | None = None):
-    if not os.path.exists(DB_FILE):
-        print(f"❌ DB file not found at: {DB_FILE}")
+# -----------------------------------------------------------------------------
+# MIGRATION HISTORY
+# -----------------------------------------------------------------------------
+def show_migrations(db: str | None = None, last: int | None = None):
+    db_path = db or DB_FILE
+    if not os.path.exists(db_path):
+        print(f"❌ DB file not found at: {db_path}")
         return
 
     conn = connect_db()
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
-    cursor.execute("""
+    cursor.execute(
+        """
         SELECT name FROM sqlite_master 
         WHERE type='table' AND name='schema_migrations';
-    """)
+    """
+    )
     if not cursor.fetchone():
         print("⚠️ No migration history table found.")
         conn.close()
@@ -180,12 +202,14 @@ def show_migrations(last: int | None = None):
     if last:
         cursor.execute(
             "SELECT id, migration, applied_at FROM schema_migrations ORDER BY id DESC LIMIT ?;",
-            (last,)
+            (last,),
         )
         rows = cursor.fetchall()
         rows.reverse()
     else:
-        cursor.execute("SELECT id, migration, applied_at FROM schema_migrations ORDER BY id;")
+        cursor.execute(
+            "SELECT id, migration, applied_at FROM schema_migrations ORDER BY id;"
+        )
         rows = cursor.fetchall()
 
     if rows:
@@ -196,11 +220,84 @@ def show_migrations(last: int | None = None):
     conn.close()
 
 
+# -----------------------------------------------------------------------------
+# CLEANED DATA
+# -----------------------------------------------------------------------------
+
+
+def debug_cleaned_data_table(limit: int = 10):
+    from .cleaning.auto_clean import _get_db_connection
+    from rich.console import Console
+    from rich.json import JSON
+
+    console = Console()
+
+    print("\n🧹 Debugging cleaned_data table...\n")
+
+    conn = _get_db_connection()
+    cursor = conn.cursor()
+
+    # Check if table exists
+    cursor.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='cleaned_data';"
+    )
+    if not cursor.fetchone():
+        print("⚠️ cleaned_data table not found.")
+        conn.close()
+        return
+
+    # Show column info
+    print("📋 Columns in cleaned_data:")
+    cursor.execute("PRAGMA table_info(cleaned_data);")
+    for col in cursor.fetchall():
+        print(f"  - {col['name']}")
+
+    # Show total rows
+    cursor.execute("SELECT COUNT(*) AS total FROM cleaned_data;")
+    total = cursor.fetchone()[0]
+    print(f"\n📊 Total rows: {total}")
+
+    # Show sample entries (all fields)
+    print(f"\n🔍 Sample {limit} entries:")
+    cursor.execute(
+        f"SELECT * FROM cleaned_data ORDER BY cleaned_at DESC LIMIT {limit};"
+    )
+    rows = cursor.fetchall()
+    for row in rows:
+        preview = json.loads(row["data_json"])[:5]
+        console.print(f"[bold cyan]ID:[/bold cyan] {row['id']} — {row['file_name']}")
+        console.print(
+            f"[dim]Cleaned at:[/dim] {row['cleaned_at']}, Rows: {row['row_count']}, Cols: {row['col_count']}"
+        )
+        console.print(JSON.from_data(preview))
+        console.rule()
+
+    conn.close()
+
+
+# -----------------------------------------------------------------------------
+# MAIN CLI HANDLER
+# -----------------------------------------------------------------------------
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Debug indexly database tables and migrations")
-    parser.add_argument("--show-index", action="store_true", help="Show file_index table with alias and stats")
-    parser.add_argument("--show-migrations", action="store_true", help="Show migration history")
-    parser.add_argument("--last", type=int, help="Show only the last N migrations (requires --show-migrations)")
+    parser = argparse.ArgumentParser(
+        description="Debug indexly database tables and migrations"
+    )
+    parser.add_argument(
+        "--show-index",
+        action="store_true",
+        help="Show file_index table with stats (alias from file_metadata)",
+    )
+    parser.add_argument(
+        "--show-migrations", action="store_true", help="Show migration history"
+    )
+    parser.add_argument(
+        "--last",
+        type=int,
+        help="Show only the last N migrations (requires --show-migrations)",
+    )
+    parser.add_argument(
+        "--show-cleaned", action="store_true", help="Show cleaned_data table entries"
+    )
 
     args = parser.parse_args()
 
@@ -208,6 +305,8 @@ if __name__ == "__main__":
         show_migrations(last=args.last)
     elif args.show_index:
         debug_file_index_table()
+    elif getattr(args, "show_cleaned", False):
+        debug_cleaned_data_table()
     else:
         debug_metadata_table()
         debug_file_index_table()

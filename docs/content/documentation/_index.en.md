@@ -72,8 +72,11 @@ flowchart TD
 * [Exporting](usage.md#exporting)
 * [Watchdog](config.md#watchdog-real-time-indexing)
 * [Advanced Options](config.md#advanced-options)
-* New in v1.0.3: [Renaming Files with Patterns →](rename-file.md)
-* New in v1.0.3: [Extracting Minitab MTW files →](mtw-parser.md)
+* [Renaming Files with Patterns →](rename-file.md)
+* [Extracting Minitab MTW files →](mtw-parser.md)
+* New in v1.0.4: [Cleaning CSV Data →](clean-csv-data.md)
+* New in v1.0.4: [Analyze CSV →](data-analysis.md)
+* New in v1.0.4: [DB Update & Migration Utilities →](db-migration-utility.md)
 * [Developer Notes](developer.md)
 * [License & Credits](#license-credits)
 

@@ -1,6 +1,10 @@
-# CI dependencies (no heavy OCR/image stuff)
+# ===============================================
+# CI Dependencies for Indexly
+# Lightweight set: skips heavy OCR/image libraries
+# Ensures coverage for data analysis + visualization
+# ===============================================
 
-# Runtime essentials
+# --- Runtime essentials ---
 nltk>=3.8.0
 pymupdf>=1.23.0
 Pillow>=11.3.0
@@ -19,7 +23,16 @@ odfpy>=1.4.1
 rich>=13.7.1
 pandas>=2.2.0
 
-# Dev/test tools
+# --- Lightweight visualization (for test_bin_dist, CSV stats, etc.) ---
+numpy>=1.26.0
+matplotlib>=3.8.0
+plotext>=5.2.8  # ASCII terminal visualization (lightweight, no GUI)
+
+# NOTE:
+# Plotly excluded from CI to reduce setup time and dependency weight.
+# (It’s included in full requirements for interactive visualization mode.)
+
+# --- Dev/test tools ---
 pytest>=8.4.2
 pytest-cov>=4.1.0
 flake8>=6.1.0

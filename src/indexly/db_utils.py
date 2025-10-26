@@ -78,7 +78,6 @@ def connect_db(db_path: str | None = None):
             content, 
             clean_content, 
             modified,
-            alias, 
             hash, 
             tag, 
             tokenize = 'porter', 
@@ -104,6 +103,7 @@ def connect_db(db_path: str | None = None):
             created TEXT,
             last_modified TEXT,
             last_modified_by TEXT,
+            alias TEXT,
             camera TEXT,
             image_created TEXT,
             dimensions TEXT,
@@ -112,16 +112,17 @@ def connect_db(db_path: str | None = None):
         );
         """
     )
-
+    
     conn.commit()
     return conn
+
 
 def _sync_path_in_db(old_path: str, new_path: str):
     """
     Fully synchronize a renamed file across all DB tables:
-    - Updates path in all tables
-    - Preserves hash, metadata, and tags
+    - Updates path in file_metadata (reference table)
     - Writes old filename into alias column
+    - Also updates path in file_tags for consistency
     """
     from pathlib import Path
 
@@ -133,24 +134,14 @@ def _sync_path_in_db(old_path: str, new_path: str):
         conn = connect_db()
         cur = conn.cursor()
 
-        # --- file_index ---
+        # --- file_metadata (main reference table now) ---
         cur.execute(
             """
-            UPDATE file_index
+            UPDATE file_metadata
             SET path = ?, alias = ?
             WHERE path = ?
             """,
             (new_path_str, old_name, old_path_str),
-        )
-
-        # --- file_metadata ---
-        cur.execute(
-            """
-            UPDATE file_metadata
-            SET path = ?
-            WHERE path = ?
-            """,
-            (new_path_str, old_path_str),
         )
 
         # --- file_tags ---
@@ -170,10 +161,10 @@ def _sync_path_in_db(old_path: str, new_path: str):
         return True
 
     except Exception as e:
-        logger.error(f"⚠️ DB sync failed for rename {old_path_str} → {new_path_str}: {e}")
+        logger.error(
+            f"⚠️ DB sync failed for rename {old_path_str} → {new_path_str}: {e}"
+        )
         return False
-
-
 
 
 def regexp(pattern, string):
