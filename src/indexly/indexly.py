@@ -73,6 +73,9 @@ from .visualize_csv import (
     visualize_scatter_plotly,
     visualize_pie_plot,
     visualize_bar_plot,
+    visualize_line_plot,
+    apply_transformation,
+    ensure_optional_packages,
 )
 
 # Force UTF-8 output encoding (Recommended for Python 3.7+)
@@ -486,7 +489,7 @@ def clear_cleaned_data_handler(args):
 def run_analyze_csv(args):
     """
     Handles `indexly analyze-csv` command including auto-cleaning, exporting, and visualization.
-    Compatible with --auto-clean, --datetime-formats, --show-summary, etc.
+    Fully compatible with --auto-clean, --datetime-formats, --show-summary, --normalize, --remove-outliers, --show-chart, etc.
     """
     console = Console()
     ripple = Ripple("CSV Analysis", speed="fast", rainbow=True)
@@ -495,9 +498,9 @@ def run_analyze_csv(args):
 
     df = None
     raw_csv_df = None
-    summary_records = []  # ✅ ensure always defined
+    summary_records = []
 
-    # --- Step 0: Load raw CSV for reference ---
+    # --- Step 0: Load raw CSV ---
     try:
         raw_csv_df = pd.read_csv(
             args.file, delimiter=detect_delimiter(args.file), encoding="utf-8"
@@ -505,7 +508,7 @@ def run_analyze_csv(args):
     except Exception:
         raw_csv_df = None
 
-    # Fallback: misparsed single-column CSV (common delimiter issue)
+    # Fallback for misparsed single-column CSV
     if raw_csv_df is not None and raw_csv_df.shape[1] == 1:
         first_col_name = raw_csv_df.columns[0]
         if ";" in first_col_name or "," in first_col_name:
@@ -516,13 +519,7 @@ def run_analyze_csv(args):
             delimiter = detect_delimiter(args.file)
             raw_csv_df = pd.read_csv(args.file, delimiter=delimiter, encoding="utf-8")
 
-    # --- Step 1: Cleaning logic ---
-    # if getattr(args, "clear_data", None):
-    #    clear_cleaned_data(args.clear_data)
-    #    ripple.stop()
-    #    return
-
-    # Try to load previously cleaned data
+    # --- Step 1: Use previously cleaned data if requested ---
     if getattr(args, "use_cleaned", False):
         df = load_cleaned_data(args.file)
         if df is None:
@@ -530,7 +527,7 @@ def run_analyze_csv(args):
                 "[yellow]⚠️ No saved cleaned data found. Falling back to raw CSV.[/yellow]"
             )
 
-    # --- Step 1b: Handle new cleaning run ---
+    # --- Step 2: Auto-clean if requested ---
     if getattr(args, "auto_clean", False):
         df, summary_records = auto_clean_csv(
             args.file,
@@ -542,11 +539,10 @@ def run_analyze_csv(args):
             date_threshold=getattr(args, "date_threshold", 0.3),
         )
 
-        # --- Optional export of cleaned dataset ---
-        if getattr(args, "export_cleaned", None):
-            export_path = args.export_cleaned
+        # Optional export
+        export_path = getattr(args, "export_cleaned", None)
+        if export_path:
             export_fmt = getattr(args, "export_format", "csv")
-
             console.print(
                 f"[cyan]Exporting cleaned dataset to {export_path} ({export_fmt})...[/cyan]"
             )
@@ -563,12 +559,11 @@ def run_analyze_csv(args):
             except Exception as e:
                 console.print(f"[red]❌ Export failed: {e}[/red]")
 
-    # --- Step 2: Analysis ---
+    # --- Step 3: Analyze CSV ---
     if df is None:
         raw_df, df_stats, table_output = analyze_csv(args.file)
         raw_for_plot = raw_csv_df if raw_csv_df is not None else raw_df
     else:
-        # Use cleaned dataframe
         _, df_stats, table_output = analyze_csv(df, from_df=True)
         raw_for_plot = (
             df
@@ -578,9 +573,8 @@ def run_analyze_csv(args):
 
     ripple.stop()
 
-    # --- Step 3: Show results ---
+    # --- Step 4: Display results ---
     def _is_valid_stats(stats_obj):
-        """Safely determine if df_stats is non-empty and usable."""
         if stats_obj is None:
             return False
         if isinstance(stats_obj, (pd.DataFrame, pd.Series)):
@@ -594,16 +588,14 @@ def run_analyze_csv(args):
     if _is_valid_stats(df_stats):
         console.print("\n")
 
-        # ✅ Only print table once
         if isinstance(table_output, str) and table_output.strip():
             console.print(
                 "[bold cyan]ℹ️ Displaying statistics for dataset[/bold cyan]\n"
             )
-            print(table_output)  # controlled single print
+            print(table_output)
         else:
             console.print("[dim]ℹ️ No formatted output table available.[/dim]")
 
-        # Table is printed inside analyze_csv; no need to print again
         if getattr(args, "show_summary", False):
             if summary_records:
                 _summarize_cleaning_results(summary_records)
@@ -613,7 +605,6 @@ def run_analyze_csv(args):
                 )
 
             console.print("\n📊 Extended Data Types Overview", style="bold green")
-
             if df is None or not hasattr(df, "dtypes"):
                 console.print(
                     "[yellow]⚠️ No valid DataFrame available for extended type overview.[/yellow]"
@@ -622,13 +613,13 @@ def run_analyze_csv(args):
                 for col, dtype in df.dtypes.items():
                     console.print(f"• {col}: {dtype}")
 
-        # --- Optional export of analysis results ---
+        # Optional export of analysis results
         if getattr(args, "export_path", None):
             export_results(
                 table_output, args.export_path, getattr(args, "format", "txt")
             )
 
-        # --- Optional post-clean numeric transformations ---
+        # Optional post-clean numeric transformations
         if getattr(args, "normalize", False):
             df, norm_summary = _normalize_numeric(df)
             console.print("[cyan]→ Normalization applied to numeric columns.[/cyan]")
@@ -641,121 +632,140 @@ def run_analyze_csv(args):
             )
             _summarize_post_clean(out_summary, "📉 Outlier Removal Summary")
 
-        # ============================================
-        # 🎨 Visualization (Only if explicitly requested)
-        # ============================================
-        show_chart = getattr(args, "show_chart", None)
-        chart_type = getattr(args, "chart_type", None)
+        # --- Step 5: Visualization (only if requested) ---
 
-        # Only proceed if user explicitly asked for visualization
-        if show_chart or chart_type:
-            mode = show_chart or getattr(args, "mode", "static")
-            x_col = getattr(args, "x_col", None)
-            y_col = getattr(args, "y_col", None)
-            output_path = getattr(args, "export_plot", None)
-            transform_mode = getattr(args, "transform", "none").lower()
-            auto_transform = transform_mode == "auto"
+        show_chart = getattr(args, "show_chart", None)  # ascii, static, interactive
+        chart_type = getattr(args, "chart_type", None)  # hist, box, scatter, bar, pie, line
+        mode = show_chart or "static"
+        output_path = getattr(args, "export_plot", None)
+        x_col = getattr(args, "x_col", None)
+        y_col = getattr(args, "y_col", None)
+        transform_mode = getattr(args, "transform", "none").lower()
+        auto_transform = transform_mode == "auto"
 
-            # --- Prepare dataset for plotting ---
-            plot_df = raw_for_plot.copy()
+        # Prepare plotting DataFrame
+        plot_df = raw_for_plot.copy() if "raw_for_plot" in locals() else None
+        if plot_df is not None:
             plot_df.columns = [c.strip() for c in plot_df.columns]
-
-            # --- Auto-coerce object columns that look numeric (e.g. "$84,500,000.00") ---
             for col in plot_df.columns:
                 if plot_df[col].dtype == "object":
-                    cleaned = (
-                        plot_df[col]
-                        .astype(str)
-                        .str.replace(r"[\$,]", "", regex=True)
-                        .str.strip()
-                    )
+                    cleaned = plot_df[col].astype(str).str.replace(r"[\$,]", "", regex=True).str.strip()
                     numeric_col = pd.to_numeric(cleaned, errors="coerce")
                     if numeric_col.notna().mean() > 0.5:
                         plot_df[col] = numeric_col
 
-            # --- Chart Rendering ---
-            if chart_type in {"bar", "pie", "scatter"}:
-                if not x_col or not y_col:
-                    console.print(
-                        f"[red]⚠️ --x-col and --y-col are required for {chart_type} charts.[/red]"
-                    )
-                elif x_col not in plot_df.columns or y_col not in plot_df.columns:
-                    console.print(
-                        f"[red]⚠️ Invalid columns: '{x_col}' or '{y_col}' not found in dataset.[/red]"
-                    )
+        numeric_cols = plot_df.select_dtypes(include=np.number).columns.tolist() if plot_df is not None else []
+
+        # Apply transformations consistently
+        transformed_df = pd.DataFrame()
+        transform_map = {}
+        for col in numeric_cols:
+            col_values = plot_df[col].dropna()
+            if auto_transform:
+                skew_val = col_values.skew()
+                if skew_val > 3:
+                    suggested = "log"
+                elif 1 < skew_val <= 3:
+                    suggested = "sqrt"
+                elif skew_val < -1:
+                    suggested = "softplus"
                 else:
-                    try:
-                        if chart_type == "scatter":
-                            visualize_scatter_plotly(
-                                plot_df, x_col, y_col, mode, output_path
-                            )
+                    suggested = "none"
+            else:
+                suggested = transform_mode
+            transformed_df[col] = apply_transformation(col_values, suggested)
+            transform_map[col] = suggested
 
-                        elif chart_type == "bar":
-                            visualize_bar_plot(
-                                df=plot_df,
-                                x_col=x_col,
-                                y_col=y_col,
-                                mode=mode,
-                                output=output_path,
-                                title=f"Bar Chart: {y_col} by {x_col}",
-                            )
-
-                        elif chart_type == "pie":
-                            agg_df = (
-                                plot_df.groupby(x_col)[y_col]
-                                .sum(numeric_only=True)
-                                .reset_index()
-                                .sort_values(by=y_col, ascending=False)
-                            )
-                            visualize_pie_plot(
-                                df=agg_df,
-                                x_col=x_col,
-                                y_col=y_col,
-                                mode=mode,
-                                output=output_path,
-                                title=f"Pie Chart: {y_col} by {x_col}",
-                            )
-                    except Exception as e:
-                        console.print(
-                            f"[red]❌ Failed to create {chart_type} chart: {e}[/red]"
-                        )
-
+        # Early exit if no plotting requested
+        if not show_chart:
+            pass
+        elif not numeric_cols:
+            console.print("⚠️ No numeric data available to plot. Skipping visualization.", style="yellow")
         else:
-            # ✅ Default fallback (hist, box, line, etc.)
-            if mode == "static" and chart_type not in ("scatter", "bar", "pie"):
-                numeric_df_for_plot = plot_df.select_dtypes(include=np.number)
-                if numeric_df_for_plot.empty:
-                    console.print(
-                        "⚠️ No numeric columns available for plotting. Skipping chart.",
-                        style="bold red",
-                    )
-                else:
+            try:
+                # ---------------- ASCII ----------------
+  
+                if str(show_chart).lower() == "ascii":
                     visualize_data(
                         summary_df=df_stats,
-                        mode=mode,
-                        chart_type=chart_type,
+                        mode="ascii",
+                        chart_type=chart_type or "box",
                         output=output_path,
-                        raw_df=numeric_df_for_plot,
-                        transform="auto" if auto_transform else transform_mode,
+                        raw_df=plot_df,
+                        transform=("auto" if auto_transform else transform_mode),
                         scale=getattr(args, "bar_scale", "sqrt"),
                     )
-            else:
-                visualize_data(
-                    summary_df=df_stats,
-                    mode=mode,
-                    chart_type=chart_type,
-                    output=output_path,
-                    raw_df=plot_df,
-                    transform=("auto" if auto_transform else transform_mode),
-                    scale=getattr(args, "bar_scale", "sqrt"),
-                )
 
-        # --- Safety check: no valid data ---
-        if df_stats is None or getattr(df_stats, "empty", True):
-            console.print(
-                "[yellow]⚠️ No valid numeric or date columns available for analysis. "
-                "The dataset may be textual or empty after cleaning.[/yellow]"
-            )
+                # ---------------- Static ----------------
+                elif str(show_chart).lower() == "static":
+                    if chart_type == "hist" or chart_type == "box":
+                        # Keep existing Matplotlib logic for hist/box
+                        ensure_optional_packages(["matplotlib"])
+                        import matplotlib.pyplot as plt
+                        fig, ax = plt.subplots(figsize=(10, 6))
+                        if chart_type == "hist":
+                            for col in numeric_cols:
+                                ax.hist(transformed_df[col].dropna(), bins=10, alpha=0.6, label=col)
+                            ax.legend()
+                            ax.set_title("Histogram of Transformed Columns")
+                        else:
+                            ax.boxplot([transformed_df[col].dropna() for col in numeric_cols], labels=numeric_cols)
+                            ax.set_title("Boxplot of Transformed Columns")
+                        plt.tight_layout()
+                        if output_path:
+                            plt.savefig(output_path)
+                            console.print(f"[+] Chart exported as {output_path}", style="green")
+                        else:
+                            plt.show()
+                    else:
+                        # Delegate to your static helpers
+                        if chart_type == "scatter":
+                            visualize_scatter_plotly(plot_df, x_col, y_col, mode="static", output=output_path)
+                        elif chart_type == "line":
+                            visualize_line_plot(plot_df, x_col, y_col, mode="static", output=output_path)
+                        elif chart_type == "bar":
+                            visualize_bar_plot(plot_df, x_col, y_col, mode="static", output=output_path)
+                        elif chart_type == "pie":
+                            visualize_pie_plot(plot_df, x_col, y_col, mode="static", output=output_path)
+                        else:
+                            console.print(f"[yellow]⚠️ Unsupported static chart type: {chart_type}[/yellow]")
+
+                # ---------------- Interactive ----------------
+                elif str(show_chart).lower() == "interactive":
+                    if chart_type == "hist" or chart_type == "box":
+                        # Keep existing Plotly logic for hist/box
+                        ensure_optional_packages(["plotly"])
+                        import plotly.express as px
+                        df_melted = transformed_df.melt(value_vars=numeric_cols)
+                        if chart_type == "hist":
+                            fig = px.histogram(df_melted, x="value", color="variable", nbins=10,
+                                            title="Histogram of Transformed Columns")
+                        else:
+                            fig = px.box(df_melted, x="variable", y="value", color="variable",
+                                        title="Boxplot of Transformed Columns")
+                        if output_path:
+                            fig.write_html(output_path)
+                            console.print(f"[+] Interactive chart saved as {output_path}", style="green")
+                        else:
+                            fig.show()
+                    else:
+                        # Delegate to your interactive helpers
+                        if chart_type == "scatter":
+                            visualize_scatter_plotly(plot_df, x_col, y_col, mode="interactive", output=output_path)
+                        elif chart_type == "line":
+                            visualize_line_plot(plot_df, x_col, y_col, mode="interactive", output=output_path)
+                        elif chart_type == "bar":
+                            visualize_bar_plot(plot_df, x_col, y_col, mode="interactive", output=output_path)
+                        elif chart_type == "pie":
+                            visualize_pie_plot(plot_df, x_col, y_col, mode="interactive", output=output_path)
+                        else:
+                            console.print(f"[yellow]⚠️ Unsupported interactive chart type: {chart_type}[/yellow]")
+
+                else:
+                    console.print(f"[yellow]⚠️ Unknown show_chart mode '{show_chart}'. Skipping chart.[/yellow]")
+
+            except Exception as e:
+                console.print(f"[red]❌ Failed to render chart: {e}[/red]")
 
 
 def handle_extract_mtw(args):

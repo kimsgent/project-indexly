@@ -78,7 +78,9 @@ def _auto_parse_dates(df, date_formats=None, min_valid_ratio=0.3, verbose=False)
 
     candidates = []
     for col in df.columns:
-        if not pd.api.types.is_string_dtype(df[col]) and not pd.api.types.is_object_dtype(df[col]):
+        if not pd.api.types.is_string_dtype(
+            df[col]
+        ) and not pd.api.types.is_object_dtype(df[col]):
             continue
 
         col_lower = col.lower()
@@ -102,7 +104,9 @@ def _auto_parse_dates(df, date_formats=None, min_valid_ratio=0.3, verbose=False)
         # Try explicit formats first
         for fmt in date_formats:
             try:
-                parsed_tmp = pd.to_datetime(df[col], format=fmt, errors="coerce", utc=True)
+                parsed_tmp = pd.to_datetime(
+                    df[col], format=fmt, errors="coerce", utc=True
+                )
                 ratio = parsed_tmp.notna().mean()
                 if ratio > best_ratio:
                     best_ratio = ratio
@@ -124,27 +128,35 @@ def _auto_parse_dates(df, date_formats=None, min_valid_ratio=0.3, verbose=False)
 
         if best_parsed is not None and best_ratio >= min_valid_ratio:
             df[col] = pd.to_datetime(best_parsed, errors="coerce", utc=True)
-            summary_records.append({
-                "column": col,
-                "dtype": "datetime",
-                "action": f"fallback parsed ({best_ratio*100:.1f}% valid)",
-                "n_filled": int(df[col].isna().sum()),
-                "strategy": best_fmt or "auto",
-                "valid_ratio": round(best_ratio, 3),
-            })
+            summary_records.append(
+                {
+                    "column": col,
+                    "dtype": "datetime",
+                    "action": f"fallback parsed ({best_ratio*100:.1f}% valid)",
+                    "n_filled": int(df[col].isna().sum()),
+                    "strategy": best_fmt or "auto",
+                    "valid_ratio": round(best_ratio, 3),
+                }
+            )
             if verbose:
-                console.print(f"[green]✅ Parsed '{col}' using {used_formats} ({best_ratio:.1%})[/green]")
+                console.print(
+                    f"[green]✅ Parsed '{col}' using {used_formats} ({best_ratio:.1%})[/green]"
+                )
         else:
-            summary_records.append({
-                "column": col,
-                "dtype": str(original_dtype),
-                "action": "preserved (non-numeric)",
-                "n_filled": 0,
-                "strategy": "-",
-                "valid_ratio": round(best_ratio, 3),
-            })
+            summary_records.append(
+                {
+                    "column": col,
+                    "dtype": str(original_dtype),
+                    "action": "preserved (non-numeric)",
+                    "n_filled": 0,
+                    "strategy": "-",
+                    "valid_ratio": round(best_ratio, 3),
+                }
+            )
             if verbose:
-                console.print(f"[yellow]⚠️ Preserved '{col}' (non-numeric / below threshold {best_ratio:.1%})[/yellow]")
+                console.print(
+                    f"[yellow]⚠️ Preserved '{col}' (non-numeric / below threshold {best_ratio:.1%})[/yellow]"
+                )
 
     return df, summary_records
 
@@ -512,91 +524,108 @@ def auto_clean_csv(
         base = re.sub(r"_cleaned(_\d+)*$", "", col)
         return f"{base}_cleaned"
 
-        # ----------------------------------------
-
+    # ----------------------------------------
     # 🧹 Date/Time Handling (Optimized)
     # ----------------------------------------
     summary_records = []
 
-    # 1️⃣ Primary datetime detection and processing
-    df, datetime_summary = _handle_datetime_columns(
-        df,
+    import warnings
+    import re
+
+    # 0️⃣ Robust categorical time guard (flexible)
+    categorical_time_patterns = re.compile(r"^(?:[A-Za-zÀ-ÖØ-öø-ÿ]+[\s\-]?){1,3}$")
+
+    categorical_time_cols = []
+    for col in df.columns:
+        if pd.api.types.is_object_dtype(df[col]) or pd.api.types.is_string_dtype(df[col]):
+            sample = df[col].dropna().astype(str).head(50)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", UserWarning)
+                # Skip only if column is categorical-like (no digits)
+                if sample.apply(lambda x: bool(categorical_time_patterns.fullmatch(x)) and not re.search(r"\d", x)).any():
+                    categorical_time_cols.append(col)
+                    if verbose:
+                        console.print(f"[dim cyan]🔹 Skipping categorical time column: {col}[/dim cyan]")
+                    summary_records.append({
+                        "column": col,
+                        "dtype": "string",
+                        "action": "skipped (categorical time)",
+                        "n_filled": 0,
+                        "strategy": "-",
+                        "valid_ratio": 1.0,
+                    })
+
+    # Separate candidate columns: exclude categorical + numeric
+    df_candidate = df.drop(columns=categorical_time_cols) if categorical_time_cols else df.copy()
+    numeric_cols = df_candidate.select_dtypes(include="number").columns.tolist()
+    df_candidate = df_candidate.drop(columns=numeric_cols)
+
+    # 1️⃣ Primary datetime detection
+    df_candidate, datetime_summary = _handle_datetime_columns(
+        df_candidate,
         verbose=verbose,
-        user_formats=user_datetime_formats
-        or getattr(df, "_user_datetime_formats", None),
+        user_formats=user_datetime_formats or getattr(df, "_user_datetime_formats", None),
         derive_level=derive_dates,
         min_valid_ratio=date_threshold,
     )
     summary_records.extend(datetime_summary)
 
+    # Merge back processed columns except categorical
+    for col in df_candidate.columns:
+        df[col] = df_candidate[col]
+
+    # Merge back categorical columns untouched
+    for col in categorical_time_cols:
+        df[col] = df[col].astype("string")
+
     # -------------------------
-    # Date fallback: try safe auto-parse only for likely columns
+    # Date fallback: safe auto-parse for likely columns
     # -------------------------
-    # summary_records already contains results from primary _handle_datetime_columns
     if not any(rec.get("dtype") == "datetime" for rec in datetime_summary):
         if verbose:
-            console.print(
-                "[dim yellow]⚠️ No valid datetime columns found — running fallback parser...[/dim yellow]"
-            )
+            console.print("[dim yellow]⚠️ No valid datetime columns found — running fallback parser...[/dim yellow]")
 
-        # Call safe fallback parser
-        df_before_fallback = (
-            df.copy()
-        )  # keep original values to avoid accidental overwrite
-        df, fallback_summary = _auto_parse_dates(
-            df,
-            date_formats=user_datetime_formats
-            or getattr(df, "_user_datetime_formats", None),
-            min_valid_ratio=date_threshold,
-            verbose=verbose,
-        )
-        # Extend summary with fallback results but do not duplicate entries
+        df_before_fallback = df.copy()
+        fallback_summary = []
+
+        for col in df_candidate.columns:
+            if col in categorical_time_cols or col in numeric_cols:
+                continue  # skip categorical and numeric columns
+
+            # suppress UserWarning from pd.to_datetime
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter("ignore", UserWarning)
+                parsed_tmp = pd.to_datetime(df[col], errors="coerce", utc=True)
+
+            valid_ratio = parsed_tmp.notna().mean()
+            df[col] = parsed_tmp
+
+            fallback_summary.append({
+                "column": col,
+                "dtype": "datetime",
+                "action": "auto-parsed (fallback)",
+                "n_filled": df[col].isna().sum(),
+                "strategy": "fallback",
+                "valid_ratio": valid_ratio,
+            })
+
+            if verbose and valid_ratio < 1.0:
+                console.print(
+                    f"[dim yellow]⚠️ Fallback parser used for '{col}' — {valid_ratio*100:.1f}% valid. "
+                    "Consider providing explicit format for consistent parsing.[/dim yellow]"
+                )
+
         summary_records.extend(fallback_summary)
 
-        # Restore any column that the fallback erroneously converted to all-NaT datetimes
-        # (This should be rare because _auto_parse_dates doesn't overwrite below-threshold;
-        #  but keep this safety net for earlier code or edge-cases)
+        # Restore any column that ended up all-NaT (originally object/string)
         for rec in fallback_summary:
             col = rec["column"]
-            # If fallback reported skip, it left original dtype; but if any column ended up
-            # datetime and is all NaT, restore original values to preserve strings.
-            if (
-                pd.api.types.is_datetime64_any_dtype(df.get(col, pd.Series([])))
-                and df[col].isna().all()
-            ):
-                orig_dtype = df_before_fallback[col].dtype
-                if pd.api.types.is_object_dtype(
-                    orig_dtype
-                ) or pd.api.types.is_string_dtype(orig_dtype):
+            if pd.api.types.is_datetime64_any_dtype(df.get(col, pd.Series([]))) and df[col].isna().all():
+                if pd.api.types.is_object_dtype(df_before_fallback[col]) or pd.api.types.is_string_dtype(df_before_fallback[col]):
                     df[col] = df_before_fallback[col].astype("string")
                     if verbose:
-                        console.print(
-                            f"[dim cyan]🔁 Restored original string column '{col}' after fallback produced only NaT[/dim cyan]"
-                        )
+                        console.print(f"[dim cyan]🔁 Restored original string column '{col}' after fallback produced only NaT[/dim cyan]")
 
-        # ----------------------------------------
-        # 🧩 Restore any wrongly coerced string columns (NaT-only)
-        # ----------------------------------------
-        original_dtypes = df.dtypes.copy()
-
-        for col in df.columns:
-            if pd.api.types.is_datetime64_any_dtype(df[col]) and df[col].isna().all():
-                # If originally object/string — restore it
-                if original_dtypes.get(col, None) == "object":
-                    df[col] = df[col].astype("string")
-
-        # ✅ Log restored columns (verbose mode only)
-        if verbose:
-            restored_cols = [
-                col
-                for col in df.columns
-                if pd.api.types.is_string_dtype(df[col])
-                and original_dtypes.get(col) == "object"
-            ]
-            if restored_cols:
-                console.print(
-                    f"[dim cyan]🔁 Restored non-numeric columns: {', '.join(restored_cols)}[/dim cyan]"
-                )
 
     # ----------------------------------------
     # 🛡️ Preserve non-numeric columns (like Name, Department)
@@ -605,7 +634,9 @@ def auto_clean_csv(
         if pd.api.types.is_object_dtype(df[col].dtype) or pd.api.types.is_string_dtype(
             df[col].dtype
         ):
-            if df[col].notna().any():
+            if df[col].notna().any() and col not in [
+                r["column"] for r in summary_records
+            ]:
                 summary_records.append(
                     {
                         "column": col,
@@ -615,7 +646,6 @@ def auto_clean_csv(
                         "strategy": "-",
                     }
                 )
-            continue
 
     # ----------------------------------------
     # 📈 Flatten derived columns into summary
@@ -759,14 +789,14 @@ def auto_clean_csv(
             action = "filled missing values"
 
         summary_records.append(
-        {
-            "column": col,
-            "dtype": str(df[col].dtype),
-            "action": action,
-            "n_filled": n_filled,
-            "strategy": strategy,
-        }
-    )
+            {
+                "column": col,
+                "dtype": str(df[col].dtype),
+                "action": action,
+                "n_filled": n_filled,
+                "strategy": strategy,
+            }
+        )
 
     # ---------------------------
     # 🧹 Remove duplicates
@@ -781,7 +811,9 @@ def auto_clean_csv(
 
     remaining_nans = [col for col in df.columns if df[col].isna().any()]
     if remaining_nans:
-        console.print(f"⚠️ Still has NaNs in: {', '.join(remaining_nans)}", style="yellow")
+        console.print(
+            f"⚠️ Still has NaNs in: {', '.join(remaining_nans)}", style="yellow"
+        )
 
     # ---------------------------
     # 💾 Save cleaned data

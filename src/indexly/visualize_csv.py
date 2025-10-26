@@ -5,6 +5,9 @@ import numpy as np
 import pandas as pd
 import time
 
+    
+
+
 # ---------------- Rich Imports ----------------
 try:
     from rich.console import Console
@@ -322,6 +325,7 @@ def visualize_data(
         console.print(table)
 
     # ---------------- ASCII Visualization ----------------
+
     if mode == "ascii":
         if chart_type == "box":
             console.print(
@@ -366,50 +370,70 @@ def visualize_data(
         ensure_optional_packages(["matplotlib"])
         import matplotlib.pyplot as plt
 
-        # Ensure numeric plotting DataFrame
-        plot_df = raw_df.copy() if raw_df is not None else summary_df.copy()
-        if plot_df.select_dtypes(include=np.number).empty:
+        if transformed_df.empty or transformed_df.select_dtypes(include=np.number).empty:
             console.print("⚠️ No numeric data available to plot.", style="bold red")
             return
 
-        ax = getattr(plot_df.plot, chart_type)(figsize=(10, 6), legend=False)
-        ax.set_title(f"{chart_type.capitalize()} Chart")
-        plt.tight_layout()
-        if output:
-            plt.savefig(output)
-            console.print(f"[+] Chart exported as {output}", style="green")
-        else:
-            plt.show()
+        fig, ax = plt.subplots(figsize=(10, 6))
 
-        ax.set_title(f"{chart_type.capitalize()} Chart of Mean Values per Column")
+        if chart_type == "hist":
+            for col in numeric_cols:
+                ax.hist(transformed_df[col].dropna(), bins=10, alpha=0.6, label=col)
+            ax.set_title("Histogram of Transformed Columns")
+            ax.legend()
+        elif chart_type == "box":
+            ax.boxplot(
+                [transformed_df[col].dropna() for col in numeric_cols],
+                labels=numeric_cols
+            )
+            ax.set_title("Boxplot of Transformed Columns")
+        else:
+            console.print(f"⚠️ Unsupported static chart type: {chart_type}", style="yellow")
+            return
+
         plt.tight_layout()
         if output:
             plt.savefig(output)
             console.print(f"[+] Chart exported as {output}", style="green")
         else:
             plt.show()
-        return
 
     # ---------------- Interactive Visualization (Plotly) ----------------
     elif mode == "interactive":
         ensure_optional_packages(["plotly"])
         import plotly.express as px
 
+        if transformed_df.empty or transformed_df.select_dtypes(include=np.number).empty:
+            console.print("⚠️ No numeric data available to plot.", style="bold red")
+            return
+
+        df_melted = transformed_df.melt(value_vars=numeric_cols)
+
         if chart_type == "hist":
-            fig = px.histogram(summary_df, x="Mean", nbins=10,
-                               title="Distribution of Mean Values")
+            fig = px.histogram(
+                df_melted,
+                x="value",
+                color="variable",
+                nbins=10,
+                title="Histogram of Transformed Columns"
+            )
         elif chart_type == "box":
-            fig = px.box(summary_df, y="Mean", title="Boxplot of Mean Values")
+            fig = px.box(
+                df_melted,
+                x="variable",
+                y="value",
+                color="variable",
+                title="Boxplot of Transformed Columns"
+            )
         else:
-            fig = px.bar(summary_df, x="Column", y="Mean",
-                         title=f"{chart_type.capitalize()} Chart of Mean Values")
+            console.print(f"⚠️ Unsupported interactive chart type: {chart_type}", style="yellow")
+            return
 
         if output:
             fig.write_html(output)
-            console.print(f"[+] Interactive HTML chart saved as {output}", style="green")
+            console.print(f"[+] Interactive chart saved as {output}", style="green")
         else:
             fig.show()
-        return
 
 
 # --------------------------------------------------------------------
@@ -498,6 +522,157 @@ def visualize_scatter_plotly(df, x_col, y_col, mode="interactive", output=None):
 
     else:
         console.print("[yellow]⚠️ Unsupported mode for scatter plot.[/yellow]")
+
+# --------------------------------------------------------------------
+# visualize_line_plotly()
+# --------------------------------------------------------------------
+
+def visualize_line_plot(df, x_col, y_col, mode="interactive", output=None, title=None):
+    """
+    Create a robust, adaptive line chart for x_col vs y_col using Plotly (interactive) or Matplotlib (static).
+
+    ✅ Handles diverse data types:
+       - Numeric, datetime, or categorical x-axis
+       - Nullable Pandas dtypes (Int64, Float64, etc.)
+       - Auto-aggregation if multiple entries share the same x_col
+
+    ✅ Visualization modes:
+       - Interactive (Plotly)
+       - Static (Matplotlib)
+       - Auto-fallback if Plotly unavailable
+
+    ✅ Smart formatting:
+       - Auto axis labels and title
+       - Clean 'plotly_white' template
+       - Adaptive tick formatting (dates, categories)
+       - Auto-rotated category labels if needed
+
+    ✅ Output:
+       - Saves to .html (interactive) or .png/.svg (static)
+       - Displays inline if no output path is given
+    """
+    from rich.console import Console
+    console = Console()
+
+    # --- Ensure dependencies ---
+    ensure_optional_packages(["plotly", "matplotlib"])
+    import plotly.express as px
+    import matplotlib.pyplot as plt
+
+    # --- Validate input columns ---
+    if x_col not in df.columns or y_col not in df.columns:
+        console.print(f"[red]❌ Columns '{x_col}' or '{y_col}' not found in dataset.[/red]")
+        return
+
+    # --- Copy and clean relevant data ---
+    data = df[[x_col, y_col]].copy()
+    data[y_col] = pd.to_numeric(data[y_col], errors="coerce")
+
+    # --- Normalize Pandas nullable dtypes ---
+    for col in [x_col, y_col]:
+        dtype_str = str(data[col].dtype)
+        if "Int64" in dtype_str:  # nullable int
+            data[col] = data[col].astype("int64", errors="ignore")
+        elif "Float64" in dtype_str:
+            data[col] = data[col].astype("float64", errors="ignore")
+
+    # --- Try parse x_col as datetime if not numeric ---
+    try:
+        data[x_col] = pd.to_datetime(data[x_col], errors="ignore", dayfirst=True)
+    except Exception:
+        pass
+
+    # --- Drop missing rows ---
+    data = data.dropna(subset=[x_col, y_col])
+    if data.empty:
+        console.print("[yellow]⚠️ No valid data to plot after cleaning.[/yellow]")
+        return
+
+    # --- Handle duplicates by aggregation ---
+    if data.duplicated(subset=[x_col]).any():
+        console.print(
+            f"[cyan]ℹ️ Detected multiple entries per '{x_col}'. Aggregating using mean of '{y_col}'.[/cyan]"
+        )
+        data = data.groupby(x_col, as_index=False)[y_col].mean()
+
+    # --- Sort chronologically or numerically if applicable ---
+    try:
+        data = data.sort_values(by=x_col)
+    except Exception:
+        pass
+
+    if len(data) < 2:
+        console.print("[yellow]⚠️ Not enough data points to plot a line chart.[/yellow]")
+        return
+
+    # --- Interactive Mode (Plotly) ---
+    if mode == "interactive":
+        try:
+            fig = px.line(
+                data,
+                x=x_col,
+                y=y_col,
+                title=title or f"{y_col} over {x_col}",
+                markers=True,
+                template="plotly_white",
+            )
+
+            # Smart axis formatting
+            tickformat = None
+            if np.issubdtype(data[x_col].dtype, np.datetime64):
+                tickformat = "%d %b"  # day + month
+            elif data[x_col].dtype == object and data[x_col].nunique() < 15:
+                fig.update_xaxes(tickangle=-45)
+
+            fig.update_layout(
+                xaxis_title=x_col,
+                yaxis_title=y_col,
+                xaxis=dict(showline=True, mirror=True, zeroline=False, tickformat=tickformat),
+                yaxis=dict(showline=True, mirror=True, zeroline=True),
+            )
+
+            if output:
+                fig.write_html(output)
+                console.print(f"[green]✅ Interactive line chart saved as HTML: {output}[/green]")
+            else:
+                fig.show()
+            return
+
+        except Exception as e:
+            console.print(f"[yellow]⚠️ Plotly rendering failed ({e}); falling back to static plot.[/yellow]")
+            mode = "static"
+
+    # --- Static Mode (Matplotlib) ---
+    if mode == "static":
+        plt.figure(figsize=(10, 6))
+        plt.plot(
+            data[x_col],
+            data[y_col],
+            marker="o",
+            linewidth=2,
+            color="tab:blue",
+        )
+        plt.title(title or f"{y_col} over {x_col}")
+        plt.xlabel(x_col)
+        plt.ylabel(y_col)
+        plt.grid(True, alpha=0.3)
+
+        # Rotate labels if categorical
+        if data[x_col].dtype == object and data[x_col].nunique() < 15:
+            plt.xticks(rotation=45)
+
+        plt.tight_layout()
+
+        if output:
+            plt.savefig(output, bbox_inches="tight")
+            console.print(f"[green]✅ Static line chart saved as {output}[/green]")
+        else:
+            plt.show()
+        return
+
+    # --- Unsupported mode ---
+    console.print(f"[yellow]⚠️ Unsupported mode '{mode}' for line chart.[/yellow]")
+
 
 # ============================================
 # 📊 Bar Chart Visualization (Improved)

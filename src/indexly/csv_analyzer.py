@@ -237,9 +237,19 @@ def analyze_csv(file_or_df, from_df=False):
 
 
 def export_results(results, export_path, export_format):
+    # If export_path is a directory, generate a filename automatically
+    if os.path.isdir(export_path):
+        filename = f"csv_analysis.{export_format}"
+        export_path = os.path.join(export_path, filename)
+
+    # Ensure parent directory exists
+    os.makedirs(os.path.dirname(export_path), exist_ok=True)
+
     with open(export_path, 'w', encoding='utf-8') as f:
         if export_format == 'md':
             f.write(results.replace('+', '|'))
         else:
             f.write(results)
+
     print(f"[+] Exported to: {export_path}")
+
