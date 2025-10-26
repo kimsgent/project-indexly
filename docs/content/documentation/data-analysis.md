@@ -1,34 +1,47 @@
 ---
 title: "Analyze CSV: Visualize, Transform & Understand Your Data"
-slug: "analyze-csv"
-icon: "mdi:chart-bar"
-weight: 6
-date: 2025-10-19
-summary: "Learn how to explore and visualize your CSV datasets in the terminal using Indexly's powerful statistical and ASCII visualization tools."
-description: "Indexly’s analyze-csv command gives you deep insight into your datasets — calculate summary statistics, detect skew, apply transformations, and visualize results with adaptive ASCII histograms or boxplots."
-keywords: [
-  "Indexly CSV analysis",
-  "data visualization",
-  "terminal histogram",
-  "ASCII charts",
-  "log transform",
-  "sqrt transform",
-  "skew detection",
-  "data normalization",
-  "statistical analysis"
-]
-cta: "Reveal insights from your CSV files"
-link: "/docs/content/documentation/data-analysis.md"
+description: "Explore, visualize, and normalize CSV datasets in Indexly using statistical summaries, skew detection, and ASCII visualizations. Perfect for data analysts and developers working with terminal-based data exploration."
 type: docs
-categories:
-    - Features
-    - Data Analysis
+keywords:
+  - indexly csv analysis
+  - csv visualization
+  - terminal histogram
+  - ascii boxplot
+  - log transform
+  - sqrt transform
+  - skew detection
+  - data normalization
+  - statistical analysis
+  - cli data exploration
 tags:
-    - csv
-    - analysis
-    - visualization
-    - transformation
-    - statistics
+  - csv
+  - analysis
+  - visualization
+  - transformation
+  - statistics
+  - normalization
+  - cli
+author: "N. K. Franklin-Gent"
+date: 2025-10-19
+draft: false
+categories:
+  - Documentation
+  - Data Analysis
+  - CLI Tools
+canonicalURL: "https://projectindexly.com/en/documentation/data-analysis"
+summary: "Learn how Indexly’s analyze-csv command transforms raw CSVs into visual insights — from statistical summaries to adaptive ASCII histograms and automatic skew normalization."
+seo_title: "Analyze CSV Data in Indexly | Transform, Visualize, and Normalize Your Data"
+og_title: "Analyze CSV with Indexly — Terminal Visualization and Statistical Insights"
+og_description: "Discover how Indexly analyzes CSV files using adaptive transformations, statistical summaries, and ASCII visualizations directly in the terminal."
+og_type: "article"
+og_image: "/images/analyze-csv-preview.png"
+twitter_card: "summary_large_image"
+twitter_title: "Analyze CSV with Indexly — Visualize and Normalize Data"
+twitter_description: "Use Indexly’s analyze-csv command to explore and transform datasets with terminal histograms, boxplots, and statistical analysis."
+twitter_image: "/images/analyze-csv-preview.png"
+---
+
+
 ---
 
 ## Overview

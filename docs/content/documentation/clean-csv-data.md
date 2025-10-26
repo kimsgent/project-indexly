@@ -28,23 +28,23 @@ categories:
   - Documentation
   - Data Analysis
   - CLI Tools
-canonicalURL: "https://projectindexly.com/en/documentation/data-analysis"
+canonicalURL: "https://projectindexly.com/en/documentation/clean-csv-data"
 summary: "Learn how Indexly’s Auto Clean feature transforms messy CSV files into structured, analysis-ready datasets with automated imputation, datetime parsing, and type inference. Includes commands, logic breakdown, and examples."
 seo_title: "CSV Data Cleaning with Indexly | Automated Preprocessing and Type Inference"
 og_title: "Cleaning CSV Data with Indexly – Automatic Type Inference and Imputation"
 og_description: "Discover Indexly’s Auto Clean pipeline for CSVs — featuring type detection, datetime normalization, and statistical imputation for ready-to-analyze datasets."
 og_type: "article"
-og_image: "/images/docs/auto-clean-preview.png"
+og_image: "/images/auto-clean-preview.png"
 twitter_card: "summary_large_image"
 twitter_title: "Cleaning CSV Data with Indexly"
 twitter_description: "Automatically clean and normalize CSV data using Indexly’s CLI with type inference, imputation, and datetime parsing."
-twitter_image: "/images/docs/auto-clean-preview.png"
+twitter_image: "/images/auto-clean-preview.png"
 ---
 
 ---
 
 
-Indexly’s **Auto Clean* *pipeline transforms messy CSV files into analysis-ready datasets with **type inference**, **missing value imputation**, and **datetime normalization* *— all seamlessly integrated with [`analyze-csv`](data-analysis.md).
+Indexly’s **Auto Clean** pipeline transforms messy CSV files into analysis-ready datasets with **type inference**, **missing value imputation**, and **datetime normalization** — all seamlessly integrated with [`analyze-csv`](data-analysis.md).
 ---
 
 ## 🎯 Overview
@@ -156,10 +156,10 @@ If a column has fewer than 30% valid datetimes (controlled via `--date-threshold
 
 Derived columns can also be generated:
 
- *`<col> _year`
- *`<col> _month`
- *`<col> _day`
- *`<col> _weekday`
+ * `<col> _year`
+ * `<col> _month`
+ * `<col> _day`
+ * `<col> _weekday`
 
 ---
 
@@ -197,10 +197,10 @@ For instance, if fewer than 10% of entries in `Start _Date` are valid, the colum
 
 The cleaning process generates real-time feedback in the console:
 
- ***ASCII summary table* *(as shown above)
- ***Warnings* *for skipped or invalid columns
- ***Counts of NaNs filled**, duplicate removal
- ***Optional histograms* *in visualization mode (see [Visual Exploration](data-analysis.md#visual-exploration))
+ * **ASCII summary table**(as shown above)
+ * **Warnings** for skipped or invalid columns
+ * **Counts of NaNs filled**, duplicate removal
+ * **Optional histograms** in visualization mode (see [Visual Exploration](data-analysis.md#visual-exploration))
 
 ---
 
@@ -285,24 +285,24 @@ def auto _clean _csv(df, file _path, method="mean", save _cleaned=False, date _f
 
 ## Pro Tips
 
- *Combine `--auto-clean` with `--visualize` to instantly inspect cleaned distributions
- *Use `--date-threshold 0.1` for tolerant datetime detection on mixed sources
- *Reuse cleaned data with `--use-cleaned` to skip repetitive parsing
- *Adjust fill strategy for skewed data: `--fill-method median`
+ * Combine `--auto-clean` with `--visualize` to instantly inspect cleaned distributions
+ * Use `--date-threshold 0.1` for tolerant datetime detection on mixed sources
+ * Reuse cleaned data with `--use-cleaned` to skip repetitive parsing
+ * Adjust fill strategy for skewed data: `--fill-method median`
 
 ---
 
 ## Next Steps
 
- *Continue with [Analyze CSV Visualization](data-analysis.md#visual-exploration)
- *Explore [Statistical Transformation  & Scaling](data-analysis.md#transformation--scaling)
- *Learn about [Data Tagging  & Metadata Indexing](tagging.md)
+ * Continue with [Analyze CSV Visualization](data-analysis.md#visual-exploration)
+ * Explore [Statistical Transformation  & Scaling](data-analysis.md#transformation--scaling)
+ * Learn about [Data Tagging  & Metadata Indexing](tagging.md)
 
 ---
 
 ## Summary
 
-The **Indexly Auto Clean* *module provides a statistically grounded, extensible preprocessing pipeline designed for both command-line use and programmatic workflows. Whether you’re preparing raw exports, sensor logs, or mixed-format spreadsheets — `--auto-clean` ensures your data is ready for immediate visualization and analysis.
+The **Indexly Auto Clean** module provides a statistically grounded, extensible preprocessing pipeline designed for both command-line use and programmatic workflows. Whether you’re preparing raw exports, sensor logs, or mixed-format spreadsheets — `--auto-clean` ensures your data is ready for immediate visualization and analysis.
 
 
 
