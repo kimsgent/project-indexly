@@ -5,7 +5,6 @@ toc: true
 weight: 10
 ---
 
-# Release Notes for FTS5 File Search Tool
 
 ## Latest Release: v1.0.4 (2025-10-26)
 
