@@ -6,10 +6,10 @@ import csv
 import importlib.util
 import subprocess
 import argparse
-from pathlib import Path
 import importlib.util
 import subprocess
-
+from pathlib import Path
+from rich.console import Console
 
 REQUIRED_PACKAGES = ["pandas", "numpy", "scipy", "tabulate"]
 
@@ -24,6 +24,7 @@ ensure_packages(REQUIRED_PACKAGES)
 # ✅ Now safe to import
 import pandas as pd
 import numpy as np
+import shutil
 from scipy.stats import iqr
 from tabulate import tabulate
 
@@ -45,68 +46,210 @@ def check_requirements():
             os.system(f"{sys.executable} -m pip install scipy")
 
 
+
 def detect_delimiter(file_path):
-    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-        sample = f.read(2048)
-    sniffer = csv.Sniffer()
+    import re
+    import csv
+
+    """
+    Detects CSV delimiter using regex scoring and csv.Sniffer fallback.
+    Handles irregular/mixed CSVs more reliably.
+    """
+    with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+        sample = f.read(4096)
+
+    # --- Step 1: Regex-based scoring ---
+    possible_delims = [",", ";", "\t", "|", ":", "~"]
+    line_splits = [re.split(r"[\r\n]+", sample.strip())[:10]]  # first 10 lines
+    freq_scores = {}
+
+    for delim in possible_delims:
+        counts = [line.count(delim) for line in line_splits[0] if line]
+        if counts:
+            avg = sum(counts) / len(counts)
+            variance = sum((c - avg) ** 2 for c in counts) / len(counts)
+            # Lower variance + higher avg = more consistent delimiter
+            freq_scores[delim] = avg / (1 + variance)
+
+    if freq_scores:
+        best_delim = max(freq_scores, key=freq_scores.get)
+    else:
+        best_delim = None
+
+    # --- Step 2: Validate with Sniffer ---
     try:
-        dialect = sniffer.sniff(sample)
-        return dialect.delimiter
+        sniffer_delim = csv.Sniffer().sniff(sample).delimiter
     except csv.Error:
-        return ','
+        sniffer_delim = None
+
+    # --- Step 3: Merge logic ---
+    delimiter = best_delim or sniffer_delim or ","
+
+    print(f"📄 Detected delimiter (regex): '{delimiter}'")
+    return delimiter
 
 
-def analyze_csv(file_path):
-    if not Path(file_path).exists():
-        print(f"[!] File not found: {file_path}")
-        return None
 
-    delimiter = detect_delimiter(file_path)
+def analyze_csv(file_or_df, from_df=False):
+    """
+    Analyze a CSV file or a provided DataFrame.
+    - If from_df=True, file_or_df is treated as a DataFrame (already cleaned)
+    - Otherwise, file_or_df is treated as a file path to read CSV
+    Returns: df, df_stats, table_output
+    """
 
-    try:
-        df = pd.read_csv(file_path, delimiter=delimiter)
-    except Exception as e:
-        print(f"[!] Failed to read CSV: {e}")
-        return None
+    console = Console()
+    file_path = None
 
+    # ---------------------------
+    # 📂 Load DataFrame
+    # ---------------------------
+    if from_df:
+        df = file_or_df.copy()
+    else:
+        try:
+            file_path = Path(file_or_df).expanduser().resolve(strict=False)
+        except Exception:
+            console.print(f"[!] Invalid file path: {file_or_df}", style="bold red")
+            return None, None, None
+
+        if not file_path.exists():
+            console.print(f"[!] File not found: {file_or_df}", style="bold red")
+            alt_path = Path.cwd() / file_or_df
+            if alt_path.exists():
+                file_path = alt_path
+                console.print(f"ℹ️ Using fallback path: {alt_path}", style="bold cyan")
+            else:
+                return None, None, None
+
+        try:
+            delimiter = detect_delimiter(file_path)
+            console.print(f"📄 Detected delimiter: '{delimiter}'", style="bold cyan")
+            df = pd.read_csv(file_path, delimiter=delimiter, encoding="utf-8")
+        except Exception as e:
+            console.print(f"[!] Failed to read CSV: {e}", style="bold red")
+            return None, None, None
+
+    # ---------------------------
+    # 🚨 Empty dataset check
+    # ---------------------------
     if df.empty:
-        print("[!] CSV file is empty.")
-        return None
+        console.print("[!] No data to analyze.", style="bold red")
+        return None, None, None
 
-    numeric_df = df.select_dtypes(include=[np.number])
+    # ---------------------------
+    # 🔢 Robust numeric inference
+    # ---------------------------
+    for col in df.columns:
+        # Skip columns already numeric
+        if pd.api.types.is_numeric_dtype(df[col]):
+            continue
+        # Attempt conversion, coercing invalids to NaN
+        converted = pd.to_numeric(df[col], errors="coerce")
+        # If most values convert successfully, adopt this column as numeric
+        if converted.notna().mean() > 0.8:
+            df[col] = converted
 
-    if numeric_df.empty:
-        print("[!] No numeric columns found for analysis.")
-        return None
+    # ---------------------------
+    # 🧮 Numeric & datetime detection
+    # ---------------------------
+    numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
 
+    if not numeric_cols:
+        datetime_numeric_cols = [c for c in df.columns if c.endswith("_timestamp")]
+        if datetime_numeric_cols:
+            numeric_cols = datetime_numeric_cols
+            console.print("ℹ️ Using datetime-derived numeric columns for analysis...", style="bold cyan")
+
+    if not numeric_cols:
+        console.print("⚠️ No valid numeric or date columns available for analysis.", style="bold yellow")
+        return df, None, None
+
+    numeric_df = df[numeric_cols]
+
+    # ---------------------------
+    # 📊 Compute statistics
+    # ---------------------------
     stats = []
     for col in numeric_df.columns:
         values = numeric_df[col].dropna()
-        q1 = values.quantile(0.25)
-        q3 = values.quantile(0.75)
-        col_iqr = iqr(values) if iqr else (q3 - q1)
+        if values.empty:
+            continue
+
+        q1, q3 = values.quantile(0.25), values.quantile(0.75)
+        col_iqr = iqr(values) if callable(iqr) else (q3 - q1)
 
         stats.append([
             col,
             values.count(),
-            values.isnull().sum(),
-            round(values.mean(), 3),
-            round(values.median(), 3),
-            round(values.std(), 3),
-            round(values.sum(), 3),
-            round(values.min(), 3),
-            round(values.max(), 3),
-            round(col_iqr, 3)
+            df[col].isnull().sum(),
+            values.mean(),
+            values.median(),
+            values.std(),
+            values.sum(),
+            values.min(),
+            values.max(),
+            q1,
+            q3,
+            col_iqr,
         ])
 
-    headers = ["Column", "Count", "Nulls", "Mean", "Median", "Std Dev", "Sum", "Min", "Max", "IQR"]
-    return tabulate(stats, headers=headers, tablefmt="grid")
+    headers = [
+        "Column", "Count", "Nulls", "Mean", "Median", "Std Dev",
+        "Sum", "Min", "Max", "Q1", "Q3", "IQR"
+    ]
+    df_stats = pd.DataFrame(stats, columns=headers)
+
+    # ---------------------------
+    # 🧠 Smart number formatting
+    # ---------------------------
+    def format_number(val):
+        if isinstance(val, (int, float, np.number)):
+            if np.isnan(val):
+                return "-"
+            if abs(val) >= 1e6 or abs(val) < 1e-3:
+                return f"{val:.3e}"
+            return f"{val:,.3f}".rstrip('0').rstrip('.')
+        return str(val)
+
+    df_stats = df_stats.apply(lambda col: col.map(format_number))
+
+    # ---------------------------
+    # 🖥️ Adaptive table width
+    # ---------------------------
+    term_width = shutil.get_terminal_size((120, 20)).columns
+    max_width = term_width - 4
+    col_count = len(df_stats.columns)
+    max_col_width = max(8, int(max_width / col_count))
+
+    for c in df_stats.columns:
+        df_stats[c] = df_stats[c].apply(
+            lambda v: str(v)[:max_col_width - 1] + "…" if len(str(v)) > max_col_width else str(v)
+        )
+
+    # ---------------------------
+    # 📋 Render table
+    # ---------------------------
+    table_output = tabulate(df_stats, headers="keys", tablefmt="grid", showindex=False)
+
+    return df, df_stats, table_output
+
 
 
 def export_results(results, export_path, export_format):
+    # If export_path is a directory, generate a filename automatically
+    if os.path.isdir(export_path):
+        filename = f"csv_analysis.{export_format}"
+        export_path = os.path.join(export_path, filename)
+
+    # Ensure parent directory exists
+    os.makedirs(os.path.dirname(export_path), exist_ok=True)
+
     with open(export_path, 'w', encoding='utf-8') as f:
         if export_format == 'md':
             f.write(results.replace('+', '|'))
         else:
             f.write(results)
+
     print(f"[+] Exported to: {export_path}")
+

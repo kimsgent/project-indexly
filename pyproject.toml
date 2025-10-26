@@ -30,6 +30,7 @@ classifiers = [
 ]
 
 dependencies = [
+    # Core NLP, document, and indexing dependencies
     "nltk>=3.8.0",
     "pymupdf>=1.23.0",
     "pytesseract>=0.3.13",
@@ -50,6 +51,19 @@ dependencies = [
     "odfpy>=1.4.1",
     "rich>=13.7.1",
     "pandas>=2.1.1",
+
+    # --- Visualization & Analysis Support ---
+    # Terminal-based ASCII plots
+    "plotext>=5.2.8",
+    # Static plotting
+    "matplotlib>=3.8.0",
+    # Interactive web-based visualizations
+    "plotly>=5.22.0",
+    # Numeric & scientific utilities
+    "numpy>=1.26.0",
+    # Optional stats & data profiling tools (recommended for analyze-csv)
+    "scipy>=1.12.0",
+    "statsmodels>=0.14.0",
 ]
 
 [tool.hatch.envs.dev]

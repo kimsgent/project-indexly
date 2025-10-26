@@ -24,6 +24,9 @@ import argparse
 import logging
 import time
 import sqlite3
+import pandas as pd
+import numpy as np
+from rich.console import Console
 from datetime import datetime
 from .ripple import Ripple
 from rich import print as rprint
@@ -34,6 +37,17 @@ from .search_core import search_fts5, search_regex, normalize_near_term
 from .extract_utils import update_file_metadata
 from .mtw_extractor import _extract_mtw
 from .rename_utils import rename_file, rename_files_in_dir, SUPPORTED_DATE_FORMATS
+from .cleaning.auto_clean import (
+    auto_clean_csv,
+    load_cleaned_data,
+    _summarize_cleaning_results,
+)
+from .clean_csv import (
+    clear_cleaned_data,
+    _summarize_post_clean,
+    _remove_outliers,
+    _normalize_numeric,
+)
 from .profiles import (
     save_profile,
     apply_profile,
@@ -53,7 +67,16 @@ from pathlib import Path
 from .config import DB_FILE
 from .path_utils import normalize_path
 from .db_update import check_schema, apply_migrations
-
+from .csv_analyzer import analyze_csv, export_results, detect_delimiter
+from .visualize_csv import (
+    visualize_data,
+    visualize_scatter_plotly,
+    visualize_pie_plot,
+    visualize_bar_plot,
+    visualize_line_plot,
+    apply_transformation,
+    ensure_optional_packages,
+)
 
 # Force UTF-8 output encoding (Recommended for Python 3.7+)
 sys.stdout.reconfigure(encoding="utf-8")
@@ -278,7 +301,9 @@ def handle_search(args):
         prof = load_profile(args.profile)
         if prof and prof.get("results"):
             results = filter_saved_results(prof["results"], term_cli)
-            print(f"Searching '{term_cli or prof.get('term')}' (profile-only: {args.profile})")
+            print(
+                f"Searching '{term_cli or prof.get('term')}' (profile-only: {args.profile})"
+            )
             if results:
                 print_search_results(results, term_cli or prof.get("term", ""))
                 if args.export_format:
@@ -337,7 +362,9 @@ def handle_search(args):
         # 🟢 SAVE PROFILE if requested
         if getattr(args, "save_profile", None):
             save_profile(args.save_profile, args, results)
-            print(f"💾 Profile '{args.save_profile}' saved with {len(results)} result(s).")
+            print(
+                f"💾 Profile '{args.save_profile}' saved with {len(results)} result(s)."
+            )
 
     else:
         print("🔍 No matches found.")
@@ -345,6 +372,7 @@ def handle_search(args):
 
 def handle_regex(args):
     from .profiles import save_profile  # ensure import
+
     ripple = Ripple("Regex Search", speed="fast", rainbow=True)
     ripple.start()
 
@@ -449,22 +477,295 @@ def run_watch(args):
         ripple.stop()
 
 
+def clear_cleaned_data_handler(args):
+    if getattr(args, "all", False):
+        clear_cleaned_data(remove_all=True)
+    elif getattr(args, "file", None):
+        clear_cleaned_data(file_path=args.file)
+    else:
+        print("⚠️ Please provide a file path or use --all to remove all entries.")
+
+
 def run_analyze_csv(args):
-
-    ripple = Ripple(command_titles["analyze-csv"], speed="fast", rainbow=True)
+    """
+    Handles `indexly analyze-csv` command including auto-cleaning, exporting, and visualization.
+    Fully compatible with --auto-clean, --datetime-formats, --show-summary, --normalize, --remove-outliers, --show-chart, etc.
+    """
+    console = Console()
+    ripple = Ripple("CSV Analysis", speed="fast", rainbow=True)
     ripple.start()
-    try:
-        from .csv_analyzer import analyze_csv, export_results
+    time.sleep(0.3)
 
-        result = analyze_csv(args.file)
-        if result:
-            print(result)
-            if args.export_path:
-                export_results(result, args.export_path, args.format)
+    df = None
+    raw_csv_df = None
+    summary_records = []
+
+    # --- Step 0: Load raw CSV ---
+    try:
+        raw_csv_df = pd.read_csv(
+            args.file, delimiter=detect_delimiter(args.file), encoding="utf-8"
+        )
+    except Exception:
+        raw_csv_df = None
+
+    # Fallback for misparsed single-column CSV
+    if raw_csv_df is not None and raw_csv_df.shape[1] == 1:
+        first_col_name = raw_csv_df.columns[0]
+        if ";" in first_col_name or "," in first_col_name:
+            console.print(
+                "🔁 Retrying CSV load with dynamic delimiter detection...",
+                style="bold yellow",
+            )
+            delimiter = detect_delimiter(args.file)
+            raw_csv_df = pd.read_csv(args.file, delimiter=delimiter, encoding="utf-8")
+
+    # --- Step 1: Use previously cleaned data if requested ---
+    if getattr(args, "use_cleaned", False):
+        df = load_cleaned_data(args.file)
+        if df is None:
+            console.print(
+                "[yellow]⚠️ No saved cleaned data found. Falling back to raw CSV.[/yellow]"
+            )
+
+    # --- Step 2: Auto-clean if requested ---
+    if getattr(args, "auto_clean", False):
+        df, summary_records = auto_clean_csv(
+            args.file,
+            fill_method=getattr(args, "fill_method", "mean"),
+            persist=getattr(args, "save_data", True),
+            verbose=True,
+            derive_dates=getattr(args, "derive_dates", "all"),
+            user_datetime_formats=getattr(args, "datetime_formats", None),
+            date_threshold=getattr(args, "date_threshold", 0.3),
+        )
+
+        # Optional export
+        export_path = getattr(args, "export_cleaned", None)
+        if export_path:
+            export_fmt = getattr(args, "export_format", "csv")
+            console.print(
+                f"[cyan]Exporting cleaned dataset to {export_path} ({export_fmt})...[/cyan]"
+            )
+            try:
+                if export_fmt == "csv":
+                    df.to_csv(export_path, index=False)
+                elif export_fmt == "json":
+                    df.to_json(export_path, orient="records", indent=2)
+                elif export_fmt == "parquet":
+                    df.to_parquet(export_path, index=False)
+                elif export_fmt == "excel":
+                    df.to_excel(export_path, index=False)
+                console.print("[green]✅ Cleaned data exported successfully![/green]")
+            except Exception as e:
+                console.print(f"[red]❌ Export failed: {e}[/red]")
+
+    # --- Step 3: Analyze CSV ---
+    if df is None:
+        raw_df, df_stats, table_output = analyze_csv(args.file)
+        raw_for_plot = raw_csv_df if raw_csv_df is not None else raw_df
+    else:
+        _, df_stats, table_output = analyze_csv(df, from_df=True)
+        raw_for_plot = (
+            df
+            if getattr(args, "auto_clean", False)
+            else (raw_csv_df if raw_csv_df is not None else df)
+        )
+
+    ripple.stop()
+
+    # --- Step 4: Display results ---
+    def _is_valid_stats(stats_obj):
+        if stats_obj is None:
+            return False
+        if isinstance(stats_obj, (pd.DataFrame, pd.Series)):
+            return not stats_obj.empty
+        if isinstance(stats_obj, (list, tuple, dict)):
+            return len(stats_obj) > 0
+        if isinstance(stats_obj, str):
+            return bool(stats_obj.strip())
+        return True
+
+    if _is_valid_stats(df_stats):
+        console.print("\n")
+
+        if isinstance(table_output, str) and table_output.strip():
+            console.print(
+                "[bold cyan]ℹ️ Displaying statistics for dataset[/bold cyan]\n"
+            )
+            print(table_output)
         else:
-            print("⚠️ No data to analyze or invalid file format.")
-    finally:
-        ripple.stop()
+            console.print("[dim]ℹ️ No formatted output table available.[/dim]")
+
+        if getattr(args, "show_summary", False):
+            if summary_records:
+                _summarize_cleaning_results(summary_records)
+            else:
+                console.print(
+                    "[dim]ℹ️ No cleaning summary available (used pre-cleaned data).[/dim]"
+                )
+
+            console.print("\n📊 Extended Data Types Overview", style="bold green")
+            if df is None or not hasattr(df, "dtypes"):
+                console.print(
+                    "[yellow]⚠️ No valid DataFrame available for extended type overview.[/yellow]"
+                )
+            else:
+                for col, dtype in df.dtypes.items():
+                    console.print(f"• {col}: {dtype}")
+
+        # Optional export of analysis results
+        if getattr(args, "export_path", None):
+            export_results(
+                table_output, args.export_path, getattr(args, "format", "txt")
+            )
+
+        # Optional post-clean numeric transformations
+        if getattr(args, "normalize", False):
+            df, norm_summary = _normalize_numeric(df)
+            console.print("[cyan]→ Normalization applied to numeric columns.[/cyan]")
+            _summarize_post_clean(norm_summary, "📏 Normalization Summary")
+
+        if getattr(args, "remove_outliers", False):
+            df, out_summary = _remove_outliers(df)
+            console.print(
+                "[magenta]→ Outliers removed using IQR/z-score thresholds.[/magenta]"
+            )
+            _summarize_post_clean(out_summary, "📉 Outlier Removal Summary")
+
+        # --- Step 5: Visualization (only if requested) ---
+
+        show_chart = getattr(args, "show_chart", None)  # ascii, static, interactive
+        chart_type = getattr(args, "chart_type", None)  # hist, box, scatter, bar, pie, line
+        mode = show_chart or "static"
+        output_path = getattr(args, "export_plot", None)
+        x_col = getattr(args, "x_col", None)
+        y_col = getattr(args, "y_col", None)
+        transform_mode = getattr(args, "transform", "none").lower()
+        auto_transform = transform_mode == "auto"
+
+        # Prepare plotting DataFrame
+        plot_df = raw_for_plot.copy() if "raw_for_plot" in locals() else None
+        if plot_df is not None:
+            plot_df.columns = [c.strip() for c in plot_df.columns]
+            for col in plot_df.columns:
+                if plot_df[col].dtype == "object":
+                    cleaned = plot_df[col].astype(str).str.replace(r"[\$,]", "", regex=True).str.strip()
+                    numeric_col = pd.to_numeric(cleaned, errors="coerce")
+                    if numeric_col.notna().mean() > 0.5:
+                        plot_df[col] = numeric_col
+
+        numeric_cols = plot_df.select_dtypes(include=np.number).columns.tolist() if plot_df is not None else []
+
+        # Apply transformations consistently
+        transformed_df = pd.DataFrame()
+        transform_map = {}
+        for col in numeric_cols:
+            col_values = plot_df[col].dropna()
+            if auto_transform:
+                skew_val = col_values.skew()
+                if skew_val > 3:
+                    suggested = "log"
+                elif 1 < skew_val <= 3:
+                    suggested = "sqrt"
+                elif skew_val < -1:
+                    suggested = "softplus"
+                else:
+                    suggested = "none"
+            else:
+                suggested = transform_mode
+            transformed_df[col] = apply_transformation(col_values, suggested)
+            transform_map[col] = suggested
+
+        # Early exit if no plotting requested
+        if not show_chart:
+            pass
+        elif not numeric_cols:
+            console.print("⚠️ No numeric data available to plot. Skipping visualization.", style="yellow")
+        else:
+            try:
+                # ---------------- ASCII ----------------
+  
+                if str(show_chart).lower() == "ascii":
+                    visualize_data(
+                        summary_df=df_stats,
+                        mode="ascii",
+                        chart_type=chart_type or "box",
+                        output=output_path,
+                        raw_df=plot_df,
+                        transform=("auto" if auto_transform else transform_mode),
+                        scale=getattr(args, "bar_scale", "sqrt"),
+                    )
+
+                # ---------------- Static ----------------
+                elif str(show_chart).lower() == "static":
+                    if chart_type == "hist" or chart_type == "box":
+                        # Keep existing Matplotlib logic for hist/box
+                        ensure_optional_packages(["matplotlib"])
+                        import matplotlib.pyplot as plt
+                        fig, ax = plt.subplots(figsize=(10, 6))
+                        if chart_type == "hist":
+                            for col in numeric_cols:
+                                ax.hist(transformed_df[col].dropna(), bins=10, alpha=0.6, label=col)
+                            ax.legend()
+                            ax.set_title("Histogram of Transformed Columns")
+                        else:
+                            ax.boxplot([transformed_df[col].dropna() for col in numeric_cols], labels=numeric_cols)
+                            ax.set_title("Boxplot of Transformed Columns")
+                        plt.tight_layout()
+                        if output_path:
+                            plt.savefig(output_path)
+                            console.print(f"[+] Chart exported as {output_path}", style="green")
+                        else:
+                            plt.show()
+                    else:
+                        # Delegate to your static helpers
+                        if chart_type == "scatter":
+                            visualize_scatter_plotly(plot_df, x_col, y_col, mode="static", output=output_path)
+                        elif chart_type == "line":
+                            visualize_line_plot(plot_df, x_col, y_col, mode="static", output=output_path)
+                        elif chart_type == "bar":
+                            visualize_bar_plot(plot_df, x_col, y_col, mode="static", output=output_path)
+                        elif chart_type == "pie":
+                            visualize_pie_plot(plot_df, x_col, y_col, mode="static", output=output_path)
+                        else:
+                            console.print(f"[yellow]⚠️ Unsupported static chart type: {chart_type}[/yellow]")
+
+                # ---------------- Interactive ----------------
+                elif str(show_chart).lower() == "interactive":
+                    if chart_type == "hist" or chart_type == "box":
+                        # Keep existing Plotly logic for hist/box
+                        ensure_optional_packages(["plotly"])
+                        import plotly.express as px
+                        df_melted = transformed_df.melt(value_vars=numeric_cols)
+                        if chart_type == "hist":
+                            fig = px.histogram(df_melted, x="value", color="variable", nbins=10,
+                                            title="Histogram of Transformed Columns")
+                        else:
+                            fig = px.box(df_melted, x="variable", y="value", color="variable",
+                                        title="Boxplot of Transformed Columns")
+                        if output_path:
+                            fig.write_html(output_path)
+                            console.print(f"[+] Interactive chart saved as {output_path}", style="green")
+                        else:
+                            fig.show()
+                    else:
+                        # Delegate to your interactive helpers
+                        if chart_type == "scatter":
+                            visualize_scatter_plotly(plot_df, x_col, y_col, mode="interactive", output=output_path)
+                        elif chart_type == "line":
+                            visualize_line_plot(plot_df, x_col, y_col, mode="interactive", output=output_path)
+                        elif chart_type == "bar":
+                            visualize_bar_plot(plot_df, x_col, y_col, mode="interactive", output=output_path)
+                        elif chart_type == "pie":
+                            visualize_pie_plot(plot_df, x_col, y_col, mode="interactive", output=output_path)
+                        else:
+                            console.print(f"[yellow]⚠️ Unsupported interactive chart type: {chart_type}[/yellow]")
+
+                else:
+                    console.print(f"[yellow]⚠️ Unknown show_chart mode '{show_chart}'. Skipping chart.[/yellow]")
+
+            except Exception as e:
+                console.print(f"[red]❌ Failed to render chart: {e}[/red]")
 
 
 def handle_extract_mtw(args):
@@ -510,9 +811,7 @@ def handle_rename_file(args):
     )
 
     # Determine counter format (default = plain integer)
-    counter_format = (
-        args.counter_format if hasattr(args, "counter_format") else "d"
-    )
+    counter_format = args.counter_format if hasattr(args, "counter_format") else "d"
 
     # --- Directory handling ---
     if path.is_dir():
@@ -550,6 +849,7 @@ def handle_rename_file(args):
     else:
         print(f"✅ Renamed and synced: {path} → {new_path}")
 
+
 def handle_update_db(args):
     """Handle the update-db CLI command."""
 
@@ -564,6 +864,7 @@ def handle_update_db(args):
 
     conn.close()
     print("✅ Done.")
+
 
 def handle_show_help(args):
     """Display CLI help for all commands, with optional Markdown or detailed output."""
@@ -593,7 +894,11 @@ def handle_show_help(args):
         help_lines = subparser.format_help().splitlines()
         for line in help_lines:
             line = line.strip()
-            if not line or line.lower().startswith("usage:") or line.lower().startswith("options"):
+            if (
+                not line
+                or line.lower().startswith("usage:")
+                or line.lower().startswith("options")
+            ):
                 continue
             return line
         return "(no description)"
@@ -631,7 +936,11 @@ def handle_show_help(args):
             if getattr(args, "details", False):
                 # Only show the concise usage block, not the entire argparse dump
                 usage_line = next(
-                    (l.strip() for l in sp.format_help().splitlines() if l.strip().startswith("usage:")),
+                    (
+                        l.strip()
+                        for l in sp.format_help().splitlines()
+                        if l.strip().startswith("usage:")
+                    ),
                     None,
                 )
                 if usage_line:
