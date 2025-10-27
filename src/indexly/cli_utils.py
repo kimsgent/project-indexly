@@ -106,7 +106,7 @@ def build_parser():
     parser.add_argument(
         "--show-license",
         action="store_true",
-        help="Display the full license text and exit."
+        help="Display the full license text and exit.",
     )
 
     # ----------------------------------------
@@ -238,6 +238,48 @@ def build_parser():
         default="sqrt",
         help="Scaling method for ASCII histogram bars.",
     )
+    csv_parser.add_argument(
+        "--timeseries",
+        action="store_true",
+        help="Run timeseries visualization on the cleaned CSV",
+    )
+    csv_parser.add_argument(
+        "--x",
+        type=str,
+        help="Datetime column to use as time axis (if not provided, auto-detected)",
+    )
+    csv_parser.add_argument(
+        "--y",
+        type=str,
+        help="Comma-separated numeric columns to plot (default: auto-detect all numeric cols)",
+    )
+    csv_parser.add_argument(
+        "--freq", type=str, help="Resample frequency (Pandas offset alias: D,W,M,Q,Y)"
+    )
+    csv_parser.add_argument(
+        "--agg",
+        type=str,
+        default="mean",
+        help="Aggregation for resampling (mean,sum,median,min,max)",
+    )
+    csv_parser.add_argument(
+        "--rolling",
+        type=int,
+        help="Apply rolling mean smoothing with specified window size (int)",
+    )
+    csv_parser.add_argument(
+        "--mode",
+        type=str,
+        default="interactive",
+        choices=["interactive", "static"],
+        help="Plotting backend",
+    )
+    csv_parser.add_argument(
+        "--output",
+        type=str,
+        help="Output filename (html for interactive, png/svg for static)",
+    )
+    csv_parser.add_argument("--title", type=str, help="Plot title override")
 
     # Cleaning options
     csv_parser.add_argument(

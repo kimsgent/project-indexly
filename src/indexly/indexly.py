@@ -68,6 +68,7 @@ from .config import DB_FILE
 from .path_utils import normalize_path
 from .db_update import check_schema, apply_migrations
 from .csv_analyzer import analyze_csv, export_results, detect_delimiter
+from .visualize_timeseries import visualize_timeseries_plot
 from .visualize_csv import (
     visualize_data,
     visualize_scatter_plotly,
@@ -631,6 +632,31 @@ def run_analyze_csv(args):
                 "[magenta]→ Outliers removed using IQR/z-score thresholds.[/magenta]"
             )
             _summarize_post_clean(out_summary, "📉 Outlier Removal Summary")
+        
+        # >>> inside your analyze-csv handler after cleaning the DataFrame (df)
+        # Add imports at top of file:
+        # from indexly.visualize_timeseries import visualize_timeseries_plot
+
+        df_clean = df  # or df returned from auto-clean
+
+        # Example: after the data cleaning and summary stage:
+        if args.timeseries or getattr(args, "plot_timeseries", False):
+            try:
+                y_cols = [c.strip() for c in getattr(args, "y", "").split(",") if c.strip()] or None
+                visualize_timeseries_plot(
+                    df=df_clean,
+                    x_col=getattr(args, "x", None),
+                    y_cols=y_cols,
+                    freq=getattr(args, "freq", None),
+                    agg=getattr(args, "agg", "mean"),
+                    rolling=getattr(args, "rolling", None),
+                    mode=getattr(args, "mode", "interactive"),
+                    output=getattr(args, "output", None),
+                    title=getattr(args, "title", None),
+                )
+            except Exception as e:
+                Console().print(f"[red]❌ Timeseries visualization failed: {e}[/red]")
+
 
         # --- Step 5: Visualization (only if requested) ---
 
