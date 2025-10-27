@@ -5,6 +5,8 @@ import sys
 import json
 import time
 import argparse
+from pathlib import Path
+from importlib import resources
 from datetime import datetime
 from .db_utils import connect_db
 from .export_utils import (
@@ -20,6 +22,8 @@ from .migration_manager import run_migrations
 from .rename_utils import SUPPORTED_DATE_FORMATS
 from .db_update import check_schema, apply_migrations
 from .clean_csv import clear_cleaned_data
+from . import __version__, __author__, __license__
+from indexly.license_utils import print_version, show_full_license
 
 # CLI display configurations here
 command_titles = {
@@ -83,11 +87,34 @@ def build_parser():
     )
 
     parser = argparse.ArgumentParser(
-        description="Indexly - File Indexing and Search Tool"
+        prog="indexly",
+        description="Indexly — Local file indexing, search, and analysis tool",
     )
+
+    # ----------------------------------------
+    # 📦 Version info with license excerpt
+    # ----------------------------------------
+    parser.add_argument(
+        "--version",
+        action="store_true",  # <--- must be store_true to detect flag
+        help="Show version, author, short license excerpt, and project links.",
+    )
+
+    # ----------------------------------------
+    # 🪪 --show-license flag
+    # ----------------------------------------
+    parser.add_argument(
+        "--show-license",
+        action="store_true",
+        help="Display the full license text and exit."
+    )
+
+    # ----------------------------------------
+    # 🧩 Subcommands
+    # ----------------------------------------
     subparsers = parser.add_subparsers(dest="command")
 
-    # Default: if no subcommand is given, show help
+    # Default behavior: show help if no subcommand
     parser.set_defaults(func=lambda args: parser.print_help())
 
     # Index

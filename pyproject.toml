@@ -101,6 +101,7 @@ include = [
 
 [tool.hatch.build.targets.wheel]
 include = [
+  "src/indexly/LICENSE.txt",
   "src/indexly/docs/README.md",
   "src/indexly/assets/fonts/*.ttf",
   "src/indexly/assets/csv/*.csv"

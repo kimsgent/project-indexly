@@ -63,7 +63,7 @@ from .cli_utils import (
 )
 from .output_utils import print_search_results, print_regex_results
 from pathlib import Path
-
+from indexly.license_utils import show_full_license, print_version, show_full_license
 from .config import DB_FILE
 from .path_utils import normalize_path
 from .db_update import check_schema, apply_migrations
@@ -968,13 +968,28 @@ def handle_show_help(args):
 
 def main():
     parser = build_parser()
-    args = parser.parse_args()
 
+    # Step 1: parse known args to catch top-level flags
+    args, remaining_args = parser.parse_known_args()
+
+    # Handle top-level flags immediately
+    if getattr(args, "show_license", False):
+        show_full_license()  # prints full license and exits
+
+    if getattr(args, "version", False):
+        print_version()      # prints colored multi-line version
+        sys.exit(0)
+
+    # Step 2: parse all args (including subcommands)
+    args = parser.parse_args()  # now subcommand is included in args
+
+    # Optional: handle profile logic
     if hasattr(args, "profile") and args.profile:
         profile_data = apply_profile(args.profile)
         if profile_data:
             args = apply_profile_to_args(args, profile_data)
 
+    # Step 3: dispatch subcommand
     if hasattr(args, "func"):
         args.func(args)
 
