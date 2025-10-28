@@ -632,9 +632,8 @@ def run_analyze_csv(args):
                 "[magenta]→ Outliers removed using IQR/z-score thresholds.[/magenta]"
             )
             _summarize_post_clean(out_summary, "📉 Outlier Removal Summary")
-        
-        # >>> inside your analyze-csv handler after cleaning the DataFrame (df)
-        # Add imports at top of file:
+    
+
         # from indexly.visualize_timeseries import visualize_timeseries_plot
 
         df_clean = df  # or df returned from auto-clean
