@@ -24,6 +24,7 @@ from .db_update import check_schema, apply_migrations
 from .clean_csv import clear_cleaned_data
 from . import __version__, __author__, __license__
 from indexly.license_utils import print_version, show_full_license
+from indexly.analyze_json import run_analyze_json
 
 # CLI display configurations here
 command_titles = {
@@ -365,6 +366,26 @@ def build_parser():
             file_path=args.file, remove_all=getattr(args, "all", False)
         )
     )
+    ## Analyse JSON
+    sub_analyze_json = subparsers.add_parser(
+        "analyze-json", help="Analyze a JSON file structure and statistics"
+    )
+    sub_analyze_json.add_argument("file", help="Path to JSON file")
+    sub_analyze_json.add_argument("--export-path", help="Export analysis output path")
+    sub_analyze_json.add_argument("--format", default="txt", help="Export format (txt, md, json)")
+    sub_analyze_json.add_argument("--show-summary", action="store_true", help="Show structural summary")
+    sub_analyze_json.add_argument("--show-chart", action="store_true", help="Display numeric histograms")
+
+    # ✅ New: chunk size for JSON export (only relevant if --format json)
+    sub_analyze_json.add_argument(
+        "--chunk-size",
+        type=int,
+        default=10000,
+        help="Number of rows per chunk for memory-efficient JSON export (default: 10000)"
+    )
+
+    sub_analyze_json.set_defaults(func=run_analyze_json)
+
 
     # Stats
     stats_parser = subparsers.add_parser("stats", help="Show database statistics")

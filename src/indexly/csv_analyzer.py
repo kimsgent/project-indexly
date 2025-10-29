@@ -25,9 +25,12 @@ ensure_packages(REQUIRED_PACKAGES)
 import pandas as pd
 import numpy as np
 import shutil
+import json
+import math
 from scipy.stats import iqr
 from tabulate import tabulate
-
+from datetime import datetime, date
+from tqdm import tqdm  # ✅ For progress bar
 
 try:
     from scipy.stats import iqr
@@ -235,30 +238,60 @@ def analyze_csv(file_or_df, from_df=False):
     return df, df_stats, table_output
 
 
+## JSON Export
 
-import json
-from datetime import datetime
+def _json_safe(obj):
+    """Recursively convert Pandas / NumPy / Timestamp / NaT / scalar types to native Python."""
+    import pandas as pd
+    import numpy as np
+    from datetime import datetime, date
 
-def export_results(results, export_path, export_format, df=None, source_file=None):
+    if obj is None or obj is pd.NaT:
+        return None
+    if isinstance(obj, float) and np.isnan(obj):
+        return None
+    if isinstance(obj, (pd.Timestamp, datetime, date)):
+        return obj.isoformat()
+    if isinstance(obj, np.datetime64):
+        return pd.Timestamp(obj).isoformat()
+    if isinstance(obj, (np.integer, np.int64, int)):
+        return int(obj)
+    if isinstance(obj, (np.floating, np.float64, float)):
+        return float(obj)
+    if isinstance(obj, dict):
+        return {k: _json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple, set)):
+        return type(obj)(_json_safe(x) for x in obj)
+    if hasattr(obj, "item"):
+        try:
+            return obj.item()
+        except Exception:
+            return str(obj)
+    return str(obj)
+
+
+def export_results(results, export_path=None, export_format="txt", df=None, source_file=None, chunk_size=10000):
     """
-    Enhanced export function that supports md, txt, and json formats.
-    - results: summary string or DataFrame
-    - df: original DataFrame (optional, for metadata)
-    - source_file: original file path (optional)
+    Export analysis results to text, markdown, or JSON formats.
+    Supports memory-efficient chunked JSON export with progress bar for large datasets.
     """
+    if not export_path or export_path.strip() == "":
+        base_name = "csv_analysis"
+        if source_file:
+            base_name = os.path.splitext(os.path.basename(source_file))[0]
+        export_path = f"{base_name}.{export_format}"
+
     if os.path.isdir(export_path):
         filename = f"csv_analysis.{export_format}"
         export_path = os.path.join(export_path, filename)
 
-    os.makedirs(os.path.dirname(export_path), exist_ok=True)
+    os.makedirs(os.path.dirname(export_path) or ".", exist_ok=True)
 
-    # Handle Markdown / text exports
     if export_format in ("md", "txt"):
         with open(export_path, "w", encoding="utf-8") as f:
             content = results.replace("+", "|") if export_format == "md" else results
             f.write(content)
 
-    # Handle JSON export
     elif export_format == "json":
         metadata = {
             "analyzed_at": datetime.utcnow().isoformat() + "Z",
@@ -268,24 +301,40 @@ def export_results(results, export_path, export_format, df=None, source_file=Non
             "columns": len(df.columns) if df is not None else None,
         }
 
-        # If results is a DataFrame, convert to records
-        if isinstance(results, pd.DataFrame):
-            summary_data = results.to_dict(orient="records")
-        else:
-            summary_data = {"text_summary": results}
-
-        export_payload = {
-            "metadata": metadata,
-            "statistics_summary": summary_data,
-            "data": None  # Placeholder for future use
-        }
-
+        # Open JSON file for streaming
         with open(export_path, "w", encoding="utf-8") as f:
-            json.dump(export_payload, f, indent=2)
+            f.write('{\n')
+            f.write(f'"metadata": {json.dumps(metadata)},\n')
+
+            # Write summary statistics if available
+            if isinstance(results, pd.DataFrame):
+                summary_data = results.to_dict(orient="records")
+            else:
+                summary_data = {"text_summary": results}
+            f.write(f'"summary_statistics": {json.dumps(_json_safe(summary_data), ensure_ascii=False)},\n')
+
+            # Stream sample_data or full data row by row
+            f.write('"sample_data": [\n')
+            if df is not None and len(df) > 0:
+                total_chunks = math.ceil(len(df) / chunk_size)
+                for i, chunk in enumerate(np.array_split(df, total_chunks)):
+                    for j, row in enumerate(tqdm(chunk.itertuples(index=False), desc=f"Exporting chunk {i+1}/{total_chunks}", unit="rows")):
+                        row_dict = _json_safe(row._asdict())
+                        row_json = json.dumps(row_dict, ensure_ascii=False)
+                        # Determine if comma is needed
+                        last_chunk = (i == total_chunks - 1)
+                        last_row = (j == len(chunk) - 1)
+                        if not (last_chunk and last_row):
+                            row_json += ',\n'
+                        else:
+                            row_json += '\n'
+                        f.write(row_json)
+            f.write(']\n')  # close sample_data array
+            f.write('}\n')  # close top-level JSON object
 
     else:
         raise ValueError(f"Unsupported export format: {export_format}")
 
-    print(f"[+] Exported to: {export_path}")
+    print(f"✅ Exported to: {export_path}")
 
 

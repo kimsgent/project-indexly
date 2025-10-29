@@ -48,6 +48,7 @@ from .clean_csv import (
     _summarize_post_clean,
     _remove_outliers,
     _normalize_numeric,
+
 )
 from .profiles import (
     save_profile,
@@ -68,7 +69,7 @@ from indexly.license_utils import show_full_license, print_version, show_full_li
 from .config import DB_FILE
 from .path_utils import normalize_path
 from .db_update import check_schema, apply_migrations
-from .csv_analyzer import analyze_csv, export_results, detect_delimiter
+from .csv_analyzer import analyze_csv, export_results, detect_delimiter, _json_safe
 from .visualize_timeseries import visualize_timeseries_plot
 from .visualize_csv import (
     visualize_data,
@@ -620,9 +621,7 @@ def run_analyze_csv(args):
             export_fmt = getattr(args, "format", "txt").lower()
             export_path = args.export_path
 
-            console.print(
-                f"[cyan]Exporting analysis results to {export_path} ({export_fmt})...[/cyan]"
-            )
+            console.print(f"[cyan]Exporting analysis results to {export_path} ({export_fmt})...[/cyan]")
 
             try:
                 if export_fmt in ("txt", "md"):
@@ -630,35 +629,49 @@ def run_analyze_csv(args):
                     export_results(table_output, export_path, export_fmt)
 
                 elif export_fmt == "json":
-                    from datetime import datetime
+                    from tqdm import tqdm
 
                     # Safe defaults
                     n_rows = int(df.shape[0]) if df is not None else 0
                     n_cols = int(df.shape[1]) if df is not None else 0
                     summary = df_stats.to_dict(orient="records") if df_stats is not None else []
-                    data_sample = (
-                        df.head(10).to_dict(orient="records") if df is not None else []
-                    )
 
-                    analysis_payload = {
-                        "metadata": {
-                            "analyzed_at": datetime.utcnow().isoformat() + "Z",
-                            "source_file": str(getattr(args, "file", "unknown")),
-                            "export_format": export_fmt,
-                            "rows": n_rows,
-                            "columns": n_cols,
-                        },
-                        "summary_statistics": summary,
-                        "sample_data": data_sample,
-                    }
+                    # Get chunk size from CLI (default 10_000)
+                    chunk_size = getattr(args, "chunk_size", 10000)
 
-                    # ✅ FIX: Only create directory if one exists
                     export_dir = os.path.dirname(export_path)
                     if export_dir:
                         os.makedirs(export_dir, exist_ok=True)
 
                     with open(export_path, "w", encoding="utf-8") as f:
-                        json.dump(analysis_payload, f, indent=2, ensure_ascii=False)
+                        # Write metadata and summary
+                        metadata = {
+                            "analyzed_at": datetime.utcnow().isoformat() + "Z",
+                            "source_file": str(getattr(args, "file", "unknown")),
+                            "export_format": export_fmt,
+                            "rows": n_rows,
+                            "columns": n_cols,
+                        }
+                        f.write('{\n')
+                        f.write(f'"metadata": {json.dumps(metadata)},\n')
+                        f.write(f'"summary_statistics": {json.dumps(_json_safe(summary))},\n')
+                        f.write('"sample_data": [\n')
+
+                        # Stream rows in chunks using pure DataFrame slicing (no np.array_split)
+                        if df is not None and n_rows > 0:
+                            for start in range(0, n_rows, chunk_size):
+                                chunk = df.iloc[start : start + chunk_size]
+                                for j, row in enumerate(tqdm(chunk.itertuples(index=False),
+                                                            desc=f"Exporting rows {start+1}-{start+len(chunk)}")):
+                                    # Convert namedtuple row to dict
+                                    row_dict = row._asdict() if hasattr(row, "_asdict") else dict(zip(df.columns, row))
+                                    row_json = json.dumps(_json_safe(row_dict))
+                                    # Add comma except for last row
+                                    if not (start + j == n_rows - 1):
+                                        row_json += ',\n'
+                                    f.write(row_json)
+
+                        f.write('\n]\n}')  # Close sample_data and top-level JSON
 
                     console.print("[green]✅ JSON analysis exported successfully![/green]")
 
@@ -667,6 +680,7 @@ def run_analyze_csv(args):
 
             except Exception as e:
                 console.print(f"[red]❌ Export failed: {e}[/red]")
+
 
 
         # Optional post-clean numeric transformations
