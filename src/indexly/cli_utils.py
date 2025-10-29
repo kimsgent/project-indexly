@@ -200,7 +200,7 @@ def build_parser():
     csv_parser.add_argument(
         "--export-path", help="Export analysis table to file (txt or md)"
     )
-    csv_parser.add_argument("--format", choices=["txt", "md"], default="txt")
+    csv_parser.add_argument("--format", choices=["txt", "md", "json"], default="txt")
 
     # Visualization options
     csv_parser.add_argument(

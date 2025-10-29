@@ -236,20 +236,56 @@ def analyze_csv(file_or_df, from_df=False):
 
 
 
-def export_results(results, export_path, export_format):
-    # If export_path is a directory, generate a filename automatically
+import json
+from datetime import datetime
+
+def export_results(results, export_path, export_format, df=None, source_file=None):
+    """
+    Enhanced export function that supports md, txt, and json formats.
+    - results: summary string or DataFrame
+    - df: original DataFrame (optional, for metadata)
+    - source_file: original file path (optional)
+    """
     if os.path.isdir(export_path):
         filename = f"csv_analysis.{export_format}"
         export_path = os.path.join(export_path, filename)
 
-    # Ensure parent directory exists
     os.makedirs(os.path.dirname(export_path), exist_ok=True)
 
-    with open(export_path, 'w', encoding='utf-8') as f:
-        if export_format == 'md':
-            f.write(results.replace('+', '|'))
+    # Handle Markdown / text exports
+    if export_format in ("md", "txt"):
+        with open(export_path, "w", encoding="utf-8") as f:
+            content = results.replace("+", "|") if export_format == "md" else results
+            f.write(content)
+
+    # Handle JSON export
+    elif export_format == "json":
+        metadata = {
+            "analyzed_at": datetime.utcnow().isoformat() + "Z",
+            "source_file": str(source_file) if source_file else None,
+            "export_format": "json",
+            "rows": len(df) if df is not None else None,
+            "columns": len(df.columns) if df is not None else None,
+        }
+
+        # If results is a DataFrame, convert to records
+        if isinstance(results, pd.DataFrame):
+            summary_data = results.to_dict(orient="records")
         else:
-            f.write(results)
+            summary_data = {"text_summary": results}
+
+        export_payload = {
+            "metadata": metadata,
+            "statistics_summary": summary_data,
+            "data": None  # Placeholder for future use
+        }
+
+        with open(export_path, "w", encoding="utf-8") as f:
+            json.dump(export_payload, f, indent=2)
+
+    else:
+        raise ValueError(f"Unsupported export format: {export_format}")
 
     print(f"[+] Exported to: {export_path}")
+
 

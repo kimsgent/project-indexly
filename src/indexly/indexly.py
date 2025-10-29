@@ -19,6 +19,7 @@ Usage:
 import os
 import re
 import sys
+import json
 import asyncio
 import argparse
 import logging
@@ -614,11 +615,59 @@ def run_analyze_csv(args):
                 for col, dtype in df.dtypes.items():
                     console.print(f"• {col}: {dtype}")
 
-        # Optional export of analysis results
+        # --- Optional export of analysis results ---
         if getattr(args, "export_path", None):
-            export_results(
-                table_output, args.export_path, getattr(args, "format", "txt")
+            export_fmt = getattr(args, "format", "txt").lower()
+            export_path = args.export_path
+
+            console.print(
+                f"[cyan]Exporting analysis results to {export_path} ({export_fmt})...[/cyan]"
             )
+
+            try:
+                if export_fmt in ("txt", "md"):
+                    # Use existing plain table export
+                    export_results(table_output, export_path, export_fmt)
+
+                elif export_fmt == "json":
+                    from datetime import datetime
+
+                    # Safe defaults
+                    n_rows = int(df.shape[0]) if df is not None else 0
+                    n_cols = int(df.shape[1]) if df is not None else 0
+                    summary = df_stats.to_dict(orient="records") if df_stats is not None else []
+                    data_sample = (
+                        df.head(10).to_dict(orient="records") if df is not None else []
+                    )
+
+                    analysis_payload = {
+                        "metadata": {
+                            "analyzed_at": datetime.utcnow().isoformat() + "Z",
+                            "source_file": str(getattr(args, "file", "unknown")),
+                            "export_format": export_fmt,
+                            "rows": n_rows,
+                            "columns": n_cols,
+                        },
+                        "summary_statistics": summary,
+                        "sample_data": data_sample,
+                    }
+
+                    # ✅ FIX: Only create directory if one exists
+                    export_dir = os.path.dirname(export_path)
+                    if export_dir:
+                        os.makedirs(export_dir, exist_ok=True)
+
+                    with open(export_path, "w", encoding="utf-8") as f:
+                        json.dump(analysis_payload, f, indent=2, ensure_ascii=False)
+
+                    console.print("[green]✅ JSON analysis exported successfully![/green]")
+
+                else:
+                    console.print(f"[yellow]⚠️ Unsupported export format: {export_fmt}[/yellow]")
+
+            except Exception as e:
+                console.print(f"[red]❌ Export failed: {e}[/red]")
+
 
         # Optional post-clean numeric transformations
         if getattr(args, "normalize", False):
