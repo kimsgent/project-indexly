@@ -20,7 +20,9 @@ import os
 import json
 from datetime import datetime
 from typing import Tuple, Any, Dict
-
+from pathlib import Path
+from .db_utils import _get_db_connection
+import sqlite3
 import pandas as pd
 import numpy as np
 from rich.console import Console
@@ -184,29 +186,44 @@ def analyze_json_dataframe(df: pd.DataFrame) -> Tuple[pd.DataFrame, str, Dict[st
 def run_analyze_json(args):
     """
     CLI entry: analyze-json command handler.
-    args must include:
-      - file (path)
-      - export_path (optional)
-      - format (txt, md, json)
-      - show_summary (bool)
-      - show_chart (bool)
+    Handles:
+      - --use-saved: Load previously analyzed JSON data from DB
+      - --save-json: Save new analysis results to DB
+      - --export-path / --format: Export options
+      - --show-summary / --show-chart: Optional displays
     """
+    from rich.console import Console
+    console = Console()
     ripple = None
+
     try:
-        # Ripple might be in cli_utils (exists in your code). Attempt import gracefully.
         from indexly.cli_utils import Ripple  # type: ignore
         ripple = Ripple("JSON Analysis", speed="fast", rainbow=True)
         ripple.start()
     except Exception:
         ripple = None
 
+    # --- Step 0: Use previously saved JSON data if requested ---
+    if getattr(args, "use_saved", False):
+        try:           
+            saved_data = load_json_data(args.file)
+            if saved_data:
+                console.print("[cyan]Using previously saved JSON analysis from DB.[/cyan]")
+                console.print_json(data=saved_data)
+                if ripple:
+                    ripple.stop()
+                return
+        except Exception as e:
+            console.print(f"[yellow]⚠️ Failed to load saved data: {e}[/yellow]")
+
+    # --- Step 1: Load raw JSON and convert to DataFrame ---
     data, df = load_json_as_dataframe(args.file)
     if df is None:
         if ripple:
             ripple.stop()
         return
 
-    # Normalize datetimes if possible
+    # --- Step 2: Normalize datetimes ---
     dt_summary = {}
     if normalize_datetime_columns is not None:
         try:
@@ -215,19 +232,19 @@ def run_analyze_json(args):
         except Exception as e:
             console.print(f"[yellow]⚠️ Datetime normalization failed: {e}[/yellow]")
     else:
-        console.print(f"[yellow]⚠️ Datetime normalizer not available: {_NORMALIZE_IMPORT_ERR}[/yellow]")
+        console.print(f"[yellow]⚠️ Datetime normalizer not available.[/yellow]")
 
-    # Analyze dataframe
+    # --- Step 3: Perform analysis ---
     df_stats, pretty_out, meta = analyze_json_dataframe(df)
 
     if ripple:
         ripple.stop()
 
-    # Print summary to console
+    # --- Step 4: Display results ---
     console.print("\n[bold cyan]📘 JSON Analysis Result[/bold cyan]\n")
     console.print(pretty_out)
 
-    # Export functionality
+    # --- Step 5: Export results ---
     if getattr(args, "export_path", None):
         export_fmt = getattr(args, "format", "txt").lower()
         export_path = args.export_path
@@ -235,12 +252,10 @@ def run_analyze_json(args):
         try:
             if export_fmt in ("txt", "md"):
                 if export_results:
-                    # reuse existing export_results if available
                     export_results(pretty_out, export_path, export_fmt, df=df, source_file=args.file)
                 else:
                     _safe_export_file(export_path, pretty_out)
                 console.print("[green]✅ Exported summary successfully.[/green]")
-
             elif export_fmt == "json":
                 payload = {
                     "metadata": {
@@ -262,28 +277,43 @@ def run_analyze_json(args):
                 console.print("[green]✅ JSON analysis exported successfully![/green]")
             else:
                 console.print(f"[yellow]⚠️ Unsupported export format: {export_fmt}[/yellow]")
-
         except Exception as e:
             console.print(f"[red]❌ Export failed: {e}[/red]")
 
-    # Optional structural summary display
+    # --- Step 6: Save analyzed data to DB if requested ---
+    if getattr(args, "save_json", False):
+        try:
+            payload = {
+                "metadata": {
+                    "analyzed_at": datetime.utcnow().isoformat() + "Z",
+                    "source_file": str(args.file),
+                    "export_format": "json",
+                    "rows": meta.get("rows", 0),
+                    "columns": meta.get("cols", 0),
+                },
+                "datetime_summary": dt_summary,
+                "summary_statistics": df_stats.to_dict(orient="index") if df_stats is not None else {},
+                "sample_data": df.head(10).to_dict(orient="records"),
+            }
+            save_json_data(payload, args.file)
+        except Exception as e:
+            console.print(f"[red]❌ Failed to save analyzed JSON data: {e}[/red]")
+
+    # --- Step 7: Optional structural summary ---
     if getattr(args, "show_summary", False):
         console.print("\n[bold green]🧩 Structural Summary[/bold green]")
         console.print(f"Rows: {meta['rows']}, Columns: {meta['cols']}")
         console.print(f"Columns: {', '.join(df.columns)}")
 
-    # Optional simple numeric visualization
+    # --- Step 8: Optional chart visualization ---
     if getattr(args, "show_chart", False):
         try:
             import matplotlib.pyplot as plt
-
             numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
             if not numeric_cols:
                 console.print("[yellow]⚠️ No numeric columns to plot.[/yellow]")
                 return
 
-            # If there's a time index, plot timeseries style; otherwise histogram grid.
-            # We'll check if there's a datetime-like column present.
             dt_col = None
             for c in df.columns:
                 if pd.api.types.is_datetime64_any_dtype(df[c]) or c.lower().endswith("_iso") or c.lower().endswith("_timestamp"):
@@ -291,7 +321,6 @@ def run_analyze_json(args):
                     break
 
             if dt_col and pd.api.types.is_datetime64_any_dtype(df[dt_col]):
-                # plot each numeric column vs dt_col
                 plt.figure(figsize=(10, 6))
                 for col in numeric_cols:
                     plt.plot(df[dt_col], df[col], label=col, marker="o", linewidth=1)
@@ -300,11 +329,84 @@ def run_analyze_json(args):
                 plt.tight_layout()
                 plt.show()
             else:
-                # histograms
                 df[numeric_cols].hist(figsize=(10, 6), bins=15)
                 plt.suptitle("Numeric distributions")
                 plt.tight_layout()
                 plt.show()
-
         except Exception as e:
             console.print(f"[red]❌ Visualization failed: {e}[/red]")
+
+def _migrate_cleaned_data_schema(conn):
+    """
+    Ensure 'cleaned_data' table has all required columns.
+    Adds missing columns without dropping existing data.
+    """
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA table_info(cleaned_data)")
+    existing_cols = [r[1] for r in cursor.fetchall()]
+
+    if "file_type" not in existing_cols:
+        conn.execute("ALTER TABLE cleaned_data ADD COLUMN file_type TEXT DEFAULT 'csv'")
+    if "source_type" not in existing_cols:
+        conn.execute("ALTER TABLE cleaned_data ADD COLUMN source_type TEXT DEFAULT 'csv'")
+
+    conn.commit()
+
+def save_json_data(json_data, file_path: str):
+    """
+    Save processed JSON data into SQLite DB.
+    Reuses the same 'cleaned_data' table as CSV, now with a 'source_type' column.
+    """
+    conn = _get_db_connection()
+
+    abs_path = str(Path(file_path).resolve())
+    cleaned_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    metadata = json_data.get("metadata", {})
+    row_count = metadata.get("rows") or metadata.get("row_count") or 0
+    col_count = metadata.get("columns") or metadata.get("col_count") or 0
+    data_json = json.dumps(json_data, ensure_ascii=False)
+
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO cleaned_data (file_name, cleaned_at, row_count, col_count, data_json, source_type)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (abs_path, cleaned_at, row_count, col_count, data_json, "json"),
+    )
+
+    conn.commit()
+    conn.close()
+    print(f"✅ JSON data saved to DB for: {abs_path}")
+
+
+def load_json_data(file_name: str):
+    """
+    Load a previously saved JSON dataset from DB.
+    Returns the structured JSON dict if found, else None.
+    """
+    conn = _get_db_connection()
+    abs_path = os.path.abspath(file_name)
+    row = conn.execute(
+        "SELECT data_json, source_type FROM cleaned_data WHERE file_name = ?",
+        (abs_path,),
+    ).fetchone()
+    conn.close()
+
+    if not row:
+        console.print(f"[yellow]⚠️ No JSON data found for {file_name}[/yellow]")
+        return None
+
+    if row["source_type"] != "json":
+        console.print(
+            f"[red]⚠️ File '{file_name}' exists in DB but source_type={row['source_type']} (expected 'json').[/red]"
+        )
+        return None
+
+    try:
+        json_data = json.loads(row["data_json"])
+        console.print(f"[green]✅ Loaded saved JSON dataset for[/green] {file_name}")
+        return json_data
+    except json.JSONDecodeError as e:
+        console.print(f"[red]❌ Failed to decode JSON from DB for {file_name}: {e}[/red]")
+        return None

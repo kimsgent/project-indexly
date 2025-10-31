@@ -12,13 +12,19 @@ Usage:
     Used during indexing, searching, and tagging operations.
 """
 
-import sqlite3
+
 import os
 import re
 import signal
 import logging
+import sqlite3
+import json
+import pandas as pd
 from .config import DB_FILE
 from .path_utils import normalize_path
+from pathlib import Path
+from datetime import datetime
+from .analysis_result import AnalysisResult
 
 
 logger = logging.getLogger(__name__)
@@ -166,6 +172,26 @@ def _sync_path_in_db(old_path: str, new_path: str):
         )
         return False
 
+def _get_db_connection():
+    from .analyze_json import _migrate_cleaned_data_schema
+    
+    db_path = os.path.join(os.path.expanduser("~"), ".indexly", "indexly.db")
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS cleaned_data (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            file_name TEXT UNIQUE,
+            cleaned_at TEXT,
+            row_count INTEGER,
+            col_count INTEGER,
+            data_json TEXT
+        );
+    """)
+    conn.commit()
+    _migrate_cleaned_data_schema(conn)
+    return conn
 
 def regexp(pattern, string):
     if user_interrupted:
@@ -178,6 +204,52 @@ def regexp(pattern, string):
     except re.error:
         return False
 
+
+def persist_analysis_to_db(result: AnalysisResult):
+    """
+    Save an AnalysisResult into SQLite DB.
+    Supports CSV, JSON, or DB table analysis.
+    Stores as JSON in 'cleaned_data' table with metadata.
+    """
+    conn = _get_db_connection()
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS cleaned_data (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            file_name TEXT UNIQUE,
+            cleaned_at TEXT,
+            row_count INTEGER,
+            col_count INTEGER,
+            data_json TEXT,
+            file_type TEXT
+        );
+        """
+    )
+    conn.commit()
+
+    abs_path = str(Path(result.file_path).resolve())
+    cleaned_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    # Convert DataFrame to JSON, if present
+    if result.df is not None and isinstance(result.df, pd.DataFrame):
+        data_json = result.df.to_json(orient="records", date_format="iso")
+    else:
+        data_json = json.dumps(result.metadata or {})
+
+    row_count = len(result.df) if result.df is not None else 0
+    col_count = len(result.df.columns) if result.df is not None else 0
+
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO cleaned_data 
+        (file_name, cleaned_at, row_count, col_count, data_json, file_type)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (abs_path, cleaned_at, row_count, col_count, data_json, result.file_type),
+    )
+    conn.commit()
+    conn.close()
+    print(f"✅ Analysis persisted to DB for: {abs_path}")
 
 def get_tags_for_file(file_path, db_path=None):
     file_path = normalize_path(file_path)

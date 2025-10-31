@@ -16,7 +16,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 from pathlib import Path
-from .cleaning.auto_clean import _get_db_connection
+from .db_utils import _get_db_connection
 from rich.table import Table
 from rich.console import Console
 

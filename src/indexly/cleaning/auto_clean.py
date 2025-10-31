@@ -13,33 +13,11 @@ from datetime import datetime
 from rich.console import Console
 from rich.table import Table
 from pathlib import Path
-
+from indexly.db_utils import _get_db_connection 
 
 console = Console()
 
 
-# --- Database Connection Utility ---
-def _get_db_connection():
-    db_path = os.path.join(os.path.expanduser("~"), ".indexly", "indexly.db")
-    os.makedirs(os.path.dirname(db_path), exist_ok=True)
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-
-    # Match the schema exactly as save_cleaned_data expects
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS cleaned_data (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            file_name TEXT UNIQUE,
-            cleaned_at TEXT,
-            row_count INTEGER,
-            col_count INTEGER,
-            data_json TEXT
-        );
-        """
-    )
-    conn.commit()
-    return conn
 
 
 def _auto_parse_dates(df, date_formats=None, min_valid_ratio=0.3, verbose=False):
