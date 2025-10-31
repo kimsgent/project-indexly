@@ -241,10 +241,6 @@ def analyze_csv(file_or_df, from_df=False):
 
 def _json_safe(obj):
     """Recursively convert Pandas / NumPy / Timestamp / NaT / scalar types to native Python."""
-    import pandas as pd
-    import numpy as np
-    from datetime import datetime, date
-
     if obj is None or obj is pd.NaT:
         return None
     if isinstance(obj, float) and np.isnan(obj):

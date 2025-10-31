@@ -25,6 +25,9 @@ from .path_utils import normalize_path
 from pathlib import Path
 from datetime import datetime
 from .analysis_result import AnalysisResult
+from rich.console import Console
+
+console = Console()
 
 
 logger = logging.getLogger(__name__)
@@ -193,6 +196,52 @@ def _get_db_connection():
     _migrate_cleaned_data_schema(conn)
     return conn
 
+# ------------------------------------------------------
+# 🧱 2. Schema Migration Helper (Unified)
+# ------------------------------------------------------
+def _migrate_cleaned_data_schema(conn: sqlite3.Connection) -> None:
+    """
+    Ensures that the 'cleaned_data' table supports both CSV and JSON
+    analysis results with unified schema.
+    """
+    # Add any missing columns safely
+    expected_columns = {
+        "file_name",
+        "file_type",
+        "summary_json",
+        "sample_json",
+        "metadata_json",
+        "cleaned_at",
+        "row_count",
+        "col_count",
+        "data_json",
+    }
+
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS cleaned_data (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        file_name TEXT UNIQUE,
+        file_type TEXT,
+        summary_json TEXT,
+        sample_json TEXT,
+        metadata_json TEXT,
+        cleaned_at TEXT,
+        row_count INTEGER,
+        col_count INTEGER,
+        data_json TEXT
+    );
+    """)
+    conn.commit()
+
+    # Schema evolution (ALTER TABLE if missing)
+    existing_cols = {row[1] for row in conn.execute("PRAGMA table_info(cleaned_data)").fetchall()}
+    missing = expected_columns - existing_cols
+    for col in missing:
+        conn.execute(f"ALTER TABLE cleaned_data ADD COLUMN {col} TEXT")
+    if missing:
+        conn.commit()
+        console.print(f"[yellow]Migrated cleaned_data schema to include: {missing}[/yellow]")
+
 def regexp(pattern, string):
     if user_interrupted:
         raise KeyboardInterrupt  # force early exit
@@ -204,52 +253,6 @@ def regexp(pattern, string):
     except re.error:
         return False
 
-
-def persist_analysis_to_db(result: AnalysisResult):
-    """
-    Save an AnalysisResult into SQLite DB.
-    Supports CSV, JSON, or DB table analysis.
-    Stores as JSON in 'cleaned_data' table with metadata.
-    """
-    conn = _get_db_connection()
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS cleaned_data (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            file_name TEXT UNIQUE,
-            cleaned_at TEXT,
-            row_count INTEGER,
-            col_count INTEGER,
-            data_json TEXT,
-            file_type TEXT
-        );
-        """
-    )
-    conn.commit()
-
-    abs_path = str(Path(result.file_path).resolve())
-    cleaned_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-    # Convert DataFrame to JSON, if present
-    if result.df is not None and isinstance(result.df, pd.DataFrame):
-        data_json = result.df.to_json(orient="records", date_format="iso")
-    else:
-        data_json = json.dumps(result.metadata or {})
-
-    row_count = len(result.df) if result.df is not None else 0
-    col_count = len(result.df.columns) if result.df is not None else 0
-
-    conn.execute(
-        """
-        INSERT OR REPLACE INTO cleaned_data 
-        (file_name, cleaned_at, row_count, col_count, data_json, file_type)
-        VALUES (?, ?, ?, ?, ?, ?)
-        """,
-        (abs_path, cleaned_at, row_count, col_count, data_json, result.file_type),
-    )
-    conn.commit()
-    conn.close()
-    print(f"✅ Analysis persisted to DB for: {abs_path}")
 
 def get_tags_for_file(file_path, db_path=None):
     file_path = normalize_path(file_path)

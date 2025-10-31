@@ -27,6 +27,8 @@ import pandas as pd
 import numpy as np
 from rich.console import Console
 from rich.table import Table
+from .db_utils import _migrate_cleaned_data_schema
+from .analyze_utils import save_analysis_result, load_cleaned_data
 
 console = Console()
 
@@ -206,7 +208,7 @@ def run_analyze_json(args):
     # --- Step 0: Use previously saved JSON data if requested ---
     if getattr(args, "use_saved", False):
         try:           
-            saved_data = load_json_data(args.file)
+            saved_data = load_cleaned_data(args.file)
             if saved_data:
                 console.print("[cyan]Using previously saved JSON analysis from DB.[/cyan]")
                 console.print_json(data=saved_data)
@@ -295,7 +297,7 @@ def run_analyze_json(args):
                 "summary_statistics": df_stats.to_dict(orient="index") if df_stats is not None else {},
                 "sample_data": df.head(10).to_dict(orient="records"),
             }
-            save_json_data(payload, args.file)
+            save_analysis_result(payload, args.file)
         except Exception as e:
             console.print(f"[red]❌ Failed to save analyzed JSON data: {e}[/red]")
 
@@ -336,21 +338,6 @@ def run_analyze_json(args):
         except Exception as e:
             console.print(f"[red]❌ Visualization failed: {e}[/red]")
 
-def _migrate_cleaned_data_schema(conn):
-    """
-    Ensure 'cleaned_data' table has all required columns.
-    Adds missing columns without dropping existing data.
-    """
-    cursor = conn.cursor()
-    cursor.execute("PRAGMA table_info(cleaned_data)")
-    existing_cols = [r[1] for r in cursor.fetchall()]
-
-    if "file_type" not in existing_cols:
-        conn.execute("ALTER TABLE cleaned_data ADD COLUMN file_type TEXT DEFAULT 'csv'")
-    if "source_type" not in existing_cols:
-        conn.execute("ALTER TABLE cleaned_data ADD COLUMN source_type TEXT DEFAULT 'csv'")
-
-    conn.commit()
 
 def save_json_data(json_data, file_path: str):
     """
@@ -378,35 +365,3 @@ def save_json_data(json_data, file_path: str):
     conn.commit()
     conn.close()
     print(f"✅ JSON data saved to DB for: {abs_path}")
-
-
-def load_json_data(file_name: str):
-    """
-    Load a previously saved JSON dataset from DB.
-    Returns the structured JSON dict if found, else None.
-    """
-    conn = _get_db_connection()
-    abs_path = os.path.abspath(file_name)
-    row = conn.execute(
-        "SELECT data_json, source_type FROM cleaned_data WHERE file_name = ?",
-        (abs_path,),
-    ).fetchone()
-    conn.close()
-
-    if not row:
-        console.print(f"[yellow]⚠️ No JSON data found for {file_name}[/yellow]")
-        return None
-
-    if row["source_type"] != "json":
-        console.print(
-            f"[red]⚠️ File '{file_name}' exists in DB but source_type={row['source_type']} (expected 'json').[/red]"
-        )
-        return None
-
-    try:
-        json_data = json.loads(row["data_json"])
-        console.print(f"[green]✅ Loaded saved JSON dataset for[/green] {file_name}")
-        return json_data
-    except json.JSONDecodeError as e:
-        console.print(f"[red]❌ Failed to decode JSON from DB for {file_name}: {e}[/red]")
-        return None

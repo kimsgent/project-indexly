@@ -19,6 +19,7 @@ from pathlib import Path
 from .db_utils import _get_db_connection
 from rich.table import Table
 from rich.console import Console
+from .analyze_utils import save_analysis_result
 
 # ---------------------
 # 🧹 CLEANING PIPELINE
@@ -114,9 +115,19 @@ def clean_csv_data(df, file_name, method="mean", save_data=False):
     """
     Clean numeric data (fill NaNs with mean/median) and optionally persist.
     Optimized for performance and column stability.
+
+    Uses unified save_analysis_result() for persistence.
+    Sets `_persisted` flag to prevent double-saving in orchestrator.
     """
+    import pandas as pd
+    import numpy as np
+    from .analyze_utils import save_analysis_result  # adjust import path if needed
+
     # 🧩 Prevent redundant "_cleaned_1_2" inflation
-    df.columns = [c if "_cleaned_" not in c else c.split("_cleaned_")[0] + "_cleaned" for c in df.columns]
+    df.columns = [
+        c if "_cleaned_" not in c else c.split("_cleaned_")[0] + "_cleaned"
+        for c in df.columns
+    ]
 
     # ⚙️ Conditional copy for memory efficiency
     cleaned_df = df if not save_data else df.copy()
@@ -133,58 +144,47 @@ def clean_csv_data(df, file_name, method="mean", save_data=False):
         medians = cleaned_df[numeric_cols].median()
         cleaned_df[numeric_cols] = cleaned_df[numeric_cols].fillna(medians)
 
-    # 💾 Persistence (optional)
+    # 💾 Optional persistence
     if save_data:
-        save_cleaned_data(cleaned_df, file_name)
+        # --- Prepare summary and metadata ---
+        summary = {
+            col: {
+                "dtype": str(cleaned_df[col].dtype),
+                "nulls_filled": int(df[col].isna().sum() - cleaned_df[col].isna().sum())
+            }
+            for col in cleaned_df.columns
+        }
+
+        sample_data = cleaned_df.head(10).to_dict(orient="records")
+        metadata = {
+            "cleaned_at": pd.Timestamp.now().isoformat(),
+            "source_file": file_name,
+            "row_count": cleaned_df.shape[0],
+            "col_count": cleaned_df.shape[1]
+        }
+
+        save_analysis_result(
+            file_path=file_name,
+            file_type="csv",
+            summary=summary,
+            sample_data=sample_data,
+            metadata=metadata,
+            row_count=cleaned_df.shape[0],
+            col_count=cleaned_df.shape[1]
+        )
+        # ⚠️ Mark cleaned_df to prevent double-saving in orchestrator
+        cleaned_df._persisted = True
+
+        print(f"[green]💾 Cleaned CSV data saved to DB: {file_name}[/green]")
     else:
+        cleaned_df._persisted = False
         print("⚙️ Data cleaned in-memory only. Use --save-data to persist cleaned results.")
 
     return cleaned_df
 
-
-
 # ----------------------------------
-# 💾 SAVE / DELETE CLEANED DATA LOGIC
+# DELETE CLEANED DATA LOGIC
 # ----------------------------------
-
-
-def save_cleaned_data(df, file_path: str):
-    """
-    Save cleaned data into SQLite DB.
-    Stored as compressed JSON for portability.
-    Uses absolute CSV path as file_name to ensure uniqueness and proper clearing.
-    """
-    conn = _get_db_connection()
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS cleaned_data (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            file_name TEXT UNIQUE,
-            cleaned_at TEXT,
-            row_count INTEGER,
-            col_count INTEGER,
-            data_json TEXT
-        );
-        """
-    )
-    conn.commit()
-
-    abs_path = str(Path(file_path).resolve())  # absolute path for uniqueness
-    cleaned_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    data_json = df.to_json(orient="records", date_format="iso")
-
-    conn.execute(
-        """
-        INSERT OR REPLACE INTO cleaned_data (file_name, cleaned_at, row_count, col_count, data_json)
-        VALUES (?, ?, ?, ?, ?)
-        """,
-        (abs_path, cleaned_at, len(df), len(df.columns), data_json),
-    )
-    conn.commit()
-    conn.close()
-
-    print(f"✅ Cleaned data saved to DB for: {abs_path}")
-
 
 def clear_cleaned_data(file_path: str = None, remove_all: bool = False):
     """

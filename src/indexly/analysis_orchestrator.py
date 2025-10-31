@@ -7,6 +7,7 @@ from .json_pipeline import run_json_pipeline
 from .db_pipeline import run_db_pipeline
 from .csv_analyzer import export_results, detect_delimiter
 from .analyze_utils import validate_file_content
+from .analyze_utils import save_analysis_result, handle_show_summary
 
 console = Console()
 
@@ -83,29 +84,34 @@ def analyze_file(args) -> AnalysisResult:
         return None
 
     # --- Optional persistence ---
-    if not getattr(args, "no_persist", False):
-        from .db_utils import persist_analysis_to_db
-        cleaned_flag = False if df_stats is None else not df_stats.empty
-        result = AnalysisResult(
+
+    cleaned_flag = False if df_stats is None else not df_stats.empty
+    result = AnalysisResult(
+        file_path=str(file_path),
+        file_type=file_type,
+        df=df,
+        summary=df_stats,
+        metadata={"table_output": table_output} if table_output else {},
+        cleaned=cleaned_flag,
+    )
+
+    # Only persist if it hasn't been saved yet
+    persisted_by_clean_csv = getattr(df, "_persisted", False)  # we can set this inside clean_csv_data()
+
+    if not getattr(args, "no_persist", False) and not persisted_by_clean_csv:
+        save_analysis_result(
             file_path=str(file_path),
             file_type=file_type,
-            df=df,
-            summary=df_stats,
+            summary=df_stats.to_dict() if hasattr(df_stats, "to_dict") else {},
+            sample_data=df.head(3).to_dict(orient="records") if df is not None else {},
             metadata={"table_output": table_output} if table_output else {},
-            cleaned=cleaned_flag,
+            row_count=len(df) if df is not None else 0,
+            col_count=len(df.columns) if df is not None else 0,
         )
-        persist_analysis_to_db(result)
         result.persisted = True
     else:
-        cleaned_flag = False if df_stats is None else not df_stats.empty
-        result = AnalysisResult(
-            file_path=str(file_path),
-            file_type=file_type,
-            df=df,
-            summary=df_stats,
-            metadata={"table_output": table_output} if table_output else {},
-            cleaned=cleaned_flag,
-        )
+        result.persisted = persisted_by_clean_csv
+
 
     # --- Timeseries visualization for CSV ---
     if file_type == "csv" and (getattr(args, "timeseries", False) or getattr(args, "plot_timeseries", False)):
@@ -143,8 +149,16 @@ def analyze_file(args) -> AnalysisResult:
     show_summary = getattr(args, "show_summary", False)
     auto_clean = getattr(args, "auto_clean", False)
 
-    if show_summary and not auto_clean:
-        console.print("\n📊 [bold cyan]Summary Preview:[/bold cyan]\n")
+    if show_summary:
+        from .analyze_utils import handle_show_summary
+
+        # Case 1: user requested summary after saved run
+        if not auto_clean:
+            handle_show_summary(args.file)
+            return result
+
+        # Case 2: live run with in-memory df_stats (during cleaning)
+        console.print("\n📊 [bold cyan]Live Summary Preview:[/bold cyan]\n")
         if isinstance(df_stats, pd.DataFrame) and not df_stats.empty:
             from rich.table import Table
             table = Table(title="Dataset Summary", show_header=True, header_style="bold magenta")
@@ -157,6 +171,7 @@ def analyze_file(args) -> AnalysisResult:
             console.print(table_output)
         else:
             console.print("[yellow]No summary data available.[/yellow]")
+
 
     return result
 

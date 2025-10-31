@@ -1,10 +1,16 @@
 # analyze_utils.py
 import json
+import os
 import sqlite3
 import pandas as pd
+import numpy as np
 from pathlib import Path
 from rich.console import Console
+from rich.table import Table
 from .csv_analyzer import detect_delimiter
+from .db_utils import _migrate_cleaned_data_schema, _get_db_connection
+from .csv_analyzer import _json_safe
+from datetime import datetime, date
 
 console = Console()
 
@@ -58,3 +64,196 @@ def validate_file_content(file_path: Path, file_type: str) -> bool:
 
     console.print(f"[yellow]⚠️ Unknown or unsupported file type: {file_type}[/yellow]")
     return False
+
+
+# ------------------------------------------------------
+# 🧱 3. Unified Save Function
+# ------------------------------------------------------
+def save_analysis_result(
+    file_path: str,
+    file_type: str,
+    summary=None,
+    sample_data=None,
+    metadata=None,
+    row_count: int | None = None,
+    col_count: int | None = None,
+) -> None:
+    """
+    Save unified analysis results in JSON-safe format for CSV, JSON, SQLite, etc.
+    """
+    try:
+        conn = _get_db_connection()
+        _migrate_cleaned_data_schema(conn)
+
+        file_name = os.path.basename(file_path)
+
+        # Normalize summary
+        if isinstance(summary, pd.DataFrame):
+            summary_json = _json_safe(summary.to_dict(orient="index"))
+        else:
+            summary_json = _json_safe(summary or {})
+
+        # Normalize sample data
+        if isinstance(sample_data, pd.DataFrame):
+            sample_json = _json_safe(sample_data.head(10).to_dict(orient="records"))
+        else:
+            sample_json = _json_safe(sample_data or [])
+
+        # Normalize metadata
+        metadata_json = _json_safe(metadata or {})
+
+        payload = {
+            "file_name": file_name,
+            "file_type": file_type,
+            "summary_json": json.dumps(summary_json, ensure_ascii=False, indent=2),
+            "sample_json": json.dumps(sample_json, ensure_ascii=False, indent=2),
+            "metadata_json": json.dumps(metadata_json, ensure_ascii=False, indent=2),
+            "cleaned_at": __import__("datetime").datetime.now().isoformat(),
+            "row_count": row_count or 0,
+            "col_count": col_count or 0,
+            "data_json": json.dumps(
+                {
+                    "summary_statistics": summary_json,
+                    "sample_data": sample_json,
+                    "metadata": metadata_json,
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+        }
+
+        conn.execute(
+            """
+            INSERT INTO cleaned_data (
+                file_name, file_type, summary_json, sample_json,
+                metadata_json, cleaned_at, row_count, col_count, data_json
+            ) VALUES (
+                :file_name, :file_type, :summary_json, :sample_json,
+                :metadata_json, :cleaned_at, :row_count, :col_count, :data_json
+            )
+            ON CONFLICT(file_name)
+            DO UPDATE SET
+                file_type = excluded.file_type,
+                summary_json = excluded.summary_json,
+                sample_json = excluded.sample_json,
+                metadata_json = excluded.metadata_json,
+                cleaned_at = excluded.cleaned_at,
+                row_count = excluded.row_count,
+                col_count = excluded.col_count,
+                data_json = excluded.data_json
+            """,
+            payload,
+        )
+        conn.commit()
+        conn.close()
+
+        console.print(f"[green]✔ Saved unified analysis result for {file_name} ({file_type})[/green]")
+
+    except Exception as e:
+        console.print(f"[red]Failed to save analysis result for {file_path}: {e}[/red]")
+
+        
+def load_cleaned_data(file_path: str = None, limit: int = 5):
+    """
+    Load previously saved analysis results from the cleaned_data table.
+    Returns:
+        - If file_path is provided: (exists: bool, record: dict)
+        - If file_path is None: list of records
+    """
+    conn = _get_db_connection()
+    cursor = conn.cursor()
+
+    if file_path:
+        file_name = os.path.basename(file_path)
+        cursor.execute("SELECT * FROM cleaned_data WHERE file_name = ?", (file_name,))
+    else:
+        cursor.execute("SELECT * FROM cleaned_data ORDER BY cleaned_at DESC LIMIT ?", (limit,))
+
+    rows = cursor.fetchall()
+    conn.close()
+
+    if not rows:
+        return (False, {}) if file_path else []
+
+    results = []
+    for row in rows:
+        record = dict(row)
+        try:
+            record["data_json"] = json.loads(record["data_json"]) if record["data_json"] else {}
+        except json.JSONDecodeError:
+            record["data_json"] = {"error": "Invalid JSON stored"}
+        results.append(record)
+
+    if file_path:
+        return True, results[0]  # return single record
+    return results  # return list of records
+
+
+
+def handle_show_summary(file_path: str):
+    """
+    Unified summary viewer for both CSV and JSON analysis results.
+    Fetches from DB and prints summary tables accordingly.
+    """
+
+
+    file_name = os.path.basename(file_path)
+    exists, record = load_cleaned_data(file_name)
+    if not exists:
+        console.print(f"[red]No saved summary found for:[/red] {file_name}")
+        return
+
+    console.rule(f"[bold green]Summary for {file_name}[/bold green]")
+
+    console.print(f"[dim]Cleaned/Analyzed at:[/dim] {record['cleaned_at']}")
+    console.print(f"[dim]Rows:[/dim] {record.get('row_count', '-')}, [dim]Columns:[/dim] {record.get('col_count', '-')}")
+
+    data_json = record["data_json"]
+    summary_stats = data_json.get("summary_statistics") or {}
+    metadata = data_json.get("metadata") or {}
+    sample_data = data_json.get("sample_data") or []
+
+    # ------------------------------
+    # Show metadata
+    # ------------------------------
+    if metadata:
+        console.print("\n[bold cyan]Metadata[/bold cyan]")
+        table = Table(show_header=True, header_style="bold magenta")
+        table.add_column("Field")
+        table.add_column("Value")
+        for k, v in metadata.items():
+            table.add_row(str(k), str(v))
+        console.print(table)
+
+    # ------------------------------
+    # Show summary stats
+    # ------------------------------
+    if summary_stats:
+        console.print("\n[bold cyan]Summary Statistics[/bold cyan]")
+        table = Table(show_header=True, header_style="bold magenta")
+        table.add_column("Field")
+        table.add_column("Statistic")
+        table.add_column("Value")
+
+        for k, v in summary_stats.items():
+            if isinstance(v, dict):
+                for sk, sv in v.items():
+                    table.add_row(str(k), str(sk), str(sv))
+            else:
+                table.add_row(str(k), "-", str(v))
+        console.print(table)
+
+    # ------------------------------
+    # Show sample data
+    # ------------------------------
+    if sample_data:
+        console.print("\n[bold cyan]Sample Data[/bold cyan]")
+        if isinstance(sample_data, list) and sample_data and isinstance(sample_data[0], dict):
+            table = Table(show_header=True, header_style="bold magenta")
+            for col in sample_data[0].keys():
+                table.add_column(str(col))
+            for row in sample_data[:10]:
+                table.add_row(*[str(row.get(c, "")) for c in sample_data[0].keys()])
+            console.print(table)
+        else:
+            console.print(sample_data)

@@ -14,6 +14,7 @@ from rich.console import Console
 from rich.table import Table
 from pathlib import Path
 from indexly.db_utils import _get_db_connection 
+from indexly.analyze_utils import save_analysis_result
 
 console = Console()
 
@@ -394,7 +395,7 @@ def auto_clean_csv(
     from io import StringIO
     from pathlib import Path
     from rich.console import Console
-    from indexly.clean_csv import save_cleaned_data
+
 
     console = Console()
 
@@ -796,22 +797,38 @@ def auto_clean_csv(
     # ---------------------------
     # 💾 Save cleaned data
     # ---------------------------
-    if persist:
-        if hasattr(df, "_source_file_path") and df._source_file_path:
-            file_name = df._source_file_path
-        elif isinstance(file_or_df, (str, bytes, os.PathLike)):
-            file_name = os.path.abspath(str(file_or_df))
-        else:
-            file_name = "cleaned_data.csv"  # fallback name
+    # ---------------------------
 
-        try:
-            save_cleaned_data(df, file_name)
-            console.print("[dim]💾 Cleaned data saved for future reuse[/dim]")
-        except Exception as e:
-            console.print(f"[red]❌ Failed to save cleaned data: {e}[/red]")
+    if persist:
+        if hasattr(df, "_persisted") and df._persisted:
+            console.print("[dim]💾 Data already persisted, skipping duplicate save[/dim]")
+        else:
+            if hasattr(df, "_source_file_path") and df._source_file_path:
+                file_name = df._source_file_path
+            elif isinstance(file_or_df, (str, bytes, os.PathLike)):
+                file_name = os.path.abspath(str(file_or_df))
+            else:
+                file_name = "cleaned_data.csv"  # fallback name
+
+            try:
+                save_analysis_result(
+                    file_path=file_name,
+                    file_type="csv",
+                    summary=summary_records or {},
+                    sample_data=df.head(10).to_dict(orient="records") if isinstance(df, pd.DataFrame) else {},
+                    metadata={"source": file_name},
+                    row_count=len(df) if hasattr(df, "__len__") else 0,
+                    col_count=len(df.columns) if hasattr(df, "columns") else 0,
+                )
+                console.print("[dim]💾 Cleaned data saved for future reuse[/dim]")
+                # Mark as persisted
+                df._persisted = True
+            except Exception as e:
+                console.print(f"[red]❌ Failed to save cleaned data: {e}[/red]")
 
     # ✅ Final consistent return (always executed)
     return df, summary_records
+
 
 
 def load_cleaned_data(file_name):
