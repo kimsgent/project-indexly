@@ -140,33 +140,6 @@ def _auto_parse_dates(df, date_formats=None, min_valid_ratio=0.3, verbose=False)
     return df, summary_records
 
 
-def _summarize_cleaning_results(summary_records):
-    """
-    Print a detailed summary table of the cleaning actions taken.
-    """
-    table = Table(
-        title="🧼 Cleaning Summary",
-        show_header=True,
-        header_style="bold cyan",
-        title_style="bold magenta",
-    )
-    table.add_column("Column", style="bold white")
-    table.add_column("Type", style="cyan")
-    table.add_column("Action", style="green")
-    table.add_column("NaNs Filled", justify="right", style="yellow")
-    table.add_column("Fill Strategy", style="bold blue")
-
-    for rec in summary_records:
-        table.add_row(
-            rec["column"],
-            rec["dtype"],
-            rec["action"],
-            str(rec["n_filled"]),
-            rec["strategy"],
-        )
-
-    console.print(table)
-
 
 def _handle_datetime_columns(
     df, verbose=False, user_formats=None, derive_level="all", min_valid_ratio=0.6
@@ -372,6 +345,7 @@ def _handle_datetime_columns(
 
 
 def auto_clean_csv(
+    
     file_or_df,
     fill_method: str = "mean",
     persist: bool = True,
@@ -381,6 +355,8 @@ def auto_clean_csv(
     date_threshold=0.6,
     user_datetime_formats: list[str] | None = None,
 ) -> pd.DataFrame:
+    
+    
     """
     Main entry for automated CSV cleaning.
     Optimized for:
@@ -395,6 +371,7 @@ def auto_clean_csv(
     from io import StringIO
     from pathlib import Path
     from rich.console import Console
+ 
 
 
     console = Console()
@@ -468,11 +445,24 @@ def auto_clean_csv(
         if verbose:
             console.print(f"📄 Detected delimiter: '{delimiter}'", style="bold cyan")
 
-        # --- Read CSV with fallback strategy
+        # --- Read CSV with chunked reading and progress bar ---
         try:
-            df = pd.read_csv(file_path, delimiter=delimiter)
+            from tqdm import tqdm
+
+            chunksize = 10000  # adjust as needed for memory/performance
+            chunks = []
+
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", UserWarning)
+                for chunk in tqdm(
+                    pd.read_csv(file_path, delimiter=delimiter, chunksize=chunksize),
+                    desc=f"Loading CSV ({file_path.name})",
+                ):
+                    chunks.append(chunk)
+
+            df = pd.concat(chunks, ignore_index=True)
+
         except Exception as e:
-            # Try fallback encoding and delimiter
             console.print(
                 f"[!] Primary read failed ({e}), retrying with fallback...",
                 style="bold yellow",
@@ -826,23 +816,8 @@ def auto_clean_csv(
             except Exception as e:
                 console.print(f"[red]❌ Failed to save cleaned data: {e}[/red]")
 
+
     # ✅ Final consistent return (always executed)
     return df, summary_records
 
 
-
-def load_cleaned_data(file_name):
-    """Load a previously saved cleaned dataset from DB."""
-    conn = _get_db_connection()
-    row = conn.execute(
-        "SELECT data_json FROM cleaned_data WHERE file_name = ?",
-        (os.path.abspath(file_name),),
-    ).fetchone()
-    conn.close()
-    if row:
-        df = pd.read_json(io.StringIO(row["data_json"]))
-        console.print(f"[green]Loaded cleaned dataset for[/green] {file_name}")
-        return df
-    else:
-        console.print(f"[yellow]⚠️ No cleaned data found for {file_name}[/yellow]")
-        return None

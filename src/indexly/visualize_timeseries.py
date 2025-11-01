@@ -22,6 +22,7 @@ import numpy as np
 import os
 import datetime
 
+
 console = Console()
 
 # Reuse the ensure_optional_packages from your existing visualize_csv module.
@@ -329,3 +330,29 @@ def visualize_timeseries_plot(
     console.print(
         f"[yellow]⚠️ Unsupported mode '{mode}'. Use 'interactive' or 'static'.[/yellow]"
     )
+
+
+
+def _handle_timeseries_visualization(df: pd.DataFrame, args) -> None:
+    """
+    Centralized time series visualization handler.
+    Keeps orchestrator slim — visualization logic lives here.
+    """
+    try:
+
+        y_cols = [c.strip() for c in getattr(args, "y", "").split(",") if c.strip()] or None
+        visualize_timeseries_plot(
+            df=df,
+            x_col=getattr(args, "x", None),
+            y_cols=y_cols,
+            freq=getattr(args, "freq", None),
+            agg=getattr(args, "agg", "mean"),
+            rolling=getattr(args, "rolling", None),
+            mode=getattr(args, "mode", "interactive"),
+            output=getattr(args, "output", None),
+            title=getattr(args, "title", None),
+        )
+        console.print("[green]📈 Time series visualization generated successfully.[/green]")
+
+    except Exception as e:
+        console.print(f"[red]❌ Timeseries visualization failed: {e}[/red]")

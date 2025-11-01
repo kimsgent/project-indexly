@@ -1,4 +1,6 @@
+from __future__ import annotations
 import os
+import re
 import math
 from pathlib import Path
 import pandas as pd
@@ -6,10 +8,14 @@ import numpy as np
 from rich.console import Console
 from tqdm import tqdm
 from datetime import datetime
+from rich.table import Table
+from .analyze_utils import load_cleaned_data
+from collections import Counter, defaultdict
+from rich.panel import Panel
 
 # Local utilities (adjust imports if needed)
 from .csv_analyzer import export_results
-from .cleaning.auto_clean import _summarize_cleaning_results, auto_clean_csv
+from .cleaning.auto_clean import auto_clean_csv
 from .visualize_csv import (
     visualize_data,
     visualize_scatter_plotly,
@@ -17,7 +23,7 @@ from .visualize_csv import (
     visualize_bar_plot,
     visualize_pie_plot,
 )
-from .visualize_timeseries import visualize_timeseries_plot
+from .visualize_timeseries import _handle_timeseries_visualization
 from .csv_analyzer import detect_delimiter, analyze_csv
 from .visualize_csv import apply_transformation
 from .clean_csv import (
@@ -25,6 +31,9 @@ from .clean_csv import (
     _remove_outliers,
     _normalize_numeric,
 )
+
+
+from scipy.stats import entropy as shannon_entropy
 
 console = Console()
 
@@ -173,42 +182,57 @@ def visualize_csv(df: pd.DataFrame, df_stats, args):
         console.print(f"[red]❌ Failed to render chart: {e}[/red]")
 
 
+from pathlib import Path
+import pandas as pd
+from rich.console import Console
+
+console = Console()
+
 def run_csv_pipeline(file_path: Path, args):
-    """Full modular CSV pipeline with optional timeseries visualization."""
+    """Full modular CSV pipeline with optional reuse, cleaning, analysis, and visualization."""
 
-    # --- Load CSV ---
+    # --- Step 0: Try loading cleaned CSV from DB ---
+    if getattr(args, "use_cleaned", False):
+        exists, record = load_cleaned_data(file_path)
+        if exists:
+            df = pd.DataFrame(record.get("data_json", {}).get("sample_data", []))
+            df_stats = pd.DataFrame(record.get("data_json", {}).get("summary_statistics", {})).T
+            table_output = record.get("metadata_json", {}).get("table_output", "")
+            console.print(f"[green]♻️ Loaded cleaned CSV from DB: {file_path.name}[/green]")
+
+            # ✅ Only visualize once here, respecting flags
+            if getattr(args, "timeseries", False) or getattr(args, "plot_timeseries", False):
+                _handle_timeseries_visualization(df, args)
+
+            # ✅ Display summary and sample data
+            if not df_stats.empty:
+                console.print("\n📊 [bold cyan]Summary Statistics[/bold cyan]")
+                _print_summary_table(df_stats.to_dict(orient="index"))
+
+            if not df.empty:
+                console.print("\n🧩 [bold cyan]Sample Data Preview[/bold cyan]")
+                _print_sample_table(df)
+
+            return df, df_stats, table_output
+        else:
+            console.print(f"[yellow]⚠️ No cleaned CSV found for {file_path.name}, continuing with raw data[/yellow]")
+
+    # --- Step 1: Load CSV from disk ---
     df = load_csv(file_path, args)
-    if df.empty:
-        return None
+    if df is None or df.empty:
+        console.print(f"[red]❌ Failed to load CSV: {file_path}[/red]")
+        return None, None, None
 
-    # --- Clean CSV ---
+    # --- Step 2: Clean CSV ---
     df, summary_records = clean_csv(df, args)
 
-    # --- Analyze CSV ---
+    # --- Step 3: Analyze CSV ---
     df_stats, table_output = analyze_csv_pipeline(df, args)
 
-    # --- Visualize CSV ---
+    # --- Step 4: Visualization ---
     visualize_csv(df, df_stats, args)
 
-    # --- Timeseries visualization (NEW) ---
-    if getattr(args, "timeseries", False) or getattr(args, "plot_timeseries", False):
-        try:
-            y_cols = [c.strip() for c in getattr(args, "y", "").split(",") if c.strip()] or None
-            visualize_timeseries_plot(
-                df=df,
-                x_col=getattr(args, "x", None),
-                y_cols=y_cols,
-                freq=getattr(args, "freq", None),
-                agg=getattr(args, "agg", "mean"),
-                rolling=getattr(args, "rolling", None),
-                mode=getattr(args, "mode", "interactive"),
-                output=getattr(args, "output", None),
-                title=getattr(args, "title", None),
-            )
-        except Exception as e:
-            console.print(f"[red]❌ Timeseries visualization failed: {e}[/red]")
-
-    # --- Export results ---
+    # --- Step 5: Export results ---
     export_path = getattr(args, "export_path", None)
     export_fmt = getattr(args, "format", "txt")
     export_results(
@@ -219,8 +243,181 @@ def run_csv_pipeline(file_path: Path, args):
         source_file=file_path,
     )
 
-    # --- Optional cleaning summary ---
+    # --- Step 6: Cleaning Summary ---
     if summary_records:
-        _summarize_cleaning_results(summary_records)
+        # Generate pre_stats and derived_map from summary_records
+        pre_stats = {r["column"]: r for r in summary_records}
+        derived_map = {r["column"]: r.get("derived_from", "") for r in summary_records}
+
+        # Compute full cleaning summary
+        cleaning_summary = _summarize_pipeline_cleaning(df, pre_stats=pre_stats, derived_map=derived_map)
+
+        # Render rich table
+        table = render_cleaning_summary_table(cleaning_summary)
+        console.print(table)
 
     return df, df_stats, table_output
+
+
+# --------------------------------------------------------
+# 🔧 Helper printing utilities
+# --------------------------------------------------------
+def _print_summary_table(summary_dict: dict):
+    table = Table(show_header=True, header_style="bold cyan")
+    table.add_column("Column")
+    table.add_column("Statistics")
+    for col, stats in summary_dict.items():
+        formatted = ", ".join(f"{k}: {v}" for k, v in stats.items())
+        table.add_row(col, formatted)
+    console.print(table)
+
+
+def _print_sample_table(df: pd.DataFrame):
+    table = Table(show_header=True, header_style="bold yellow")
+    for col in df.columns:
+        table.add_column(str(col))
+    for _, row in df.head(10).iterrows():
+        table.add_row(*(str(x) for x in row.values))
+    console.print(table)
+
+
+
+def _summarize_pipeline_cleaning(df: pd.DataFrame, pre_stats: dict | None = None, derived_map: dict | None = None):
+    """
+    Generate a rich summary of the cleaning process.
+    Includes dtype inference, fill stats, datetime coverage, entropy, etc.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Cleaned dataframe.
+    pre_stats : dict, optional
+        Pre-cleaning statistics. If None, empty stats are used.
+    derived_map : dict, optional
+        Mapping of derived columns. If None, empty dict is used.
+
+    Returns
+    -------
+    summary_records : list[dict]
+        List of column-wise cleaning summaries.
+    """
+
+    import numpy as np
+    from scipy.stats import entropy as shannon_entropy
+    from tqdm import tqdm  # ensure tqdm is imported
+
+    if pre_stats is None:
+        pre_stats = {}
+    if derived_map is None:
+        derived_map = {}
+
+    summary_records = []
+
+    # ✅ Wrap iteration with tqdm for progress
+    for col in tqdm(df.columns, desc="🧹 Summarizing columns", unit="col"):
+        series = df[col]
+        dtype = str(series.dtype)
+        n_total = len(series)
+        n_missing_after = series.isna().sum()
+        n_missing_before = pre_stats.get(col, {}).get("missing_before", n_missing_after)
+        n_filled = max(0, n_missing_before - n_missing_after)
+        valid_ratio = 1 - (n_missing_after / n_total) if n_total else 0
+
+        record = {
+            "column": col,
+            "dtype": dtype,
+            "n_total": n_total,
+            "n_missing_before": n_missing_before,
+            "n_missing_after": n_missing_after,
+            "n_filled": n_filled,
+            "valid_ratio": round(valid_ratio, 3),
+            "action": pre_stats.get(col, {}).get("action", "preserved"),
+            "strategy": pre_stats.get(col, {}).get("strategy", "-"),
+            "fill_method": pre_stats.get(col, {}).get("fill_method", "-"),
+            "derived_from": derived_map.get(col, "") if derived_map else "",
+            "notes": pre_stats.get(col, {}).get("notes", ""),
+        }
+
+        # Numeric statistics
+        if pd.api.types.is_numeric_dtype(series):
+            desc = series.describe()
+            record.update({
+                "mean": float(desc.get("mean", np.nan)),
+                "std": float(desc.get("std", np.nan)),
+                "min": float(desc.get("min", np.nan)),
+                "max": float(desc.get("max", np.nan)),
+                "skewness": float(series.skew(skipna=True)),
+                "kurtosis": float(series.kurtosis(skipna=True)),
+            })
+        # Datetime statistics
+        elif pd.api.types.is_datetime64_any_dtype(series):
+            try:
+                dt_min, dt_max = series.min(), series.max()
+                record.update({
+                    "datetime_first": str(dt_min),
+                    "datetime_last": str(dt_max),
+                    "datetime_coverage_days": int((dt_max - dt_min).days) if pd.notna(dt_min) and pd.notna(dt_max) else None,
+                })
+            except Exception:
+                record.update({"datetime_first": None, "datetime_last": None, "datetime_coverage_days": None})
+        # Categorical / Object statistics
+        else:
+            value_counts = series.value_counts(dropna=True)
+            if len(value_counts) > 0:
+                probs = value_counts / value_counts.sum()
+                record.update({
+                    "unique_values": int(series.nunique(dropna=True)),
+                    "category_top": str(value_counts.index[0]),
+                    "category_ratio": round(float(value_counts.iloc[0] / n_total), 3),
+                    "entropy_estimate": round(float(shannon_entropy(probs, base=2)), 3),
+                })
+            else:
+                record.update({
+                    "unique_values": 0,
+                    "category_top": "-",
+                    "category_ratio": 0.0,
+                    "entropy_estimate": 0.0,
+                })
+
+        summary_records.append(record)
+
+    return summary_records
+
+
+def render_cleaning_summary_table(summary_records):
+    """
+    Render the enhanced cleaning summary using rich.
+    """
+
+    table = Table(title="🧩 Cleaning Summary", show_lines=True)
+    table.add_column("Column", style="bold cyan")
+    table.add_column("DType", style="yellow")
+    table.add_column("Action", style="green")
+    table.add_column("Valid%", justify="right")
+    table.add_column("Filled", justify="right")
+    table.add_column("Unique", justify="right")
+    table.add_column("Mean", justify="right")
+    table.add_column("Std", justify="right")
+    table.add_column("Entropy", justify="right")
+    table.add_column("Top Cat", style="blue")
+    table.add_column("Notes", style="dim")
+
+    for rec in summary_records:
+        table.add_row(
+            rec["column"],
+            rec["dtype"],
+            rec["action"],
+            f"{rec['valid_ratio']*100:.1f}",
+            str(rec["n_filled"]),
+            str(rec.get("unique_values", "")),
+            f"{rec.get('mean', ''):.3f}" if rec.get("mean") else "-",
+            f"{rec.get('std', ''):.3f}" if rec.get("std") else "-",
+            f"{rec.get('entropy_estimate', ''):.2f}" if rec.get("entropy_estimate") else "-",
+            rec.get("category_top", "-"),
+            rec.get("notes", ""),
+        )
+
+    return table
+
+
+

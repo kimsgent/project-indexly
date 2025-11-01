@@ -175,13 +175,19 @@ def _sync_path_in_db(old_path: str, new_path: str):
         )
         return False
 
+# ------------------------------------------------------
+# 🧱 1. Connection Helper
+# ------------------------------------------------------
 def _get_db_connection():
     from .analyze_json import _migrate_cleaned_data_schema
-    
+
     db_path = os.path.join(os.path.expanduser("~"), ".indexly", "indexly.db")
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
+
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
+
+    # Ensure base table exists
     conn.execute("""
         CREATE TABLE IF NOT EXISTS cleaned_data (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -193,8 +199,12 @@ def _get_db_connection():
         );
     """)
     conn.commit()
+
+    # Apply migrations / schema evolution
     _migrate_cleaned_data_schema(conn)
+
     return conn
+
 
 # ------------------------------------------------------
 # 🧱 2. Schema Migration Helper (Unified)
@@ -204,8 +214,10 @@ def _migrate_cleaned_data_schema(conn: sqlite3.Connection) -> None:
     Ensures that the 'cleaned_data' table supports both CSV and JSON
     analysis results with unified schema.
     """
-    # Add any missing columns safely
+
+    # Expected final unified schema
     expected_columns = {
+        "id",
         "file_name",
         "file_type",
         "summary_json",
@@ -215,32 +227,44 @@ def _migrate_cleaned_data_schema(conn: sqlite3.Connection) -> None:
         "row_count",
         "col_count",
         "data_json",
+        "cleaned_data_json",
+        "raw_data_json",
     }
 
+    # Ensure base structure exists
     conn.execute("""
-    CREATE TABLE IF NOT EXISTS cleaned_data (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        file_name TEXT UNIQUE,
-        file_type TEXT,
-        summary_json TEXT,
-        sample_json TEXT,
-        metadata_json TEXT,
-        cleaned_at TEXT,
-        row_count INTEGER,
-        col_count INTEGER,
-        data_json TEXT
-    );
+        CREATE TABLE IF NOT EXISTS cleaned_data (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            file_name TEXT UNIQUE,
+            file_type TEXT,
+            summary_json TEXT,
+            sample_json TEXT,
+            metadata_json TEXT,
+            cleaned_at TEXT,
+            row_count INTEGER,
+            col_count INTEGER,
+            data_json TEXT,
+            cleaned_data_json TEXT,
+            raw_data_json TEXT
+        );
     """)
     conn.commit()
 
-    # Schema evolution (ALTER TABLE if missing)
-    existing_cols = {row[1] for row in conn.execute("PRAGMA table_info(cleaned_data)").fetchall()}
+    # Add missing columns if evolving from older versions
+    existing_cols = {
+        row[1] for row in conn.execute("PRAGMA table_info(cleaned_data)").fetchall()
+    }
     missing = expected_columns - existing_cols
+
     for col in missing:
+        # Default to TEXT type for safety (flexible for JSON)
         conn.execute(f"ALTER TABLE cleaned_data ADD COLUMN {col} TEXT")
+
     if missing:
         conn.commit()
-        console.print(f"[yellow]Migrated cleaned_data schema to include: {missing}[/yellow]")
+        console.print(
+            f"[yellow]Migrated cleaned_data schema to include: {', '.join(sorted(missing))}[/yellow]"
+        )
 
 def regexp(pattern, string):
     if user_interrupted:

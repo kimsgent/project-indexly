@@ -6,8 +6,8 @@ from .csv_pipeline import run_csv_pipeline
 from .json_pipeline import run_json_pipeline
 from .db_pipeline import run_db_pipeline
 from .csv_analyzer import export_results, detect_delimiter
-from .analyze_utils import validate_file_content
-from .analyze_utils import save_analysis_result, handle_show_summary
+from .analyze_utils import save_analysis_result, handle_show_summary, load_cleaned_data, validate_file_content
+from .visualize_timeseries import _handle_timeseries_visualization
 
 console = Console()
 
@@ -34,30 +34,21 @@ def detect_file_type(path: Path) -> str:
         return "unknown"
 
 
-# -------------------------------
-# Unified orchestrator
-# -------------------------------
+console = Console()
 
 
 def analyze_file(args) -> AnalysisResult:
     """
     Unified orchestrator for analyzing CSV, JSON, or DB files.
-    Handles cleaning, analysis, visualization, and export.
+    Delegates to format-specific pipelines and avoids duplicate visualization calls.
     """
+    from rich.table import Table
+
     file_path = Path(args.file).resolve()
     ext = file_path.suffix.lower()
-    file_type = (
-        "csv" if ext in [".csv", ".tsv"]
-        else "json" if ext == ".json"
-        else "sqlite" if ext in [".db", ".sqlite"]
-        else "excel" if ext in [".xlsx", ".xls"]
-        else "parquet" if ext == ".parquet"
-        else "unknown"
-    )
-
-    # --- CLI subcommand-based file type override ---
-   
     file_type = detect_file_type(file_path)
+
+    # --- CLI override (for subcommands like analyze-csv / analyze-json) ---
     if getattr(args, "func", None):
         func_name = args.func.__name__
         if "csv" in func_name:
@@ -65,27 +56,82 @@ def analyze_file(args) -> AnalysisResult:
         elif "json" in func_name:
             file_type = "json"
 
-    # --- ✅ Universal content validation ---
+    # --- Step 0: Load from saved dataset if requested ---
+    use_saved = getattr(args, "use_saved", False) or getattr(args, "use_cleaned", False)
+    if use_saved:
+        try:
+            exists, record = load_cleaned_data(file_path)
+            if exists:
+                console.print(f"[cyan]♻️ Using previously saved data for {file_path.name}[/cyan]")
+
+                data_json = record.get("data_json", {})
+                metadata_json = record.get("metadata_json", {})
+                df = pd.DataFrame(data_json.get("sample_data", []))
+                df_stats = pd.DataFrame(data_json.get("summary_statistics", {})).T
+
+                # Display summary and meta info
+                console.print(f"\n📦 [bold cyan]Saved Dataset Overview for {file_path.name}[/bold cyan]")
+                console.print(f"• File Type: {file_type.upper()} | Cleaned: {record.get('cleaned', True)} | Persisted: ✅")
+
+                if df_stats is not None and not df_stats.empty:
+                    console.print("\n📊 [bold cyan]Summary Statistics[/bold cyan]")
+                    table = Table(show_header=True, header_style="bold magenta")
+                    
+                    # Column headers: 'Statistic' + features
+                    table.add_column("Statistic")
+                    for col in df_stats.columns:
+                        table.add_column(str(col))
+
+                    # Each row: statistic name + values for each column
+                    for stat_name, row in df_stats.iterrows():
+                        table.add_row(stat_name, *[str(v) for v in row])
+
+                    console.print(table)
+
+                if "table_output" in metadata_json:
+                    console.print("\n📋 [bold cyan]Formatted Table Output[/bold cyan]")
+                    console.print(metadata_json["table_output"])
+
+                if not df.empty:
+                    console.print("\n🧩 [bold cyan]Sample Data Preview[/bold cyan]")
+                    console.print(df.head(5))
+
+                return AnalysisResult(
+                    file_path=str(file_path),
+                    file_type=file_type,
+                    df=df,
+                    summary=df_stats,
+                    metadata=metadata_json,
+                    cleaned=True,
+                    persisted=True,
+                )
+
+        except Exception as e:
+            console.print(f"[yellow]⚠️ Failed to load saved data: {e}[/yellow]")
+
+    # --- Step 1: Validate file before analysis ---
     if not validate_file_content(file_path, file_type):
         console.print("[red]❌ File validation failed — analysis aborted.[/red]")
         return None
 
-    # --- Dispatch based on file type ---
+    # --- Step 2: Route to appropriate pipeline ---
+    df = df_stats = table_output = None
     if file_type == "csv":
+        # ✅ Now all CSV handling (cleaning, reuse, stats, etc.) is done inside run_csv_pipeline()
         df, df_stats, table_output = run_csv_pipeline(file_path, args)
+
     elif file_type == "json":
-        from .json_pipeline import run_json_pipeline
         df, df_stats, table_output = run_json_pipeline(file_path, args)
+
     elif file_type in {"sqlite", "db"}:
-        from .db_pipeline import run_db_pipeline
         df, df_stats, table_output = run_db_pipeline(file_path, args)
+
     else:
         console.print(f"[red]❌ Unsupported file type:[/red] {file_type}")
         return None
 
-    # --- Optional persistence ---
-
-    cleaned_flag = False if df_stats is None else not df_stats.empty
+    # --- Step 3: Persist results if needed ---
+    cleaned_flag = df_stats is not None and not df_stats.empty
     result = AnalysisResult(
         file_path=str(file_path),
         file_type=file_type,
@@ -95,44 +141,24 @@ def analyze_file(args) -> AnalysisResult:
         cleaned=cleaned_flag,
     )
 
-    # Only persist if it hasn't been saved yet
-    persisted_by_clean_csv = getattr(df, "_persisted", False)  # we can set this inside clean_csv_data()
-
-    if not getattr(args, "no_persist", False) and not persisted_by_clean_csv:
-        save_analysis_result(
-            file_path=str(file_path),
-            file_type=file_type,
-            summary=df_stats.to_dict() if hasattr(df_stats, "to_dict") else {},
-            sample_data=df.head(3).to_dict(orient="records") if df is not None else {},
-            metadata={"table_output": table_output} if table_output else {},
-            row_count=len(df) if df is not None else 0,
-            col_count=len(df.columns) if df is not None else 0,
-        )
-        result.persisted = True
-    else:
-        result.persisted = persisted_by_clean_csv
-
-
-    # --- Timeseries visualization for CSV ---
-    if file_type == "csv" and (getattr(args, "timeseries", False) or getattr(args, "plot_timeseries", False)):
-        from .visualize_timeseries import visualize_timeseries_plot
-        y_cols = [c.strip() for c in getattr(args, "y", "").split(",") if c.strip()] or None
+    if not getattr(args, "no_persist", False):
         try:
-            visualize_timeseries_plot(
-                df=df,
-                x_col=getattr(args, "x", None),
-                y_cols=y_cols,
-                freq=getattr(args, "freq", None),
-                agg=getattr(args, "agg", "mean"),
-                rolling=getattr(args, "rolling", None),
-                mode=getattr(args, "mode", "interactive"),
-                output=getattr(args, "output", None),
-                title=getattr(args, "title", None),
+            save_analysis_result(
+                file_path=str(file_path),
+                file_type=file_type,
+                summary=df_stats.to_dict() if hasattr(df_stats, "to_dict") else {},
+                sample_data=df.head(3).to_dict(orient="records") if df is not None else {},
+                metadata={"table_output": table_output} if table_output else {},
+                row_count=len(df) if df is not None else 0,
+                col_count=len(df.columns) if df is not None else 0,
             )
+            console.print(f"[green]💾 Analysis result persisted for {file_path.name}[/green]")
+            result.persisted = True
         except Exception as e:
-            console.print(f"[red]❌ Timeseries visualization failed: {e}[/red]")
+            console.print(f"[yellow]⚠️ Failed to persist analysis result: {e}[/yellow]")
+            result.persisted = False
 
-    # --- Export table output ---
+    # --- Step 4: Optional export ---
     export_path = getattr(args, "export_path", None)
     export_fmt = getattr(args, "format", "txt")
     if export_path:
@@ -145,22 +171,10 @@ def analyze_file(args) -> AnalysisResult:
         )
         console.print(f"✅ Exported to: {export_path}")
 
-    # --- Optional summary display ---
-    show_summary = getattr(args, "show_summary", False)
-    auto_clean = getattr(args, "auto_clean", False)
-
-    if show_summary:
-        from .analyze_utils import handle_show_summary
-
-        # Case 1: user requested summary after saved run
-        if not auto_clean:
-            handle_show_summary(args.file)
-            return result
-
-        # Case 2: live run with in-memory df_stats (during cleaning)
-        console.print("\n📊 [bold cyan]Live Summary Preview:[/bold cyan]\n")
+    # --- Step 5: Show summary preview ---
+    if getattr(args, "show_summary", False):
+        console.print("\n📊 [bold cyan]Dataset Summary Preview[/bold cyan]")
         if isinstance(df_stats, pd.DataFrame) and not df_stats.empty:
-            from rich.table import Table
             table = Table(title="Dataset Summary", show_header=True, header_style="bold magenta")
             for col in df_stats.columns:
                 table.add_column(str(col))
@@ -171,6 +185,13 @@ def analyze_file(args) -> AnalysisResult:
             console.print(table_output)
         else:
             console.print("[yellow]No summary data available.[/yellow]")
+    
+    # --- Step 6: Optional visualization ---
+    if getattr(args, "timeseries", False) and df is not None:
+        try:
+            _handle_timeseries_visualization(df, args)
+        except Exception as e:
+            console.print(f"[yellow]⚠️ Visualization skipped due to error: {e}[/yellow]")
 
 
     return result

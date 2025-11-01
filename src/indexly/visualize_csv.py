@@ -558,6 +558,8 @@ def visualize_line_plot(df, x_col, y_col, mode="interactive", output=None, title
     ensure_optional_packages(["plotly", "matplotlib"])
     import plotly.express as px
     import matplotlib.pyplot as plt
+    import numpy as np
+    import pandas as pd
 
     # --- Validate input columns ---
     if x_col not in df.columns or y_col not in df.columns:
@@ -571,16 +573,18 @@ def visualize_line_plot(df, x_col, y_col, mode="interactive", output=None, title
     # --- Normalize Pandas nullable dtypes ---
     for col in [x_col, y_col]:
         dtype_str = str(data[col].dtype)
-        if "Int64" in dtype_str:  # nullable int
+        if "Int64" in dtype_str:
             data[col] = data[col].astype("int64", errors="ignore")
         elif "Float64" in dtype_str:
             data[col] = data[col].astype("float64", errors="ignore")
 
-    # --- Try parse x_col as datetime if not numeric ---
-    try:
-        data[x_col] = pd.to_datetime(data[x_col], errors="ignore", dayfirst=True)
-    except Exception:
-        pass
+    # --- Try parse x_col as datetime safely ---
+    if not np.issubdtype(data[x_col].dtype, np.datetime64):
+        try:
+            data[x_col] = pd.to_datetime(data[x_col], dayfirst=True)
+        except Exception:
+            # fallback: if conversion fails, keep as-is
+            pass
 
     # --- Drop missing rows ---
     data = data.dropna(subset=[x_col, y_col])
@@ -617,10 +621,9 @@ def visualize_line_plot(df, x_col, y_col, mode="interactive", output=None, title
                 template="plotly_white",
             )
 
-            # Smart axis formatting
             tickformat = None
             if np.issubdtype(data[x_col].dtype, np.datetime64):
-                tickformat = "%d %b"  # day + month
+                tickformat = "%d %b"
             elif data[x_col].dtype == object and data[x_col].nunique() < 15:
                 fig.update_xaxes(tickangle=-45)
 
@@ -645,19 +648,12 @@ def visualize_line_plot(df, x_col, y_col, mode="interactive", output=None, title
     # --- Static Mode (Matplotlib) ---
     if mode == "static":
         plt.figure(figsize=(10, 6))
-        plt.plot(
-            data[x_col],
-            data[y_col],
-            marker="o",
-            linewidth=2,
-            color="tab:blue",
-        )
+        plt.plot(data[x_col], data[y_col], marker="o", linewidth=2, color="tab:blue")
         plt.title(title or f"{y_col} over {x_col}")
         plt.xlabel(x_col)
         plt.ylabel(y_col)
         plt.grid(True, alpha=0.3)
 
-        # Rotate labels if categorical
         if data[x_col].dtype == object and data[x_col].nunique() < 15:
             plt.xticks(rotation=45)
 
@@ -670,8 +666,8 @@ def visualize_line_plot(df, x_col, y_col, mode="interactive", output=None, title
             plt.show()
         return
 
-    # --- Unsupported mode ---
     console.print(f"[yellow]⚠️ Unsupported mode '{mode}' for line chart.[/yellow]")
+
 
 
 # ============================================

@@ -7,6 +7,7 @@ from rich.console import Console
 
 console = Console()
 
+from .visualize_json import build_json_table_output
 from .analyze_json import (
     load_json_as_dataframe,
     analyze_json_dataframe,
@@ -40,6 +41,6 @@ def run_json_pipeline(file_path: Path, args) -> Tuple[pd.DataFrame, pd.DataFrame
     df_stats, table_output, meta = analyze_json_dataframe(df)
 
     # --- Step 4: Wrap table_output into dictionary for orchestrator ---
-    table_dict = {"pretty_text": table_output, "meta": meta, "datetime_summary": dt_summary}
+    table_dict = build_json_table_output(df, dt_summary=dt_summary)
 
     return df, df_stats, table_dict

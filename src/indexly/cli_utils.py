@@ -22,8 +22,9 @@ from .migration_manager import run_migrations
 from .rename_utils import SUPPORTED_DATE_FORMATS
 from .clean_csv import clear_cleaned_data
 from . import __version__, __author__, __license__
-from indexly.analyze_json import run_analyze_json
 from .analysis_orchestrator import analyze_file
+
+
 # CLI display configurations here
 command_titles = {
     "index": "[I] n  d  e  x  i  n  g",
@@ -297,12 +298,13 @@ def build_parser():
     sub_analyze_json.add_argument("--save-json", action="store_true", help="Save analyzed JSON results to DB")
     sub_analyze_json.set_defaults(func=analyze_file, subcommand="analyze-json")
 
-    # Generic file analyzer (detect type automatically)
+    # -------------------------------
+    # Analyze any supported file
+    # -------------------------------
     analyze_file_parser = subparsers.add_parser(
         "analyze-file", help="Analyze any supported file (CSV, JSON, SQLite, etc.)"
     )
     analyze_file_parser.add_argument("file", help="Path to the file to analyze")
-    # You can also include common flags like export, show-chart, etc.
     analyze_file_parser.add_argument("--export-path", help="Export analysis table to file (txt, md, json)")
     analyze_file_parser.add_argument("--format", choices=["txt", "md", "json"], default="txt")
     analyze_file_parser.add_argument("--show-chart", choices=["ascii", "static", "interactive"])
@@ -315,13 +317,22 @@ def build_parser():
     analyze_file_parser.add_argument("--mode", type=str, default="interactive", choices=["interactive", "static"])
     analyze_file_parser.add_argument("--output", type=str, help="Output filename for chart")
     analyze_file_parser.add_argument("--title", type=str, help="Chart title override")
+
+    # Cleaning options (for CSV)
     analyze_file_parser.add_argument("--auto-clean", action="store_true", help="Run robust cleaning pipeline")
     analyze_file_parser.add_argument("--fill-method", choices=["mean", "median"], default="mean")
     analyze_file_parser.add_argument("--normalize", action="store_true")
     analyze_file_parser.add_argument("--remove-outliers", action="store_true")
     analyze_file_parser.add_argument("--show-summary", action="store_true")
 
-    analyze_file_parser.set_defaults(func=analyze_file, subcommand="analyze-file")
+    # DB flags
+    analyze_file_parser.add_argument("--use-saved", action="store_true", help="Use previously saved data (CSV or JSON)")
+    analyze_file_parser.add_argument("--use-cleaned", action="store_true", help="Alias for --use-saved (CSV)")
+    analyze_file_parser.add_argument("--save-data", action="store_true", help="Save cleaned CSV to DB")
+    analyze_file_parser.add_argument("--save-json", action="store_true", help="Save JSON analysis to DB")
+
+    analyze_file_parser.set_defaults(func=analyze_file)
+
 
 
     # Stats

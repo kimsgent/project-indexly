@@ -121,7 +121,7 @@ def clean_csv_data(df, file_name, method="mean", save_data=False):
     """
     import pandas as pd
     import numpy as np
-    from .analyze_utils import save_analysis_result  # adjust import path if needed
+    from .analyze_utils import save_analysis_result
 
     # 🧩 Prevent redundant "_cleaned_1_2" inflation
     df.columns = [

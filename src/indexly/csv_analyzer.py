@@ -13,11 +13,13 @@ from rich.console import Console
 
 REQUIRED_PACKAGES = ["pandas", "numpy", "scipy", "tabulate"]
 
+
 def ensure_packages(packages):
     for pkg in packages:
         if importlib.util.find_spec(pkg) is None:
             print(f"📦 Installing missing package: {pkg}...")
             subprocess.check_call([sys.executable, "-m", "pip", "install", pkg])
+
 
 ensure_packages(REQUIRED_PACKAGES)
 
@@ -47,7 +49,6 @@ def check_requirements():
         os.system(f"{sys.executable} -m pip install pandas tabulate")
         if iqr is None:
             os.system(f"{sys.executable} -m pip install scipy")
-
 
 
 def detect_delimiter(file_path):
@@ -89,7 +90,6 @@ def detect_delimiter(file_path):
 
     print(f"📄 Detected delimiter (regex): '{delimiter}'")
     return delimiter
-
 
 
 def analyze_csv(file_or_df, from_df=False):
@@ -161,10 +161,16 @@ def analyze_csv(file_or_df, from_df=False):
         datetime_numeric_cols = [c for c in df.columns if c.endswith("_timestamp")]
         if datetime_numeric_cols:
             numeric_cols = datetime_numeric_cols
-            console.print("ℹ️ Using datetime-derived numeric columns for analysis...", style="bold cyan")
+            console.print(
+                "ℹ️ Using datetime-derived numeric columns for analysis...",
+                style="bold cyan",
+            )
 
     if not numeric_cols:
-        console.print("⚠️ No valid numeric or date columns available for analysis.", style="bold yellow")
+        console.print(
+            "⚠️ No valid numeric or date columns available for analysis.",
+            style="bold yellow",
+        )
         return df, None, None
 
     numeric_df = df[numeric_cols]
@@ -181,24 +187,36 @@ def analyze_csv(file_or_df, from_df=False):
         q1, q3 = values.quantile(0.25), values.quantile(0.75)
         col_iqr = iqr(values) if callable(iqr) else (q3 - q1)
 
-        stats.append([
-            col,
-            values.count(),
-            df[col].isnull().sum(),
-            values.mean(),
-            values.median(),
-            values.std(),
-            values.sum(),
-            values.min(),
-            values.max(),
-            q1,
-            q3,
-            col_iqr,
-        ])
+        stats.append(
+            [
+                col,
+                values.count(),
+                df[col].isnull().sum(),
+                values.mean(),
+                values.median(),
+                values.std(),
+                values.sum(),
+                values.min(),
+                values.max(),
+                q1,
+                q3,
+                col_iqr,
+            ]
+        )
 
     headers = [
-        "Column", "Count", "Nulls", "Mean", "Median", "Std Dev",
-        "Sum", "Min", "Max", "Q1", "Q3", "IQR"
+        "Column",
+        "Count",
+        "Nulls",
+        "Mean",
+        "Median",
+        "Std Dev",
+        "Sum",
+        "Min",
+        "Max",
+        "Q1",
+        "Q3",
+        "IQR",
     ]
     df_stats = pd.DataFrame(stats, columns=headers)
 
@@ -211,7 +229,7 @@ def analyze_csv(file_or_df, from_df=False):
                 return "-"
             if abs(val) >= 1e6 or abs(val) < 1e-3:
                 return f"{val:.3e}"
-            return f"{val:,.3f}".rstrip('0').rstrip('.')
+            return f"{val:,.3f}".rstrip("0").rstrip(".")
         return str(val)
 
     df_stats = df_stats.apply(lambda col: col.map(format_number))
@@ -226,7 +244,11 @@ def analyze_csv(file_or_df, from_df=False):
 
     for c in df_stats.columns:
         df_stats[c] = df_stats[c].apply(
-            lambda v: str(v)[:max_col_width - 1] + "…" if len(str(v)) > max_col_width else str(v)
+            lambda v: (
+                str(v)[: max_col_width - 1] + "…"
+                if len(str(v)) > max_col_width
+                else str(v)
+            )
         )
 
     # ---------------------------
@@ -239,33 +261,44 @@ def analyze_csv(file_or_df, from_df=False):
 
 ## JSON Export
 
+
 def _json_safe(obj):
-    """Recursively convert Pandas / NumPy / Timestamp / NaT / scalar types to native Python."""
-    if obj is None or obj is pd.NaT:
-        return None
-    if isinstance(obj, float) and np.isnan(obj):
-        return None
-    if isinstance(obj, (pd.Timestamp, datetime, date)):
+    """
+    Recursively convert objects to JSON-safe types.
+    Handles pandas, numpy, datetime, and Timestamp types.
+    """
+    import numpy as np
+    import pandas as pd
+    import datetime as dt
+
+    if isinstance(obj, (pd.Timestamp, np.datetime64)):
+        return str(pd.to_datetime(obj).isoformat())
+    elif isinstance(obj, (dt.datetime, dt.date)):
         return obj.isoformat()
-    if isinstance(obj, np.datetime64):
-        return pd.Timestamp(obj).isoformat()
-    if isinstance(obj, (np.integer, np.int64, int)):
+    elif isinstance(obj, (np.int64, np.int32, np.integer)):
         return int(obj)
-    if isinstance(obj, (np.floating, np.float64, float)):
+    elif isinstance(obj, (np.float64, np.float32, np.floating)):
         return float(obj)
-    if isinstance(obj, dict):
+    elif isinstance(obj, dict):
         return {k: _json_safe(v) for k, v in obj.items()}
-    if isinstance(obj, (list, tuple, set)):
-        return type(obj)(_json_safe(x) for x in obj)
-    if hasattr(obj, "item"):
-        try:
-            return obj.item()
-        except Exception:
-            return str(obj)
-    return str(obj)
+    elif isinstance(obj, (list, tuple, set)):
+        return [_json_safe(v) for v in obj]
+    elif isinstance(obj, pd.DataFrame):
+        return _json_safe(obj.to_dict(orient="records"))
+    elif isinstance(obj, pd.Series):
+        return _json_safe(obj.to_dict())
+    else:
+        return obj
 
 
-def export_results(results, export_path=None, export_format="txt", df=None, source_file=None, chunk_size=10000):
+def export_results(
+    results,
+    export_path=None,
+    export_format="txt",
+    df=None,
+    source_file=None,
+    chunk_size=10000,
+):
     """
     Export analysis results to text, markdown, or JSON formats.
     Supports memory-efficient chunked JSON export with progress bar for large datasets.
@@ -298,7 +331,7 @@ def export_results(results, export_path=None, export_format="txt", df=None, sour
 
         # Open JSON file for streaming
         with open(export_path, "w", encoding="utf-8") as f:
-            f.write('{\n')
+            f.write("{\n")
             f.write(f'"metadata": {json.dumps(metadata)},\n')
 
             # Write summary statistics if available
@@ -306,30 +339,36 @@ def export_results(results, export_path=None, export_format="txt", df=None, sour
                 summary_data = results.to_dict(orient="records")
             else:
                 summary_data = {"text_summary": results}
-            f.write(f'"summary_statistics": {json.dumps(_json_safe(summary_data), ensure_ascii=False)},\n')
+            f.write(
+                f'"summary_statistics": {json.dumps(_json_safe(summary_data), ensure_ascii=False)},\n'
+            )
 
             # Stream sample_data or full data row by row
             f.write('"sample_data": [\n')
             if df is not None and len(df) > 0:
                 total_chunks = math.ceil(len(df) / chunk_size)
                 for i, chunk in enumerate(np.array_split(df, total_chunks)):
-                    for j, row in enumerate(tqdm(chunk.itertuples(index=False), desc=f"Exporting chunk {i+1}/{total_chunks}", unit="rows")):
+                    for j, row in enumerate(
+                        tqdm(
+                            chunk.itertuples(index=False),
+                            desc=f"Exporting chunk {i+1}/{total_chunks}",
+                            unit="rows",
+                        )
+                    ):
                         row_dict = _json_safe(row._asdict())
                         row_json = json.dumps(row_dict, ensure_ascii=False)
                         # Determine if comma is needed
-                        last_chunk = (i == total_chunks - 1)
-                        last_row = (j == len(chunk) - 1)
+                        last_chunk = i == total_chunks - 1
+                        last_row = j == len(chunk) - 1
                         if not (last_chunk and last_row):
-                            row_json += ',\n'
+                            row_json += ",\n"
                         else:
-                            row_json += '\n'
+                            row_json += "\n"
                         f.write(row_json)
-            f.write(']\n')  # close sample_data array
-            f.write('}\n')  # close top-level JSON object
+            f.write("]\n")  # close sample_data array
+            f.write("}\n")  # close top-level JSON object
 
     else:
         raise ValueError(f"Unsupported export format: {export_format}")
 
     print(f"✅ Exported to: {export_path}")
-
-
