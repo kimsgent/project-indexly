@@ -1,6 +1,8 @@
 ---
 title: "Welcome to Project Indexly"
-subtitle: "Your local file indexing and search tool"
+subtitle: "Blazing-fast local file indexing and search for researchers, academics, and power users."
+description: "Project Indexly is a privacy-friendly desktop tool that indexes and searches PDF, Word, and text files offline. Designed for researchers, academics, and productivity lovers who value speed and simplicity."
+image: "images/plot.png"
 heroButtons:
   - label: "Download"
     url: "/en/download/"
@@ -18,8 +20,14 @@ features:
   - icon: "terminal"
     title: "Command-Line Friendly"
     description: "Built for the terminal. Simple, fast, powerful."
-video: "videos/demo-indexly.mp4"
-keywords: ["Word document search", "offline file search", "FTS5 search tool", "research document indexing"]
+keywords: [
+  "offline document search tool",
+  "PDF indexing software",
+  "local search for researchers",
+  "fast file search mac windows linux",
+  "FTS5 file indexing",
+  "Project Indexly"
+]
 images:
   - "images/preview.png"
   - "images/indexly-terminal-screenshot.png"
