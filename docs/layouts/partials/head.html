@@ -1,17 +1,34 @@
-{{/* cSpell:ignore docsearch opengraph outputformat */ -}}
+{{/* Clean head.html for Project Indexly */}}
+
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+
 {{ range .AlternativeOutputFormats -}}
 <link rel="{{ .Rel }}" type="{{ .MediaType.Type }}" href="{{ .Permalink | safeURL }}">
-{{ end -}}
-
-{{ if hugo.IsProduction }}
-  <meta name="robots" content="index, follow">
-{{ else }}
-  <meta name="robots" content="noindex, nofollow">
 {{ end }}
 
-{{ partialCached "favicons.html" . }}
+{{ if hugo.IsProduction }}
+<meta name="robots" content="index, follow">
+{{ else }}
+<meta name="robots" content="noindex, nofollow">
+{{ end }}
+
+<!-- Favicon & Touch Icons -->
+{{ with .Site.Params.favicon }}
+  <!-- Standard favicon -->
+  <link rel="icon" type="image/png" sizes="32x32" href="{{ . | relURL }}">
+  <link rel="icon" type="image/png" sizes="16x16" href="{{ . | relURL }}">
+
+  <!-- Apple / iOS -->
+  <link rel="apple-touch-icon" sizes="180x180" href="{{ . | relURL }}">
+
+  <!-- Android / Chrome -->
+  <link rel="icon" type="image/png" sizes="192x192" href="{{ . | relURL }}">
+
+  <!-- Shortcut icon for legacy browsers -->
+  <link rel="shortcut icon" href="{{ . | relURL }}">
+{{ end }}
+
 <title>
   {{- if .IsHome -}}
     {{ .Site.Title -}}
@@ -20,75 +37,58 @@
     {{ .Site.Title -}}
   {{ end -}}
 </title>
+
 {{ if .IsHome }}
-  <link rel="canonical" href="https://projectindexly.com/en/">
-  <link rel="alternate" href="https://projectindexly.com/en/" hreflang="en">
-  <link rel="alternate" href="https://projectindexly.com/de/" hreflang="de">
-  <link rel="alternate" href="https://projectindexly.com/" hreflang="x-default">
+<link rel="canonical" href="https://projectindexly.com/en/">
+<link rel="alternate" href="https://projectindexly.com/en/" hreflang="en">
+<link rel="alternate" href="https://projectindexly.com/de/" hreflang="de">
+<link rel="alternate" href="https://projectindexly.com/" hreflang="x-default">
 {{ else }}
-  <link rel="canonical" href="{{ .Permalink }}">
-  {{ $url := .Permalink }}
-  <link rel="alternate" href="{{ $url | replaceRE "/en/" "/en/" }}" hreflang="en">
-  <link rel="alternate" href="{{ $url | replaceRE "/en/" "/de/" }}" hreflang="de">
-  <link rel="alternate" href="{{ $url | replaceRE "/en/" "/" }}" hreflang="x-default">
+<link rel="canonical" href="{{ .Permalink }}">
+{{ $url := .Permalink }}
+<link rel="alternate" href="{{ $url | replaceRE "/en/" "/en/" }}" hreflang="en">
+<link rel="alternate" href="{{ $url | replaceRE "/en/" "/de/" }}" hreflang="de">
+<link rel="alternate" href="{{ $url | replaceRE "/en/" "/" }}" hreflang="x-default">
 {{ end }}
+
+<!-- Meta description & keywords -->
 <meta name="description" content="{{ with .Params.description }}{{ . }}{{ else }}{{ .Site.Params.description }}{{ end }}">
-<meta name="keywords" content="{{ with .Params.keywords }}{{ . }}{{ else }}{{ .Site.Params.keywords }}{{ end }}">
+<meta name="keywords" content="{{ with .Params.keywords }}{{ delimit . ", " }}{{ else }}{{ .Site.Params.keywords }}{{ end }}">
+
+<!-- Open Graph -->
 <meta property="og:title" content="{{ if .IsHome }}{{ .Site.Title }}{{ else }}{{ .Title }} | {{ .Site.Title }}{{ end }}">
 <meta property="og:description" content="{{ with .Params.description }}{{ . }}{{ else }}{{ .Site.Params.description }}{{ end }}">
 <meta property="og:url" content="{{ .Permalink }}">
 <meta property="og:image" content="{{ with .Params.images }}{{ index . 0 | relURL }}{{ else }}{{ .Site.Params.opengraphImage | relURL }}{{ end }}">
 <meta property="og:type" content="website">
+
+<!-- Twitter Card -->
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="{{ if .IsHome }}{{ .Site.Title }}{{ else }}{{ .Title }} | {{ .Site.Title }}{{ end }}">
 <meta name="twitter:description" content="{{ with .Params.description }}{{ . }}{{ else }}{{ .Site.Params.description }}{{ end }}">
 <meta name="twitter:image" content="{{ with .Params.images }}{{ index . 0 | relURL }}{{ else }}{{ .Site.Params.opengraphImage | relURL }}{{ end }}">
-{{ with .Site.Params.favicon }}
-  <link rel="icon" href="{{ . | relURL }}" type="image/png">
-{{ end }}
 
-<meta name="description" content="{{ partial "page-description.html" . }}">
-{{ partial "opengraph.html" . -}}
-{{ partial "schema.html" . -}}
-{{ partial "twitter_cards.html" . -}}
+<!-- CSS & scripts -->
 {{ partialCached "head-css.html" . "head-css-cache-key" -}}
-<script
-  src="https://code.jquery.com/jquery-3.7.1.min.js"
-  integrity="sha512-v2CJ7UaYy4JwqLDIrZUI/4hqeoQieOmAZNXBeQyjo21dadnwR+8ZaIJVT8EE2iyI61OV8e6M8PP2/4hpQINQ/g=="
-  crossorigin="anonymous"></script>
+<link rel="stylesheet" href="{{ "css/custom.css" | relURL }}">
+<link rel="stylesheet" href="{{ "vendor/fontawesome/css/all.min.css" | relURL }}">
+
 {{ if .Site.Params.offlineSearch -}}
-<script defer
-  src="https://unpkg.com/lunr@2.3.9/lunr.min.js"
+<script defer src="https://unpkg.com/lunr@2.3.9/lunr.min.js"
   integrity="sha384-203J0SNzyqHby3iU6hzvzltrWi/M41wOP5Gu+BiJMz5nwKykbkUx8Kp7iti0Lpli"
   crossorigin="anonymous"></script>
-{{ end -}}
+{{ end }}
 
 {{ if .Site.Params.prism_syntax_highlighting -}}
 <link rel="stylesheet" href="{{ "css/prism.css" | relURL }}"/>
-{{ end -}}
+{{ end }}
 
-<link rel="stylesheet" href="{{ "css/custom.css" | relURL }}">
-{{ template "algolia/head" . -}}
-<!-- Custom FontAwesome -->
-<link rel="stylesheet" href="{{ "vendor/fontawesome/css/all.min.css" | relURL }}">
+{{ partial "opengraph.html" . -}}
+{{ partial "schema.html" . -}}
+{{ partial "twitter_cards.html" . -}}
 {{ partial "hooks/head-end.html" . -}}
 
-{{/* To comply with GDPR, cookie consent scripts places in head-end must execute before Google Analytics is enabled */ -}}
 {{ if hugo.IsProduction -}}
-  {{ partial "google_analytics.html" . -}}
-{{ end -}}
+{{ partial "google_analytics.html" . -}}
+{{ end }}
 
-{{ define "algolia/head" -}}
-
-{{ if and .Site.Params.search (isset .Site.Params.search "algolia") -}}
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@docsearch/css@3.8.2"
-  integrity="sha512-l7pkV1dOURFyHCeH8I4fK9lCkQKuqhlsTCqRl3zktifDlB8oTUJ+mJPgYkK9kHpUut8j1iPquTv32t6hvTPv3g=="
-  crossorigin="anonymous" />
-{{ end -}}
-
-{{ if ne .Site.Params.algolia_docsearch nil -}}
-{{ warnf `Config 'params.algolia_docsearch' is deprecated: use 'params.search.algolia'
-      For details, see https://www.docsy.dev/docs/adding-content/search/#algolia-docsearch.` -}}
-{{ end -}}
-
-{{ end -}}
