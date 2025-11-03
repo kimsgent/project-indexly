@@ -30,6 +30,7 @@ from rich.table import Table
 from .db_utils import _migrate_cleaned_data_schema
 from .analyze_utils import save_analysis_result, load_cleaned_data
 
+
 console = Console()
 
 # attempt to import project helpers
@@ -38,17 +39,7 @@ try:
 except Exception as e:
     normalize_datetime_columns = None
     _NORMALIZE_IMPORT_ERR = e
-
-# Try to reuse export_results if present; otherwise provide a small fallback.
-try:
-    from indexly.csv_analyzer import export_results
-except Exception:
-    try:
-        # older layouts had export_results in csv_analyzer or csv_analyze
-        from indexly.csv_analyzer import export_results  # type: ignore
-    except Exception:
-        export_results = None  # we will use a simple fallback when needed
-
+    
 
 def _safe_export_file(path: str, content: str):
     """Fallback exporter for plain text / md."""
@@ -246,41 +237,21 @@ def run_analyze_json(args):
     console.print("\n[bold cyan]📘 JSON Analysis Result[/bold cyan]\n")
     console.print(pretty_out)
 
-    # --- Step 5: Export results ---
-    if getattr(args, "export_path", None):
-        export_fmt = getattr(args, "format", "txt").lower()
-        export_path = args.export_path
-        console.print(f"[cyan]Exporting analysis results to {export_path} ({export_fmt})...[/cyan]")
-        try:
-            if export_fmt in ("txt", "md"):
-                if export_results:
-                    export_results(pretty_out, export_path, export_fmt, df=df, source_file=args.file)
-                else:
-                    _safe_export_file(export_path, pretty_out)
-                console.print("[green]✅ Exported summary successfully.[/green]")
-            elif export_fmt == "json":
-                payload = {
-                    "metadata": {
-                        "analyzed_at": datetime.utcnow().isoformat() + "Z",
-                        "source_file": str(args.file),
-                        "export_format": "json",
-                        "rows": meta.get("rows", 0),
-                        "columns": meta.get("cols", 0),
-                    },
-                    "datetime_summary": dt_summary,
-                    "summary_statistics": df_stats.to_dict(orient="index") if df_stats is not None else {},
-                    "sample_data": df.head(10).to_dict(orient="records"),
-                }
-                export_dir = os.path.dirname(export_path)
-                if export_dir:
-                    os.makedirs(export_dir, exist_ok=True)
-                with open(export_path, "w", encoding="utf-8") as fh:
-                    json.dump(payload, fh, indent=2, ensure_ascii=False)
-                console.print("[green]✅ JSON analysis exported successfully![/green]")
-            else:
-                console.print(f"[yellow]⚠️ Unsupported export format: {export_fmt}[/yellow]")
-        except Exception as e:
-            console.print(f"[red]❌ Export failed: {e}[/red]")
+    # --- Step 5: Bridge to pipeline export ---
+    # Instead of performing file I/O here, return a structured payload
+    # Orchestrator / json_pipeline.py handles actual export
+
+    result_payload = {
+        "df": df,
+        "df_stats": df_stats,
+        "table_output": pretty_out,
+        "meta": meta,
+        "datetime_summary": dt_summary,
+        "source_file": getattr(args, "file", None),
+        "export_path": getattr(args, "export_path", None),
+        "export_format": getattr(args, "format", "txt").lower(),
+        "save_json": getattr(args, "save_json", False),
+    }
 
     # --- Step 6: Save analyzed data to DB if requested ---
     if getattr(args, "save_json", False):
@@ -337,6 +308,9 @@ def run_analyze_json(args):
                 plt.show()
         except Exception as e:
             console.print(f"[red]❌ Visualization failed: {e}[/red]")
+    
+    return result_payload
+
 
 
 def save_json_data(json_data, file_path: str):

@@ -231,6 +231,7 @@ def load_cleaned_data(file_path: str = None, limit: int = 5):
     return results  # list of records
 
 
+
 def handle_show_summary(file_path: str):
     """
     Unified summary viewer for both CSV and JSON analysis results.

@@ -1,5 +1,8 @@
 # Clean description + stat functions
 
+import re
+import json
+import math
 import os
 import sys
 import csv
@@ -10,6 +13,10 @@ import importlib.util
 import subprocess
 from pathlib import Path
 from rich.console import Console
+from tqdm import tqdm
+from datetime import datetime
+
+
 
 REQUIRED_PACKAGES = ["pandas", "numpy", "scipy", "tabulate"]
 
@@ -29,9 +36,12 @@ import numpy as np
 import shutil
 import json
 import math
+from decimal import Decimal
+from fractions import Fraction
 from scipy.stats import iqr
 from tabulate import tabulate
 from datetime import datetime, date
+import datetime as dt
 from tqdm import tqdm  # ✅ For progress bar
 
 try:
@@ -262,33 +272,65 @@ def analyze_csv(file_or_df, from_df=False):
 ## JSON Export
 
 
-def _json_safe(obj):
+def _json_safe(obj, preserve_numeric: bool = True):
     """
     Recursively convert objects to JSON-safe types.
-    Handles pandas, numpy, datetime, and Timestamp types.
-    """
-    import numpy as np
-    import pandas as pd
-    import datetime as dt
+    Handles pandas, numpy, datetime, Timestamp, Decimal, and Fraction types.
 
+    Args:
+        obj: Object to convert.
+        preserve_numeric: If True, keeps all numeric types as numeric rather than stringifying.
+                          Recommended for analytical exports.
+    """
+
+    # --- Basic numeric types ---
     if isinstance(obj, (pd.Timestamp, np.datetime64)):
         return str(pd.to_datetime(obj).isoformat())
     elif isinstance(obj, (dt.datetime, dt.date)):
         return obj.isoformat()
-    elif isinstance(obj, (np.int64, np.int32, np.integer)):
+
+    # --- Numeric preservation logic ---
+    elif isinstance(obj, (np.integer, int)):
         return int(obj)
-    elif isinstance(obj, (np.float64, np.float32, np.floating)):
+    elif isinstance(obj, (np.floating, float)):
+        # Handle NaN and infinities for strict JSON compliance
+        if math.isnan(obj) or math.isinf(obj):
+            return None
         return float(obj)
+    elif isinstance(obj, Decimal):
+        # Decimal is not JSON serializable by default
+        if preserve_numeric:
+            return float(obj)
+        else:
+            return str(obj)
+    elif isinstance(obj, Fraction):
+        if preserve_numeric:
+            return float(obj)
+        else:
+            return str(obj)
+
+    # --- Containers ---
     elif isinstance(obj, dict):
-        return {k: _json_safe(v) for k, v in obj.items()}
+        return {
+            k: _json_safe(v, preserve_numeric=preserve_numeric) for k, v in obj.items()
+        }
     elif isinstance(obj, (list, tuple, set)):
-        return [_json_safe(v) for v in obj]
+        return [_json_safe(v, preserve_numeric=preserve_numeric) for v in obj]
+
+    # --- Pandas containers ---
     elif isinstance(obj, pd.DataFrame):
-        return _json_safe(obj.to_dict(orient="records"))
+        return _json_safe(
+            obj.to_dict(orient="records"), preserve_numeric=preserve_numeric
+        )
     elif isinstance(obj, pd.Series):
-        return _json_safe(obj.to_dict())
-    else:
-        return obj
+        return _json_safe(obj.to_dict(), preserve_numeric=preserve_numeric)
+
+    # --- Numpy scalar ---
+    elif isinstance(obj, np.generic):
+        return obj.item()
+
+    # --- Fallback ---
+    return obj
 
 
 def export_results(
@@ -302,19 +344,81 @@ def export_results(
     """
     Export analysis results to text, markdown, or JSON formats.
     Supports memory-efficient chunked JSON export with progress bar for large datasets.
+    Performs a small cleaning pass on text summary statistics before JSON export,
+    with tqdm progress visible to the user.
     """
-    if not export_path or export_path.strip() == "":
-        base_name = "csv_analysis"
+
+    # --- Normalize export path ---
+    if not export_path or str(export_path).strip() == "":
+        base_name = "analysis"
         if source_file:
             base_name = os.path.splitext(os.path.basename(source_file))[0]
         export_path = f"{base_name}.{export_format}"
 
     if os.path.isdir(export_path):
-        filename = f"csv_analysis.{export_format}"
+        filename = f"analysis.{export_format}"
         export_path = os.path.join(export_path, filename)
 
+    export_path = str(export_path)
     os.makedirs(os.path.dirname(export_path) or ".", exist_ok=True)
 
+    # --- Case-insensitive cleanup (avoid conflicts like test.JSON vs test.json) ---
+    dir_name = os.path.dirname(export_path) or "."
+    base_name = os.path.basename(export_path).lower()
+    try:
+        for f in os.listdir(dir_name):
+            if f.lower() == base_name and f != os.path.basename(export_path):
+                os.remove(os.path.join(dir_name, f))
+    except Exception:
+        # best-effort only
+        pass
+
+    # Helper: clean the textual summary block (returns cleaned string)
+    def _clean_summary_text(text: str) -> str:
+        if not text or not isinstance(text, str):
+            return text or ""
+
+        lines = text.splitlines()
+
+        cleaned = []
+        # Show progress for potentially large summary blocks
+        for line in tqdm(lines, desc="Cleaning summary_statistics", unit="lines"):
+            s = line.strip()
+
+            # Skip long border lines entirely (those that are only +- and = characters)
+            if re.fullmatch(r"^[\+\-\=\| ]+$", s):
+                continue
+
+            # Convert scientific notation like 1.000e+10 or 6.744e+09 to integer when obvious:
+            # - pattern: digits with optional decimal followed by e+NN
+            def _sci_to_full(match):
+                token = match.group(0)
+                try:
+                    # If it's close to integer, cast to int
+                    val = float(token)
+                    if abs(val) >= 1e6 and float(val).is_integer():
+                        return str(int(val))
+                    # For large floats that are not integer, format without exponent with reasonable precision
+                    return ("{:.6f}".format(val)).rstrip("0").rstrip(".")
+                except Exception:
+                    return token
+
+            s = re.sub(r"\b\d+\.?\d*e[+\-]?\d+\b", _sci_to_full, s, flags=re.IGNORECASE)
+
+            # Normalize sequences like "1.000e+10" that may include commas elsewhere
+            # Also remove trailing commas used in tables
+            s = s.replace(", ", ",")  # make consistent for further regexes
+            # Restore spacing for readability
+            s = re.sub(r",", ", ", s)
+
+            # Collapse multiple spaces to single (but keep single spaces between numbers/labels)
+            s = re.sub(r"\s{2,}", " ", s)
+
+            cleaned.append(s)
+
+        return "\n".join(cleaned)
+
+    # --- Export formats ---
     if export_format in ("md", "txt"):
         with open(export_path, "w", encoding="utf-8") as f:
             content = results.replace("+", "|") if export_format == "md" else results
@@ -329,25 +433,35 @@ def export_results(
             "columns": len(df.columns) if df is not None else None,
         }
 
-        # Open JSON file for streaming
+        # Prepare summary_statistics payload (apply cleaning if textual summary exists)
+        if isinstance(results, dict) and "text_summary" in results:
+            # results is already a dict with 'text_summary' etc.
+            raw_summary = results.get("text_summary", "")
+            cleaned_summary = _clean_summary_text(raw_summary)
+            summary_data = {"text_summary": cleaned_summary}
+        elif isinstance(results, str):
+            # plain string summary — clean it as well
+            summary_data = {"text_summary": _clean_summary_text(results)}
+        elif isinstance(results, (pd.DataFrame, list, dict)):
+            # If results is a DataFrame or structured, convert to JSON-safe directly
+            summary_data = results
+        else:
+            summary_data = {"text_summary": str(results)}
+
+        # Write JSON top-level and stream sample_data in chunks
         with open(export_path, "w", encoding="utf-8") as f:
             f.write("{\n")
             f.write(f'"metadata": {json.dumps(metadata)},\n')
-
-            # Write summary statistics if available
-            if isinstance(results, pd.DataFrame):
-                summary_data = results.to_dict(orient="records")
-            else:
-                summary_data = {"text_summary": results}
             f.write(
-                f'"summary_statistics": {json.dumps(_json_safe(summary_data), ensure_ascii=False)},\n'
+                f'"summary_statistics": {json.dumps(_json_safe(summary_data, preserve_numeric=True), ensure_ascii=False, allow_nan=False)},\n'
             )
 
-            # Stream sample_data or full data row by row
             f.write('"sample_data": [\n')
             if df is not None and len(df) > 0:
+                # split into chunks
                 total_chunks = math.ceil(len(df) / chunk_size)
-                for i, chunk in enumerate(np.array_split(df, total_chunks)):
+                for i, start in enumerate(range(0, len(df), chunk_size)):
+                    chunk = df.iloc[start : start + chunk_size]
                     for j, row in enumerate(
                         tqdm(
                             chunk.itertuples(index=False),
@@ -355,20 +469,20 @@ def export_results(
                             unit="rows",
                         )
                     ):
-                        row_dict = _json_safe(row._asdict())
-                        row_json = json.dumps(row_dict, ensure_ascii=False)
-                        # Determine if comma is needed
+                        row_dict = _json_safe(row._asdict(), preserve_numeric=True)
+                        row_json = json.dumps(row_dict, ensure_ascii=False, allow_nan=False)
+
                         last_chunk = i == total_chunks - 1
                         last_row = j == len(chunk) - 1
                         if not (last_chunk and last_row):
-                            row_json += ",\n"
+                            f.write(row_json + ",\n")
                         else:
-                            row_json += "\n"
-                        f.write(row_json)
-            f.write("]\n")  # close sample_data array
-            f.write("}\n")  # close top-level JSON object
+                            f.write(row_json + "\n")
+
+            f.write("]\n}\n")
 
     else:
         raise ValueError(f"Unsupported export format: {export_format}")
 
-    print(f"✅ Exported to: {export_path}")
+
+

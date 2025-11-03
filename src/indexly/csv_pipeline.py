@@ -200,11 +200,11 @@ def run_csv_pipeline(file_path: Path, args):
             table_output = record.get("metadata_json", {}).get("table_output", "")
             console.print(f"[green]♻️ Loaded cleaned CSV from DB: {file_path.name}[/green]")
 
-            # ✅ Only visualize once here, respecting flags
+            # Visualization
             if getattr(args, "timeseries", False) or getattr(args, "plot_timeseries", False):
                 _handle_timeseries_visualization(df, args)
 
-            # ✅ Display summary and sample data
+            # Display summary and sample data
             if not df_stats.empty:
                 console.print("\n📊 [bold cyan]Summary Statistics[/bold cyan]")
                 _print_summary_table(df_stats.to_dict(orient="index"))
@@ -214,8 +214,6 @@ def run_csv_pipeline(file_path: Path, args):
                 _print_sample_table(df)
 
             return df, df_stats, table_output
-        else:
-            console.print(f"[yellow]⚠️ No cleaned CSV found for {file_path.name}, continuing with raw data[/yellow]")
 
     # --- Step 1: Load CSV from disk ---
     df = load_csv(file_path, args)
@@ -232,27 +230,15 @@ def run_csv_pipeline(file_path: Path, args):
     # --- Step 4: Visualization ---
     visualize_csv(df, df_stats, args)
 
-    # --- Step 5: Export results ---
-    export_path = getattr(args, "export_path", None)
-    export_fmt = getattr(args, "format", "txt")
-    export_results(
-        results=table_output,
-        export_path=export_path,
-        export_format=export_fmt,
-        df=df,
-        source_file=file_path,
-    )
+    # --- Step 5: DO NOT export here anymore ---
+    # Export is handled by orchestrator to avoid double writes
 
     # --- Step 6: Cleaning Summary ---
     if summary_records:
-        # Generate pre_stats and derived_map from summary_records
         pre_stats = {r["column"]: r for r in summary_records}
         derived_map = {r["column"]: r.get("derived_from", "") for r in summary_records}
 
-        # Compute full cleaning summary
         cleaning_summary = _summarize_pipeline_cleaning(df, pre_stats=pre_stats, derived_map=derived_map)
-
-        # Render rich table
         table = render_cleaning_summary_table(cleaning_summary)
         console.print(table)
 

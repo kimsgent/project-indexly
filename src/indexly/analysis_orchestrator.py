@@ -1,12 +1,14 @@
+import json
 import pandas as pd
+from datetime import datetime
 from pathlib import Path
 from rich.console import Console
 from .analysis_result import AnalysisResult
 from .csv_pipeline import run_csv_pipeline
 from .json_pipeline import run_json_pipeline
 from .db_pipeline import run_db_pipeline
-from .csv_analyzer import export_results, detect_delimiter
-from .analyze_utils import save_analysis_result, handle_show_summary, load_cleaned_data, validate_file_content
+from .csv_analyzer import export_results, _json_safe
+from .analyze_utils import save_analysis_result, load_cleaned_data, validate_file_content
 from .visualize_timeseries import _handle_timeseries_visualization
 
 console = Console()
@@ -121,6 +123,7 @@ def analyze_file(args) -> AnalysisResult:
         df, df_stats, table_output = run_csv_pipeline(file_path, args)
 
     elif file_type == "json":
+        # --- Step 1: Run JSON pipeline ---
         df, df_stats, table_output = run_json_pipeline(file_path, args)
 
     elif file_type in {"sqlite", "db"}:
@@ -158,18 +161,40 @@ def analyze_file(args) -> AnalysisResult:
             console.print(f"[yellow]⚠️ Failed to persist analysis result: {e}[/yellow]")
             result.persisted = False
 
-    # --- Step 4: Optional export ---
+  
+    # --- Step 4: Optional export (centralized) ---
     export_path = getattr(args, "export_path", None)
     export_fmt = getattr(args, "format", "txt")
-    if export_path:
-        export_results(
-            results=table_output,
-            export_path=export_path,
-            export_format=export_fmt,
-            df=df,
-            source_file=file_path,
-        )
-        console.print(f"✅ Exported to: {export_path}")
+    if export_path and (df is not None):
+        # CSV or JSON payloads are ready; orchestrator calls export
+        if file_type == "json":
+            # Build JSON payload as JSON pipeline expects
+            payload = {
+                "metadata": {
+                    "analyzed_at": datetime.utcnow().isoformat() + "Z",
+                    "source_file": str(file_path),
+                    "export_format": "json",
+                    "rows": len(df),
+                    "columns": len(df.columns),
+                },
+                "summary_statistics": df_stats.to_dict(orient="index") if df_stats is not None else {},
+                "sample_data": df.head(10).to_dict(orient="records"),
+                "table_output": table_output,
+            }
+            with open(export_path, "w", encoding="utf-8") as fh:
+                json.dump(_json_safe(payload, preserve_numeric=True), fh, indent=2, ensure_ascii=False, allow_nan=False)
+            console.print("[green]✅ Exported JSON successfully[/green]")
+        else:
+            # CSV or other formats: use centralized export_results
+            export_results(
+                results=table_output,
+                export_path=export_path,
+                export_format=export_fmt,
+                df=df,
+                source_file=file_path,
+            )
+            console.print(f"✅ Exported to: {export_path}")
+
 
     # --- Step 5: Show summary preview ---
     if getattr(args, "show_summary", False):

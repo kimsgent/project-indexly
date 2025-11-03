@@ -3,7 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Tuple, Dict, Any
 import pandas as pd
+import json
 from rich.console import Console
+from indexly.csv_analyzer import export_results
+from .csv_analyzer import _json_safe
+from datetime import datetime
+
 
 console = Console()
 
@@ -12,6 +17,7 @@ from .analyze_json import (
     load_json_as_dataframe,
     analyze_json_dataframe,
     normalize_datetime_columns,
+
 )
 
 def run_json_pipeline(file_path: Path, args) -> Tuple[pd.DataFrame, pd.DataFrame, Dict[str, Any]]:
@@ -40,7 +46,13 @@ def run_json_pipeline(file_path: Path, args) -> Tuple[pd.DataFrame, pd.DataFrame
     # --- Step 3: Analyze DataFrame ---
     df_stats, table_output, meta = analyze_json_dataframe(df)
 
-    # --- Step 4: Wrap table_output into dictionary for orchestrator ---
+    # --- Step 4: DO NOT export here anymore ---
+    # table_output and metadata will be returned; orchestrator will handle export
+
+    # --- Step 5: Wrap table_output into dictionary for orchestrator ---
     table_dict = build_json_table_output(df, dt_summary=dt_summary)
 
     return df, df_stats, table_dict
+
+
+

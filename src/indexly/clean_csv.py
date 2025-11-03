@@ -188,9 +188,15 @@ def clean_csv_data(df, file_name, method="mean", save_data=False):
 
 def clear_cleaned_data(file_path: str = None, remove_all: bool = False):
     """
-    Remove entries from cleaned_data table.
+    Remove entries from the cleaned_data table.
+    
+    Behavior:
     - If remove_all=True, deletes all records.
-    - Otherwise, deletes the specific file_path record.
+    - If file_path is provided, deletes the record by matching either:
+      1. Full absolute path (case-insensitive)
+      2. Basename only (case-insensitive)
+    
+    This ensures it works across OSes and mixed case file names.
     """
     conn = _get_db_connection()
     cur = conn.cursor()
@@ -209,13 +215,28 @@ def clear_cleaned_data(file_path: str = None, remove_all: bool = False):
         return
 
     abs_path = str(Path(file_path).resolve())
-    cur.execute("DELETE FROM cleaned_data WHERE file_name = ?", (abs_path,))
+    file_name = Path(file_path).name
+
+    # First try: absolute path (case-insensitive)
+    cur.execute(
+        "DELETE FROM cleaned_data WHERE LOWER(file_name) = LOWER(?)",
+        (abs_path,),
+    )
     deleted_rows = cur.rowcount
+
+    # Fallback: basename only (case-insensitive)
+    if deleted_rows == 0:
+        cur.execute(
+            "DELETE FROM cleaned_data WHERE LOWER(file_name) = LOWER(?)",
+            (file_name,),
+        )
+        deleted_rows = cur.rowcount
+
     conn.commit()
     conn.close()
 
     if deleted_rows:
-        print(f"🧹 Cleared cleaned data entry for: {abs_path}")
+        print(f"🧹 Cleared cleaned data entry for: {file_name} ({deleted_rows} record{'s' if deleted_rows > 1 else ''} removed)")
     else:
-        print(f"⚠️ No cleaned data found for: {abs_path}")
+        print(f"❌ No cleaned data entry found for: {file_name}")
 
