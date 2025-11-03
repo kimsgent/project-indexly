@@ -19,7 +19,7 @@ from pathlib import Path
 from .db_utils import _get_db_connection
 from rich.table import Table
 from rich.console import Console
-from .analyze_utils import save_analysis_result
+
 
 # ---------------------
 # 🧹 CLEANING PIPELINE
@@ -121,8 +121,7 @@ def clean_csv_data(df, file_name, method="mean", save_data=False):
     """
     import pandas as pd
     import numpy as np
-    from .analyze_utils import save_analysis_result
-
+  
     # 🧩 Prevent redundant "_cleaned_1_2" inflation
     df.columns = [
         c if "_cleaned_" not in c else c.split("_cleaned_")[0] + "_cleaned"
@@ -144,9 +143,8 @@ def clean_csv_data(df, file_name, method="mean", save_data=False):
         medians = cleaned_df[numeric_cols].median()
         cleaned_df[numeric_cols] = cleaned_df[numeric_cols].fillna(medians)
 
-    # 💾 Optional persistence
+    # 💾 Controlled persistence behavior
     if save_data:
-        # --- Prepare summary and metadata ---
         summary = {
             col: {
                 "dtype": str(cleaned_df[col].dtype),
@@ -163,24 +161,22 @@ def clean_csv_data(df, file_name, method="mean", save_data=False):
             "col_count": cleaned_df.shape[1]
         }
 
-        save_analysis_result(
-            file_path=file_name,
-            file_type="csv",
-            summary=summary,
-            sample_data=sample_data,
-            metadata=metadata,
-            row_count=cleaned_df.shape[0],
-            col_count=cleaned_df.shape[1]
-        )
-        # ⚠️ Mark cleaned_df to prevent double-saving in orchestrator
-        cleaned_df._persisted = True
+        # mark persistence-ready
+        cleaned_df._persist_ready = {
+            "summary": summary,
+            "sample_data": sample_data,
+            "metadata": metadata,
+        }
 
-        print(f"[green]💾 Cleaned CSV data saved to DB: {file_name}[/green]")
+        cleaned_df._persisted = False
+        print(f"💡 Cleaned data ready for orchestrator persistence: {file_name}")
     else:
+        cleaned_df._persist_ready = None
         cleaned_df._persisted = False
         print("⚙️ Data cleaned in-memory only. Use --save-data to persist cleaned results.")
 
     return cleaned_df
+
 
 # ----------------------------------
 # DELETE CLEANED DATA LOGIC

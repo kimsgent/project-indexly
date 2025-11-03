@@ -259,9 +259,13 @@ def build_parser():
     )
     csv_parser.add_argument("--date-threshold", type=float, default=0.3, help="Minimum valid ratio for date detection")
     csv_parser.add_argument("--use-cleaned", action="store_true", help="Use previously saved cleaned dataset")
+    csv_parser.add_argument(
+        "--no-persist",
+        action="store_true",
+        help="Disable saving cleaned or analyzed results to the database"
+    )
     csv_parser.add_argument("--normalize", action="store_true", help="Normalize numeric columns after cleaning")
     csv_parser.add_argument("--remove-outliers", action="store_true", help="Remove outliers after cleaning")
-    csv_parser.add_argument("--save-data", action="store_true", help="Save cleaned data to DB")
     csv_parser.add_argument("--export-cleaned", help="Path to export cleaned dataset")
     csv_parser.add_argument("--export-format", choices=["csv", "json", "parquet", "excel"], default="csv", help="Format for cleaned dataset export")
     csv_parser.add_argument("--show-summary", action="store_true", help="Show extended summary of columns and derived fields")
@@ -295,7 +299,6 @@ def build_parser():
     sub_analyze_json.add_argument("--show-chart", action="store_true", help="Display numeric histograms")
     sub_analyze_json.add_argument("--chunk-size", type=int, default=10000, help="Rows per chunk for memory-efficient JSON export")
     sub_analyze_json.add_argument("--use-saved", action="store_true", help="Use previously saved JSON analysis data")
-    sub_analyze_json.add_argument("--save-json", action="store_true", help="Save analyzed JSON results to DB")
     sub_analyze_json.set_defaults(func=analyze_file, subcommand="analyze-json")
 
     # -------------------------------
@@ -328,8 +331,6 @@ def build_parser():
     # DB flags
     analyze_file_parser.add_argument("--use-saved", action="store_true", help="Use previously saved data (CSV or JSON)")
     analyze_file_parser.add_argument("--use-cleaned", action="store_true", help="Alias for --use-saved (CSV)")
-    analyze_file_parser.add_argument("--save-data", action="store_true", help="Save cleaned CSV to DB")
-    analyze_file_parser.add_argument("--save-json", action="store_true", help="Save JSON analysis to DB")
 
     analyze_file_parser.set_defaults(func=analyze_file)
 

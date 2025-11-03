@@ -86,14 +86,42 @@ def save_analysis_result(
 ) -> None:
     """
     Save unified analysis results in JSON-safe format for CSV, JSON, SQLite, etc.
+
+    Honors the global '--no-persist' flag by skipping any database writes,
+    while still allowing analysis to proceed normally.
     """
+    import os
+    import json
+    import pandas as pd
+    from rich.console import Console
+
+    console = Console()
+
+    # -------------------------------
+    # 🧩 Global no-persist guard
+    # -------------------------------
+    import builtins
+    no_persist_active = getattr(builtins, "__INDEXLY_NO_PERSIST__", False)
+    if no_persist_active:
+        file_name = os.path.basename(file_path)
+        console.print(
+            f"[yellow]⚙️ Persistence globally disabled (--no-persist active).[/yellow]"
+        )
+        console.print(
+            f"[dim]Skipped saving unified analysis result for {file_name} ({file_type})[/dim]"
+        )
+        return
+
+    # -------------------------------
+    # 🧱 Standard persistence logic
+    # -------------------------------
     try:
         conn = _get_db_connection()
         _migrate_cleaned_data_schema(conn)
 
         file_name = os.path.basename(file_path)
 
-        # Convert cleaned_df (or sample_data) to JSON-safe structure
+        # Convert data to JSON-safe structures
         summary_json = (
             _json_safe(summary.to_dict(orient="index"))
             if isinstance(summary, pd.DataFrame)
@@ -113,7 +141,7 @@ def save_analysis_result(
             "sample_json": json.dumps(sample_json, ensure_ascii=False, indent=2),
             "metadata_json": json.dumps(metadata_json, ensure_ascii=False, indent=2),
             "cleaned_data_json": json.dumps(
-                _json_safe(sample_data if sample_data else {}),
+                _json_safe(sample_data if sample_data is not None else {}),
                 ensure_ascii=False,
                 indent=2,
             ),
@@ -135,27 +163,27 @@ def save_analysis_result(
         conn.execute(
             """
             INSERT INTO cleaned_data (
-            file_name, file_type, summary_json, sample_json,
-            metadata_json, cleaned_at, row_count, col_count, data_json,
-            cleaned_data_json, raw_data_json
-        )
-        VALUES (
-            :file_name, :file_type, :summary_json, :sample_json,
-            :metadata_json, :cleaned_at, :row_count, :col_count, :data_json,
-            :cleaned_data_json, :raw_data_json
-        )
-        ON CONFLICT(file_name)
-        DO UPDATE SET
-            file_type = excluded.file_type,
-            summary_json = excluded.summary_json,
-            sample_json = excluded.sample_json,
-            metadata_json = excluded.metadata_json,
-            cleaned_at = excluded.cleaned_at,
-            row_count = excluded.row_count,
-            col_count = excluded.col_count,
-            data_json = excluded.data_json,
-            cleaned_data_json = excluded.cleaned_data_json,
-            raw_data_json = excluded.raw_data_json
+                file_name, file_type, summary_json, sample_json,
+                metadata_json, cleaned_at, row_count, col_count, data_json,
+                cleaned_data_json, raw_data_json
+            )
+            VALUES (
+                :file_name, :file_type, :summary_json, :sample_json,
+                :metadata_json, :cleaned_at, :row_count, :col_count, :data_json,
+                :cleaned_data_json, :raw_data_json
+            )
+            ON CONFLICT(file_name)
+            DO UPDATE SET
+                file_type = excluded.file_type,
+                summary_json = excluded.summary_json,
+                sample_json = excluded.sample_json,
+                metadata_json = excluded.metadata_json,
+                cleaned_at = excluded.cleaned_at,
+                row_count = excluded.row_count,
+                col_count = excluded.col_count,
+                data_json = excluded.data_json,
+                cleaned_data_json = excluded.cleaned_data_json,
+                raw_data_json = excluded.raw_data_json
             """,
             payload,
         )

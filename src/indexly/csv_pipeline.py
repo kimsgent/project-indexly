@@ -41,23 +41,47 @@ console = Console()
 # CSV Pipeline modular stages
 # -------------------------------
 
-
+# -------------------------------------------------------
+# 🧩 Step 1: Load CSV with automatic delimiter detection
+# -------------------------------------------------------
 def load_csv(file_path: Path, args) -> pd.DataFrame:
     """Robust CSV loader with delimiter detection and fallback."""
     try:
         delimiter = detect_delimiter(file_path)
         df = pd.read_csv(file_path, delimiter=delimiter, encoding="utf-8")
         console.print(f"✅ Loaded CSV: {file_path.name} ({df.shape[0]}x{df.shape[1]})")
+
+        # 🔖 Propagate global no-persist flag to DataFrame for all downstream ops
+        setattr(df, "_no_persist", getattr(args, "no_persist", False))
+        setattr(df, "_source_file_path", str(file_path))
+        setattr(df, "_from_orchestrator", True)
+
         return df
+
     except Exception as e:
         console.print(f"[red]❌ Failed to load CSV:[/red] {e}")
         return pd.DataFrame()
 
 
+# -------------------------------------------------------
+# 🧹 Step 2: Cleaning, normalization, and outlier removal
+# -------------------------------------------------------
 def clean_csv(df: pd.DataFrame, args):
-    """Apply auto-clean, normalization, outlier removal as requested."""
+    """
+    Apply auto-clean, normalization, and outlier removal as requested.
+    Handles persistence control via global --no-persist and passes to auto_clean_csv().
+    """
     summary_records = []
+
+    # --------------------------------------------
+    # 🧼 Auto-clean Stage (date parsing, NaN fill)
+    # --------------------------------------------
     if getattr(args, "auto_clean", False):
+        console.print("[cyan]🧼 Running auto-clean pipeline...[/cyan]")
+
+        # 🧭 Explicitly control persistence based on CLI
+        persist_flag = not getattr(args, "no_persist", False)
+
         df, summary_records = auto_clean_csv(
             df,
             fill_method=getattr(args, "fill_method", "mean"),
@@ -65,18 +89,38 @@ def clean_csv(df: pd.DataFrame, args):
             derive_dates=getattr(args, "derive_dates", "all"),
             user_datetime_formats=getattr(args, "datetime_formats", None),
             date_threshold=getattr(args, "date_threshold", 0.3),
+            persist=persist_flag,  # ✅ propagate persistence control
         )
+
+        # If orchestrator handles persistence, mark this for it
+        setattr(df, "_from_orchestrator", True)
+
+    # --------------------------------------------
+    # 📏 Optional Normalization Stage
+    # --------------------------------------------
     if getattr(args, "normalize", False):
         df, norm_summary = _normalize_numeric(df)
         _summarize_post_clean(norm_summary, "📏 Normalization Summary")
+
+    # --------------------------------------------
+    # 📉 Optional Outlier Removal Stage
+    # --------------------------------------------
     if getattr(args, "remove_outliers", False):
         df, out_summary = _remove_outliers(df)
         _summarize_post_clean(out_summary, "📉 Outlier Removal Summary")
+
     return df, summary_records
 
 
+# -------------------------------------------------------
+# 📊 Step 3: Statistical analysis and formatted summary
+# -------------------------------------------------------
 def analyze_csv_pipeline(df: pd.DataFrame, args):
-    """Compute summary statistics and formatted table output."""
+    """
+    Compute summary statistics and formatted table output.
+    Returns both df_stats and the rich-table rendering for orchestrator.
+    """
+
     _, df_stats, table_output = analyze_csv(df, from_df=True)
     return df_stats, table_output
 
