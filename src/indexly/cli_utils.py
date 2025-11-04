@@ -299,6 +299,11 @@ def build_parser():
     sub_analyze_json.add_argument("--show-chart", action="store_true", help="Display numeric histograms")
     sub_analyze_json.add_argument("--chunk-size", type=int, default=10000, help="Rows per chunk for memory-efficient JSON export")
     sub_analyze_json.add_argument("--use-saved", action="store_true", help="Use previously saved JSON analysis data")
+    sub_analyze_json.add_argument(
+        "--no-persist",
+        action="store_true",
+        help="Disable saving cleaned or analyzed results to the database"
+    )
     sub_analyze_json.set_defaults(func=analyze_file, subcommand="analyze-json")
 
     # -------------------------------

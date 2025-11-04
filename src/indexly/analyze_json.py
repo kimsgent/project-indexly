@@ -238,8 +238,8 @@ def run_analyze_json(args):
     console.print(pretty_out)
 
     # --- Step 5: Bridge to pipeline export ---
-    # Instead of performing file I/O here, return a structured payload
-    # Orchestrator / json_pipeline.py handles actual export
+    # Instead of performing file I/O here, return a structured payload.
+    # Persistence is handled centrally (unless --no-persist is active).
 
     result_payload = {
         "df": df,
@@ -250,27 +250,12 @@ def run_analyze_json(args):
         "source_file": getattr(args, "file", None),
         "export_path": getattr(args, "export_path", None),
         "export_format": getattr(args, "format", "txt").lower(),
-        "save_json": getattr(args, "save_json", False),
     }
 
-    # --- Step 6: Save analyzed data to DB if requested ---
-    if getattr(args, "save_json", False):
-        try:
-            payload = {
-                "metadata": {
-                    "analyzed_at": datetime.utcnow().isoformat() + "Z",
-                    "source_file": str(args.file),
-                    "export_format": "json",
-                    "rows": meta.get("rows", 0),
-                    "columns": meta.get("cols", 0),
-                },
-                "datetime_summary": dt_summary,
-                "summary_statistics": df_stats.to_dict(orient="index") if df_stats is not None else {},
-                "sample_data": df.head(10).to_dict(orient="records"),
-            }
-            save_analysis_result(payload, args.file)
-        except Exception as e:
-            console.print(f"[red]❌ Failed to save analyzed JSON data: {e}[/red]")
+    # --- Step 6: Persistence control (handled globally) ---
+    # No direct file I/O here — the orchestrator handles saving via save_analysis_result()
+    # based on the --no-persist flag.
+    # If --no-persist is set, nothing will be saved; otherwise, results are persisted automatically.
 
     # --- Step 7: Optional structural summary ---
     if getattr(args, "show_summary", False):
@@ -312,30 +297,3 @@ def run_analyze_json(args):
     return result_payload
 
 
-
-def save_json_data(json_data, file_path: str):
-    """
-    Save processed JSON data into SQLite DB.
-    Reuses the same 'cleaned_data' table as CSV, now with a 'source_type' column.
-    """
-    conn = _get_db_connection()
-
-    abs_path = str(Path(file_path).resolve())
-    cleaned_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-    metadata = json_data.get("metadata", {})
-    row_count = metadata.get("rows") or metadata.get("row_count") or 0
-    col_count = metadata.get("columns") or metadata.get("col_count") or 0
-    data_json = json.dumps(json_data, ensure_ascii=False)
-
-    conn.execute(
-        """
-        INSERT OR REPLACE INTO cleaned_data (file_name, cleaned_at, row_count, col_count, data_json, source_type)
-        VALUES (?, ?, ?, ?, ?, ?)
-        """,
-        (abs_path, cleaned_at, row_count, col_count, data_json, "json"),
-    )
-
-    conn.commit()
-    conn.close()
-    print(f"✅ JSON data saved to DB for: {abs_path}")

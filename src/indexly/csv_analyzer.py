@@ -343,10 +343,15 @@ def export_results(
 ):
     """
     Export analysis results to text, markdown, or JSON formats.
-    Supports memory-efficient chunked JSON export with progress bar for large datasets.
-    Performs a small cleaning pass on text summary statistics before JSON export,
-    with tqdm progress visible to the user.
+    - Cleans summary statistics text for readability
+    - When exporting to JSON, includes both text and structured table form (if available)
+    - Streams large dataframes in chunks for memory safety
     """
+
+    import os, re, json, math
+    from tqdm import tqdm
+    from datetime import datetime
+    import pandas as pd
 
     # --- Normalize export path ---
     if not export_path or str(export_path).strip() == "":
@@ -362,7 +367,7 @@ def export_results(
     export_path = str(export_path)
     os.makedirs(os.path.dirname(export_path) or ".", exist_ok=True)
 
-    # --- Case-insensitive cleanup (avoid conflicts like test.JSON vs test.json) ---
+    # --- Cleanup conflicting file names (case insensitive) ---
     dir_name = os.path.dirname(export_path) or "."
     base_name = os.path.basename(export_path).lower()
     try:
@@ -370,55 +375,106 @@ def export_results(
             if f.lower() == base_name and f != os.path.basename(export_path):
                 os.remove(os.path.join(dir_name, f))
     except Exception:
-        # best-effort only
         pass
 
-    # Helper: clean the textual summary block (returns cleaned string)
+    # ----------------------------------------
+    # 🔧 Helper: Clean text summary
+    # ----------------------------------------
     def _clean_summary_text(text: str) -> str:
         if not text or not isinstance(text, str):
             return text or ""
 
         lines = text.splitlines()
-
         cleaned = []
-        # Show progress for potentially large summary blocks
         for line in tqdm(lines, desc="Cleaning summary_statistics", unit="lines"):
             s = line.strip()
 
-            # Skip long border lines entirely (those that are only +- and = characters)
+            # Skip ASCII borders
             if re.fullmatch(r"^[\+\-\=\| ]+$", s):
                 continue
 
-            # Convert scientific notation like 1.000e+10 or 6.744e+09 to integer when obvious:
-            # - pattern: digits with optional decimal followed by e+NN
+            # Convert scientific notation
             def _sci_to_full(match):
                 token = match.group(0)
                 try:
-                    # If it's close to integer, cast to int
                     val = float(token)
                     if abs(val) >= 1e6 and float(val).is_integer():
                         return str(int(val))
-                    # For large floats that are not integer, format without exponent with reasonable precision
                     return ("{:.6f}".format(val)).rstrip("0").rstrip(".")
                 except Exception:
                     return token
 
             s = re.sub(r"\b\d+\.?\d*e[+\-]?\d+\b", _sci_to_full, s, flags=re.IGNORECASE)
-
-            # Normalize sequences like "1.000e+10" that may include commas elsewhere
-            # Also remove trailing commas used in tables
-            s = s.replace(", ", ",")  # make consistent for further regexes
-            # Restore spacing for readability
-            s = re.sub(r",", ", ", s)
-
-            # Collapse multiple spaces to single (but keep single spaces between numbers/labels)
             s = re.sub(r"\s{2,}", " ", s)
-
             cleaned.append(s)
 
         return "\n".join(cleaned)
 
-    # --- Export formats ---
+    # ----------------------------------------
+    # 🧩 Helper: Parse markdown-like table → JSON list (improved)
+    # ----------------------------------------
+    def _parse_summary_table(text: str):
+        """
+        Convert markdown-style summary table to a structured JSON list of dicts.
+        - Detects numeric, percentage, and placeholder values
+        - Handles mixed formats gracefully (e.g. '100.0%', '-', 'N/A', '2,018.5')
+        """
+        if not text or "|" not in text:
+            return []
+
+        lines = [ln.strip() for ln in text.splitlines() if "|" in ln]
+        if not lines or len(lines) < 2:
+            return []
+
+        headers = [h.strip() for h in lines[0].split("|") if h.strip()]
+        data_rows = []
+
+        for ln in lines[1:]:
+            # Skip divider or header separator lines
+            if set(ln.replace("|", "").strip()) <= {"─", "━", "═", "╇", "╪", "┼", "-"}:
+                continue
+
+            parts = [c.strip() for c in ln.split("|") if c.strip()]
+            if len(parts) != len(headers):
+                continue
+
+            record = {}
+            for h, val in zip(headers, parts):
+                # Normalize placeholders
+                if val in {"-", "–", "—", "N/A", "NaN", "None", ""}:
+                    record[h] = None
+                    continue
+
+                # Convert percentage
+                if val.endswith("%"):
+                    try:
+                        record[h] = float(val.strip("%").replace(",", "").strip())
+                        continue
+                    except Exception:
+                        pass
+
+                # Normalize thousands separators
+                val_no_commas = val.replace(",", "")
+
+                # Try numeric conversion (int or float)
+                if re.match(r"^-?\d+(\.\d+)?$", val_no_commas):
+                    try:
+                        num_val = float(val_no_commas)
+                        record[h] = int(num_val) if num_val.is_integer() else num_val
+                        continue
+                    except Exception:
+                        pass
+
+                # Leave as string fallback
+                record[h] = val
+
+            data_rows.append(record)
+
+        return data_rows
+
+    # ----------------------------------------
+    # ✍️ Export
+    # ----------------------------------------
     if export_format in ("md", "txt"):
         with open(export_path, "w", encoding="utf-8") as f:
             content = results.replace("+", "|") if export_format == "md" else results
@@ -433,32 +489,30 @@ def export_results(
             "columns": len(df.columns) if df is not None else None,
         }
 
-        # Prepare summary_statistics payload (apply cleaning if textual summary exists)
+        # --- Prepare summary ---
         if isinstance(results, dict) and "text_summary" in results:
-            # results is already a dict with 'text_summary' etc.
             raw_summary = results.get("text_summary", "")
-            cleaned_summary = _clean_summary_text(raw_summary)
-            summary_data = {"text_summary": cleaned_summary}
         elif isinstance(results, str):
-            # plain string summary — clean it as well
-            summary_data = {"text_summary": _clean_summary_text(results)}
-        elif isinstance(results, (pd.DataFrame, list, dict)):
-            # If results is a DataFrame or structured, convert to JSON-safe directly
-            summary_data = results
+            raw_summary = results
         else:
-            summary_data = {"text_summary": str(results)}
+            raw_summary = str(results)
 
-        # Write JSON top-level and stream sample_data in chunks
+        cleaned_summary = _clean_summary_text(raw_summary)
+        structured_summary = _parse_summary_table(cleaned_summary)
+
+        summary_data = {
+            "text_summary": cleaned_summary,
+            "structured": structured_summary or None,
+        }
+
+        # --- Write JSON top-level ---
         with open(export_path, "w", encoding="utf-8") as f:
             f.write("{\n")
-            f.write(f'"metadata": {json.dumps(metadata)},\n')
-            f.write(
-                f'"summary_statistics": {json.dumps(_json_safe(summary_data, preserve_numeric=True), ensure_ascii=False, allow_nan=False)},\n'
-            )
-
+            f.write(f'"metadata": {json.dumps(_json_safe(metadata), ensure_ascii=False)},\n')
+            f.write(f'"summary_statistics": {json.dumps(_json_safe(summary_data), ensure_ascii=False)},\n')
             f.write('"sample_data": [\n')
+
             if df is not None and len(df) > 0:
-                # split into chunks
                 total_chunks = math.ceil(len(df) / chunk_size)
                 for i, start in enumerate(range(0, len(df), chunk_size)):
                     chunk = df.iloc[start : start + chunk_size]
@@ -470,8 +524,7 @@ def export_results(
                         )
                     ):
                         row_dict = _json_safe(row._asdict(), preserve_numeric=True)
-                        row_json = json.dumps(row_dict, ensure_ascii=False, allow_nan=False)
-
+                        row_json = json.dumps(row_dict, ensure_ascii=False)
                         last_chunk = i == total_chunks - 1
                         last_row = j == len(chunk) - 1
                         if not (last_chunk and last_row):
@@ -483,6 +536,9 @@ def export_results(
 
     else:
         raise ValueError(f"Unsupported export format: {export_format}")
+
+
+
 
 
 
