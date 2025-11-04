@@ -1,6 +1,7 @@
 # analyze_utils.py
-import json
 import os
+import json
+import gzip
 import sqlite3
 import pandas as pd
 import numpy as np
@@ -22,8 +23,11 @@ console = Console()
 def validate_file_content(file_path: Path, file_type: str) -> bool:
     """
     Validate that a file's content matches its expected type.
+    Supports plain and gzip-compressed (.gz) JSON files.
     Returns True if content looks valid, False otherwise.
     """
+
+
 
     if not file_path.exists():
         console.print(f"[red]❌ File not found:[/red] {file_path}")
@@ -31,6 +35,7 @@ def validate_file_content(file_path: Path, file_type: str) -> bool:
 
     # --- CSV / TSV style ---
     if file_type == "csv":
+        from indexly.csv_analyzer import detect_delimiter  # ensure local import
         delimiter = detect_delimiter(file_path)
         if not delimiter:
             console.print(f"[red]❌ No valid CSV delimiter detected.[/red]")
@@ -38,19 +43,19 @@ def validate_file_content(file_path: Path, file_type: str) -> bool:
         try:
             df = pd.read_csv(file_path, sep=delimiter, nrows=5, encoding="utf-8")
             if df.shape[1] < 2 and len("".join(df.columns)) < 3:
-                console.print(
-                    f"[red]❌ File does not contain valid tabular CSV content.[/red]"
-                )
+                console.print(f"[red]❌ File does not contain valid tabular CSV content.[/red]")
                 return False
             return True
         except Exception as e:
             console.print(f"[red]❌ Failed to parse as CSV:[/red] {e}")
             return False
 
-    # --- JSON ---
-    if file_type == "json":
+    # --- JSON (.json or .json.gz) ---
+
+    if file_type in {"json", "json_gz"} or file_path.suffixes[-2:] == [".json", ".gz"]:
         try:
-            with open(file_path, "r", encoding="utf-8") as f:
+            opener = gzip.open if str(file_path).endswith(".gz") else open
+            with opener(file_path, "rt", encoding="utf-8") as f:
                 json.load(f)
             return True
         except Exception as e:

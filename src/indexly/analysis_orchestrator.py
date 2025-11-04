@@ -19,13 +19,29 @@ console = Console()
 
 
 # -------------------------------
-# File type detection
+# File type detection (enhanced)
 # -------------------------------
 def detect_file_type(path: Path) -> str:
     """
     Determine the file type based on extension or content inspection.
+    Supports compressed (.gz) variants like .csv.gz and .json.gz.
     """
+    name = path.name.lower()
     ext = path.suffix.lower()
+
+    # Handle gzip-compressed files (.csv.gz, .json.gz, etc.)
+    if name.endswith(".csv.gz") or name.endswith(".tsv.gz"):
+        return "csv"
+    elif name.endswith(".json.gz"):
+        return "json"
+    elif name.endswith(".sqlite.gz") or name.endswith(".db.gz"):
+        return "sqlite"
+    elif name.endswith(".xlsx.gz") or name.endswith(".xls.gz"):
+        return "excel"
+    elif name.endswith(".parquet.gz"):
+        return "parquet"
+
+    # Regular uncompressed files
     if ext in [".csv", ".tsv"]:
         return "csv"
     elif ext == ".json":
@@ -195,8 +211,11 @@ def analyze_file(args) -> AnalysisResult:
         console.print(f"[dim]💾 Already persisted, skipping duplicate save.[/dim]")
 
     # --- Step 5: Optional export (centralized) ---
+
     export_path = getattr(args, "export_path", None)
     export_fmt = getattr(args, "format", "txt")
+    compress_export = getattr(args, "compress_export", False)
+
     if export_path and (df is not None):
         if file_type == "json":
             payload = {
@@ -213,22 +232,42 @@ def analyze_file(args) -> AnalysisResult:
                 "sample_data": df.head(10).to_dict(orient="records"),
                 "table_output": table_output,
             }
-            with open(export_path, "w", encoding="utf-8") as fh:
-                json.dump(
-                    _json_safe(payload, preserve_numeric=True),
-                    fh,
-                    indent=2,
-                    ensure_ascii=False,
-                    allow_nan=False,
+
+            # handle compressed JSON export
+            if compress_export:
+                import gzip, json
+                compressed_path = (
+                    export_path if export_path.endswith(".gz") else export_path + ".gz"
                 )
-            console.print("[green]✅ Exported JSON successfully[/green]")
+                with gzip.open(compressed_path, "wt", encoding="utf-8") as fh:
+                    json.dump(
+                        _json_safe(payload, preserve_numeric=True),
+                        fh,
+                        indent=2,
+                        ensure_ascii=False,
+                        allow_nan=False,
+                    )
+                console.print(f"[green]✅ Exported compressed JSON to: {compressed_path}[/green]")
+            else:
+                with open(export_path, "w", encoding="utf-8") as fh:
+                    json.dump(
+                        _json_safe(payload, preserve_numeric=True),
+                        fh,
+                        indent=2,
+                        ensure_ascii=False,
+                        allow_nan=False,
+                    )
+                console.print(f"[green]✅ Exported JSON successfully to: {export_path}[/green]")
+
         else:
+            # pass compression flag through to export_results()
             export_results(
                 results=table_output,
                 export_path=export_path,
                 export_format=export_fmt,
                 df=df,
                 source_file=file_path,
+                compress=compress_export,
             )
             console.print(f"✅ Exported to: {export_path}")
 

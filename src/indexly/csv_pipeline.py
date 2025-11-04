@@ -312,7 +312,11 @@ def _print_sample_table(df: pd.DataFrame):
 
 
 
-def _summarize_pipeline_cleaning(df: pd.DataFrame, pre_stats: dict | None = None, derived_map: dict | None = None):
+def _summarize_pipeline_cleaning(
+    df: pd.DataFrame,
+    pre_stats: dict | None = None,
+    derived_map: dict | None = None,
+):
     """
     Generate a rich summary of the cleaning process.
     Includes dtype inference, fill stats, datetime coverage, entropy, etc.
@@ -333,13 +337,26 @@ def _summarize_pipeline_cleaning(df: pd.DataFrame, pre_stats: dict | None = None
     """
 
     import numpy as np
+    import pandas as pd
     from scipy.stats import entropy as shannon_entropy
-    from tqdm import tqdm  # ensure tqdm is imported
+    from tqdm import tqdm
 
     if pre_stats is None:
         pre_stats = {}
     if derived_map is None:
         derived_map = {}
+
+    def _safe_float(value):
+        """Return float(value) or None if NaN / pd.NA / invalid."""
+        if value is None:
+            return None
+        if value is pd.NA:
+            return None
+        try:
+            f = float(value)
+            return None if np.isnan(f) else f
+        except Exception:
+            return None
 
     summary_records = []
 
@@ -368,29 +385,36 @@ def _summarize_pipeline_cleaning(df: pd.DataFrame, pre_stats: dict | None = None
             "notes": pre_stats.get(col, {}).get("notes", ""),
         }
 
-        # Numeric statistics
+        # --- Numeric statistics ---
         if pd.api.types.is_numeric_dtype(series):
             desc = series.describe()
             record.update({
-                "mean": float(desc.get("mean", np.nan)),
-                "std": float(desc.get("std", np.nan)),
-                "min": float(desc.get("min", np.nan)),
-                "max": float(desc.get("max", np.nan)),
-                "skewness": float(series.skew(skipna=True)),
-                "kurtosis": float(series.kurtosis(skipna=True)),
+                "mean": _safe_float(desc.get("mean")),
+                "std": _safe_float(desc.get("std")),
+                "min": _safe_float(desc.get("min")),
+                "max": _safe_float(desc.get("max")),
+                "skewness": _safe_float(series.skew(skipna=True)),
+                "kurtosis": _safe_float(series.kurtosis(skipna=True)),
             })
-        # Datetime statistics
+
+        # --- Datetime statistics ---
         elif pd.api.types.is_datetime64_any_dtype(series):
             try:
                 dt_min, dt_max = series.min(), series.max()
                 record.update({
                     "datetime_first": str(dt_min),
                     "datetime_last": str(dt_max),
-                    "datetime_coverage_days": int((dt_max - dt_min).days) if pd.notna(dt_min) and pd.notna(dt_max) else None,
+                    "datetime_coverage_days": int((dt_max - dt_min).days)
+                        if pd.notna(dt_min) and pd.notna(dt_max) else None,
                 })
             except Exception:
-                record.update({"datetime_first": None, "datetime_last": None, "datetime_coverage_days": None})
-        # Categorical / Object statistics
+                record.update({
+                    "datetime_first": None,
+                    "datetime_last": None,
+                    "datetime_coverage_days": None,
+                })
+
+        # --- Categorical / Object statistics ---
         else:
             value_counts = series.value_counts(dropna=True)
             if len(value_counts) > 0:

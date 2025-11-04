@@ -204,6 +204,11 @@ def build_parser():
     csv_parser.add_argument(
         "--format", choices=["txt", "md", "json"], default="txt", help="Export format"
     )
+    csv_parser.add_argument(
+        "--compress-export",
+        action="store_true",
+        help="Compress JSON export output into .json.gz format"
+    )
 
     # Visualization options
     csv_parser.add_argument(

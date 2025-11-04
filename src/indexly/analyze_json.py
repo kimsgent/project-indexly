@@ -53,7 +53,7 @@ def _safe_export_file(path: str, content: str):
 # -------------------------
 def load_json_as_dataframe(file_path: str) -> Tuple[Any, pd.DataFrame]:
     """
-    Load JSON and return (original_parsed_json, DataFrame).
+    Load JSON (optionally .gz compressed) and return (original_parsed_json, DataFrame).
 
     Handles:
      - list of dicts -> DataFrame
@@ -61,14 +61,31 @@ def load_json_as_dataframe(file_path: str) -> Tuple[Any, pd.DataFrame]:
      - flat dict -> one-row dataframe
      - nested objects -> json_normalize
      - primitive lists -> DataFrame(value=[...])
+     - transparent loading of .gz compressed JSON
     """
+    import gzip, os, json
+    import pandas as pd
+    from rich.console import Console
+    console = Console()
+
+    if not os.path.exists(file_path):
+        console.print(f"[red]❌ File not found: {file_path}[/red]")
+        return None, None
+
     try:
-        with open(file_path, "r", encoding="utf-8") as fh:
-            data = json.load(fh)
+        if file_path.endswith(".gz"):
+            with gzip.open(file_path, "rt", encoding="utf-8") as fh:
+                data = json.load(fh)
+        else:
+            with open(file_path, "r", encoding="utf-8") as fh:
+                data = json.load(fh)
     except Exception as e:
         console.print(f"[red]❌ Failed to load JSON file: {e}[/red]")
         return None, None
 
+    # -------------------------
+    # Structure normalization
+    # -------------------------
     # Case: list
     if isinstance(data, list):
         if len(data) == 0:
@@ -80,7 +97,6 @@ def load_json_as_dataframe(file_path: str) -> Tuple[Any, pd.DataFrame]:
 
     # Case: dict
     elif isinstance(data, dict):
-        # prefer common 'data' / 'rows' / 'records' keys if present
         preferred_keys = ["data", "records", "rows", "items"]
         chosen = None
         for k in preferred_keys:
@@ -89,25 +105,18 @@ def load_json_as_dataframe(file_path: str) -> Tuple[Any, pd.DataFrame]:
                 break
 
         if chosen is not None:
-            # chosen is a list
-            if len(chosen) == 0:
-                df = pd.DataFrame()
-            else:
-                df = pd.json_normalize(chosen)
+            df = pd.json_normalize(chosen) if chosen else pd.DataFrame()
         else:
-            # If any value is list and looks like rows, try the first list field
             list_fields = [v for v in data.values() if isinstance(v, list)]
             if list_fields:
                 df = pd.json_normalize(list_fields[0])
             else:
-                # flatten the dict itself
                 df = pd.json_normalize(data)
 
+    # Fallback case
     else:
-        # fallback - create one-row DataFrame with string representation
         df = pd.DataFrame({"value": [str(data)]})
 
-    # sanitize column names
     df.columns = [str(c).strip() for c in df.columns]
     return data, df
 

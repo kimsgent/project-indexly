@@ -340,15 +340,17 @@ def export_results(
     df=None,
     source_file=None,
     chunk_size=10000,
+    compress=False,  # 🆕 New
 ):
     """
     Export analysis results to text, markdown, or JSON formats.
     - Cleans summary statistics text for readability
     - When exporting to JSON, includes both text and structured table form (if available)
     - Streams large dataframes in chunks for memory safety
+    - Optional gzip compression for JSON export (.json.gz)
     """
 
-    import os, re, json, math
+    import os, re, json, math, gzip
     from tqdm import tqdm
     from datetime import datetime
     import pandas as pd
@@ -363,6 +365,10 @@ def export_results(
     if os.path.isdir(export_path):
         filename = f"analysis.{export_format}"
         export_path = os.path.join(export_path, filename)
+
+    # 🧩 Ensure .gz extension if compression enabled
+    if compress and not export_path.endswith(".gz"):
+        export_path = f"{export_path}.gz"
 
     export_path = str(export_path)
     os.makedirs(os.path.dirname(export_path) or ".", exist_ok=True)
@@ -388,12 +394,9 @@ def export_results(
         cleaned = []
         for line in tqdm(lines, desc="Cleaning summary_statistics", unit="lines"):
             s = line.strip()
-
-            # Skip ASCII borders
             if re.fullmatch(r"^[\+\-\=\| ]+$", s):
                 continue
 
-            # Convert scientific notation
             def _sci_to_full(match):
                 token = match.group(0)
                 try:
@@ -411,14 +414,9 @@ def export_results(
         return "\n".join(cleaned)
 
     # ----------------------------------------
-    # 🧩 Helper: Parse markdown-like table → JSON list (improved)
+    # 🧩 Helper: Parse markdown-like table → JSON list
     # ----------------------------------------
     def _parse_summary_table(text: str):
-        """
-        Convert markdown-style summary table to a structured JSON list of dicts.
-        - Detects numeric, percentage, and placeholder values
-        - Handles mixed formats gracefully (e.g. '100.0%', '-', 'N/A', '2,018.5')
-        """
         if not text or "|" not in text:
             return []
 
@@ -430,7 +428,6 @@ def export_results(
         data_rows = []
 
         for ln in lines[1:]:
-            # Skip divider or header separator lines
             if set(ln.replace("|", "").strip()) <= {"─", "━", "═", "╇", "╪", "┼", "-"}:
                 continue
 
@@ -440,23 +437,16 @@ def export_results(
 
             record = {}
             for h, val in zip(headers, parts):
-                # Normalize placeholders
                 if val in {"-", "–", "—", "N/A", "NaN", "None", ""}:
                     record[h] = None
                     continue
-
-                # Convert percentage
                 if val.endswith("%"):
                     try:
                         record[h] = float(val.strip("%").replace(",", "").strip())
                         continue
                     except Exception:
                         pass
-
-                # Normalize thousands separators
                 val_no_commas = val.replace(",", "")
-
-                # Try numeric conversion (int or float)
                 if re.match(r"^-?\d+(\.\d+)?$", val_no_commas):
                     try:
                         num_val = float(val_no_commas)
@@ -464,12 +454,8 @@ def export_results(
                         continue
                     except Exception:
                         pass
-
-                # Leave as string fallback
                 record[h] = val
-
             data_rows.append(record)
-
         return data_rows
 
     # ----------------------------------------
@@ -489,7 +475,6 @@ def export_results(
             "columns": len(df.columns) if df is not None else None,
         }
 
-        # --- Prepare summary ---
         if isinstance(results, dict) and "text_summary" in results:
             raw_summary = results.get("text_summary", "")
         elif isinstance(results, str):
@@ -505,8 +490,12 @@ def export_results(
             "structured": structured_summary or None,
         }
 
+        # 🧩 Helper for choosing correct open function
+        open_func = gzip.open if compress else open
+        mode = "wt" if compress else "w"
+
         # --- Write JSON top-level ---
-        with open(export_path, "w", encoding="utf-8") as f:
+        with open_func(export_path, mode, encoding="utf-8") as f:
             f.write("{\n")
             f.write(f'"metadata": {json.dumps(_json_safe(metadata), ensure_ascii=False)},\n')
             f.write(f'"summary_statistics": {json.dumps(_json_safe(summary_data), ensure_ascii=False)},\n')
@@ -536,6 +525,7 @@ def export_results(
 
     else:
         raise ValueError(f"Unsupported export format: {export_format}")
+
 
 
 
