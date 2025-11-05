@@ -18,6 +18,7 @@ Capabilities:
 from __future__ import annotations
 import os
 import json
+import gzip
 from datetime import datetime
 from typing import Tuple, Any, Dict
 from pathlib import Path
@@ -51,7 +52,7 @@ def _safe_export_file(path: str, content: str):
 # -------------------------
 # JSON loader / normalizer
 # -------------------------
-def load_json_as_dataframe(file_path: str) -> Tuple[Any, pd.DataFrame]:
+def load_json_as_dataframe(file_path: str | Path) -> Tuple[Any, pd.DataFrame]:
     """
     Load JSON (optionally .gz compressed) and return (original_parsed_json, DataFrame).
 
@@ -63,10 +64,9 @@ def load_json_as_dataframe(file_path: str) -> Tuple[Any, pd.DataFrame]:
      - primitive lists -> DataFrame(value=[...])
      - transparent loading of .gz compressed JSON
     """
-    import gzip, os, json
-    import pandas as pd
-    from rich.console import Console
-    console = Console()
+
+    # Ensure file_path is a string
+    file_path = str(file_path)
 
     if not os.path.exists(file_path):
         console.print(f"[red]❌ File not found: {file_path}[/red]")
@@ -82,6 +82,23 @@ def load_json_as_dataframe(file_path: str) -> Tuple[Any, pd.DataFrame]:
     except Exception as e:
         console.print(f"[red]❌ Failed to load JSON file: {e}[/red]")
         return None, None
+
+    # --- convert loaded JSON to DataFrame ---
+    df = None
+    try:
+        if isinstance(data, list):
+            df = pd.DataFrame(data)
+        elif isinstance(data, dict):
+            # pick the first list-valued key
+            list_vals = [v for v in data.values() if isinstance(v, list)]
+            if list_vals:
+                df = pd.DataFrame(list_vals[0])
+            else:
+                df = pd.json_normalize(data)
+        else:
+            df = pd.DataFrame({"value": data})
+    except Exception as e:
+        console.print(f"[yellow]⚠️ Could not convert JSON to DataFrame: {e}[/yellow]")
 
     # -------------------------
     # Structure normalization
@@ -190,7 +207,6 @@ def run_analyze_json(args):
     CLI entry: analyze-json command handler.
     Handles:
       - --use-saved: Load previously analyzed JSON data from DB
-      - --save-json: Save new analysis results to DB
       - --export-path / --format: Export options
       - --show-summary / --show-chart: Optional displays
     """

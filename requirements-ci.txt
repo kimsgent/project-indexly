@@ -10,6 +10,7 @@ pymupdf>=1.23.0
 Pillow>=11.3.0
 python-docx>=1.2.0
 openpyxl>=3.1.5
+pyarrow>=16.0.0
 rapidfuzz>=2.16.0
 fpdf2>=2.8.3
 reportlab>=4.4.2

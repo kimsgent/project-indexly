@@ -226,12 +226,6 @@ def visualize_csv(df: pd.DataFrame, df_stats, args):
         console.print(f"[red]❌ Failed to render chart: {e}[/red]")
 
 
-from pathlib import Path
-import pandas as pd
-from rich.console import Console
-
-console = Console()
-
 def run_csv_pipeline(file_path: Path, args):
     """Full modular CSV pipeline with optional reuse, cleaning, analysis, and visualization."""
 
