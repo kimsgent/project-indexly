@@ -113,76 +113,89 @@ def _summarize_post_clean(summary, title):
 
 def clean_csv_data(df, file_name, method="mean", save_data=False):
     """
-    Clean numeric data (fill NaNs with mean/median) and optionally persist.
-    Optimized for performance and column stability.
+    Clean CSV data by filling missing values for numeric and categorical columns.
 
-    Returns:
-        cleaned_df (pd.DataFrame)
-        summary_records (list of dicts) for _summarize_post_clean()
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input DataFrame.
+    file_name : str
+        Name of source file.
+    method : str, default="mean"
+        Method to fill numeric NaNs. Options: "mean", "median".
+    save_data : bool, default=False
+        If True, attach persistence metadata for orchestrator.
+
+    Returns
+    -------
+    cleaned_df : pd.DataFrame
+    summary_records : list of dicts
     """
     import pandas as pd
     import numpy as np
 
-    # Prevent redundant "_cleaned_1_2" inflation
+    # Normalize columns (prevent repeated "_cleaned_1_2" inflation)
     df.columns = [
         c if "_cleaned_" not in c else c.split("_cleaned_")[0] + "_cleaned"
         for c in df.columns
     ]
 
-    # Conditional copy for memory efficiency
-    cleaned_df = df.copy()  # always copy to avoid mutating input
-
+    cleaned_df = df.copy()  # always copy, avoid mutating input
     summary_records = []
 
-    # Fill numeric columns
     numeric_cols = cleaned_df.select_dtypes(include=np.number).columns
-    if method == "mean":
-        fill_values = cleaned_df[numeric_cols].mean()
-    elif method == "median":
-        fill_values = cleaned_df[numeric_cols].median()
-    else:
-        fill_values = pd.Series(0, index=numeric_cols)  # fallback
+    fill_values = (
+        cleaned_df[numeric_cols].mean()
+        if method == "mean"
+        else cleaned_df[numeric_cols].median()
+    )
 
     for col in cleaned_df.columns:
         n_missing_before = df[col].isna().sum()
+
         if col in numeric_cols:
             cleaned_df[col] = cleaned_df[col].fillna(fill_values[col])
             action = f"filled missing values (method={method})"
+
+        elif cleaned_df[col].dtype == object:
+            mode_val = cleaned_df[col].mode(dropna=True)
+            fill_val = mode_val[0] if not mode_val.empty else ""
+            cleaned_df[col] = cleaned_df[col].fillna(fill_val)
+            action = "filled missing values (method=mode)"
+
         else:
-            # For object / string columns: fill with mode if exists
-            if cleaned_df[col].dtype == object:
-                mode_val = cleaned_df[col].mode()
-                fill_val = mode_val[0] if not mode_val.empty else ""
-                cleaned_df[col] = cleaned_df[col].fillna(fill_val)
-                action = "filled missing values (method=mode)"
-            else:
-                action = "preserved"
+            action = "preserved"
 
         n_filled = n_missing_before - cleaned_df[col].isna().sum()
-        valid_pct = 100 - (cleaned_df[col].isna().sum() / len(cleaned_df) * 100)
+
+        # ✅ Fixed validity percentage calculation
+        total_rows = len(cleaned_df)
+        missing_count = cleaned_df[col].isna().sum()
+        if total_rows > 0:
+            valid_pct = (1 - (missing_count / total_rows)) * 100
+        else:
+            valid_pct = 0.0
 
         summary_records.append({
             "column": col,
             "dtype": str(cleaned_df[col].dtype),
             "action": action,
             "valid%": round(valid_pct, 2),
-            "filled": n_filled,
-            "notes": ""
+            "filled": int(n_filled),
+            "notes": "",
         })
 
-    # Persistence-ready data
+    # Attach persistence info (orchestrator uses this)
     if save_data:
-        sample_data = cleaned_df.head(10).to_dict(orient="records")
-        metadata = {
-            "cleaned_at": pd.Timestamp.now().isoformat(),
-            "source_file": file_name,
-            "row_count": cleaned_df.shape[0],
-            "col_count": cleaned_df.shape[1]
-        }
         cleaned_df._persist_ready = {
             "summary": summary_records,
-            "sample_data": sample_data,
-            "metadata": metadata,
+            "sample_data": cleaned_df.head(10).to_dict(orient="records"),
+            "metadata": {
+                "cleaned_at": pd.Timestamp.now().isoformat(),
+                "source_file": file_name,
+                "row_count": cleaned_df.shape[0],
+                "col_count": cleaned_df.shape[1],
+            },
         }
         cleaned_df._persisted = False
         print(f"💡 Cleaned data ready for orchestrator persistence: {file_name}")

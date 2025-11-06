@@ -319,35 +319,24 @@ def _summarize_pipeline_cleaning(
 ):
     """
     Generate a rich summary of the cleaning process.
-    Includes dtype inference, fill stats, datetime coverage, entropy, etc.
 
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Cleaned dataframe.
-    original_df : pd.DataFrame, optional
-        Original dataframe before cleaning, used to compute filled counts.
-    derived_map : dict, optional
-        Mapping of derived columns. If None, empty dict is used.
-
-    Returns
-    -------
-    summary_records : list[dict]
-        List of column-wise cleaning summaries.
+    Includes:
+      - dtype inference
+      - fill statistics
+      - datetime coverage
+      - entropy for categorical
+      - skewness/kurtosis for numeric
     """
     import numpy as np
     import pandas as pd
     from scipy.stats import entropy as shannon_entropy
     from tqdm import tqdm
 
-    if derived_map is None:
-        derived_map = {}
+    derived_map = derived_map or {}
 
     def _safe_float(value):
         """Return float(value) or None if NaN / pd.NA / invalid."""
-        if value is None:
-            return None
-        if value is pd.NA:
+        if value is None or value is pd.NA:
             return None
         try:
             f = float(value)
@@ -357,21 +346,20 @@ def _summarize_pipeline_cleaning(
 
     summary_records = []
 
-    # ✅ Wrap iteration with tqdm for progress
     for col in tqdm(df.columns, desc="🧹 Summarizing columns", unit="col"):
         series = df[col]
         dtype = str(series.dtype)
         n_total = len(series)
         n_missing_after = series.isna().sum()
+        n_missing_before = (
+            original_df[col].isna().sum()
+            if original_df is not None and col in original_df
+            else n_missing_after
+        )
+        n_filled = max(0, n_missing_before - n_missing_after)
 
-        # --- Compute n_filled directly from original_df if available ---
-        if original_df is not None and col in original_df:
-            n_missing_before = original_df[col].isna().sum()
-            n_filled = max(0, n_missing_before - n_missing_after)
-        else:
-            n_filled = 0
-
-        valid_ratio = 1 - (n_missing_after / n_total) if n_total else 0
+        # ✅ Correctly calculate validity ratio as a percent (0–100)
+        valid_ratio = ((n_total - n_missing_after) / n_total * 100) if n_total else 0.0
 
         record = {
             "column": col,
@@ -379,12 +367,12 @@ def _summarize_pipeline_cleaning(
             "n_total": n_total,
             "n_missing_after": n_missing_after,
             "n_filled": n_filled,
-            "valid_ratio": round(valid_ratio, 3),
+            "valid_ratio": round(valid_ratio, 2),
             "action": "filled missing" if n_filled > 0 else "preserved",
-            "derived_from": derived_map.get(col, "") if derived_map else "",
+            "derived_from": derived_map.get(col, ""),
         }
 
-        # --- Numeric statistics ---
+        # === Numeric columns ===
         if pd.api.types.is_numeric_dtype(series):
             desc = series.describe()
             record.update({
@@ -396,24 +384,21 @@ def _summarize_pipeline_cleaning(
                 "kurtosis": _safe_float(series.kurtosis(skipna=True)),
             })
 
-        # --- Datetime statistics ---
+        # === Datetime columns ===
         elif pd.api.types.is_datetime64_any_dtype(series):
-            try:
-                dt_min, dt_max = series.min(), series.max()
-                record.update({
-                    "datetime_first": str(dt_min),
-                    "datetime_last": str(dt_max),
-                    "datetime_coverage_days": int((dt_max - dt_min).days)
-                        if pd.notna(dt_min) and pd.notna(dt_max) else None,
-                })
-            except Exception:
-                record.update({
-                    "datetime_first": None,
-                    "datetime_last": None,
-                    "datetime_coverage_days": None,
-                })
+            dt_min, dt_max = series.min(), series.max()
+            coverage_days = (
+                int((dt_max - dt_min).days)
+                if pd.notna(dt_min) and pd.notna(dt_max)
+                else None
+            )
+            record.update({
+                "datetime_first": str(dt_min) if pd.notna(dt_min) else None,
+                "datetime_last": str(dt_max) if pd.notna(dt_max) else None,
+                "datetime_coverage_days": coverage_days,
+            })
 
-        # --- Categorical / Object statistics ---
+        # === Categorical / Object columns ===
         else:
             value_counts = series.value_counts(dropna=True)
             if len(value_counts) > 0:
@@ -437,11 +422,11 @@ def _summarize_pipeline_cleaning(
     return summary_records
 
 
-
 def render_cleaning_summary_table(summary_records):
     """
     Render the enhanced cleaning summary using rich.
     """
+    from rich.table import Table
 
     table = Table(title="🧩 Cleaning Summary", show_lines=True)
     table.add_column("Column", style="bold cyan")
@@ -461,7 +446,7 @@ def render_cleaning_summary_table(summary_records):
             rec["column"],
             rec["dtype"],
             rec["action"],
-            f"{rec['valid_ratio']*100:.1f}",
+            f"{rec['valid_ratio']:.1f}",   # ✅ Removed *100
             str(rec["n_filled"]),
             str(rec.get("unique_values", "")),
             f"{rec.get('mean', ''):.3f}" if rec.get("mean") is not None else "-",
