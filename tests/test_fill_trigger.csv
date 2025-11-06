@@ -1,0 +1,9 @@
+id,name,age,income,join_date,city
+1,John Doe,35,55000,2020-05-10,New York
+2,Jane Smith,,63000,2021-03-22,Los Angeles
+3,Bob Lee,42,,2019-11-02,Chicago
+4,,28,47000,2022-07-15,Houston
+5,Alice Wong,,,
+6,Mark Zane,38,NaN,2020-01-30,
+7,Maria Lopez,NaN,61000,2021-12-11,San Francisco
+8,Tom,,48000,,

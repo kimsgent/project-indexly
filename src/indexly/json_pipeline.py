@@ -20,16 +20,24 @@ from .analyze_json import (
 
 )
 
-def run_json_pipeline(file_path: Path, args) -> Tuple[pd.DataFrame, pd.DataFrame, Dict[str, Any]]:
+def run_json_pipeline(file_path: Path, args, df: pd.DataFrame | None = None) -> Tuple[pd.DataFrame, pd.DataFrame, Dict[str, Any]]:
     """
-    Entry point for JSON analysis used by analysis_orchestrator.
-    Returns: (df, df_stats, table_output)
+    Full modular JSON pipeline with optional reuse and unified compatibility.
+
+    - Skips reload if `df` is already provided (preloaded by universal_loader)
+    - Avoids duplicate load messages when analyze-file calls this
+    - Maintains backward compatibility for direct analyze-json calls
     """
     file_path = Path(file_path).resolve()
-    console.print(f"🔍 Loading JSON file: [bold]{file_path.name}[/bold]")
 
-    # --- Step 1: Load JSON as DataFrame ---
-    data, df = load_json_as_dataframe(str(file_path))
+    # --- Step 1: Load JSON as DataFrame (only if not preloaded) ---
+    if df is None:
+        console.print(f"🔍 Loading JSON file: [bold]{file_path.name}[/bold]")
+        data, df = load_json_as_dataframe(str(file_path))
+    else:
+        console.print(f"[dim]↪ Reusing preloaded JSON dataframe for {file_path.name}[/dim]")
+        data = None
+
     if df is None:
         console.print(f"[red]❌ Failed to load JSON: {file_path}[/red]")
         return None, None, None
@@ -47,12 +55,13 @@ def run_json_pipeline(file_path: Path, args) -> Tuple[pd.DataFrame, pd.DataFrame
     df_stats, table_output, meta = analyze_json_dataframe(df)
 
     # --- Step 4: DO NOT export here anymore ---
-    # table_output and metadata will be returned; orchestrator will handle export
+    # Orchestrator handles export
 
     # --- Step 5: Wrap table_output into dictionary for orchestrator ---
     table_dict = build_json_table_output(df, dt_summary=dt_summary)
 
     return df, df_stats, table_dict
+
 
 
 

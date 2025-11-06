@@ -65,14 +65,9 @@ def detect_delimiter(file_path):
     import re
     import csv
 
-    """
-    Detects CSV delimiter using regex scoring and csv.Sniffer fallback.
-    Returns None if no plausible delimiter found.
-    """
     with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
         sample = f.read(4096)
 
-    # Step 1: Regex scoring
     possible_delims = [",", ";", "\t", "|", ":", "~"]
     lines = re.split(r"[\r\n]+", sample.strip())[:10]
     freq_scores = {}
@@ -86,19 +81,17 @@ def detect_delimiter(file_path):
 
     best_delim = max(freq_scores, key=freq_scores.get) if freq_scores else None
 
-    # Step 2: CSV Sniffer check
     try:
         sniffer_delim = csv.Sniffer().sniff(sample).delimiter
     except csv.Error:
         sniffer_delim = None
 
-    # Step 3: Decide
     delimiter = best_delim or sniffer_delim
     if not delimiter:
         print("❌ Could not detect a valid CSV delimiter.")
         return None
 
-    print(f"📄 Detected delimiter (regex): '{delimiter}'")
+    # 👇 Removed print here
     return delimiter
 
 

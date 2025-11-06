@@ -116,43 +116,62 @@ def clean_csv_data(df, file_name, method="mean", save_data=False):
     Clean numeric data (fill NaNs with mean/median) and optionally persist.
     Optimized for performance and column stability.
 
-    Uses unified save_analysis_result() for persistence.
-    Sets `_persisted` flag to prevent double-saving in orchestrator.
+    Returns:
+        cleaned_df (pd.DataFrame)
+        summary_records (list of dicts) for _summarize_post_clean()
     """
     import pandas as pd
     import numpy as np
-  
-    # 🧩 Prevent redundant "_cleaned_1_2" inflation
+
+    # Prevent redundant "_cleaned_1_2" inflation
     df.columns = [
         c if "_cleaned_" not in c else c.split("_cleaned_")[0] + "_cleaned"
         for c in df.columns
     ]
 
-    # ⚙️ Conditional copy for memory efficiency
-    cleaned_df = df if not save_data else df.copy()
+    # Conditional copy for memory efficiency
+    cleaned_df = df.copy()  # always copy to avoid mutating input
 
-    # 📊 Type-based column detection (single pass)
-    dtypes = cleaned_df.dtypes
-    numeric_cols = dtypes[dtypes.apply(np.issubdtype, args=(np.number,))].index
+    summary_records = []
 
-    # ⚡ Vectorized NaN fill
+    # Fill numeric columns
+    numeric_cols = cleaned_df.select_dtypes(include=np.number).columns
     if method == "mean":
-        means = cleaned_df[numeric_cols].mean()
-        cleaned_df[numeric_cols] = cleaned_df[numeric_cols].fillna(means)
+        fill_values = cleaned_df[numeric_cols].mean()
     elif method == "median":
-        medians = cleaned_df[numeric_cols].median()
-        cleaned_df[numeric_cols] = cleaned_df[numeric_cols].fillna(medians)
+        fill_values = cleaned_df[numeric_cols].median()
+    else:
+        fill_values = pd.Series(0, index=numeric_cols)  # fallback
 
-    # 💾 Controlled persistence behavior
+    for col in cleaned_df.columns:
+        n_missing_before = df[col].isna().sum()
+        if col in numeric_cols:
+            cleaned_df[col] = cleaned_df[col].fillna(fill_values[col])
+            action = f"filled missing values (method={method})"
+        else:
+            # For object / string columns: fill with mode if exists
+            if cleaned_df[col].dtype == object:
+                mode_val = cleaned_df[col].mode()
+                fill_val = mode_val[0] if not mode_val.empty else ""
+                cleaned_df[col] = cleaned_df[col].fillna(fill_val)
+                action = "filled missing values (method=mode)"
+            else:
+                action = "preserved"
+
+        n_filled = n_missing_before - cleaned_df[col].isna().sum()
+        valid_pct = 100 - (cleaned_df[col].isna().sum() / len(cleaned_df) * 100)
+
+        summary_records.append({
+            "column": col,
+            "dtype": str(cleaned_df[col].dtype),
+            "action": action,
+            "valid%": round(valid_pct, 2),
+            "filled": n_filled,
+            "notes": ""
+        })
+
+    # Persistence-ready data
     if save_data:
-        summary = {
-            col: {
-                "dtype": str(cleaned_df[col].dtype),
-                "nulls_filled": int(df[col].isna().sum() - cleaned_df[col].isna().sum())
-            }
-            for col in cleaned_df.columns
-        }
-
         sample_data = cleaned_df.head(10).to_dict(orient="records")
         metadata = {
             "cleaned_at": pd.Timestamp.now().isoformat(),
@@ -160,14 +179,11 @@ def clean_csv_data(df, file_name, method="mean", save_data=False):
             "row_count": cleaned_df.shape[0],
             "col_count": cleaned_df.shape[1]
         }
-
-        # mark persistence-ready
         cleaned_df._persist_ready = {
-            "summary": summary,
+            "summary": summary_records,
             "sample_data": sample_data,
             "metadata": metadata,
         }
-
         cleaned_df._persisted = False
         print(f"💡 Cleaned data ready for orchestrator persistence: {file_name}")
     else:
@@ -175,7 +191,8 @@ def clean_csv_data(df, file_name, method="mean", save_data=False):
         cleaned_df._persisted = False
         print("⚙️ Data cleaned in-memory only. Use --save-data to persist cleaned results.")
 
-    return cleaned_df
+    return cleaned_df, summary_records
+
 
 
 # ----------------------------------

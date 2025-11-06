@@ -82,18 +82,21 @@ def clean_csv(df: pd.DataFrame, args):
         # 🧭 Explicitly control persistence based on CLI
         persist_flag = not getattr(args, "no_persist", False)
 
-        df, summary_records = auto_clean_csv(
+        # ✅ Updated unpacking to match auto_clean_csv() 3-value return
+        df, summary_records, derived_map = auto_clean_csv(
             df,
             fill_method=getattr(args, "fill_method", "mean"),
             verbose=True,
             derive_dates=getattr(args, "derive_dates", "all"),
             user_datetime_formats=getattr(args, "datetime_formats", None),
             date_threshold=getattr(args, "date_threshold", 0.3),
-            persist=persist_flag,  # ✅ propagate persistence control
+            persist=persist_flag,  # propagate persistence control
         )
 
         # If orchestrator handles persistence, mark this for it
         setattr(df, "_from_orchestrator", True)
+        # Optionally store derived_map in df for downstream inspection
+        df.attrs["_derived_map"] = derived_map
 
     # --------------------------------------------
     # 📏 Optional Normalization Stage
@@ -109,7 +112,9 @@ def clean_csv(df: pd.DataFrame, args):
         df, out_summary = _remove_outliers(df)
         _summarize_post_clean(out_summary, "📉 Outlier Removal Summary")
 
+    # ✅ Return DataFrame and summary_records (keep derived_map inside df for reference)
     return df, summary_records
+
 
 
 # -------------------------------------------------------
@@ -226,8 +231,21 @@ def visualize_csv(df: pd.DataFrame, df_stats, args):
         console.print(f"[red]❌ Failed to render chart: {e}[/red]")
 
 
-def run_csv_pipeline(file_path: Path, args):
-    """Full modular CSV pipeline with optional reuse, cleaning, analysis, and visualization."""
+def run_csv_pipeline(file_path: Path, args, df: pd.DataFrame = None):
+    """
+    Full modular CSV pipeline:
+    - Optional reuse from DB
+    - Auto-clean / normalization / outlier removal
+    - Statistical analysis
+    - Visualization
+    Returns: df, df_stats, table_output
+    """
+
+    console = Console()
+
+    # Initialize outputs to safe defaults
+    df_stats = None
+    table_output = None
 
     # --- Step 0: Try loading cleaned CSV from DB ---
     if getattr(args, "use_cleaned", False):
@@ -243,7 +261,7 @@ def run_csv_pipeline(file_path: Path, args):
                 _handle_timeseries_visualization(df, args)
 
             # Display summary and sample data
-            if not df_stats.empty:
+            if df_stats is not None and not df_stats.empty:
                 console.print("\n📊 [bold cyan]Summary Statistics[/bold cyan]")
                 _print_summary_table(df_stats.to_dict(orient="index"))
 
@@ -259,11 +277,21 @@ def run_csv_pipeline(file_path: Path, args):
         console.print(f"[red]❌ Failed to load CSV: {file_path}[/red]")
         return None, None, None
 
+    raw_df = df.copy()  # Keep original for summary
+
     # --- Step 2: Clean CSV ---
     df, summary_records = clean_csv(df, args)
 
     # --- Step 3: Analyze CSV ---
-    df_stats, table_output = analyze_csv_pipeline(df, args)
+    try:
+        df_stats, table_output = analyze_csv_pipeline(df, args)
+        if df_stats is None:
+            console.print(
+                "[yellow]⚠️ No numeric columns detected; summary statistics skipped.[/yellow]"
+            )
+    except Exception as e:
+        console.print(f"[red]❌ Failed to compute statistics: {e}[/red]")
+        df_stats, table_output = None, None
 
     # --- Step 4: Visualization ---
     visualize_csv(df, df_stats, args)
@@ -276,9 +304,14 @@ def run_csv_pipeline(file_path: Path, args):
         pre_stats = {r["column"]: r for r in summary_records}
         derived_map = {r["column"]: r.get("derived_from", "") for r in summary_records}
 
-        cleaning_summary = _summarize_pipeline_cleaning(df, pre_stats=pre_stats, derived_map=derived_map)
-        table = render_cleaning_summary_table(cleaning_summary)
-        console.print(table)
+        try:
+            cleaning_summary = _summarize_pipeline_cleaning(
+                df=df, original_df=raw_df, derived_map=derived_map
+            )
+            table = render_cleaning_summary_table(cleaning_summary)
+            console.print(table)
+        except Exception as e:
+            console.print(f"[red]⚠️ Failed to render cleaning summary: {e}[/red]")
 
     return df, df_stats, table_output
 
@@ -308,7 +341,7 @@ def _print_sample_table(df: pd.DataFrame):
 
 def _summarize_pipeline_cleaning(
     df: pd.DataFrame,
-    pre_stats: dict | None = None,
+    original_df: pd.DataFrame | None = None,
     derived_map: dict | None = None,
 ):
     """
@@ -319,8 +352,8 @@ def _summarize_pipeline_cleaning(
     ----------
     df : pd.DataFrame
         Cleaned dataframe.
-    pre_stats : dict, optional
-        Pre-cleaning statistics. If None, empty stats are used.
+    original_df : pd.DataFrame, optional
+        Original dataframe before cleaning, used to compute filled counts.
     derived_map : dict, optional
         Mapping of derived columns. If None, empty dict is used.
 
@@ -329,14 +362,11 @@ def _summarize_pipeline_cleaning(
     summary_records : list[dict]
         List of column-wise cleaning summaries.
     """
-
     import numpy as np
     import pandas as pd
     from scipy.stats import entropy as shannon_entropy
     from tqdm import tqdm
 
-    if pre_stats is None:
-        pre_stats = {}
     if derived_map is None:
         derived_map = {}
 
@@ -360,23 +390,25 @@ def _summarize_pipeline_cleaning(
         dtype = str(series.dtype)
         n_total = len(series)
         n_missing_after = series.isna().sum()
-        n_missing_before = pre_stats.get(col, {}).get("missing_before", n_missing_after)
-        n_filled = max(0, n_missing_before - n_missing_after)
+
+        # --- Compute n_filled directly from original_df if available ---
+        if original_df is not None and col in original_df:
+            n_missing_before = original_df[col].isna().sum()
+            n_filled = max(0, n_missing_before - n_missing_after)
+        else:
+            n_filled = 0
+
         valid_ratio = 1 - (n_missing_after / n_total) if n_total else 0
 
         record = {
             "column": col,
             "dtype": dtype,
             "n_total": n_total,
-            "n_missing_before": n_missing_before,
             "n_missing_after": n_missing_after,
             "n_filled": n_filled,
             "valid_ratio": round(valid_ratio, 3),
-            "action": pre_stats.get(col, {}).get("action", "preserved"),
-            "strategy": pre_stats.get(col, {}).get("strategy", "-"),
-            "fill_method": pre_stats.get(col, {}).get("fill_method", "-"),
+            "action": "filled missing" if n_filled > 0 else "preserved",
             "derived_from": derived_map.get(col, "") if derived_map else "",
-            "notes": pre_stats.get(col, {}).get("notes", ""),
         }
 
         # --- Numeric statistics ---
@@ -432,6 +464,7 @@ def _summarize_pipeline_cleaning(
     return summary_records
 
 
+
 def render_cleaning_summary_table(summary_records):
     """
     Render the enhanced cleaning summary using rich.
@@ -458,14 +491,15 @@ def render_cleaning_summary_table(summary_records):
             f"{rec['valid_ratio']*100:.1f}",
             str(rec["n_filled"]),
             str(rec.get("unique_values", "")),
-            f"{rec.get('mean', ''):.3f}" if rec.get("mean") else "-",
-            f"{rec.get('std', ''):.3f}" if rec.get("std") else "-",
-            f"{rec.get('entropy_estimate', ''):.2f}" if rec.get("entropy_estimate") else "-",
+            f"{rec.get('mean', ''):.3f}" if rec.get("mean") is not None else "-",
+            f"{rec.get('std', ''):.3f}" if rec.get("std") is not None else "-",
+            f"{rec.get('entropy_estimate', ''):.2f}" if rec.get("entropy_estimate") is not None else "-",
             rec.get("category_top", "-"),
             rec.get("notes", ""),
         )
 
     return table
+
 
 
 

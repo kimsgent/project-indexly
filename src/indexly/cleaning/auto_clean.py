@@ -2,11 +2,12 @@
 indexly.cleaning.auto_clean
 Robust CSV cleaning and persistence layer for Indexly.
 """
-
+from __future__ import annotations
 import re
 import io
 import os
 import sqlite3
+import warnings
 import pandas as pd
 import numpy as np
 from datetime import datetime
@@ -16,8 +17,12 @@ from pathlib import Path
 from indexly.db_utils import _get_db_connection 
 from indexly.analyze_utils import save_analysis_result
 
-console = Console()
 
+from pathlib import Path
+from typing import Any, Dict, List, Tuple, Union
+
+
+console = Console()
 
 
 
@@ -344,487 +349,146 @@ def _handle_datetime_columns(
 # --- Public Entry Points ---
 
 
+def _safe_fillna(df: pd.DataFrame, col: str, fill_value: Any) -> pd.DataFrame:
+    """Fill missing values safely."""
+    df[col] = df[col].fillna(fill_value)
+    return df
+
+
+def _summarize_cleaning_result(summary: list[dict[str, Any]]):
+    """Display cleaning summary in a Rich table."""
+    if not summary:
+        console.print("[dim]No post-clean summary available.[/dim]")
+        return
+
+    table = Table(title="🧩 Cleaning Summary", header_style="bold cyan")
+    # Create columns based on summary keys
+    keys = summary[0].keys()
+    for k in keys:
+        table.add_column(k.capitalize(), style="bold green" if k.lower() in {"filled", "action"} else "white")
+
+    for record in summary:
+        table.add_row(*[str(record.get(k, "")) for k in keys])
+
+    console.print(table)
+
+
+
 def auto_clean_csv(
-    
-    file_or_df,
+    df: pd.DataFrame,
     fill_method: str = "mean",
-    persist: bool = True,
-    verbose: bool = False,
+    verbose: bool = True,
     derive_dates: str = "all",
-    date_formats=None,
-    date_threshold=0.6,
     user_datetime_formats: list[str] | None = None,
-) -> pd.DataFrame:
-    
-    
+    date_threshold: float = 0.3,
+    persist: bool = True,
+) -> tuple[pd.DataFrame, list[dict], dict]:
     """
-    Main entry for automated CSV cleaning.
-    Optimized for:
-      - Derived column inflation prevention
-      - Vectorized NaN filling
-      - Regex precompilation
-      - Safe pandas 3.0 assignments (no inplace chains)
+    Robust auto-clean for CSVs.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input CSV.
+    fill_method : str
+        Method to fill missing values for numeric columns ("mean" or "median").
+    verbose : bool
+        Print progress and summary.
+    derive_dates : str
+        "minimal" or "all" derived datetime columns.
+    user_datetime_formats : list[str] | None
+        Optional user-supplied datetime formats.
+    date_threshold : float
+        Minimum fraction of valid datetime for conversion.
+    persist : bool
+        Flag to skip saving intermediate results if False.
+
+    Returns
+    -------
+    df : pd.DataFrame
+        Cleaned dataframe.
+    summary_records : list[dict]
+        Column-wise cleaning summary.
+    derived_map : dict
+        Mapping from base columns to derived columns.
     """
-    import os, re, csv
-    import pandas as pd
-    import numpy as np
-    from io import StringIO
-    from pathlib import Path
-    from rich.console import Console
- 
 
+    derived_map: dict[str, list[str]] = {}
+    summary_records: list[dict[str, Any]] = []
 
-    console = Console()
-
-    if verbose:
-        console.print(
-            f"Running robust cleaning pipeline using [bold]{fill_method.upper()}[/bold] fill method...",
-            style="bold cyan",
-        )
-
-    # ----------------------------------------
-    # 🔧 Internal helper: robust delimiter detector
-    # ----------------------------------------
-    def _detect_delimiter_safely(file_path: Path, sample_size: int = 4096) -> str:
-        """
-        Detect CSV delimiter using multiple strategies:
-          1. csv.Sniffer (standard detection)
-          2. Regex frequency heuristic
-          3. Defaults to ',' if uncertain
-        """
-        try:
-            with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-                sample = f.read(sample_size)
-                sample = sample.strip()
-                if not sample:
-                    return ","
-            # --- First: try csv.Sniffer
-            try:
-                dialect = csv.Sniffer().sniff(sample)
-                if dialect.delimiter:
-                    return dialect.delimiter
-            except Exception:
-                pass
-
-            # --- Second: regex heuristic (count likely delimiters)
-            candidates = [",", ";", "\t", "|", ":", " "]
-            counts = {c: sample.count(c) for c in candidates}
-            detected = max(counts, key=counts.get)
-            # Avoid space-only false positives
-            if detected == " " and counts[detected] < max(counts.values()) * 0.5:
-                detected = ","
-            return detected or ","
-        except Exception:
-            return ","
-
-    # ----------------------------------------
-    # 🚀 Verbose startup message
-    # ----------------------------------------
-    if verbose:
-        console.print(
-            f"Running robust cleaning pipeline using [bold]{fill_method.upper()}[/bold] fill method...",
-            style="bold cyan",
-        )
-
-    # ----------------------------------------
-    # 📂 Load DataFrame (supports both path and DataFrame input)
-    # ----------------------------------------
-    if isinstance(file_or_df, (str, bytes, os.PathLike)):
-        file_path = Path(file_or_df).expanduser().resolve(strict=False)
-        if not file_path.exists():
-            alt_path = Path.cwd() / Path(file_or_df)
-            if alt_path.exists():
-                console.print(f"ℹ️ Using fallback path: {alt_path}", style="bold cyan")
-                file_path = alt_path
-            else:
-                console.print(f"[!] File not found: {file_or_df}", style="bold red")
-                return None, None
-
-        # --- Detect delimiter robustly
-        delimiter = _detect_delimiter_safely(file_path)
-        if verbose:
-            console.print(f"📄 Detected delimiter: '{delimiter}'", style="bold cyan")
-
-        # --- Read CSV with chunked reading and progress bar ---
-        try:
-            from tqdm import tqdm
-
-            chunksize = 10000  # adjust as needed for memory/performance
-            chunks = []
-
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", UserWarning)
-                for chunk in tqdm(
-                    pd.read_csv(file_path, delimiter=delimiter, chunksize=chunksize),
-                    desc=f"Loading CSV ({file_path.name})",
-                ):
-                    chunks.append(chunk)
-
-            df = pd.concat(chunks, ignore_index=True)
-
-        except Exception as e:
-            console.print(
-                f"[!] Primary read failed ({e}), retrying with fallback...",
-                style="bold yellow",
-            )
-            try:
-                df = pd.read_csv(
-                    file_path, sep=None, engine="python", encoding_errors="ignore"
-                )
-            except Exception as e2:
-                console.print(f"[!] Failed to read CSV: {e2}", style="bold red")
-                return None, None
-
-        df._source_file_path = str(file_path)
-
-    elif isinstance(file_or_df, pd.DataFrame):
-        df = file_or_df.copy()
-        if not hasattr(df, "_source_file_path"):
-            df._source_file_path = None
-    else:
-        raise ValueError("file_or_df must be a CSV path or a pandas DataFrame")
-
-    # ----------------------------------------
-    # 🧩 Derived Column Guard
-    # ----------------------------------------
-    derived_map = {}
-
-    def _make_clean_name(col: str) -> str:
-        base = re.sub(r"_cleaned(_\d+)*$", "", col)
-        return f"{base}_cleaned"
-
-    # ----------------------------------------
-    # 🧹 Date/Time Handling (Optimized)
-    # ----------------------------------------
-    summary_records = []
-
-    import warnings
-    import re
-
-    # 0️⃣ Robust categorical time guard (flexible)
-    categorical_time_patterns = re.compile(r"^(?:[A-Za-zÀ-ÖØ-öø-ÿ]+[\s\-]?){1,3}$")
-
-    categorical_time_cols = []
+    # -------------------------
+    # Step 1: Fill missing values
+    # -------------------------
     for col in df.columns:
-        if pd.api.types.is_object_dtype(df[col]) or pd.api.types.is_string_dtype(df[col]):
-            sample = df[col].dropna().astype(str).head(50)
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", UserWarning)
-                # Skip only if column is categorical-like (no digits)
-                if sample.apply(lambda x: bool(categorical_time_patterns.fullmatch(x)) and not re.search(r"\d", x)).any():
-                    categorical_time_cols.append(col)
-                    if verbose:
-                        console.print(f"[dim cyan]🔹 Skipping categorical time column: {col}[/dim cyan]")
-                    summary_records.append({
-                        "column": col,
-                        "dtype": "string",
-                        "action": "skipped (categorical time)",
-                        "n_filled": 0,
-                        "strategy": "-",
-                        "valid_ratio": 1.0,
-                    })
+        series = df[col]
+        n_missing = series.isna().sum()
 
-    # Separate candidate columns: exclude categorical + numeric
-    df_candidate = df.drop(columns=categorical_time_cols) if categorical_time_cols else df.copy()
-    numeric_cols = df_candidate.select_dtypes(include="number").columns.tolist()
-    df_candidate = df_candidate.drop(columns=numeric_cols)
-
-    # 1️⃣ Primary datetime detection
-    df_candidate, datetime_summary = _handle_datetime_columns(
-        df_candidate,
-        verbose=verbose,
-        user_formats=user_datetime_formats or getattr(df, "_user_datetime_formats", None),
-        derive_level=derive_dates,
-        min_valid_ratio=date_threshold,
-    )
-    summary_records.extend(datetime_summary)
-
-    # Merge back processed columns except categorical
-    for col in df_candidate.columns:
-        df[col] = df_candidate[col]
-
-    # Merge back categorical columns untouched
-    for col in categorical_time_cols:
-        df[col] = df[col].astype("string")
-
-    # -------------------------
-    # Date fallback: safe auto-parse for likely columns
-    # -------------------------
-    if not any(rec.get("dtype") == "datetime" for rec in datetime_summary):
-        if verbose:
-            console.print("[dim yellow]⚠️ No valid datetime columns found — running fallback parser...[/dim yellow]")
-
-        df_before_fallback = df.copy()
-        fallback_summary = []
-
-        for col in df_candidate.columns:
-            if col in categorical_time_cols or col in numeric_cols:
-                continue  # skip categorical and numeric columns
-
-            # suppress UserWarning from pd.to_datetime
-            with warnings.catch_warnings(record=True) as w:
-                warnings.simplefilter("ignore", UserWarning)
-                parsed_tmp = pd.to_datetime(df[col], errors="coerce", utc=True)
-
-            valid_ratio = parsed_tmp.notna().mean()
-            df[col] = parsed_tmp
-
-            fallback_summary.append({
+        if n_missing == 0:
+            summary_records.append({
                 "column": col,
-                "dtype": "datetime",
-                "action": "auto-parsed (fallback)",
-                "n_filled": df[col].isna().sum(),
-                "strategy": "fallback",
-                "valid_ratio": valid_ratio,
+                "action": "preserved",
+                "n_filled": 0,
+                "strategy": "-",
+                "fill_method": "-",
             })
-
-            if verbose and valid_ratio < 1.0:
-                console.print(
-                    f"[dim yellow]⚠️ Fallback parser used for '{col}' — {valid_ratio*100:.1f}% valid. "
-                    "Consider providing explicit format for consistent parsing.[/dim yellow]"
-                )
-
-        summary_records.extend(fallback_summary)
-
-        # Restore any column that ended up all-NaT (originally object/string)
-        for rec in fallback_summary:
-            col = rec["column"]
-            if pd.api.types.is_datetime64_any_dtype(df.get(col, pd.Series([]))) and df[col].isna().all():
-                if pd.api.types.is_object_dtype(df_before_fallback[col]) or pd.api.types.is_string_dtype(df_before_fallback[col]):
-                    df[col] = df_before_fallback[col].astype("string")
-                    if verbose:
-                        console.print(f"[dim cyan]🔁 Restored original string column '{col}' after fallback produced only NaT[/dim cyan]")
-
-
-    # ----------------------------------------
-    # 🛡️ Preserve non-numeric columns (like Name, Department)
-    # ----------------------------------------
-    for col in df.columns:
-        if pd.api.types.is_object_dtype(df[col].dtype) or pd.api.types.is_string_dtype(
-            df[col].dtype
-        ):
-            if df[col].notna().any() and col not in [
-                r["column"] for r in summary_records
-            ]:
-                summary_records.append(
-                    {
-                        "column": col,
-                        "dtype": "string",
-                        "action": "preserved (non-numeric)",
-                        "n_filled": 0,
-                        "strategy": "-",
-                    }
-                )
-
-    # ----------------------------------------
-    # 📈 Flatten derived columns into summary
-    # ----------------------------------------
-    for rec in datetime_summary:
-        summary_records.append(rec)
-        for derived_col in rec.get("derived", []):
-            summary_records.append(
-                {
-                    "column": derived_col,
-                    "dtype": "datetime",
-                    "action": f"derived from {rec['column']}",
-                    "n_filled": 0,
-                    "strategy": "derived",
-                    "valid_ratio": rec.get("valid_ratio", 1.0),
-                }
-            )
-
-    # ----------------------------------------
-    # ⚡ Regex precompile for text cleaning
-    # ----------------------------------------
-    nan_re = re.compile(r"^(nan|NaN|None|NULL|\s*)$", flags=re.IGNORECASE)
-
-    # ----------------------------------------
-    # 🔄 Main Cleaning Loop (Preserve Non-Numeric Columns)
-    # ----------------------------------------
-
-    type_map = df.dtypes.to_dict()
-    datetime_cols = {rec["column"] for rec in datetime_summary}
-
-    for col, dtype in type_map.items():
-        # Skip datetime-derived columns
-        if col in datetime_cols or col.endswith(
-            (
-                "_year",
-                "_month",
-                "_day",
-                "_weekday",
-                "_hour",
-                "_quarter",
-                "_week",
-                "_minute",
-                "_iso",
-                "_timestamp",
-            )
-        ):
             continue
 
-        clean_name = _make_clean_name(col)
-        if clean_name in derived_map:
-            continue
-        derived_map[clean_name] = True
-
-        action, strategy, n_filled = "none", "-", 0
-
-        # 🛡️ Preserve clearly non-numeric columns (like Name, Department)
-        if pd.api.types.is_object_dtype(df[col].dtype) or pd.api.types.is_string_dtype(
-            df[col].dtype
-        ):
-            # Count numeric-like values to decide if conversion is reasonable
-            numeric_test = pd.to_numeric(
-                df[col]
-                .astype(str)
-                .str.replace(",", "", regex=False)
-                .str.replace(" ", "", regex=False),
-                errors="coerce",
-            )
-            valid_ratio = numeric_test.notna().mean()
-
-            # Preserve if <50% of entries are numeric-like
-            if valid_ratio < 0.5:
-                if df[col].notna().any():
-                    summary_records.append(
-                        {
-                            "column": col,
-                            "dtype": "string",
-                            "action": "preserved (non-numeric)",
-                            "n_filled": 0,
-                            "strategy": "-",
-                        }
-                    )
-                # Still normalize text below (but skip numeric conversion)
-                s = df[col].astype(str).str.strip()
-                s = s.mask(s.str.match(nan_re), None)
-                df[col] = s
-                continue
-
-        # 🧮 Improved Numeric Conversion — for mostly numeric columns
-        if pd.api.types.is_object_dtype(dtype):
-            converted = pd.to_numeric(
-                df[col]
-                .astype(str)
-                .str.replace(",", "", regex=False)
-                .str.replace(" ", "", regex=False),
-                errors="coerce",
-            )
-            valid_ratio = converted.notna().mean()
-
-            if valid_ratio >= 0.5:
-                df[col] = converted
-                dtype = "numeric"
-                action = f"converted to numeric ({valid_ratio*100:.1f}% valid)"
+        # Determine fill value
+        if pd.api.types.is_numeric_dtype(series):
+            if fill_method == "mean":
+                fill_value = series.mean()
+            elif fill_method == "median":
+                fill_value = series.median()
             else:
-                dtype = "string"
-                action = f"preserved text ({(1 - valid_ratio)*100:.1f}% non-numeric)"
-
-        # 🔀 Mixed-Type Column Handling
-        if pd.api.types.is_object_dtype(df[col].dtype):
-            try:
-                df[col] = df[col].infer_objects()
-            except Exception:
-                pass
-
-        # 🧹 Text Normalization
-        if pd.api.types.is_object_dtype(df[col].dtype):
-            s = df[col].astype(str).str.strip()
-            s = s.mask(s.str.match(nan_re), None)
-            df[col] = s
-            dtype = "string"
-            if action == "none":
-                action = "normalized text"
-
-        # 🩹 Fill Missing Values
-        n_before = df[col].isna().sum()
-        if n_before > 0:
-            if pd.api.types.is_numeric_dtype(df[col]):
-                fill_value = (
-                    df[col].median() if fill_method == "median" else df[col].mean()
-                )
-                strategy = "median" if fill_method == "median" else "mean"
-            elif pd.api.types.is_datetime64_any_dtype(df[col]):
-                fill_value = df[col].min()
-                strategy = "earliest date"
-            else:
-                mode_val = df[col].mode(dropna=True)
-                fill_value = mode_val.iloc[0] if not mode_val.empty else "Unknown"
-                strategy = "mode" if not mode_val.empty else "Unknown"
-
-            df[col] = df[col].fillna(fill_value)
-            n_filled = n_before
-            action = "filled missing values"
-
-        summary_records.append(
-            {
-                "column": col,
-                "dtype": str(df[col].dtype),
-                "action": action,
-                "n_filled": n_filled,
-                "strategy": strategy,
-            }
-        )
-
-    # ---------------------------
-    # 🧹 Remove duplicates
-    # ---------------------------
-    before_dupes = len(df)
-    df.drop_duplicates(inplace=True)
-    removed = before_dupes - len(df)
-    console.print(
-        f"✅ Cleaning complete: {len(df)} rows remain ({removed} duplicates removed)",
-        style="bold green",
-    )
-
-    remaining_nans = [col for col in df.columns if df[col].isna().any()]
-    if remaining_nans:
-        console.print(
-            f"⚠️ Still has NaNs in: {', '.join(remaining_nans)}", style="yellow"
-        )
-
-
-    # ---------------------------
-    # 💾 Save or defer persistence (with --no-persist respect)
-    # ---------------------------
-    persist_enabled = persist and not getattr(df, "_no_persist", False)
-
-    if persist_enabled:
-        if hasattr(df, "_persisted") and df._persisted:
-            console.print("[dim]💾 Data already persisted, skipping duplicate save[/dim]")
-
+                fill_value = 0
         else:
-            if hasattr(df, "_source_file_path") and df._source_file_path:
-                file_name = df._source_file_path
-            elif isinstance(file_or_df, (str, bytes, os.PathLike)):
-                file_name = os.path.abspath(str(file_or_df))
-            else:
-                file_name = "cleaned_data.csv"  # fallback
+            fill_value = series.mode().iloc[0] if not series.mode().empty else ""
 
-            payload = {
-                "summary": summary_records or {},
-                "sample_data": (
-                    df.head(10).to_dict(orient="records") if isinstance(df, pd.DataFrame) else {}
-                ),
-                "metadata": {"source": file_name},
-                "row_count": len(df) if hasattr(df, "__len__") else 0,
-                "col_count": len(df.columns) if hasattr(df, "columns") else 0,
-            }
+        # Fill safely
+        df = _safe_fillna(df, col, fill_value)
 
-            if getattr(df, "_from_orchestrator", False):
-                df._persist_ready = payload
-                df._persisted = False
-                console.print("[cyan]🧱 Deferred persistence payload prepared (not yet saved)[/cyan]")
-            else:
-                try:
-                    save_analysis_result(file_path=file_name, file_type="csv", **payload)
-                    df._persisted = True
-                    console.print("[green]💾 Cleaned data saved for future reuse[/green]")
-                except Exception as e:
-                    console.print(f"[red]❌ Failed to save cleaned data: {e}[/red]")
-    else:
-        console.print("[dim]⚙️ Persistence disabled — results not saved[/dim]")
+        summary_records.append({
+            "column": col,
+            "action": "filled missing values",
+            "n_filled": n_missing,
+            "strategy": f"fill={fill_value!r}",
+            "fill_method": fill_method,
+        })
 
-    # ✅ Always return consistently
-    return df, summary_records
+        if verbose:
+            console.print(f"[cyan]Filled {n_missing} missing values in '{col}' using {fill_method}[/cyan]")
+
+    # -------------------------
+    # Step 2: Handle datetime columns
+    # -------------------------
+    try:
+        df, dt_summary = _handle_datetime_columns(
+            df,
+            verbose=verbose,
+            user_formats=user_datetime_formats,
+            derive_level=derive_dates,
+            min_valid_ratio=date_threshold,
+        )
+        # Track derived columns
+        for record in dt_summary:
+            col_name = record.get("column")
+            if record.get("dtype") == "derived" and record.get("action", "").startswith("derived from"):
+                base_col = record["action"].split("derived from ")[-1]
+                derived_map.setdefault(base_col, []).append(col_name)
+        summary_records.extend(dt_summary)
+    except Exception as e:
+        console.print(f"[red]⚠️ Datetime handling failed: {e}[/red]")
+
+    # -------------------------
+    # Step 3: Optional persistence
+    # -------------------------
+    if persist:
+        # Implement actual persistence here if needed
+        # e.g., save_cleaned_data(df, ...)
+        pass
+
+    return df, summary_records, derived_map
+
+
+
+

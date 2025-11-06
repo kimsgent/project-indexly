@@ -19,10 +19,6 @@ from indexly.universal_loader import detect_and_load, detect_file_type
 console = Console()
 
 
-
-console = Console()
-
-
 def analyze_file(args) -> AnalysisResult:
     """
     Unified orchestrator for analyzing CSV, JSON, or DB files.
@@ -128,11 +124,23 @@ def analyze_file(args) -> AnalysisResult:
                 console.print(f"[red]❌ Universal loader returned no DataFrame for {file_path.name}[/red]")
                 return None
 
-            # Route to specialized pipelines
+
+            # -----------------------------
+            # --- Route to Specialized Pipelines (no double-load)
+            # -----------------------------
             if file_type == "csv":
-                df, df_stats, table_output = run_csv_pipeline(file_path, args)
+                # Avoid reloading if detect_and_load() already returned df
+                if df is not None and not df.empty:
+                    df, df_stats, table_output = run_csv_pipeline(file_path, args, df=df)
+                else:
+                    df, df_stats, table_output = run_csv_pipeline(file_path, args)
+
             elif file_type == "json":
-                df, df_stats, table_output = run_json_pipeline(file_path, args)
+                if df is not None and not df.empty:
+                    df, df_stats, table_output = run_json_pipeline(file_path, args, df=df)
+                else:
+                    df, df_stats, table_output = run_json_pipeline(file_path, args)
+
             elif file_type in {"sqlite", "db"}:
                 df, df_stats, table_output = run_db_pipeline(file_path, args)
             elif file_type in {"yaml", "yml"}:
