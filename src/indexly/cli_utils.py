@@ -271,7 +271,6 @@ def build_parser():
     )
     csv_parser.add_argument("--normalize", action="store_true", help="Normalize numeric columns after cleaning")
     csv_parser.add_argument("--remove-outliers", action="store_true", help="Remove outliers after cleaning")
-    csv_parser.add_argument("--export-cleaned", help="Path to export cleaned dataset")
     csv_parser.add_argument("--export-format", choices=["csv", "json", "parquet", "excel"], default="csv", help="Format for cleaned dataset export")
     csv_parser.add_argument("--show-summary", action="store_true", help="Show extended summary of columns and derived fields")
 

@@ -2,6 +2,7 @@
 import os
 import json
 import gzip
+import yaml
 import sqlite3
 import pandas as pd
 import numpy as np
@@ -23,11 +24,10 @@ console = Console()
 def validate_file_content(file_path: Path, file_type: str) -> bool:
     """
     Validate that a file's content matches its expected type.
-    Supports plain and gzip-compressed (.gz) JSON files.
+    Supports CSV, JSON (.json/.json.gz), SQLite (.db/.sqlite),
+    and YAML (.yaml/.yml) files.
     Returns True if content looks valid, False otherwise.
     """
-
-
 
     if not file_path.exists():
         console.print(f"[red]❌ File not found:[/red] {file_path}")
@@ -35,7 +35,7 @@ def validate_file_content(file_path: Path, file_type: str) -> bool:
 
     # --- CSV / TSV style ---
     if file_type == "csv":
-        from indexly.csv_analyzer import detect_delimiter  # ensure local import
+        from indexly.csv_analyzer import detect_delimiter  # local import
         delimiter = detect_delimiter(file_path)
         if not delimiter:
             console.print(f"[red]❌ No valid CSV delimiter detected.[/red]")
@@ -51,7 +51,6 @@ def validate_file_content(file_path: Path, file_type: str) -> bool:
             return False
 
     # --- JSON (.json or .json.gz) ---
-
     if file_type in {"json", "json_gz"} or file_path.suffixes[-2:] == [".json", ".gz"]:
         try:
             opener = gzip.open if str(file_path).endswith(".gz") else open
@@ -60,6 +59,16 @@ def validate_file_content(file_path: Path, file_type: str) -> bool:
             return True
         except Exception as e:
             console.print(f"[red]❌ Invalid JSON structure:[/red] {e}")
+            return False
+
+    # --- YAML (.yaml or .yml) ---
+    if file_type in {"yaml", "yml"} or file_path.suffix.lower() in {".yaml", ".yml"}:
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                yaml.safe_load(f)
+            return True
+        except Exception as e:
+            console.print(f"[red]❌ Invalid YAML structure:[/red] {e}")
             return False
 
     # --- SQLite / DB ---

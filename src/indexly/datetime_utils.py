@@ -59,12 +59,14 @@ def normalize_datetime_columns(df, source_type: str = "csv") -> Tuple[object, Di
             summary = {"auto": auto_summary, "handle": handle_summary}
 
         elif source_type == "json":
-            # JSON: prefer structured handler first (less destructive), but still run fallback.
+            # JSON: prefer structured handler first (less destructive), but suppress duplicate prints
             df_local, handle_summary = _handle_datetime_columns(
                 df_local, verbose=False, user_formats=None, derive_level="all", min_valid_ratio=0.6
             )
-            df_local, auto_summary = _auto_parse_dates(df_local)
+            # Silent fallback: explicitly disable verbose prints in auto_parse
+            df_local, auto_summary = _auto_parse_dates(df_local, verbose=False)
             summary = {"handle": handle_summary, "auto": auto_summary}
+
 
         elif source_type == "sqlite":
             # SQLite: structured DB exports should be normalized with handle only

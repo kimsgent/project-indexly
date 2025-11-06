@@ -241,13 +241,19 @@ def detect_and_load(file_path: str | Path, args=None) -> Dict[str, Any]:
             raw = df = None
 
     # --- Step 2: Fallback universal loader ---
-    if df is None and raw is None:
+    if df is None:
         try:
             desc = f"Loading {file_type.upper()} (universal fallback)"
             with tqdm(total=1, desc=desc, unit="file") as pbar:
                 if file_type == "yaml":
-                    raw = _load_yaml(path)
-                    df = pd.json_normalize(raw) if isinstance(raw, (dict, list)) else None
+                    if raw is None:
+                        raw = _load_yaml(path)
+                    if isinstance(raw, dict) and len(raw) == 1 and isinstance(next(iter(raw.values())), list):
+                        df = pd.json_normalize(next(iter(raw.values())))
+                    elif isinstance(raw, (dict, list)):
+                        df = pd.json_normalize(raw)
+                    else:
+                        df = None
 
                 elif file_type == "xml":
                     raw = _load_xml(path)

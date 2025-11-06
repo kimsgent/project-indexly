@@ -102,7 +102,9 @@ def _auto_parse_dates(df, date_formats=None, min_valid_ratio=0.3, verbose=False)
 
         # Try regex / auto parse if not good enough
         if best_ratio < min_valid_ratio:
-            parsed_tmp = pd.to_datetime(df[col], errors="coerce", utc=True)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", UserWarning)
+                parsed_tmp = pd.to_datetime(df[col], errors="coerce", utc=True)
             ratio = parsed_tmp.notna().mean()
             if ratio > best_ratio:
                 best_ratio = ratio

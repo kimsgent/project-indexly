@@ -137,7 +137,7 @@ def analyze_file(args) -> AnalysisResult:
 
             elif file_type == "json":
                 if df is not None and not df.empty:
-                    df, df_stats, table_output = run_json_pipeline(file_path, args, df=df)
+                    df, df_stats, table_output = run_json_pipeline(file_path, args, df=df, verbose=False)
                 else:
                     df, df_stats, table_output = run_json_pipeline(file_path, args)
 

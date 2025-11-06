@@ -19,6 +19,7 @@ from __future__ import annotations
 import os
 import json
 import gzip
+import warnings
 from datetime import datetime
 from typing import Tuple, Any, Dict
 from pathlib import Path
@@ -30,6 +31,9 @@ from rich.console import Console
 from rich.table import Table
 from .db_utils import _migrate_cleaned_data_schema
 from .analyze_utils import save_analysis_result, load_cleaned_data
+
+
+
 
 
 console = Console()
@@ -202,16 +206,76 @@ def analyze_json_dataframe(df: pd.DataFrame) -> Tuple[pd.DataFrame, str, Dict[st
 # -------------------------
 # Main orchestrator
 # -------------------------
+
+
+def _suppress_datetime_warnings():
+    """Suppress repetitive pandas datetime inference warnings."""
+    warnings.filterwarnings(
+        "ignore",
+        message="Could not infer format, so each element will be parsed individually",
+        category=UserWarning,
+    )
+
+
+def _print_dataset_overview(df: pd.DataFrame, file_name: str):
+    """Print a quick summary of the loaded DataFrame."""
+    rows, cols = df.shape
+    mem_mb = df.memory_usage(deep=True).sum() / 1024**2
+    num = len(df.select_dtypes(include=np.number).columns)
+    obj = len(df.select_dtypes(include="object").columns)
+    dt = len(df.select_dtypes(include="datetime64").columns)
+
+    console.print(f"[green]✅ Loaded JSON:[/green] {os.path.basename(file_name)} ({rows:,}×{cols})")
+    console.print(f"   • Memory usage: {mem_mb:.2f} MB")
+    console.print(f"   • Numeric: {num} | Object: {obj} | Datetime: {dt}\n")
+
+
+def _print_datetime_summary(summary_dict: dict):
+    """Render a clean, concise summary table for datetime normalization."""
+    if not summary_dict or all(not v for v in summary_dict.values()):
+        console.print("[yellow]⚠️ No datetime normalization details available.[/yellow]")
+        return
+
+    # Flatten handle/auto summaries
+    records = []
+    for phase, items in summary_dict.items():
+        if isinstance(items, list):
+            for item in items:
+                if isinstance(item, dict):
+                    records.append({
+                        "phase": phase,
+                        "column": item.get("column", "—"),
+                        "action": item.get("action", "—"),
+                        "valid": f"{item.get('valid_ratio', 0) * 100:.1f}%" if "valid_ratio" in item else "—",
+                    })
+
+    if not records:
+        console.print("[yellow]⚠️ Datetime summary is empty.[/yellow]")
+        return
+
+    # Limit to first 8 entries for readability
+    show_n = min(len(records), 8)
+    console.print(f"[blue]🕒 Datetime normalization summary (showing first {show_n} of {len(records)}):[/blue]")
+
+    table = Table(show_header=True, header_style="bold magenta")
+    table.add_column("Phase", style="cyan", width=10)
+    table.add_column("Column", style="bold")
+    table.add_column("Action", style="dim")
+    table.add_column("Valid %", justify="right")
+
+    for rec in records[:show_n]:
+        table.add_row(rec["phase"], rec["column"], rec["action"], rec["valid"])
+
+    console.print(table)
+    if len(records) > show_n:
+        console.print(f"[dim](truncated; total {len(records)} columns)[/dim]\n")
+
+
 def run_analyze_json(args):
     """
     CLI entry: analyze-json command handler.
-    Handles:
-      - --use-saved: Load previously analyzed JSON data from DB
-      - --export-path / --format: Export options
-      - --show-summary / --show-chart: Optional displays
     """
-    from rich.console import Console
-    console = Console()
+  
     ripple = None
 
     try:
@@ -221,50 +285,39 @@ def run_analyze_json(args):
     except Exception:
         ripple = None
 
-    # --- Step 0: Use previously saved JSON data if requested ---
-    if getattr(args, "use_saved", False):
-        try:           
-            saved_data = load_cleaned_data(args.file)
-            if saved_data:
-                console.print("[cyan]Using previously saved JSON analysis from DB.[/cyan]")
-                console.print_json(data=saved_data)
-                if ripple:
-                    ripple.stop()
-                return
-        except Exception as e:
-            console.print(f"[yellow]⚠️ Failed to load saved data: {e}[/yellow]")
-
-    # --- Step 1: Load raw JSON and convert to DataFrame ---
+    # Step 0 — Load JSON
+    from indexly.analyze_json import load_json_as_dataframe
     data, df = load_json_as_dataframe(args.file)
     if df is None:
         if ripple:
             ripple.stop()
         return
 
-    # --- Step 2: Normalize datetimes ---
+    _print_dataset_overview(df, args.file)
+
+    # Step 1 — Normalize datetime columns
+    from indexly.datetime_utils import normalize_datetime_columns
+
     dt_summary = {}
+    _suppress_datetime_warnings()
     if normalize_datetime_columns is not None:
         try:
             df, dt_summary = normalize_datetime_columns(df, source_type="json")
-            console.print(f"[blue]ℹ️ Datetime normalization summary:[/blue] {dt_summary}")
+            _print_datetime_summary(dt_summary)
         except Exception as e:
             console.print(f"[yellow]⚠️ Datetime normalization failed: {e}[/yellow]")
     else:
         console.print(f"[yellow]⚠️ Datetime normalizer not available.[/yellow]")
 
-    # --- Step 3: Perform analysis ---
+    # Step 2 — Analysis
+    from indexly.analyze_json import analyze_json_dataframe
     df_stats, pretty_out, meta = analyze_json_dataframe(df)
 
     if ripple:
         ripple.stop()
 
-    # --- Step 4: Display results ---
     console.print("\n[bold cyan]📘 JSON Analysis Result[/bold cyan]\n")
     console.print(pretty_out)
-
-    # --- Step 5: Bridge to pipeline export ---
-    # Instead of performing file I/O here, return a structured payload.
-    # Persistence is handled centrally (unless --no-persist is active).
 
     result_payload = {
         "df": df,
@@ -277,18 +330,12 @@ def run_analyze_json(args):
         "export_format": getattr(args, "format", "txt").lower(),
     }
 
-    # --- Step 6: Persistence control (handled globally) ---
-    # No direct file I/O here — the orchestrator handles saving via save_analysis_result()
-    # based on the --no-persist flag.
-    # If --no-persist is set, nothing will be saved; otherwise, results are persisted automatically.
-
-    # --- Step 7: Optional structural summary ---
     if getattr(args, "show_summary", False):
         console.print("\n[bold green]🧩 Structural Summary[/bold green]")
         console.print(f"Rows: {meta['rows']}, Columns: {meta['cols']}")
         console.print(f"Columns: {', '.join(df.columns)}")
 
-    # --- Step 8: Optional chart visualization ---
+    # (Chart visualization section unchanged)
     if getattr(args, "show_chart", False):
         try:
             import matplotlib.pyplot as plt
@@ -297,11 +344,11 @@ def run_analyze_json(args):
                 console.print("[yellow]⚠️ No numeric columns to plot.[/yellow]")
                 return
 
-            dt_col = None
-            for c in df.columns:
-                if pd.api.types.is_datetime64_any_dtype(df[c]) or c.lower().endswith("_iso") or c.lower().endswith("_timestamp"):
-                    dt_col = c
-                    break
+            dt_col = next(
+                (c for c in df.columns if pd.api.types.is_datetime64_any_dtype(df[c])
+                 or c.lower().endswith("_iso") or c.lower().endswith("_timestamp")),
+                None
+            )
 
             if dt_col and pd.api.types.is_datetime64_any_dtype(df[dt_col]):
                 plt.figure(figsize=(10, 6))
@@ -309,16 +356,14 @@ def run_analyze_json(args):
                     plt.plot(df[dt_col], df[col], label=col, marker="o", linewidth=1)
                 plt.legend()
                 plt.title("Time-series view (detected datetime column)")
-                plt.tight_layout()
-                plt.show()
             else:
                 df[numeric_cols].hist(figsize=(10, 6), bins=15)
                 plt.suptitle("Numeric distributions")
-                plt.tight_layout()
-                plt.show()
+
+            plt.tight_layout()
+            plt.show()
         except Exception as e:
             console.print(f"[red]❌ Visualization failed: {e}[/red]")
-    
-    return result_payload
 
+    return result_payload
 

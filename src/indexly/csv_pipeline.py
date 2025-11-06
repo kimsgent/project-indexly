@@ -234,7 +234,7 @@ def visualize_csv(df: pd.DataFrame, df_stats, args):
 def run_csv_pipeline(file_path: Path, args, df: pd.DataFrame = None):
     """
     Full modular CSV pipeline:
-    - Optional reuse from DB
+    - Optionally reuse DataFrame already loaded by the orchestrator
     - Auto-clean / normalization / outlier removal
     - Statistical analysis
     - Visualization
@@ -242,47 +242,25 @@ def run_csv_pipeline(file_path: Path, args, df: pd.DataFrame = None):
     """
 
     console = Console()
-
-    # Initialize outputs to safe defaults
     df_stats = None
     table_output = None
 
-    # --- Step 0: Try loading cleaned CSV from DB ---
-    if getattr(args, "use_cleaned", False):
-        exists, record = load_cleaned_data(file_path)
-        if exists:
-            df = pd.DataFrame(record.get("data_json", {}).get("sample_data", []))
-            df_stats = pd.DataFrame(record.get("data_json", {}).get("summary_statistics", {})).T
-            table_output = record.get("metadata_json", {}).get("table_output", "")
-            console.print(f"[green]♻️ Loaded cleaned CSV from DB: {file_path.name}[/green]")
+    # --- Step 0: If orchestrator provided df, skip reloading ---
+    if df is not None and not df.empty:
+        console.print(f"[green]♻️ Reusing DataFrame for {file_path.name}[/green]")
+    else:
+        # Only load from disk if not already provided
+        df = load_csv(file_path, args)
+        if df is None or df.empty:
+            console.print(f"[red]❌ Failed to load CSV: {file_path}[/red]")
+            return None, None, None
 
-            # Visualization
-            if getattr(args, "timeseries", False) or getattr(args, "plot_timeseries", False):
-                _handle_timeseries_visualization(df, args)
+    raw_df = df.copy()
 
-            # Display summary and sample data
-            if df_stats is not None and not df_stats.empty:
-                console.print("\n📊 [bold cyan]Summary Statistics[/bold cyan]")
-                _print_summary_table(df_stats.to_dict(orient="index"))
-
-            if not df.empty:
-                console.print("\n🧩 [bold cyan]Sample Data Preview[/bold cyan]")
-                _print_sample_table(df)
-
-            return df, df_stats, table_output
-
-    # --- Step 1: Load CSV from disk ---
-    df = load_csv(file_path, args)
-    if df is None or df.empty:
-        console.print(f"[red]❌ Failed to load CSV: {file_path}[/red]")
-        return None, None, None
-
-    raw_df = df.copy()  # Keep original for summary
-
-    # --- Step 2: Clean CSV ---
+    # --- Step 1: Clean CSV ---
     df, summary_records = clean_csv(df, args)
 
-    # --- Step 3: Analyze CSV ---
+    # --- Step 2: Analyze CSV ---
     try:
         df_stats, table_output = analyze_csv_pipeline(df, args)
         if df_stats is None:
@@ -293,17 +271,12 @@ def run_csv_pipeline(file_path: Path, args, df: pd.DataFrame = None):
         console.print(f"[red]❌ Failed to compute statistics: {e}[/red]")
         df_stats, table_output = None, None
 
-    # --- Step 4: Visualization ---
+    # --- Step 3: Visualization ---
     visualize_csv(df, df_stats, args)
 
-    # --- Step 5: DO NOT export here anymore ---
-    # Export is handled by orchestrator to avoid double writes
-
-    # --- Step 6: Cleaning Summary ---
+    # --- Step 4: Cleaning summary ---
     if summary_records:
-        pre_stats = {r["column"]: r for r in summary_records}
         derived_map = {r["column"]: r.get("derived_from", "") for r in summary_records}
-
         try:
             cleaning_summary = _summarize_pipeline_cleaning(
                 df=df, original_df=raw_df, derived_map=derived_map
@@ -313,8 +286,8 @@ def run_csv_pipeline(file_path: Path, args, df: pd.DataFrame = None):
         except Exception as e:
             console.print(f"[red]⚠️ Failed to render cleaning summary: {e}[/red]")
 
+    # --- Step 5: Return results (no export here) ---
     return df, df_stats, table_output
-
 
 # --------------------------------------------------------
 # 🔧 Helper printing utilities
