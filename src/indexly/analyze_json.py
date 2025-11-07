@@ -296,7 +296,6 @@ def run_analyze_json(args):
     _print_dataset_overview(df, args.file)
 
     # Step 1 — Normalize datetime columns
-    from indexly.datetime_utils import normalize_datetime_columns
 
     dt_summary = {}
     _suppress_datetime_warnings()

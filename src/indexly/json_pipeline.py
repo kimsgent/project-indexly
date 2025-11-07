@@ -42,7 +42,6 @@ def run_json_pipeline(file_path: Path, args, df: pd.DataFrame | None = None, ver
         return None, None, None
 
     # --- Step 2: Normalize datetime columns ---
-    # --- Step 2: Normalize datetime columns ---
     dt_summary = {}
     if callable(normalize_datetime_columns):
         try:

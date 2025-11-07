@@ -24,10 +24,19 @@ console = Console()
 def validate_file_content(file_path: Path, file_type: str) -> bool:
     """
     Validate that a file's content matches its expected type.
-    Supports CSV, JSON (.json/.json.gz), SQLite (.db/.sqlite),
-    and YAML (.yaml/.yml) files.
+    Supports CSV, JSON (.json/.json.gz), YAML (.yaml/.yml),
+    SQLite (.db/.sqlite), and XML (.xml) files.
     Returns True if content looks valid, False otherwise.
     """
+    import json
+    import gzip
+    import sqlite3
+    import yaml
+    import pandas as pd
+    import xml.etree.ElementTree as ET
+    from rich.console import Console
+
+    console = Console()
 
     if not file_path.exists():
         console.print(f"[red]❌ File not found:[/red] {file_path}")
@@ -82,8 +91,19 @@ def validate_file_content(file_path: Path, file_type: str) -> bool:
             console.print(f"[red]❌ Not a valid SQLite database:[/red] {e}")
             return False
 
-    console.print(f"[yellow]⚠️ Unknown or unsupported file type: {file_type}[/yellow]")
-    return False
+    # --- XML (.xml) ---
+    if file_type == "xml" or file_path.suffix.lower() == ".xml":
+        try:
+            import xml.etree.ElementTree as ET
+            tree = ET.parse(file_path)
+            root = tree.getroot()
+            if not list(root):
+                console.print(f"[red]❌ XML file contains no child elements.[/red]")
+                return False
+            return True
+        except Exception as e:
+            console.print(f"[red]❌ Invalid XML structure:[/red] {e}")
+            return False
 
 
 # ------------------------------------------------------

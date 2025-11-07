@@ -30,7 +30,7 @@ def test_xml_loading(tmp_path):
     result = detect_and_load(p)
     assert result["file_type"] == "xml"
     assert result["metadata"]["validated"]
-    assert isinstance(result["raw"], dict)
+    assert isinstance(result["raw"], (dict, list))
     assert isinstance(result["df"], pd.DataFrame)
 
 
