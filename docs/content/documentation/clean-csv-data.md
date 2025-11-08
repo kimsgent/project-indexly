@@ -100,11 +100,11 @@ indexly analyze-csv mixed _dates.csv
 
 ### Example Output
 
-```
+```bash
 CSV Analysis ⚙️ Running robust cleaning pipeline using MEAN fill method...
 
-⚠️ Skipped 'Start _Date' — less than 60% valid dates (20.0%)
-⚠️ Skipped 'End _Timestamp' — less than 60% valid dates (20.0%)
+⚠️ Skipped `Start_Date` — less than 60% valid dates (20.0%)
+⚠️ Skipped `End_Timestamp` — less than 60% valid dates (20.0%)
 ✅ Cleaning complete: 5 rows remain (0 duplicates removed)
 
                        🧼 Cleaning Summary
@@ -119,6 +119,7 @@ CSV Analysis ⚙️ Running robust cleaning pipeline using MEAN fill method...
 
 💾 Cleaned data saved for future reuse
 ⚠️ No numeric or datetime-derived columns found.
+
 ```
 
 ---
@@ -132,7 +133,7 @@ The pipeline works in three primary stages:
 Infers likely column types using heuristics and pandas’ dtype inference.
 
 ```python
-df =  _infer _types(df)
+df =  _infer_types(df)
 ```
 
  *Converts numeric strings to floats/ints where possible
@@ -145,10 +146,10 @@ df =  _infer _types(df)
 Automatically parses mixed date formats:
 
 ```python
-df, date _summaries =  _auto _parse _dates(
+df, date_summaries = _auto_parse_dates(
     df,
-    date _formats=date _formats,
-    min _valid _ratio=0.3
+    date_formats=date_formats,
+    min _valid_ratio=0.3
 )
 ```
 
@@ -170,8 +171,8 @@ Fills missing numeric/categorical data:
 | Strategy   | Description                            | Example         |
 | ---------- | -------------------------------------- | --------------- |
 |  **mean**  | replaces NaNs with column mean         | height = 172.4  |
-|   **median**| replaces NaNs with column median       | salary = 52,000 |
-|   **mode**  | replaces NaNs with most frequent value | country = "DE"  |
+|  **median**| replaces NaNs with column median       | salary = 52,000 |
+|  **mode**  | replaces NaNs with most frequent value | country = "DE"  |
 
 CLI control:
 
@@ -218,12 +219,12 @@ This avoids reprocessing the same dataset repeatedly.
 
 ## Behind the Scenes ([Developer Notes](developer.md))
 
-### ` _handle _datetime _columns()`
+### `_handle_datetime_columns()`
 
 Parses dates with flexible formats and skips those below validity threshold.
 
 ```python
-def  _handle _datetime _columns(df, date _formats, min _valid _ratio=0.3):
+def  _handle_datetime_columns(df, date _formats, min _valid _ratio=0.3):
     for col in df.columns:
         parsed = pd.to _datetime(df [col], format=fmt, errors="coerce")
         valid _ratio = parsed.notna().mean()
@@ -236,26 +237,26 @@ def  _handle _datetime _columns(df, date _formats, min _valid _ratio=0.3):
 
 ---
 
-### ` _summarize _cleaning _results()`
+### `_summarize_cleaning_results()`
 
 Builds structured summary tables with cleaning actions and statistics.
 
 ```python
-def  _summarize _cleaning _results(df, summary _records):
+def  _summarize_cleaning_results(df, summary _records):
     table = Table(title="🧼 Cleaning Summary")
-    for col, dtype, action, nan _count, strategy in summary _records:
-        table.add _row(col, dtype, action, str(nan _count), strategy)
+    for col, dtype, action, nan_count, strategy in summary_records:
+        table.add _row(col, dtype, action, str(nan_count), strategy)
     console.print(table)
 ```
 
 ---
 
-### ` _infer _types()`
+### `_infer_types()`
 
 Lightweight dtype inference helper for early normalization.
 
 ```python
-def  _infer _types(df):
+def  _infer_types(df):
     for col in df.columns:
         try:
             df [col] = pd.to _numeric(df [col])
@@ -266,7 +267,7 @@ def  _infer _types(df):
 
 ---
 
-### `auto _clean _csv()`
+### `auto_clean_csv()`
 
 Top-level orchestrator coordinating the entire cleaning workflow.
 
