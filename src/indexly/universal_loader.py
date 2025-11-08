@@ -17,6 +17,7 @@ import gzip
 import importlib
 import json
 import sqlite3
+import re
 
 import pandas as pd
 from rich.console import Console
@@ -53,14 +54,10 @@ def _safe_read_text(path: str | Path) -> Optional[str]:
 
 
 def _normalize_raw_to_df(raw: Any) -> Optional[pd.DataFrame]:
-    """
-    Try to convert a raw dict/list into a pandas DataFrame (via json_normalize) when appropriate.
-    """
     try:
         if isinstance(raw, list):
             return pd.json_normalize(raw)
         if isinstance(raw, dict):
-            # if single-key dict containing list, normalize that
             if len(raw) == 1 and isinstance(next(iter(raw.values())), list):
                 return pd.json_normalize(next(iter(raw.values())))
             return pd.json_normalize(raw)
@@ -69,31 +66,40 @@ def _normalize_raw_to_df(raw: Any) -> Optional[pd.DataFrame]:
         return None
 
 
+# ---------------------- XML SANITATION -----------------------------
+def _sanitize_xml(text: str) -> str:
+    """
+    Remove any non-XML leading text, BOMs, comments, and ensure it starts with '<'.
+    """
+    if not text:
+        return text
+    # remove BOM
+    text = text.lstrip('\ufeff')
+    # remove everything before first '<'
+    match = re.search(r"<", text)
+    if match:
+        text = text[match.start():]
+    # optional: remove XML comments <!-- ... -->
+    text = re.sub(r"<!--.*?-->", "", text, flags=re.DOTALL)
+    return text.strip()
+
+
 # ---------------------------------------------------------------------
 # Loaders (each loader returns (raw, df) where df may be None)
 # ---------------------------------------------------------------------
 
-# CSV loader: reuse existing CSV loader if available (keeps existing behavior)
 def _load_csv(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
-    """
-    Reuse existing csv loader if present, otherwise fallback to simple pandas read_csv.
-    Returns (raw, df) where raw is None for CSV (tabular).
-    """
     try:
-        from indexly.csv_pipeline import load_csv as csv_loader  # expected to be present
-        # some load_csv implementations return df or (df, stats, table)
+        from indexly.csv_pipeline import load_csv as csv_loader
         res = csv_loader(path)
         if isinstance(res, tuple):
-            # prefer DataFrame if present in tuple
             for item in res:
                 if isinstance(item, pd.DataFrame):
                     return None, item
-            # fallback: first element that is df-like
             return None, None
         if isinstance(res, pd.DataFrame):
             return None, res
     except Exception:
-        # fallback: pandas read_csv
         try:
             df = pd.read_csv(path)
             return None, df
@@ -102,24 +108,16 @@ def _load_csv(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
     return None, None
 
 
-# JSON loader: reuse existing JSON loader if available
 def _load_json(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
-    """
-    Use indexly.analyze_json.load_json_as_dataframe if available (returns (raw, df)).
-    Otherwise read JSON and attempt to normalize.
-    """
     try:
-        from indexly.analyze_json import load_json_as_dataframe  # type: ignore
+        from indexly.analyze_json import load_json_as_dataframe
         res = load_json_as_dataframe(str(path))
-        # load_json_as_dataframe may return (raw, df) or df
         if isinstance(res, tuple) and len(res) == 2:
             return res
         if isinstance(res, pd.DataFrame):
             return None, res
     except Exception:
         pass
-
-    # fallback: raw load
     try:
         text = _safe_read_text(path)
         if text is None:
@@ -131,12 +129,7 @@ def _load_json(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
         return None, None
 
 
-# YAML loader (internal)
 def _load_yaml(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
-    """
-    Parse YAML into Python objects and try to flatten to DataFrame.
-    Returns (raw, df) or (raw, None).
-    """
     if yaml is None:
         raise ImportError("PyYAML is not installed. Run: pip install pyyaml")
     try:
@@ -149,40 +142,55 @@ def _load_yaml(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
     except Exception:
         return None, None
 
-
-# XML loader (internal)
 def _load_xml(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
-    """
-    Parse XML using xmltodict (if available) into Python dict and attempt normalization.
-    Returns (raw, df) or (raw, None).
-    """
     if xmltodict is None:
         raise ImportError("xmltodict is not installed. Run: pip install xmltodict")
+
     try:
         text = _safe_read_text(path)
         if text is None:
             return None, None
+        text = _sanitize_xml(text)
         raw = xmltodict.parse(text)
-        # xmltodict.parse returns an OrderedDict. Normalize where sensible.
-        df = _normalize_raw_to_df(raw)
-        return raw, df
+
+        # Flatten recursively
+        def _flatten(obj):
+            if isinstance(obj, dict):
+                return {k: _flatten(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [_flatten(x) for x in obj]
+            else:
+                return obj
+
+        safe_preview = _flatten(raw)
+
+        # Recursively find first list for DataFrame
+        def _find_first_list(d):
+            if isinstance(d, list):
+                return d
+            elif isinstance(d, dict):
+                for v in d.values():
+                    result = _find_first_list(v)
+                    if result is not None:
+                        return result
+            return None
+
+        first_list = _find_first_list(safe_preview)
+        df_preview = pd.json_normalize(first_list) if first_list else pd.DataFrame()
+
+        return raw, df_preview
     except Exception:
         return None, None
 
 
-# Excel loader (internal)
+
 def _load_excel(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
-    """
-    Load the first sheet or all (returns DataFrame). raw is None.
-    """
     try:
         df = pd.read_excel(path, sheet_name=0)
         return None, df
     except Exception:
-        # Try to load all sheets and return as list-of-dicts normalized
         try:
-            all_sheets = pd.read_excel(path, sheet_name=None)  # dict of dfs
-            # convert to records (list) if possible for normalization
+            all_sheets = pd.read_excel(path, sheet_name=None)
             raw = {k: df.to_dict(orient="records") for k, df in all_sheets.items()}
             df_first = next(iter(all_sheets.values())) if all_sheets else None
             return raw, df_first
@@ -190,7 +198,6 @@ def _load_excel(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
             return None, None
 
 
-# Parquet loader (internal)
 def _load_parquet(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
     try:
         df = pd.read_parquet(path)
@@ -199,12 +206,7 @@ def _load_parquet(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
         return None, None
 
 
-# SQLite loader (internal)
 def _load_sqlite(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
-    """
-    Attempt to open SQLite and read first user table into a DataFrame.
-    Returns (raw_info, df) where raw_info contains table names / DB metadata.
-    """
     try:
         conn = sqlite3.connect(str(path))
         cur = conn.cursor()
@@ -212,7 +214,6 @@ def _load_sqlite(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
         tables = [row[0] for row in cur.fetchall()]
         raw = {"tables": tables}
         if tables:
-            # read first table
             df = pd.read_sql_query(f"SELECT * FROM {tables[0]} LIMIT 10000;", conn)
         else:
             df = None
@@ -237,13 +238,12 @@ LOADER_REGISTRY: Dict[str, Callable[[Path], Tuple[Any, Optional[pd.DataFrame]]]]
 
 
 # ---------------------------------------------------------------------
-# File type detection logic (keeps your previous logic)
+# File type detection logic
 # ---------------------------------------------------------------------
 def detect_file_type(path: Path) -> str:
     name = path.name.lower()
     ext = path.suffix.lower()
-
-    # Compressed .gz variants
+    # compressed variants
     if name.endswith(".csv.gz") or name.endswith(".tsv.gz"):
         return "csv"
     if name.endswith(".json.gz"):
@@ -258,8 +258,7 @@ def detect_file_type(path: Path) -> str:
         return "yaml"
     if name.endswith(".xml.gz"):
         return "xml"
-
-    # Regular uncompressed
+    # regular
     if ext in {".csv", ".tsv"}:
         return "csv"
     if ext == ".json":
@@ -268,33 +267,33 @@ def detect_file_type(path: Path) -> str:
         return "sqlite"
     if ext in {".xlsx", ".xls"}:
         return "excel"
-    if ext == ".parquet":
+    if ext in {".parquet"}:
         return "parquet"
     if ext in {".yaml", ".yml"}:
         return "yaml"
-    if ext == ".xml":
+    if ext in {".xml"}:
         return "xml"
-
     return "unknown"
 
 
 # ---------------------------------------------------------------------
-# Main detect_and_load (pure loader)
+# Main detect_and_load
 # ---------------------------------------------------------------------
 from tqdm import tqdm
 import time
 
+# ---------------------------------------------------------------------
+# Main detect_and_load (backward-compatible)
+# ---------------------------------------------------------------------
+from tqdm import tqdm
+import time
 
 def detect_and_load(file_path: str | Path, args=None) -> Dict[str, Any]:
     """
-    Detect file type and load using an internal loader. Returns standardized dict:
-    {
-        "file_type": str,
-        "df": pd.DataFrame | None,
-        "raw": Any | None,
-        "metadata": {rows, cols, validated, loader_used, loaded_at, source_path},
-        "loader_spec": str | None
-    }
+    Universal loader: returns standardized dict for orchestrator.
+    - df is used for all files except XML (which gets df_preview)
+    - raw contains full data (dict/list for JSON, YAML, XML, etc.)
+    - metadata contains general info about the load
     """
     args = args or {}
     path = Path(file_path)
@@ -303,7 +302,7 @@ def detect_and_load(file_path: str | Path, args=None) -> Dict[str, Any]:
 
     file_type = detect_file_type(path)
     loader_fn = LOADER_REGISTRY.get(file_type)
-    raw = df = None
+    raw = df = df_preview = None
     loader_spec = None
 
     metadata = {
@@ -315,76 +314,90 @@ def detect_and_load(file_path: str | Path, args=None) -> Dict[str, Any]:
         "loaded_at": None,
     }
 
-    # Try loader fn from registry
     if loader_fn:
         loader_spec = f"loader:{loader_fn.__name__}"
         try:
             desc = f"Loading {file_type.upper()} via loader"
             with tqdm(total=1, desc=desc, unit="file") as pbar:
-                raw, df = loader_fn(path)
-                # tiny sleep so tqdm shows at least briefly
+                raw, loaded_df = loader_fn(path)
                 time.sleep(0.05)
                 pbar.update(1)
             metadata["loader_used"] = loader_spec
+
+            # XML uses df_preview only, other files get df
+            if file_type == "xml":
+                df_preview = loaded_df
+                df = None
+            else:
+                df = loaded_df
         except Exception as e:
             console.print(f"[yellow]⚠️ Registry loader for '{file_type}' failed: {e}[/yellow]")
-            raw = df = None
+            raw = df = df_preview = None
     else:
-        # No loader registered
         console.print(f"[yellow]⚠️ No loader registered for file type: {file_type}[/yellow]")
 
-    # Final metadata
+    # Set metadata safely
     try:
-        metadata["rows"] = int(df.shape[0]) if isinstance(df, pd.DataFrame) else (len(raw) if isinstance(raw, list) else (1 if isinstance(raw, dict) else 0))
+        target_df = df_preview if file_type == "xml" else df
+        metadata["rows"] = int(target_df.shape[0]) if isinstance(target_df, pd.DataFrame) else (
+            len(raw) if isinstance(raw, list) else (1 if isinstance(raw, dict) else 0)
+        )
     except Exception:
         metadata["rows"] = 0
     try:
-        metadata["cols"] = int(df.shape[1]) if isinstance(df, pd.DataFrame) else (len(raw[0]) if isinstance(raw, list) and raw and isinstance(raw[0], dict) else (len(raw) if isinstance(raw, dict) else 0))
+        target_df = df_preview if file_type == "xml" else df
+        metadata["cols"] = int(target_df.shape[1]) if isinstance(target_df, pd.DataFrame) else (
+            len(raw[0]) if isinstance(raw, list) and raw and isinstance(raw[0], dict) else (
+                len(raw) if isinstance(raw, dict) else 0
+            )
+        )
     except Exception:
         metadata["cols"] = 0
-    metadata["validated"] = df is not None and not df.empty
+
+    metadata["validated"] = target_df is not None and not target_df.empty
     metadata["loaded_at"] = datetime.utcnow().isoformat() + "Z"
 
     return {
         "file_type": file_type,
-        "df": df,
+        "df": df,  # preserved for all except XML
+        "df_preview": df_preview,  # only used for XML
         "raw": raw,
         "metadata": metadata,
         "loader_spec": loader_spec,
     }
 
 
+
 # ---------------------------------------------------------------------
-# Backwards-compatible loader adapter functions (optional API)
-# Each returns the same (raw, df) tuple, useful if other modules import them.
+# Backwards-compatible loader adapters
 # ---------------------------------------------------------------------
 def load_yaml(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
     return _load_yaml(path)
 
-
-def load_xml(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
-    return _load_xml(path)
+def load_xml(path: Path) -> dict:
+    raw, df_preview = _load_xml(path)
+    return {
+        "file_type": "xml",
+        "raw": raw,
+        "df": df_preview,
+        "metadata": {
+            "validated": df_preview is not None,
+            "loaded_at": datetime.utcnow().isoformat() + "Z",
+        },
+    }
 
 
 def load_excel(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
     return _load_excel(path)
 
-
 def load_parquet(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
     return _load_parquet(path)
-
 
 def load_sqlite(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
     return _load_sqlite(path)
 
-
 def load_csv(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
     return _load_csv(path)
 
-
 def load_json(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
     return _load_json(path)
-
-
-
-

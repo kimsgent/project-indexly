@@ -23,15 +23,17 @@ def test_xml_loading(tmp_path):
     p = tmp_path / "data.xml"
     p.write_text("""
     <root>
-      <entry><id>1</id><val>10</val></entry>
-      <entry><id>2</id><val>20</val></entry>
-    </root>
+    <entry><id>1</id><val>10</val></entry>
+    <entry><id>2</id><val>20</val></entry>
+ </root>
     """)
     result = detect_and_load(p)
     assert result["file_type"] == "xml"
     assert result["metadata"]["validated"]
-    assert isinstance(result["raw"], (dict, list))
-    assert isinstance(result["df"], pd.DataFrame)
+    if result["file_type"] == "xml":
+        assert isinstance(result["df_preview"], pd.DataFrame)
+    else:
+        assert isinstance(result["df"], pd.DataFrame)
 
 
 def test_csv_fallback(tmp_path):

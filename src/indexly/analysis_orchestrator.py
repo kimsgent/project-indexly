@@ -1,8 +1,10 @@
+# src/indexly/analysis_orchestrator.py
 import json
 import pandas as pd
 from datetime import datetime
 from pathlib import Path
 from rich.console import Console
+from .export_utils import safe_export
 from .analysis_result import AnalysisResult
 from .csv_pipeline import run_csv_pipeline
 from .json_pipeline import run_json_pipeline
@@ -21,56 +23,47 @@ console = Console()
 
 def analyze_file(args) -> AnalysisResult:
     """
-    Unified orchestrator for analyzing CSV, JSON, or DB files.
-    Delegates to format-specific pipelines and avoids duplicate visualization calls.
-    Fully backward-compatible with legacy analyze-csv / analyze-json calls.
+    Central orchestrator for analyzing files (CSV, JSON, XML, YAML, etc.):
+    - Supports legacy CSV/JSON pipelines
+    - Supports XML pipeline with automatic invoice detection (XRechnung, CII)
+    - Handles persistence, export, and summary display
     """
     from rich.table import Table
-    from pathlib import Path
-    import pandas as pd
-    from datetime import datetime
+    from indexly.xml_pipeline import run_xml_pipeline
 
     file_path = Path(args.file).resolve()
-    ext = file_path.suffix.lower()
     file_type = detect_file_type(file_path)
 
-    # -----------------------------
-    # --- LEGACY SHORT-CIRCUIT ---
-    # -----------------------------
-    df = df_stats = table_output = None
+    df = df_stats = table_output = metadata = summary = None
     legacy_mode = False
+    no_persist_flag = getattr(args, "no_persist", False)
 
+    # --- Legacy pipelines
     if getattr(args, "command", "") == "analyze-csv":
         df, df_stats, table_output = run_csv_pipeline(file_path, args)
         file_type = "csv"
         legacy_mode = True
-
     elif getattr(args, "command", "") == "analyze-json":
         df, df_stats, table_output = run_json_pipeline(file_path, args)
         file_type = "json"
         legacy_mode = True
 
-    # -----------------------------
-    # --- LOAD SAVED DATA IF REQUESTED ---
-    # -----------------------------
+    # --- Use saved/cleaned data
     use_saved = getattr(args, "use_saved", False) or getattr(args, "use_cleaned", False)
     if use_saved:
         try:
             exists, record = load_cleaned_data(file_path)
-            if exists:
+            if exists and record:
                 console.print(f"[cyan]♻️ Using previously saved data for {file_path.name}[/cyan]")
                 data_json = record.get("data_json", {})
                 metadata_json = record.get("metadata_json", {})
                 df = pd.DataFrame(data_json.get("sample_data", []))
-                df_stats = pd.DataFrame(data_json.get("summary_statistics", {})).T
+                df_stats = pd.DataFrame(data_json.get("summary_statistics", {})).T if data_json.get("summary_statistics") else None
                 table_output = metadata_json.get("table_output", None)
                 file_type = record.get("file_type", file_type)
 
-                # Display saved summary
-                console.print(f"\n📦 [bold cyan]Saved Dataset Overview for {file_path.name}[/bold cyan]")
-                console.print(f"• File Type: {file_type.upper()} | Cleaned: {record.get('cleaned', True)} | Persisted: ✅")
+                # Display saved overview
                 if df_stats is not None and not df_stats.empty:
-                    console.print("\n📊 [bold cyan]Summary Statistics[/bold cyan]")
                     table = Table(show_header=True, header_style="bold magenta")
                     table.add_column("Statistic")
                     for col in df_stats.columns:
@@ -96,189 +89,171 @@ def analyze_file(args) -> AnalysisResult:
         except Exception as e:
             console.print(f"[yellow]⚠️ Failed to load saved data: {e}[/yellow]")
 
-    # -----------------------------
-    # --- VALIDATE FILE BEFORE ANALYSIS ---
-    # -----------------------------
+    # --- Validate file
     if not validate_file_content(file_path, file_type):
         console.print("[red]❌ File validation failed — analysis aborted.[/red]")
         return None
 
-    # -----------------------------
-    # --- UNIVERSAL LOADER (SKIP FOR LEGACY) ---
-    # -----------------------------
-    no_persist_flag = getattr(args, "no_persist", False)
+    # --- Universal loader
     if not legacy_mode:
-        use_universal = getattr(args, "command", "") == "analyze-file" or getattr(args, "global_mode", False)
-        if use_universal:
-            file_path_str = str(file_path)
-            result = detect_and_load(file_path_str, args)
-            if result is None:
+        try:
+            load_result = detect_and_load(str(file_path), args)
+            if not load_result:
                 console.print(f"[red]❌ Universal loader failed for {file_path.name}[/red]")
                 return None
+        except Exception as e:
+            console.print(f"[red]❌ Universal loader error for {file_path.name}: {e}[/red]")
+            return None
 
-            df = result.get("df")
-            metadata = result.get("metadata", {})
-            file_type = result.get("file_type", "unknown")
+        file_type = load_result.get("file_type", file_type)
+        raw = load_result.get("raw")
+        metadata = load_result.get("metadata", {})
+        df_preview = load_result.get("df_preview") if file_type == "xml" else None
+        df = load_result.get("df") if file_type != "xml" else None
 
-            if df is None and file_type not in {"sqlite", "db"}:
-                console.print(f"[red]❌ Universal loader returned no DataFrame for {file_path.name}[/red]")
-                return None
-
-
-            # -----------------------------
-            # --- Route to Specialized Pipelines (no double-load)
-            # -----------------------------
+        try:
+            # --- Pipeline dispatch
             if file_type == "csv":
-                # Avoid reloading if detect_and_load() already returned df
-                if df is not None and not df.empty:
-                    df, df_stats, table_output = run_csv_pipeline(file_path, args, df=df)
-                else:
-                    df, df_stats, table_output = run_csv_pipeline(file_path, args)
-
+                df, df_stats, table_output = run_csv_pipeline(file_path, args, df=df)
             elif file_type == "json":
-                if df is not None and not df.empty:
-                    df, df_stats, table_output = run_json_pipeline(file_path, args, df=df, verbose=False)
-                else:
-                    df, df_stats, table_output = run_json_pipeline(file_path, args)
-
+                df, df_stats, table_output = run_json_pipeline(file_path, args, df=df, verbose=False)
             elif file_type in {"sqlite", "db"}:
                 df, df_stats, table_output = run_db_pipeline(file_path, args)
             elif file_type in {"yaml", "yml"}:
                 from indexly.yaml_pipeline import run_yaml_pipeline
-                df, df_stats, table_output = run_yaml_pipeline(file_path, args)
+                df, df_stats, table_output = run_yaml_pipeline(df=df, raw=raw)
             elif file_type == "xml":
-                from indexly.xml_pipeline import run_xml_pipeline
-                df, df_stats, table_output = run_xml_pipeline(file_path, args)
+                console.print(f"[cyan]📂 Processing XML file: {file_path.name}[/cyan]")
+                df_preview, summary, metadata = run_xml_pipeline(file_path=file_path, args=args)
+
+                invoice_data = summary.get("db_ready", {}).get("invoice_data", {})
+                invoice_format = summary.get("db_ready", {}).get("invoice_format", "Unknown")
+
+                if getattr(args, "invoice", False):
+                    if getattr(args, "show_summary", False):
+                        console.print(f"\n🧾 [bold cyan]{invoice_format} Invoice Summary[/bold cyan]")
+                        console.print(json.dumps(invoice_data, indent=2, ensure_ascii=False))
+                    if getattr(args, "export_path", None):
+                        export_results(results=invoice_data, export_path=args.export_path,
+                                       export_format=getattr(args, "format", "md"),
+                                       df=None, source_file=file_path)
+                    df = df_preview
+
+                else:
+                    # Standard XML route
+                    df = df_preview
+                    if getattr(args, "show_summary", False):
+                        console.print("\n🌳 [bold cyan]Tree-View Summary[/bold cyan]")
+                        console.print(summary.get("tree", "[yellow]No tree view available.[/yellow]"))
+                        console.print("\n🧾 [bold cyan]Flattened Preview[/bold cyan]")
+                        console.print(df.head(10).to_markdown(index=False) if not df.empty else "[yellow]No preview available.[/yellow]")
+
+                    # Persist XML analysis
+                    if df_preview is not None and not no_persist_flag:
+                        try:
+                            save_analysis_result(
+                                file_path=str(file_path),
+                                file_type="xml",
+                                summary=summary.get("md", ""),
+                                sample_data=df_preview.head(3).to_dict(orient="records"),
+                                metadata=metadata,
+                                row_count=summary.get("metadata", {}).get("rows", len(df_preview)),
+                                col_count=summary.get("metadata", {}).get("cols", len(df_preview.columns)),
+                            )
+                            console.print(f"[green]💾 XML analysis persisted for {file_path.name}[/green]")
+                        except Exception as e:
+                            console.print(f"[yellow]⚠️ Failed to persist XML analysis: {e}[/yellow]")
+
             elif file_type == "excel":
                 from indexly.excel_pipeline import run_excel_pipeline
-                df, df_stats, table_output = run_excel_pipeline(file_path, args)
+                df, df_stats, table_output = run_excel_pipeline(df=df)
             elif file_type == "parquet":
                 from indexly.parquet_pipeline import run_parquet_pipeline
-                df, df_stats, table_output = run_parquet_pipeline(file_path, args)
+                df, df_stats, table_output = run_parquet_pipeline(df=df)
             else:
                 if df is not None:
-                    table_output = {
-                        "pretty_text": f"{file_type.upper()} file loaded with shape {df.shape}",
-                        "meta": metadata,
-                    }
                     try:
                         df_stats = df.describe(include="all", datetime_is_numeric=True)
                     except Exception:
                         df_stats = None
+                    table_output = {"pretty_text": f"{file_type.upper()} file loaded with shape {df.shape}", "meta": metadata}
                 else:
                     console.print(f"[yellow]⚠️ Unsupported file type for analysis: {file_type}[/yellow]")
                     return None
 
-    # -----------------------------
-    # --- PERSISTENCE & EXPORT ---
-    # -----------------------------
-    if df is not None:
-        df._no_persist = no_persist_flag
-        df._from_orchestrator = True
-
-    if hasattr(df, "_persist_ready") and not getattr(df, "_persisted", False):
-        if not no_persist_flag:
-            try:
-                save_analysis_result(file_path=file_path, file_type=file_type, **df._persist_ready)
-                df._persisted = True
-            except Exception as e:
-                console.print(f"[red]❌ Deferred persistence failed: {e}[/red]")
-
-    cleaned_flag = df_stats is not None and not df_stats.empty
-    result = AnalysisResult(
-        file_path=str(file_path),
-        file_type=file_type,
-        df=df,
-        summary=df_stats,
-        metadata={"table_output": table_output} if table_output else {},
-        cleaned=cleaned_flag,
-    )
-
-    # Only save if not already persisted
-    if not no_persist_flag and df is not None and not df.empty and not getattr(df, "_persisted", False):
-        try:
-            save_analysis_result(
-                file_path=str(file_path),
-                file_type=file_type,
-                summary=df_stats.to_dict() if hasattr(df_stats, "to_dict") else {},
-                sample_data=df.head(3).to_dict(orient="records"),
-                metadata={"table_output": table_output} if table_output else {},
-                row_count=len(df),
-                col_count=len(df.columns),
-            )
-            df._persisted = True
-            result.persisted = True
         except Exception as e:
-            console.print(f"[yellow]⚠️ Failed to persist analysis result: {e}[/yellow]")
+            console.print(f"[red]❌ Pipeline error for {file_path.name} ({file_type}): {e}[/red]")
+            return None
 
-    # -----------------------------
-    # --- EXPORT RESULTS ---
-    # -----------------------------
+    # --- Export if requested
+
     export_path = getattr(args, "export_path", None)
     export_fmt = getattr(args, "format", "txt")
     compress_export = getattr(args, "compress_export", False)
 
-    if export_path and df is not None:
-        if file_type == "json":
-            import gzip, json
-            payload = {
-                "metadata": {
-                    "analyzed_at": datetime.utcnow().isoformat() + "Z",
-                    "source_file": str(file_path),
-                    "export_format": "json",
-                    "rows": len(df),
-                    "columns": len(df.columns),
-                },
-                "summary_statistics": df_stats.to_dict(orient="index") if df_stats is not None else {},
-                "sample_data": df.head(10).to_dict(orient="records"),
-                "table_output": table_output,
-            }
-            compressed_path = export_path if export_path.endswith(".gz") else export_path + ".gz"
-            with gzip.open(compressed_path, "wt", encoding="utf-8") as fh:
-                json.dump(_json_safe(payload, preserve_numeric=True), fh, indent=2, ensure_ascii=False)
-            console.print(f"[green]✅ Exported compressed JSON to: {compressed_path}[/green]")
-        else:
-            export_results(
-                results=table_output,
-                export_path=export_path,
-                export_format=export_fmt,
-                df=df,
-                source_file=file_path,
-                compress=compress_export,
-            )
-            console.print(f"✅ Exported to: {export_path}")
+    # --- XML Invoice Export (beautiful Markdown)
+    export_path = getattr(args, "invoice_export", None)
 
-    # -----------------------------
-    # --- SHOW SUMMARY PREVIEW ---
-    # -----------------------------
+    if export_path and getattr(args, "invoice", False) and file_path.suffix.lower() == ".xml":
+        # Run the XML-specific pipeline
+        df_preview, summary, metadata = run_xml_pipeline(file_path=file_path, args=args)
+
+        if summary.get("md"):
+            safe_export(
+                results=summary["md"],
+                export_path=export_path,
+                export_format="md",
+                compress=compress_export
+            )
+            console.print(f"✅ Invoice exported to: {export_path}")
+        else:
+            console.print(f"[yellow]⚠️ No invoice markdown available to export for {file_path.name}[/yellow]")
+
+    # --- Regular Export (CSV, JSON, general analysis)
+    elif export_path and (df is not None or df_preview is not None):
+        safe_results = table_output
+        if isinstance(safe_results, (dict, list)):
+            safe_results = json.dumps(safe_results, indent=2, ensure_ascii=False)
+        
+        export_results(
+            results=safe_results,
+            export_path=export_path,
+            export_format=export_fmt,
+            df=df or df_preview,
+            source_file=file_path,
+            compress=compress_export,
+        )
+        console.print(f"✅ Exported to: {export_path}")
+
+    # --- Dataset Summary Preview
     if getattr(args, "show_summary", False):
         console.print("\n📊 [bold cyan]Dataset Summary Preview[/bold cyan]")
-        if isinstance(df_stats, pd.DataFrame) and not df_stats.empty:
+        if file_type == "xml" and summary and not getattr(args, "invoice", False):
+            console.print(summary.get("md", "[yellow]No summary available.[/yellow]"))
+        elif isinstance(df, pd.DataFrame) and not df.empty:
             table = Table(title="Dataset Summary", show_header=True, header_style="bold magenta")
-            for col in df_stats.columns:
+            for col in df.columns:
                 table.add_column(str(col))
-            for _, row in df_stats.iterrows():
+            for _, row in df.iterrows():
                 table.add_row(*[str(x) for x in row])
             console.print(table)
-        elif isinstance(table_output, str):
-            console.print(table_output)
         else:
             console.print("[yellow]No summary data available.[/yellow]")
-
-    # -----------------------------
-    # --- TIMESERIES VISUALIZATION ---
-    # -----------------------------
-    if getattr(args, "timeseries", False) and df is not None:
-        try:
-            _handle_timeseries_visualization(df, args)
-        except Exception as e:
-            console.print(f"[yellow]⚠️ Visualization skipped due to error: {e}[/yellow]")
-
-    return result
+    
+    cleaned_flag = (df is not None and not df.empty) or (df_preview is not None)
+    return AnalysisResult(
+        file_path=str(file_path),
+        file_type=file_type,
+        df=df if df is not None else df_preview,
+        summary=summary if file_type == "xml" and not getattr(args, "invoice", False) else df_stats,
+        metadata={"table_output": table_output} if table_output else {},
+        cleaned=cleaned_flag,
+        persisted=True if file_type == "xml" else getattr(df, "_persisted", False),
+    )
 
 
 # -------------------------------
-# Legacy helper
+# Legacy wrapper for CLI compatibility
 # -------------------------------
 def run_analyze_csv(args):
     """

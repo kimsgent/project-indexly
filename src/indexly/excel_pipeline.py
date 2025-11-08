@@ -1,6 +1,5 @@
 from __future__ import annotations
-from pathlib import Path
-from typing import Tuple, Dict, Any
+from typing import Tuple, Dict, Any, Optional
 import pandas as pd
 from rich.console import Console
 from datetime import datetime
@@ -10,23 +9,27 @@ from .datetime_utils import normalize_datetime_columns
 console = Console()
 
 
-def run_excel_pipeline(file_path: Path, args) -> Tuple[pd.DataFrame, pd.DataFrame, Dict[str, Any]]:
+# ---------------------------------------------------------------------
+# 📘 Excel Analysis Pipeline (pure version, no loaders)
+# ---------------------------------------------------------------------
+def run_excel_pipeline(
+    df: Optional[pd.DataFrame] = None,
+    args: Optional[dict] = None,
+) -> Tuple[Optional[pd.DataFrame], Optional[pd.DataFrame], Dict[str, Any]]:
     """
-    Entry point for Excel (.xlsx/.xls) analysis.
-    Returns: (df, df_stats, table_output)
+    Pure Excel analysis pipeline.
+    - Expects a DataFrame (provided by universal_loader).
+    - Performs summary, numeric stats, and datetime normalization.
+    - Returns: (df, df_stats, table_output)
     """
-    path = Path(file_path).resolve()
-    console.print(f"📘 Loading Excel file: [bold]{path.name}[/bold]")
 
-    try:
-        df = pd.read_excel(path)
-    except Exception as e:
-        console.print(f"[red]❌ Failed to read Excel file: {e}[/red]")
-        return None, None, None
-
-    if df.empty:
-        console.print(f"[yellow]⚠️ Empty Excel file: {path.name}[/yellow]")
-        return df, None, {"pretty_text": "Empty Excel file", "meta": {"rows": 0, "cols": 0}}
+    # --- Step 0: Validate input ---
+    if df is None or df.empty:
+        console.print("[yellow]⚠️ No data provided to Excel pipeline.[/yellow]")
+        return None, None, {
+            "pretty_text": "No data available for Excel pipeline.",
+            "meta": {"rows": 0, "cols": 0},
+        }
 
     # --- Step 1: Normalize datetime columns ---
     dt_summary = {}
@@ -36,8 +39,8 @@ def run_excel_pipeline(file_path: Path, args) -> Tuple[pd.DataFrame, pd.DataFram
         console.print(f"[yellow]⚠️ Datetime normalization failed: {e}[/yellow]")
 
     # --- Step 2: Analyze numeric columns ---
-    numeric_cols = df.select_dtypes(include="number").columns.tolist()
     df_stats = None
+    numeric_cols = df.select_dtypes(include="number").columns.tolist()
     if numeric_cols:
         stats_list = []
         for col in numeric_cols:
@@ -69,17 +72,11 @@ def run_excel_pipeline(file_path: Path, args) -> Tuple[pd.DataFrame, pd.DataFram
     lines.append("\nNumeric summary:")
     lines.append(str(df_stats) if df_stats is not None else "No numeric columns detected.")
 
-    table_output = {"pretty_text": "\n".join(lines), "meta": meta, "datetime_summary": dt_summary}
+    # --- Step 4: Build structured output ---
+    table_output = {
+        "pretty_text": "\n".join(lines),
+        "meta": meta,
+        "datetime_summary": dt_summary,
+    }
+
     return df, df_stats, table_output
-
-
-# -----------------------------------------------------------------------------
-# 📦 Loader Adapter for Universal Loader
-# -----------------------------------------------------------------------------
-def load_excel(file_path: Path, *_, **__) -> pd.DataFrame:
-    """
-    Adapter for the universal loader registry.
-    Loads Excel file and returns the DataFrame.
-    """
-    df, _, _ = run_excel_pipeline(file_path, args=None)
-    return df
