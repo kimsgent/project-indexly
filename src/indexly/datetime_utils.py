@@ -46,12 +46,12 @@ def normalize_datetime_columns(df, source_type: str = "csv") -> Tuple[object, Di
 
     summary = {}
 
-    # Ensure we operate on a copy to avoid surprising in-place modifications.
+    # Operate on a copy to avoid in-place surprises.
     df_local = df.copy() if df is not None else df
 
     try:
-        if source_type == "csv":
-            # CSV: try auto-parse first (broad heuristics), then handle for derivation.
+        if source_type in {"csv", "excel"}:
+            # CSV & Excel: auto-parse first, then handle derivations
             df_local, auto_summary = _auto_parse_dates(df_local)
             df_local, handle_summary = _handle_datetime_columns(
                 df_local, verbose=False, user_formats=None, derive_level="all", min_valid_ratio=0.6
@@ -59,31 +59,28 @@ def normalize_datetime_columns(df, source_type: str = "csv") -> Tuple[object, Di
             summary = {"auto": auto_summary, "handle": handle_summary}
 
         elif source_type == "json":
-            # JSON: prefer structured handler first (less destructive), but suppress duplicate prints
             df_local, handle_summary = _handle_datetime_columns(
                 df_local, verbose=False, user_formats=None, derive_level="all", min_valid_ratio=0.6
             )
-            # Silent fallback: explicitly disable verbose prints in auto_parse
             df_local, auto_summary = _auto_parse_dates(df_local, verbose=False)
             summary = {"handle": handle_summary, "auto": auto_summary}
 
-
         elif source_type == "sqlite":
-            # SQLite: structured DB exports should be normalized with handle only
             df_local, handle_summary = _handle_datetime_columns(
                 df_local, verbose=False, user_formats=None, derive_level="all", min_valid_ratio=0.6
             )
             summary = {"handle": handle_summary}
 
         elif source_type == "cache":
-            # Cache/search JSON: attempt auto-parse only (timestamps etc.)
             df_local, auto_summary = _auto_parse_dates(df_local)
             summary = {"auto": auto_summary}
 
         else:
             summary = {"warning": f"Unknown source_type={source_type}"}
+
     except Exception as e:
         console.print(f"[yellow]⚠️ Date normalization failed ({e}). Returning original df.[/yellow]")
         summary = {"error": str(e)}
 
     return df_local, summary
+

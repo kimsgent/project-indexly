@@ -446,6 +446,11 @@ def build_parser():
         type=str,
         help="Export e-invoice summary to Markdown file (active only with --invoice)",
     )
+    analyze_file_parser.add_argument(
+        "--treeview",
+        action="store_true",
+        help="Display XML tree view instead of invoice summary"
+    )
 
     # Default function to call
     analyze_file_parser.set_defaults(func=analyze_file)

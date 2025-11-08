@@ -43,6 +43,7 @@ def validate_file_content(file_path: Path, file_type: str) -> bool:
         return False
 
     # --- CSV / TSV style ---
+        # --- CSV (.csv) ---
     if file_type == "csv":
         from indexly.csv_analyzer import detect_delimiter  # local import
         delimiter = detect_delimiter(file_path)
@@ -57,6 +58,18 @@ def validate_file_content(file_path: Path, file_type: str) -> bool:
             return True
         except Exception as e:
             console.print(f"[red]❌ Failed to parse as CSV:[/red] {e}")
+            return False
+
+    # --- Excel (.xlsx, .xls) ---
+    if file_type in {"xlsx", "xls"} or file_path.suffix.lower() in {".xlsx", ".xls"}:
+        try:
+            df = pd.read_excel(file_path, nrows=5, engine="openpyxl")
+            if df.empty or df.shape[1] < 1:
+                console.print(f"[red]❌ Excel file appears empty or invalid.[/red]")
+                return False
+            return True
+        except Exception as e:
+            console.print(f"[red]❌ Invalid Excel file:[/red] {e}")
             return False
 
     # --- JSON (.json or .json.gz) ---
@@ -104,6 +117,7 @@ def validate_file_content(file_path: Path, file_type: str) -> bool:
         except Exception as e:
             console.print(f"[red]❌ Invalid XML structure:[/red] {e}")
             return False
+
 
 
 # ------------------------------------------------------
