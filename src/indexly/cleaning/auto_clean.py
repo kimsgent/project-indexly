@@ -162,21 +162,7 @@ def _handle_datetime_columns(
     """
     Robust datetime handler using cumulative parsing, fallback auto-detection,
     threshold enforcement, and generation of derived features.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-    verbose : bool
-    user_formats : list[str] | None
-    derive_level : str
-        "minimal" or "all" derived columns.
-    min_valid_ratio : float
-        Threshold ratio for accepting a datetime column.
-
-    Returns
-    -------
-    df : pd.DataFrame
-    datetime_summary : list[dict]
+    Extended to include pre-recognized datetime64 columns in the summary.
     """
     import pandas as pd
     from rich.console import Console
@@ -190,10 +176,28 @@ def _handle_datetime_columns(
     # -----------------------
     from typing import Any
 
-    # Call your existing _auto_parse_dates as a robust fallback
     df, auto_summary = _auto_parse_dates(
         df, date_formats=user_formats, min_valid_ratio=min_valid_ratio, verbose=verbose
     )
+
+    # -----------------------
+    # Step 1b: Recognize existing datetime64 columns
+    # -----------------------
+    for col in df.columns:
+        if pd.api.types.is_datetime64_any_dtype(df[col]):
+            # Check if already in auto_summary
+            if not any(rec["column"] == col for rec in auto_summary):
+                rec = {
+                    "column": col,
+                    "dtype": "datetime",
+                    "action": "recognized as existing datetime64",
+                    "n_filled": int(df[col].isna().sum()),
+                    "strategy": "existing",
+                    "valid_ratio": 1.0,
+                }
+                auto_summary.append(rec)
+                if verbose:
+                    console.print(f"[green]ℹ️ Recognized '{col}' as datetime64[/green]")
 
     # -----------------------
     # Step 2: Generate derived datetime features
@@ -205,7 +209,6 @@ def _handle_datetime_columns(
 
     for rec in auto_summary:
         col = rec['column']
-        # Skip preserved or already-derived columns
         if rec['dtype'] != "datetime" or col in existing_derivatives:
             datetime_summary.append(rec)
             continue
@@ -219,7 +222,6 @@ def _handle_datetime_columns(
                 derived_map[col].append(new_col)
 
         try:
-            # Minimal or all derived features
             if derive_level in ("minimal", "all"):
                 _safe_add(f"{col}_year", dt_series.dt.year.astype("Int64"))
                 _safe_add(f"{col}_month", dt_series.dt.month.astype("Int64"))
@@ -238,9 +240,7 @@ def _handle_datetime_columns(
         except Exception as e:
             console.print(f"[red]⚠️ Derived creation failed for {col}: {e}[/red]")
 
-        # Append original summary record
         datetime_summary.append(rec)
-        # Append derived columns
         for dcol in derived_map[col]:
             datetime_summary.append({
                 "column": dcol,
@@ -252,6 +252,7 @@ def _handle_datetime_columns(
             })
 
     return df, datetime_summary
+
 
 
 # --- Public Entry Points ---
@@ -397,12 +398,14 @@ def auto_clean_csv(
     except Exception as e:
         console.print(f"[red]⚠️ Datetime handling failed: {e}[/red]")
 
+
     # -------------------------
     # Step 3: Optional persistence
     # -------------------------
-    if persist:
-        # Implement actual persistence here if needed
-        # e.g., save_cleaned_data(df, ...)
-        pass
+    # --- Temporarily disable persistence for testing orchestrator-level save ---
+    if persist and verbose:
+        console.print(f"[dim]💾 Skipping internal persistence (handled by orchestrator)...[/dim]")
 
+    # Always return cleaned DataFrame and summaries
     return df, summary_records, derived_map
+

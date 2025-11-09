@@ -14,7 +14,7 @@ from collections import Counter, defaultdict
 from rich.panel import Panel
 
 # Local utilities (adjust imports if needed)
-from .csv_analyzer import export_results
+from .csv_analyzer import export_results, detect_delimiter, analyze_csv
 from .cleaning.auto_clean import auto_clean_csv
 from .visualize_csv import (
     visualize_data,
@@ -24,7 +24,6 @@ from .visualize_csv import (
     visualize_pie_plot,
 )
 from .visualize_timeseries import _handle_timeseries_visualization
-from .csv_analyzer import detect_delimiter, analyze_csv
 from .visualize_csv import apply_transformation
 from .clean_csv import (
     _summarize_post_clean,

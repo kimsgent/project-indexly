@@ -427,6 +427,11 @@ def build_parser():
 
     # DB flags
     analyze_file_parser.add_argument(
+        "--no-persist",
+        action="store_true",
+        help="Disable saving cleaned or analyzed results to the database",
+    )
+    analyze_file_parser.add_argument(
         "--use-saved",
         action="store_true",
         help="Use previously saved data (CSV or JSON)",
