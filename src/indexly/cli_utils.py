@@ -201,7 +201,7 @@ def build_parser():
     )
     csv_parser.add_argument("file", help="Path to the CSV file")
     csv_parser.add_argument(
-        "--export-path", help="Export analysis table to file (txt, md, json)"
+        "--export-path", help="Export analysis table to file (txt, md, json, parquet)"
     )
     csv_parser.add_argument(
         "--format", choices=["txt", "md", "json"], default="txt", help="Export format"
@@ -389,7 +389,7 @@ def build_parser():
         "--export-path", help="Export analysis table to file (txt, md, json)"
     )
     analyze_file_parser.add_argument(
-        "--format", choices=["txt", "md", "json"], default="txt"
+        "--format", choices=["txt", "md", "csv", "json", "parquet", "excel"], default="txt"
     )
     analyze_file_parser.add_argument(
         "--show-chart", choices=["ascii", "static", "interactive"]

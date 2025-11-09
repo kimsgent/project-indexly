@@ -234,14 +234,20 @@ def analyze_file(args) -> Optional[AnalysisResult]:
     export_fmt = getattr(args, "format", "txt")
     compress_export = getattr(args, "compress_export", False)
     if export_path and (df is not None or df_preview is not None):
-        safe_results = table_output
-        if isinstance(safe_results, (dict, list)):
-            safe_results = json.dumps(safe_results, indent=2, ensure_ascii=False)
+        # For CSV/Excel/Parquet, pass dict directly
+        if export_fmt in ("csv", "excel", "parquet"):
+            safe_results = table_output  # keep as dict
+        else:
+            # For txt/md/json, serialize as string
+            safe_results = table_output
+            if isinstance(safe_results, (dict, list)):
+                safe_results = json.dumps(safe_results, indent=2, ensure_ascii=False)
+
         export_results(
             results=safe_results,
             export_path=export_path,
             export_format=export_fmt,
-            df=df or df_preview,
+            df = df if df is not None else df_preview,
             source_file=file_path,
             compress=compress_export,
         )

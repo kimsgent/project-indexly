@@ -273,7 +273,7 @@ def debug_cleaned_data_table(limit: int = 10):
         console.print(
             f"[dim]Cleaned at {row.get('cleaned_at','—')} | "
             f"Rows:{row.get('row_count','?')} | Cols:{row.get('col_count','?')} | "
-            f"Src:{row.get('source_type','unknown')}[/dim]"
+            f"Src:{row.get('source_path','unknown')}[/dim]"
         )
         try:
             data = json.loads(row.get("data_json", "{}"))

@@ -43,7 +43,7 @@ def validate_file_content(file_path: Path, file_type: str) -> bool:
         return False
 
     # --- CSV / TSV style ---
-        # --- CSV (.csv) ---
+
     if file_type == "csv":
         from indexly.csv_analyzer import detect_delimiter  # local import
         delimiter = detect_delimiter(file_path)
@@ -58,6 +58,20 @@ def validate_file_content(file_path: Path, file_type: str) -> bool:
             return True
         except Exception as e:
             console.print(f"[red]❌ Failed to parse as CSV:[/red] {e}")
+            return False
+        
+    # --- Parquet (.parquet) ---
+    if file_type == "parquet" or file_path.suffix.lower() == ".parquet":
+        try:
+            import pyarrow.parquet as pq
+            table = pq.read_table(file_path, columns=None)  # just read schema & few rows
+            df = table.to_pandas().head(5)  # preview first 5 rows
+            if df.empty or df.shape[1] < 1:
+                console.print(f"[red]❌ Parquet file appears empty or invalid.[/red]")
+                return False
+            return True
+        except Exception as e:
+            console.print(f"[red]❌ Invalid Parquet file:[/red] {e}")
             return False
 
     # --- Excel (.xlsx, .xls) ---
@@ -134,9 +148,7 @@ def save_analysis_result(
 ) -> None:
     """
     Save unified analysis results in JSON-safe format for CSV, JSON, SQLite, etc.
-
-    Honors the global '--no-persist' flag by skipping any database writes,
-    while still allowing analysis to proceed normally.
+    Adds source_path tracking and honors '--no-persist' global flag.
     """
     import os
     import json
@@ -152,12 +164,8 @@ def save_analysis_result(
     no_persist_active = getattr(builtins, "__INDEXLY_NO_PERSIST__", False)
     if no_persist_active:
         file_name = os.path.basename(file_path)
-        console.print(
-            f"[yellow]⚙️ Persistence globally disabled (--no-persist active).[/yellow]"
-        )
-        console.print(
-            f"[dim]Skipped saving unified analysis result for {file_name} ({file_type})[/dim]"
-        )
+        console.print(f"[yellow]⚙️ Persistence globally disabled (--no-persist active).[/yellow]")
+        console.print(f"[dim]Skipped saving unified analysis result for {file_name} ({file_type})[/dim]")
         return
 
     # -------------------------------
@@ -168,6 +176,7 @@ def save_analysis_result(
         _migrate_cleaned_data_schema(conn)
 
         file_name = os.path.basename(file_path)
+        source_path = os.path.abspath(file_path) if os.path.exists(file_path) else str(file_path)
 
         # Convert data to JSON-safe structures
         summary_json = (
@@ -185,6 +194,7 @@ def save_analysis_result(
         payload = {
             "file_name": file_name,
             "file_type": file_type,
+            "source_path": source_path,  # ✅ Added
             "summary_json": json.dumps(summary_json, ensure_ascii=False, indent=2),
             "sample_json": json.dumps(sample_json, ensure_ascii=False, indent=2),
             "metadata_json": json.dumps(metadata_json, ensure_ascii=False, indent=2),
@@ -211,18 +221,19 @@ def save_analysis_result(
         conn.execute(
             """
             INSERT INTO cleaned_data (
-                file_name, file_type, summary_json, sample_json,
+                file_name, file_type, source_path, summary_json, sample_json,
                 metadata_json, cleaned_at, row_count, col_count, data_json,
                 cleaned_data_json, raw_data_json
             )
             VALUES (
-                :file_name, :file_type, :summary_json, :sample_json,
+                :file_name, :file_type, :source_path, :summary_json, :sample_json,
                 :metadata_json, :cleaned_at, :row_count, :col_count, :data_json,
                 :cleaned_data_json, :raw_data_json
             )
             ON CONFLICT(file_name)
             DO UPDATE SET
                 file_type = excluded.file_type,
+                source_path = excluded.source_path,
                 summary_json = excluded.summary_json,
                 sample_json = excluded.sample_json,
                 metadata_json = excluded.metadata_json,
@@ -235,15 +246,16 @@ def save_analysis_result(
             """,
             payload,
         )
+
         conn.commit()
         conn.close()
 
-        console.print(
-            f"[green]✔ Saved unified analysis result for {file_name} ({file_type})[/green]"
-        )
+        console.print(f"[green]✔ Saved unified analysis result for {file_name} ({file_type})[/green]")
+        console.print(f"[dim]↳ Source: {source_path}[/dim]")
 
     except Exception as e:
         console.print(f"[red]Failed to save analysis result for {file_path}: {e}[/red]")
+
 
 
 def load_cleaned_data(file_path: str = None, limit: int = 5):

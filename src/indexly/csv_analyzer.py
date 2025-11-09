@@ -15,8 +15,9 @@ from pathlib import Path
 from rich.console import Console
 from tqdm import tqdm
 from datetime import datetime
+from rich.console import Console
 
-
+console = Console()
 
 REQUIRED_PACKAGES = ["pandas", "numpy", "scipy", "tabulate"]
 
@@ -515,6 +516,100 @@ def export_results(
                             f.write(row_json + "\n")
 
             f.write("]\n}\n")
+    
+    # ----------------------------------------
+    # 🪶 Rich CSV / Parquet / Excel export
+    # ----------------------------------------
+    elif export_format in ("csv", "excel", "parquet"):
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+        import pandas as pd
+
+        if df is None or df.empty:
+            raise ValueError(f"No DataFrame available for {export_format.upper()} export.")
+
+        metadata = {
+            "analyzed_at": datetime.utcnow().isoformat() + "Z",
+            "source_file": str(source_file) if source_file else None,
+            "rows": len(df),
+            "columns": len(df.columns),
+            "format": export_format,
+        }
+
+        # 🧩 Construct summary if present
+        if isinstance(results, dict) and "text_summary" in results:
+            summary_text = results.get("text_summary", "")
+        elif isinstance(results, str):
+            summary_text = results
+        else:
+            summary_text = ""
+
+        summary_text = _clean_summary_text(summary_text)
+        structured_summary = _parse_summary_table(summary_text)
+        summary_info = {
+            "text_summary": summary_text,
+            "structured": structured_summary or None,
+        }
+
+        # --- Enrich summary_info with pipeline stats ---
+        if isinstance(results, dict):
+            if "datetime_summary" in results:
+                summary_info["datetime_summary"] = results["datetime_summary"]
+            if "df_stats" in results:
+                summary_info["numeric_stats"] = json.loads(results["df_stats"].to_json(orient="index"))
+            if "meta" in results:
+                summary_info["meta_info"] = results["meta"]
+
+        # --- CSV ---
+        if export_format == "csv":
+            meta_path = export_path.replace(".csv", "_meta.json")
+            df.to_csv(export_path, index=False)
+            with open(meta_path, "w", encoding="utf-8") as m:
+                json.dump({"metadata": metadata, "summary": summary_info}, m, ensure_ascii=False, indent=2)
+
+        # --- Excel ---
+        elif export_format == "excel":
+            meta_path = export_path.replace(".xlsx", "_meta.json")
+            with pd.ExcelWriter(export_path, engine="xlsxwriter") as writer:
+                df.to_excel(writer, index=False, sheet_name="data")
+                # Write summary as a new sheet
+                summary_df = pd.DataFrame(summary_info.get("structured") or [])
+                if not summary_df.empty:
+                    summary_df.to_excel(writer, index=False, sheet_name="summary")
+            with open(meta_path, "w", encoding="utf-8") as m:
+                json.dump(metadata, m, ensure_ascii=False, indent=2)
+
+        # --- Parquet ---
+
+        elif export_format == "parquet":
+            if df is None or df.empty:
+                raise ValueError(f"No DataFrame available for {export_format.upper()} export.")
+
+            # --- DEBUG: inspect df ---
+            console.print(f"[cyan]💡 Debug: DataFrame shape={df.shape}, columns={df.columns.tolist()}[/cyan]")
+            console.print(df.head(5))  # show first 5 rows
+            total_rows = len(df)
+
+            # Optional: show tqdm progress for row export
+            for i, start in enumerate(tqdm(range(0, total_rows, chunk_size),
+                                            desc="Preparing Parquet chunks",
+                                            unit="rows")):
+                chunk = df.iloc[start:start+chunk_size]
+                tqdm.write(f"Chunk {i+1}: shape={chunk.shape}")
+
+            # --- Build PyArrow table ---
+            import pyarrow as pa
+            import pyarrow.parquet as pq
+
+            table = pa.Table.from_pandas(df)
+            meta_bytes = json.dumps({"metadata": metadata, "summary": summary_info}, ensure_ascii=False).encode("utf-8")
+            table = table.replace_schema_metadata({**(table.schema.metadata or {}), b"indexly_meta": meta_bytes})
+
+            # --- Write table ---
+            pq.write_table(table, export_path, compression="snappy" if compress else None)
+            console.print(f"[green]✅ Parquet export complete: {export_path} ({total_rows} rows)[/green]")
+
+
 
     else:
         raise ValueError(f"Unsupported export format: {export_format}")
