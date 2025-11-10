@@ -201,10 +201,10 @@ def build_parser():
     )
     csv_parser.add_argument("file", help="Path to the CSV file")
     csv_parser.add_argument(
-        "--export-path", help="Export analysis table to file (txt, md, json, parquet)"
+        "--export-path", help="Export analysis table to file (txt, md)"
     )
     csv_parser.add_argument(
-        "--format", choices=["txt", "md", "json"], default="txt", help="Export format"
+        "--format", choices=["txt", "md"], default="txt", help="Export format"
     )
     csv_parser.add_argument(
         "--compress-export",
@@ -378,19 +378,28 @@ def build_parser():
     )
     sub_analyze_json.set_defaults(func=analyze_file, subcommand="analyze-json")
 
-    # -------------------------------
+        # -------------------------------
     # Analyze any supported file
     # -------------------------------
     analyze_file_parser = subparsers.add_parser(
-        "analyze-file", help="Analyze any supported file (CSV, JSON, SQLite, XML, etc.)"
+        "analyze-file",
+        help="Analyze any supported file (CSV, JSON, SQLite, XML, YAML, Parquet, etc.)"
     )
+
     analyze_file_parser.add_argument("file", help="Path to the file to analyze")
+
+    # Export options
     analyze_file_parser.add_argument(
-        "--export-path", help="Export analysis table to file (txt, md, json)"
+        "--export-path", help="Export analysis table to file (txt, md, db, json, parquet)"
     )
     analyze_file_parser.add_argument(
-        "--format", choices=["txt", "md", "csv", "json", "parquet", "excel"], default="txt"
+        "--format",
+        choices=["txt", "md", "db", "csv", "json", "parquet", "excel"],
+        default="txt",
+        help="Output format for exported data",
     )
+
+    # Visualization options
     analyze_file_parser.add_argument(
         "--show-chart", choices=["ascii", "static", "interactive"]
     )
@@ -414,7 +423,7 @@ def build_parser():
     )
     analyze_file_parser.add_argument("--title", type=str, help="Chart title override")
 
-    # Cleaning options (for CSV)
+    # Cleaning options (for CSV and similar)
     analyze_file_parser.add_argument(
         "--auto-clean", action="store_true", help="Run robust cleaning pipeline"
     )
@@ -423,9 +432,23 @@ def build_parser():
     )
     analyze_file_parser.add_argument("--normalize", action="store_true")
     analyze_file_parser.add_argument("--remove-outliers", action="store_true")
-    analyze_file_parser.add_argument("--show-summary", action="store_true")
 
-    # DB flags
+    # Summary display
+    analyze_file_parser.add_argument(
+        "--show-summary", action="store_true", help="Display dataset summary table"
+    )
+    analyze_file_parser.add_argument(
+        "--wide-view",
+        action="store_true",
+        help="Display full column width for wide screens (show all columns)",
+    )
+    analyze_file_parser.add_argument(
+        "--export-summary",
+        action="store_true",
+        help="Export dataset summary preview as Markdown (.md) file",
+    )
+
+    # Database persistence
     analyze_file_parser.add_argument(
         "--no-persist",
         action="store_true",
@@ -439,12 +462,19 @@ def build_parser():
     analyze_file_parser.add_argument(
         "--use-cleaned", action="store_true", help="Alias for --use-saved (CSV)"
     )
+    analyze_file_parser.add_argument(
+        "--db-mode",
+        choices=["replace", "append"],
+        default="replace",
+        help="Mode for writing to database when exporting to .db (default: replace)",
+    )
 
-    # Invoice flag for XML e-invoice
+
+    # XML invoice options
     analyze_file_parser.add_argument(
         "--invoice",
         action="store_true",
-        help="Treat file as e-invoice for detailed summary",
+        help="Treat XML file as e-invoice for detailed summary",
     )
     analyze_file_parser.add_argument(
         "--invoice-export",
@@ -454,11 +484,12 @@ def build_parser():
     analyze_file_parser.add_argument(
         "--treeview",
         action="store_true",
-        help="Display XML tree view instead of invoice summary"
+        help="Display XML tree view instead of invoice summary",
     )
 
-    # Default function to call
+    # Default function binding
     analyze_file_parser.set_defaults(func=analyze_file)
+
 
     # Stats
     stats_parser = subparsers.add_parser("stats", help="Show database statistics")

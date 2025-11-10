@@ -100,7 +100,7 @@ INSERT INTO sales VALUES (2, 'Gadget', 5, 3.0);
 import sqlite3
 import pandas as pd
 
-df = pd.read_csv("data.csv")
+df = pd.read_csv("cleaned.csv")
 conn = sqlite3.connect("my_database.db")
 df.to_sql("sales", conn, index=False, if_exists="replace")
 conn.close()

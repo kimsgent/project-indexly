@@ -193,6 +193,7 @@ def analyze_file(args) -> Optional[AnalysisResult]:
                 df, df_stats, table_output = run_db_pipeline(file_path, args)
             elif file_type in {"yaml", "yml"}:
                 from indexly.yaml_pipeline import run_yaml_pipeline
+
                 df, df_stats, table_output = run_yaml_pipeline(df=df, raw=raw)
             elif file_type == "xml":
                 console.print(f"[cyan]📂 Processing XML file: {file_path.name}[/cyan]")
@@ -201,9 +202,11 @@ def analyze_file(args) -> Optional[AnalysisResult]:
                 )
             elif file_type == "excel":
                 from indexly.excel_pipeline import run_excel_pipeline
+
                 df, df_stats, table_output = run_excel_pipeline(df=df, args=args)
             elif file_type == "parquet":
                 from indexly.parquet_pipeline import run_parquet_pipeline
+
                 df, df_stats, table_output = run_parquet_pipeline(df=df, args=args)
             else:
                 if df is not None:
@@ -233,32 +236,46 @@ def analyze_file(args) -> Optional[AnalysisResult]:
     export_path = getattr(args, "export_path", None)
     export_fmt = getattr(args, "format", "txt")
     compress_export = getattr(args, "compress_export", False)
+    db_mode = getattr(args, "db_mode", "replace")  # Smart bonus
+    # For CSV/Excel/Parquet, pass dict directly
     if export_path and (df is not None or df_preview is not None):
-        # For CSV/Excel/Parquet, pass dict directly
+        export_df = df if df is not None else df_preview
+
+        # 🔧 Choose serialization logic based on format
+        # For txt/md/json, serialize as string
         if export_fmt in ("csv", "excel", "parquet"):
-            safe_results = table_output  # keep as dict
+            safe_results = table_output  # keep dict for tabular exporters
+        elif export_fmt == "db":
+            safe_results = table_output  # DB handled internally, keep as is
         else:
-            # For txt/md/json, serialize as string
+            # txt, md, json → stringify
             safe_results = table_output
             if isinstance(safe_results, (dict, list)):
                 safe_results = json.dumps(safe_results, indent=2, ensure_ascii=False)
 
+        # 🪶 Unified export call
         export_results(
             results=safe_results,
             export_path=export_path,
             export_format=export_fmt,
-            df = df if df is not None else df_preview,
+            df=export_df,
             source_file=file_path,
             compress=compress_export,
+            db_mode=db_mode,
         )
-        console.print(f"✅ Exported to: {export_path}")
+
+        console.print(f"[green]✅ Exported to:[/green] [bold]{export_path}[/bold]")
 
     # --- Dataset Summary Preview
     if getattr(args, "show_summary", False):
+        import shutil
+
         console.print("\n📊 [bold cyan]Dataset Summary Preview[/bold cyan]")
 
+        # --------------------------
+        # XML files remain untouched
+        # --------------------------
         if file_type == "xml" and summary:
-            # Keep XML behavior exactly as before
             if getattr(args, "invoice", False):
                 console.print(
                     summary.get("md", "[yellow]No invoice summary available.[/yellow]")
@@ -281,35 +298,58 @@ def analyze_file(args) -> Optional[AnalysisResult]:
                     summary.get("md", "[yellow]No summary available.[/yellow]")
                 )
 
+        # --------------------------
+        # All other filetypes
+        # --------------------------
         elif isinstance(df, pd.DataFrame) and not df.empty:
-            # Limit columns for readability
-            max_cols = 20
+            # Dynamically size columns and truncation based on terminal width
+            term_width = shutil.get_terminal_size((120, 40)).columns
+            col_fit_estimate = max(5, term_width // 25)
+            max_cols = (
+                len(df.columns)
+                if getattr(args, "wide_view", False)
+                else min(col_fit_estimate, len(df.columns))
+            )
+            truncate_len = max(20, term_width // 6)
+            max_rows = 10
+
             display_cols = df.columns[:max_cols]
 
-            # Build table
-            table = Table(
-                title="Dataset Summary", show_header=True, header_style="bold magenta"
-            )
-            for col in display_cols:
-                table.add_column(f"{col} [{df[col].dtype}]")
-
-            # Limit rows for preview
-            max_rows = 10
-            for _, row in df.head(max_rows).iterrows():
-                table.add_row(
-                    *[
-                        str(x)[:30] + ("…" if len(str(x)) > 30 else "")
-                        for x in row[display_cols]
-                    ]
+            # If single-row, show vertically
+            if len(df) == 1 and len(df.columns) > max_cols:
+                console.print("[bold cyan]\n🧩 Vertical Summary View[/bold cyan]")
+                df_display = df.T.reset_index()
+                df_display.columns = ["Field", "Value"]
+                console.print(df_display.head(40).to_markdown(index=False))
+            else:
+                table = Table(
+                    title="Dataset Summary",
+                    show_header=True,
+                    header_style="bold magenta",
+                    expand=True,
                 )
+                for col in display_cols:
+                    table.add_column(f"{col} [{df[col].dtype}]")
 
-            console.print(table)
+                for _, row in df.head(max_rows).iterrows():
+                    table.add_row(
+                        *[
+                            str(x)[:truncate_len]
+                            + ("…" if len(str(x)) > truncate_len else "")
+                            for x in row[display_cols]
+                        ]
+                    )
+
+                console.print(table)
 
             # Optional numeric summary
             numeric_cols = df.select_dtypes(include=["number"]).columns
             if len(numeric_cols) > 0:
                 stats_table = Table(
-                    title="Numeric Summary", show_header=True, header_style="bold green"
+                    title="Numeric Summary",
+                    show_header=True,
+                    header_style="bold green",
+                    expand=True,
                 )
                 stats_table.add_column("Column")
                 stats_table.add_column("Count")
@@ -317,6 +357,7 @@ def analyze_file(args) -> Optional[AnalysisResult]:
                 stats_table.add_column("Min")
                 stats_table.add_column("Max")
                 stats_table.add_column("Std")
+
                 for col in numeric_cols:
                     series = df[col]
                     stats_table.add_row(
@@ -327,7 +368,20 @@ def analyze_file(args) -> Optional[AnalysisResult]:
                         f"{series.max():.2f}" if series.count() > 0 else "NaN",
                         f"{series.std():.2f}" if series.count() > 1 else "NaN",
                     )
+
                 console.print(stats_table)
+
+            # Optional export for full summaries
+            if getattr(args, "export_summary", False):
+                export_dir = Path.cwd()
+                summary_path = export_dir / f"{file_path.stem}_summary.md"
+                try:
+                    df.head(20).to_markdown(summary_path, index=False)
+                    console.print(
+                        f"[green]📁 Saved full summary to:[/green] {summary_path}"
+                    )
+                except Exception as e:
+                    console.print(f"[yellow]⚠️ Failed to save summary: {e}[/yellow]")
 
         else:
             console.print("[yellow]No summary data available.[/yellow]")
@@ -347,4 +401,3 @@ def analyze_file(args) -> Optional[AnalysisResult]:
         cleaned=cleaned_flag,
         persisted=True if file_type == "xml" else getattr(df, "_persisted", False),
     )
-

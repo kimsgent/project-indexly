@@ -334,7 +334,8 @@ def export_results(
     df=None,
     source_file=None,
     chunk_size=10000,
-    compress=False,  # 🆕 New
+    compress=False,
+    db_mode="replace",
 ):
     """
     Export analysis results to text, markdown, or JSON formats.
@@ -520,7 +521,7 @@ def export_results(
     # ----------------------------------------
     # 🪶 Rich CSV / Parquet / Excel export
     # ----------------------------------------
-    elif export_format in ("csv", "excel", "parquet"):
+    elif export_format in ("csv", "excel", "parquet", "db"):
         import pyarrow as pa
         import pyarrow.parquet as pq
         import pandas as pd
@@ -608,8 +609,69 @@ def export_results(
             # --- Write table ---
             pq.write_table(table, export_path, compression="snappy" if compress else None)
             console.print(f"[green]✅ Parquet export complete: {export_path} ({total_rows} rows)[/green]")
+        
+        # --- SQLite Database Export ---
+        elif export_format == "db":
+            import sqlite3
+            from pathlib import Path
+
+            if df is None or df.empty:
+                raise ValueError("No DataFrame available for DB export.")
+
+            # 🧩 Prepare metadata
+            table_name = Path(source_file).stem.replace("-", "_").replace(" ", "_")
+            metadata = {
+                "analyzed_at": datetime.utcnow().isoformat() + "Z",
+                "source_file": str(source_file) if source_file else None,
+                "rows": len(df),
+                "columns": len(df.columns),
+                "format": "db",
+                "table_name": table_name,
+            }
+
+            # ✨ Smart Bonus: Auto-clean and infer best dtypes
+            df = df.convert_dtypes()
+
+            # --- Optional: Add summary enrichment ---
+            summary_text = ""
+            if isinstance(results, dict) and "text_summary" in results:
+                summary_text = results.get("text_summary", "")
+            elif isinstance(results, str):
+                summary_text = results
+            summary_text = _clean_summary_text(summary_text)
+
+            structured_summary = _parse_summary_table(summary_text)
+            summary_info = {
+                "text_summary": summary_text,
+                "structured": structured_summary or None,
+            }
+            if isinstance(results, dict):
+                if "datetime_summary" in results:
+                    summary_info["datetime_summary"] = results["datetime_summary"]
+                if "df_stats" in results:
+                    summary_info["numeric_stats"] = json.loads(results["df_stats"].to_json(orient="index"))
+                if "meta" in results:
+                    summary_info["meta_info"] = results["meta"]
 
 
+            # --- Write SQLite DB ---
+            try:
+                conn = sqlite3.connect(export_path)
+                df.to_sql(table_name, conn, if_exists=db_mode, index=False)
+                conn.commit()
+                conn.close()
+
+                # --- Write meta file next to DB ---
+                meta_path = export_path.replace(".db", "_meta.json")
+                with open(meta_path, "w", encoding="utf-8") as m:
+                    json.dump({"metadata": metadata, "summary": summary_info}, m, ensure_ascii=False, indent=2)
+
+                # 🪶 Rich console feedback
+                console.print(f"[green]✅ SQLite export complete:[/green] [bold]{export_path}[/bold]")
+                console.print(f"   ┗━ Table: [cyan]{table_name}[/cyan] | Rows: [yellow]{len(df)}[/yellow] | Columns: [yellow]{len(df.columns)}[/yellow]")
+
+            except Exception as e:
+                console.print(f"[red]❌ Failed to export SQLite DB: {e}[/red]")
 
     else:
         raise ValueError(f"Unsupported export format: {export_format}")
