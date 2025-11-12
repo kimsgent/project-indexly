@@ -332,110 +332,89 @@ def analyze_file(args) -> Optional[AnalysisResult]:
     # --- Dataset Summary Preview
     if getattr(args, "show_summary", False):
         import shutil
+        from rich.table import Table
 
         console.print("\n📊 [bold cyan]Dataset Summary Preview[/bold cyan]")
 
         # --------------------------
-        # XML files remain untouched
+        # XML files
         # --------------------------
         if file_type == "xml" and summary:
-            if getattr(args, "invoice", False):
-                console.print(
-                    summary.get("md", "[yellow]No invoice summary available.[/yellow]")
-                )
-                if df_preview is not None and not df_preview.empty:
-                    console.print("\n🧩 [bold cyan]Sample Data Preview[/bold cyan]")
-                    console.print(df_preview.head(5))
-            elif getattr(args, "treeview", False):
+            printed_any = False
+            # Invoice markdown
+            if getattr(args, "invoice", False) and summary.get("md"):
+                console.print(summary.get("md", "[yellow]No invoice summary available.[/yellow]"))
+                printed_any = True
+
+            # Tree view
+            if getattr(args, "treeview", False) and summary.get("tree"):
                 console.print("\n🌳 [bold cyan]Tree-View Summary[/bold cyan]")
-                console.print(
-                    summary.get("tree", "[yellow]No tree view available.[/yellow]")
-                )
-                console.print("\n🧾 [bold cyan]Flattened Preview[/bold cyan]")
-                if df_preview is not None and not df_preview.empty:
-                    console.print(df_preview.head(10).to_markdown(index=False))
-                else:
-                    console.print("[yellow]No preview available.[/yellow]")
-            else:
-                console.print(
-                    summary.get("md", "[yellow]No summary available.[/yellow]")
-                )
-        if file_type in {"yaml", "yml"}:
-            # Vertical Summary
+                console.print(summary.get("tree", "[yellow]No tree view available.[/yellow]"))
+                printed_any = True
+
+            # Sample Data Preview
+            if df_preview is not None and not df_preview.empty:
+                console.print("\n🧩 [bold cyan]Sample Data Preview[/bold cyan]")
+                console.print(df_preview.head(5))
+                printed_any = True
+
+            # Fallback for XML
+            if not printed_any:
+                console.print("[yellow]No summary or preview available for this XML file.[/yellow]")
+
+        # --------------------------
+        # YAML / YML files
+        # --------------------------
+        elif file_type in {"yaml", "yml"}:
             if vertical_summary is not None and not vertical_summary.empty:
                 console.print("[bold cyan]\n🧩 Vertical Summary View[/bold cyan]")
                 console.print(vertical_summary.head(40).to_markdown(index=False))
 
-            # Optional tree view
             if getattr(args, "treeview", False) and table_output.get("tree"):
                 console.print("\n🌳 [bold cyan]Tree-View Summary[/bold cyan]")
                 console.print(table_output["tree"])
 
-            # Markdown summary at the bottom
             if table_output.get("markdown"):
                 console.print("\n🧾 [bold cyan]Markdown Summary[/bold cyan]")
                 console.print(table_output["markdown"])
 
         # --------------------------
-        # All other filetypes
+        # All other DataFrames
         # --------------------------
         elif isinstance(df, pd.DataFrame) and not df.empty:
-            # Dynamically size columns and truncation based on terminal width
             term_width = shutil.get_terminal_size((120, 40)).columns
             col_fit_estimate = max(5, term_width // 25)
-            max_cols = (
-                len(df.columns)
-                if getattr(args, "wide_view", False)
-                else min(col_fit_estimate, len(df.columns))
-            )
+            max_cols = len(df.columns) if getattr(args, "wide_view", False) else min(col_fit_estimate, len(df.columns))
             truncate_len = max(20, term_width // 6)
             max_rows = 10
-
             display_cols = df.columns[:max_cols]
 
-            # If single-row, show vertically
+            # Single-row vertical display
             if len(df) == 1 and len(df.columns) > max_cols:
                 console.print("[bold cyan]\n🧩 Vertical Summary View[/bold cyan]")
                 df_display = df.T.reset_index()
                 df_display.columns = ["Field", "Value"]
                 console.print(df_display.head(40).to_markdown(index=False))
             else:
-                table = Table(
-                    title="Dataset Summary",
-                    show_header=True,
-                    header_style="bold magenta",
-                    expand=True,
-                )
+                table = Table(title="Dataset Summary", show_header=True, header_style="bold magenta", expand=True)
                 for col in display_cols:
                     table.add_column(f"{col} [{df[col].dtype}]")
-
                 for _, row in df.head(max_rows).iterrows():
-                    table.add_row(
-                        *[
-                            str(x)[:truncate_len]
-                            + ("…" if len(str(x)) > truncate_len else "")
-                            for x in row[display_cols]
-                        ]
-                    )
-
+                    table.add_row(*[
+                        str(x)[:truncate_len] + ("…" if len(str(x)) > truncate_len else "") for x in row[display_cols]
+                    ])
                 console.print(table)
 
             # Optional numeric summary
             numeric_cols = df.select_dtypes(include=["number"]).columns
             if len(numeric_cols) > 0:
-                stats_table = Table(
-                    title="Numeric Summary",
-                    show_header=True,
-                    header_style="bold green",
-                    expand=True,
-                )
+                stats_table = Table(title="Numeric Summary", show_header=True, header_style="bold green", expand=True)
                 stats_table.add_column("Column")
                 stats_table.add_column("Count")
                 stats_table.add_column("Mean")
                 stats_table.add_column("Min")
                 stats_table.add_column("Max")
                 stats_table.add_column("Std")
-
                 for col in numeric_cols:
                     series = df[col]
                     stats_table.add_row(
@@ -446,23 +425,24 @@ def analyze_file(args) -> Optional[AnalysisResult]:
                         f"{series.max():.2f}" if series.count() > 0 else "NaN",
                         f"{series.std():.2f}" if series.count() > 1 else "NaN",
                     )
-
                 console.print(stats_table)
 
-            # Optional export for full summaries
+            # Optional export
             if getattr(args, "export_summary", False):
                 export_dir = Path.cwd()
                 summary_path = export_dir / f"{file_path.stem}_summary.md"
                 try:
                     df.head(20).to_markdown(summary_path, index=False)
-                    console.print(
-                        f"[green]📁 Saved full summary to:[/green] {summary_path}"
-                    )
+                    console.print(f"[green]📁 Saved full summary to:[/green] {summary_path}")
                 except Exception as e:
                     console.print(f"[yellow]⚠️ Failed to save summary: {e}[/yellow]")
 
+        # --------------------------
+        # Final fallback (all other cases)
+        # --------------------------
         else:
             console.print("[yellow]No summary data available.[/yellow]")
+
 
         # Preserve formatted table output if exists
         if table_output and "pretty_text" in table_output:
