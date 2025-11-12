@@ -313,7 +313,7 @@ def build_parser():
     )
     csv_parser.add_argument(
         "--export-format",
-        choices=["csv", "json", "parquet", "excel"],
+        choices=["txt", "md", "json"],
         default="csv",
         help="Format for cleaned dataset export",
     )
@@ -378,9 +378,10 @@ def build_parser():
     )
     sub_analyze_json.set_defaults(func=analyze_file, subcommand="analyze-json")
 
-        # -------------------------------
+    # -------------------------------
     # Analyze any supported file
     # -------------------------------
+
     analyze_file_parser = subparsers.add_parser(
         "analyze-file",
         help="Analyze any supported file (CSV, JSON, SQLite, XML, YAML, Parquet, etc.)"
@@ -390,7 +391,7 @@ def build_parser():
 
     # Export options
     analyze_file_parser.add_argument(
-        "--export-path", help="Export analysis table to file (txt, md, db, json, parquet)"
+        "--export-path", help="Export analysis table to file (txt, md, xlsx, db, json, parquet)"
     )
     analyze_file_parser.add_argument(
         "--format",
@@ -398,45 +399,112 @@ def build_parser():
         default="txt",
         help="Output format for exported data",
     )
+    analyze_file_parser.add_argument(
+        "--compress-export",
+        action="store_true",
+        help="Compress JSON export output into .json.gz format",
+    )
 
     # Visualization options
     analyze_file_parser.add_argument(
-        "--show-chart", choices=["ascii", "static", "interactive"]
+        "--show-chart",
+        choices=["ascii", "static", "interactive"],
+        help="Visualize CSV data in terminal, static image, or interactive HTML",
     )
     analyze_file_parser.add_argument(
-        "--timeseries", action="store_true", help="Run timeseries visualization for CSV"
-    )
-    analyze_file_parser.add_argument("--x", type=str, help="X-axis column (datetime)")
-    analyze_file_parser.add_argument(
-        "--y", type=str, help="Comma-separated Y-axis columns"
-    )
-    analyze_file_parser.add_argument("--freq", type=str, help="Resample frequency")
-    analyze_file_parser.add_argument(
-        "--agg", type=str, default="mean", help="Aggregation method"
-    )
-    analyze_file_parser.add_argument("--rolling", type=int, help="Rolling mean window")
-    analyze_file_parser.add_argument(
-        "--mode", type=str, default="interactive", choices=["interactive", "static"]
+        "--chart-type",
+        choices=["bar", "line", "box", "hist", "scatter", "pie"],
+        default="None",
+        help="Chart type for visualizing numeric data",
     )
     analyze_file_parser.add_argument(
-        "--output", type=str, help="Output filename for chart"
+        "--export-plot", help="Export chart to file (png, svg, html)"
     )
-    analyze_file_parser.add_argument("--title", type=str, help="Chart title override")
+    analyze_file_parser.add_argument("--x-col", help="X-axis column for scatter plot")
+    analyze_file_parser.add_argument("--y-col", help="Y-axis column for scatter plot")
+    analyze_file_parser.add_argument(
+        "--transform",
+        choices=["none", "log", "sqrt", "softplus", "exp-log", "auto"],
+        default="none",
+        help="Apply data transformation before visualization",
+    )
+    analyze_file_parser.add_argument(
+        "--bar-scale",
+        choices=["sqrt", "log"],
+        default="sqrt",
+        help="Scaling method for ASCII histogram bars",
+    )
+    analyze_file_parser.add_argument(
+        "--timeseries", action="store_true", help="Plot timeseries if CSV"
+    )
+    analyze_file_parser.add_argument("--x", type=str, help="Datetime column for timeseries X-axis")
+    analyze_file_parser.add_argument("--y", type=str, help="Comma-separated numeric columns for Y-axis")
+    analyze_file_parser.add_argument("--freq", type=str, help="Resample frequency (D,W,M,Q,Y)")
+    analyze_file_parser.add_argument("--agg", type=str, default="mean", help="Aggregation for resampling")
+    analyze_file_parser.add_argument("--rolling", type=int, help="Rolling mean window size")
+    analyze_file_parser.add_argument(
+        "--mode",
+        type=str,
+        default="interactive",
+        choices=["interactive", "static"],
+        help="Plotting backend",
+    )
+    analyze_file_parser.add_argument("--output", type=str, help="Output filename for chart")
+    analyze_file_parser.add_argument("--title", type=str, help="Plot title override")
 
-    # Cleaning options (for CSV and similar)
+    # Cleaning options
     analyze_file_parser.add_argument(
         "--auto-clean", action="store_true", help="Run robust cleaning pipeline"
     )
     analyze_file_parser.add_argument(
-        "--fill-method", choices=["mean", "median"], default="mean"
+        "--fill-method",
+        choices=["mean", "median"],
+        default="mean",
+        help="Method to fill missing numeric values",
     )
-    analyze_file_parser.add_argument("--normalize", action="store_true")
-    analyze_file_parser.add_argument("--remove-outliers", action="store_true")
-
-    # Summary display
     analyze_file_parser.add_argument(
-        "--show-summary", action="store_true", help="Display dataset summary table"
+        "--datetime-formats",
+        nargs="+",
+        metavar="FMT",
+        help="Optional list of datetime formats to apply (e.g. '%Y-%m-%d' '%d/%m/%Y %H:%M')",
     )
+    analyze_file_parser.add_argument(
+        "--derive-dates",
+        choices=["all", "minimal", "none"],
+        default="all",
+        help="How many derived datetime features to generate",
+    )
+    analyze_file_parser.add_argument(
+        "--date-threshold",
+        type=float,
+        default=0.3,
+        help="Minimum valid ratio for date detection",
+    )
+    analyze_file_parser.add_argument(
+        "--use-cleaned",
+        action="store_true",
+        help="Use previously saved cleaned dataset",
+    )
+    analyze_file_parser.add_argument(
+        "--no-persist",
+        action="store_true",
+        help="Disable saving cleaned or analyzed results to the database",
+    )
+    analyze_file_parser.add_argument(
+        "--normalize",
+        action="store_true",
+        help="Normalize numeric columns after cleaning",
+    )
+    analyze_file_parser.add_argument(
+        "--remove-outliers", action="store_true", help="Remove outliers after cleaning"
+    )
+    analyze_file_parser.add_argument(
+        "--show-summary",
+        action="store_true",
+        help="Show extended summary of columns and derived fields",
+    )
+
+    # Additional display/export (from original)
     analyze_file_parser.add_argument(
         "--wide-view",
         action="store_true",
@@ -450,17 +518,9 @@ def build_parser():
 
     # Database persistence
     analyze_file_parser.add_argument(
-        "--no-persist",
-        action="store_true",
-        help="Disable saving cleaned or analyzed results to the database",
-    )
-    analyze_file_parser.add_argument(
         "--use-saved",
         action="store_true",
         help="Use previously saved data (CSV or JSON)",
-    )
-    analyze_file_parser.add_argument(
-        "--use-cleaned", action="store_true", help="Alias for --use-saved (CSV)"
     )
     analyze_file_parser.add_argument(
         "--db-mode",
@@ -468,7 +528,6 @@ def build_parser():
         default="replace",
         help="Mode for writing to database when exporting to .db (default: replace)",
     )
-
 
     # XML invoice options
     analyze_file_parser.add_argument(
@@ -487,7 +546,7 @@ def build_parser():
         help="Display XML tree view instead of invoice summary",
     )
 
-    # Default function binding
+    # Default binding
     analyze_file_parser.set_defaults(func=analyze_file)
 
 

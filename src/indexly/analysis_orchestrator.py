@@ -12,6 +12,7 @@ from .csv_pipeline import run_csv_pipeline
 from .json_pipeline import run_json_pipeline
 from .db_pipeline import run_db_pipeline
 from .xml_pipeline import run_xml_pipeline
+from .parquet_pipeline import run_parquet_pipeline
 from .csv_analyzer import export_results
 from .analyze_utils import (
     load_cleaned_data,
@@ -194,7 +195,10 @@ def analyze_file(args) -> Optional[AnalysisResult]:
             elif file_type in {"yaml", "yml"}:
                 from indexly.yaml_pipeline import run_yaml_pipeline
 
-                df, df_stats, table_output = run_yaml_pipeline(df=df, raw=raw)
+                df, df_stats, table_output = run_yaml_pipeline(
+                    df=df, raw=raw, args=args
+                )
+                vertical_summary = table_output.get("vertical_summary", None)
             elif file_type == "xml":
                 console.print(f"[cyan]📂 Processing XML file: {file_path.name}[/cyan]")
                 df_preview, summary, metadata = run_xml_pipeline(
@@ -202,12 +206,45 @@ def analyze_file(args) -> Optional[AnalysisResult]:
                 )
             elif file_type == "excel":
                 from indexly.excel_pipeline import run_excel_pipeline
-
                 df, df_stats, table_output = run_excel_pipeline(df=df, args=args)
             elif file_type == "parquet":
-                from indexly.parquet_pipeline import run_parquet_pipeline
+                console.print(f"[cyan]📂 Processing Parquet file: {file_path.name}[/cyan]")
+                try:
+                    df, df_stats, table_output = run_parquet_pipeline(df=df, args=args)
+                except Exception as e:
+                    console.print(f"[red]❌ Parquet pipeline failed: {e}[/red]")
+                    return None
+                # Optional TreeView rendering support
+                if getattr(args, "treeview", False) and table_output.get("tree"):
+                    console.print("\n🌳 [bold cyan]Tree-View Summary (Parquet)[/bold cyan]")
+                    console.print(table_output["tree"])
+                # Markdown summary (if available)
+                if table_output.get("markdown"):
+                    console.print("\n🧾 [bold cyan]Markdown Summary (Parquet)[/bold cyan]")
 
-                df, df_stats, table_output = run_parquet_pipeline(df=df, args=args)
+                    md_text = table_output["markdown"]
+
+                    # Inject statistical overview if df_stats is available
+                    if isinstance(df_stats, pd.DataFrame) and not df_stats.empty:
+                        stats_md = df_stats.round(3).to_markdown(index=True, tablefmt="github")
+                        if "_Statistics unavailable._" in md_text:
+                            md_text = md_text.replace(
+                                "_Statistics unavailable._", f"\n{stats_md}\n"
+                            )
+                        else:
+                            # Append stats if not already present
+                            md_text += "\n## 📊 Statistical Overview\n" + stats_md + "\n"
+                    else:
+                        if "_Statistics unavailable._" not in md_text:
+                            md_text += "\n_Statistics unavailable._\n"
+
+                    console.print(md_text)
+
+                # Optional sample preview
+                if isinstance(df, pd.DataFrame) and not df.empty:
+                    console.print("\n🧩 [bold cyan]Sample Data Preview (Parquet)[/bold cyan]")
+                    console.print(df.head(10).to_markdown(index=False))
+
             else:
                 if df is not None:
                     try:
@@ -297,6 +334,21 @@ def analyze_file(args) -> Optional[AnalysisResult]:
                 console.print(
                     summary.get("md", "[yellow]No summary available.[/yellow]")
                 )
+        if file_type in {"yaml", "yml"}:
+            # Vertical Summary
+            if vertical_summary is not None and not vertical_summary.empty:
+                console.print("[bold cyan]\n🧩 Vertical Summary View[/bold cyan]")
+                console.print(vertical_summary.head(40).to_markdown(index=False))
+
+            # Optional tree view
+            if getattr(args, "treeview", False) and table_output.get("tree"):
+                console.print("\n🌳 [bold cyan]Tree-View Summary[/bold cyan]")
+                console.print(table_output["tree"])
+
+            # Markdown summary at the bottom
+            if table_output.get("markdown"):
+                console.print("\n🧾 [bold cyan]Markdown Summary[/bold cyan]")
+                console.print(table_output["markdown"])
 
         # --------------------------
         # All other filetypes

@@ -18,7 +18,10 @@ import json
 import sqlite3
 import re
 import pandas as pd
+import traceback
 from rich.console import Console
+
+
 
 console = Console()
 
@@ -160,11 +163,109 @@ def _load_excel(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
 
 
 def _load_parquet(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
+    """
+    Robust parquet loader returning (raw_metadata_dict, dataframe).
+    - Uses pyarrow if available to extract schema and file-level metadata (row groups, compression, created_by).
+    - Falls back to pandas.read_parquet for DataFrame if pyarrow unavailable.
+    - Always returns a JSON-serializable `raw` dict (safe for persistence).
+    """
+    raw: Dict[str, Any] = {
+        "loader": "_load_parquet",
+        "path": str(path),
+        "pyarrow_available": False,
+        "schema": None,
+        "num_rows": None,
+        "num_row_groups": None,
+        "compression": None,
+        "created_by": None,
+        "format_version": None,
+        "extra": {},
+    }
+    df: Optional[pd.DataFrame] = None
+
     try:
-        df = pd.read_parquet(path)
-        return None, df
-    except Exception:
-        return None, None
+        # Try to use pyarrow for rich metadata
+        try:
+            import pyarrow as pa
+            import pyarrow.parquet as pq
+
+            raw["pyarrow_available"] = True
+            pf = pq.ParquetFile(str(path))
+
+            # schema
+            schema = pf.schema_arrow
+            schema_fields = [
+                {"name": f.name, "type": str(f.type)}
+                for f in schema
+            ]
+            raw["schema"] = schema_fields
+
+            # metadata
+            pmeta = pf.metadata
+            if pmeta is not None:
+                raw["num_rows"] = int(pmeta.num_rows) if hasattr(pmeta, "num_rows") else None
+                raw["num_row_groups"] = int(pmeta.num_row_groups) if hasattr(pmeta, "num_row_groups") else None
+                # compression heuristics
+                comp = set()
+                for i in range(pf.num_row_groups):
+                    rg = pf.metadata.row_group(i)
+                    for c in range(rg.num_columns):
+                        col_md = rg.column(c)
+                        comp_name = col_md.codec if hasattr(col_md, "codec") else None
+                        if comp_name:
+                            comp.add(str(comp_name))
+                raw["compression"] = list(comp) if comp else None
+                # file metadata if present
+                file_meta = pmeta.metadata or {}
+                # convert bytes keys/values to strings where possible
+                fm = {}
+                for k, v in (file_meta.items() if hasattr(file_meta, "items") else []):
+                    try:
+                        k_s = k.decode() if isinstance(k, (bytes, bytearray)) else str(k)
+                        v_s = v.decode() if isinstance(v, (bytes, bytearray)) else str(v)
+                        fm[k_s] = v_s
+                    except Exception:
+                        fm[str(k)] = repr(v)
+                raw["extra"]["file_metadata"] = fm
+                # created_by/version fallback
+                try:
+                    raw["created_by"] = pmeta.created_by if hasattr(pmeta, "created_by") else None
+                except Exception:
+                    raw["created_by"] = None
+                try:
+                    raw["format_version"] = getattr(pmeta, "format_version", None)
+                except Exception:
+                    raw["format_version"] = None
+
+            # Load dataframe using pyarrow engine via pandas
+            try:
+                df = pd.read_parquet(path, engine="pyarrow")
+            except Exception:
+                # fallback to pyarrow -> pandas conversion
+                try:
+                    table = pf.read()
+                    df = table.to_pandas()
+                except Exception:
+                    df = None
+
+        except Exception:
+            # pyarrow not available or failed: try pandas directly
+            raw["pyarrow_available"] = False
+            df = pd.read_parquet(path)  # rely on pandas engine (fastparquet/pyarrow)
+            # derive simple schema from df if possible
+            if df is not None:
+                raw["schema"] = [{"name": c, "type": str(df[c].dtype)} for c in df.columns]
+                raw["num_rows"] = int(df.shape[0])
+                raw["num_row_groups"] = None
+                raw["compression"] = None
+
+    except Exception as e:
+        # loader failure — return None df but keep raw.error for diagnostics
+        raw["error"] = str(e)
+        raw["traceback"] = traceback.format_exc()
+        return raw, None
+
+    return raw, df
 
 
 def _load_sqlite(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
@@ -347,6 +448,9 @@ def load_excel(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
     return _load_excel(path)
 
 def load_parquet(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
+    """
+    Public alias for the orchestrator loader registry.
+    """
     return _load_parquet(path)
 
 def load_sqlite(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:

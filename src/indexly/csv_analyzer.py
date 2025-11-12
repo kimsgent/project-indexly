@@ -13,7 +13,7 @@ import importlib.util
 import subprocess
 from pathlib import Path
 from rich.console import Console
-from tqdm import tqdm
+from rich.progress import Progress
 from datetime import datetime
 from rich.console import Console
 
@@ -25,7 +25,7 @@ REQUIRED_PACKAGES = ["pandas", "numpy", "scipy", "tabulate"]
 def ensure_packages(packages):
     for pkg in packages:
         if importlib.util.find_spec(pkg) is None:
-            print(f"📦 Installing missing package: {pkg}...")
+            console.print(f"📦 Installing missing package: {pkg}...")
             subprocess.check_call([sys.executable, "-m", "pip", "install", pkg])
 
 
@@ -43,7 +43,8 @@ from scipy.stats import iqr
 from tabulate import tabulate
 from datetime import datetime, date
 import datetime as dt
-from tqdm import tqdm  # ✅ For progress bar
+from rich.progress import Progress
+
 
 try:
     from scipy.stats import iqr
@@ -130,8 +131,13 @@ def analyze_csv(file_or_df, from_df=False):
 
         try:
             delimiter = detect_delimiter(file_path)
+            delimiter = delimiter or ','                       # <-- fallback
             console.print(f"📄 Detected delimiter: '{delimiter}'", style="bold cyan")
-            df = pd.read_csv(file_path, delimiter=delimiter, encoding="utf-8")
+            try:
+                df = pd.read_csv(file_path, delimiter=delimiter, encoding='utf-8', on_bad_lines='skip')
+            except UnicodeDecodeError:
+                df = pd.read_csv(file_path, delimiter=delimiter, encoding='utf-8-sig', on_bad_lines='skip')
+
         except Exception as e:
             console.print(f"[!] Failed to read CSV: {e}", style="bold red")
             return None, None, None
@@ -346,9 +352,12 @@ def export_results(
     """
 
     import os, re, json, math, gzip
-    from tqdm import tqdm
     from datetime import datetime
     import pandas as pd
+    from rich.console import Console
+    from rich.progress import Progress, BarColumn, TextColumn, TimeRemainingColumn
+
+    console = Console()
 
     # --- Normalize export path ---
     if not export_path or str(export_path).strip() == "":
@@ -361,7 +370,6 @@ def export_results(
         filename = f"analysis.{export_format}"
         export_path = os.path.join(export_path, filename)
 
-    # 🧩 Ensure .gz extension if compression enabled
     if compress and not export_path.endswith(".gz"):
         export_path = f"{export_path}.gz"
 
@@ -387,24 +395,34 @@ def export_results(
 
         lines = text.splitlines()
         cleaned = []
-        for line in tqdm(lines, desc="Cleaning summary_statistics", unit="lines"):
-            s = line.strip()
-            if re.fullmatch(r"^[\+\-\=\| ]+$", s):
-                continue
 
-            def _sci_to_full(match):
-                token = match.group(0)
-                try:
-                    val = float(token)
-                    if abs(val) >= 1e6 and float(val).is_integer():
-                        return str(int(val))
-                    return ("{:.6f}".format(val)).rstrip("0").rstrip(".")
-                except Exception:
-                    return token
+        with Progress(
+            TextColumn("[bold blue]{task.description}"),
+            BarColumn(),
+            TextColumn("{task.completed}/{task.total} lines"),
+            TimeRemainingColumn(),
+        ) as progress:
+            task = progress.add_task("Cleaning summary statistics...", total=len(lines))
+            for line in lines:
+                s = line.strip()
+                if re.fullmatch(r"^[\+\-\=\| ]+$", s):
+                    progress.advance(task)
+                    continue
 
-            s = re.sub(r"\b\d+\.?\d*e[+\-]?\d+\b", _sci_to_full, s, flags=re.IGNORECASE)
-            s = re.sub(r"\s{2,}", " ", s)
-            cleaned.append(s)
+                def _sci_to_full(match):
+                    token = match.group(0)
+                    try:
+                        val = float(token)
+                        if abs(val) >= 1e6 and float(val).is_integer():
+                            return str(int(val))
+                        return ("{:.6f}".format(val)).rstrip("0").rstrip(".")
+                    except Exception:
+                        return token
+
+                s = re.sub(r"\b\d+\.?\d*e[+\-]?\d+\b", _sci_to_full, s, flags=re.IGNORECASE)
+                s = re.sub(r"\s{2,}", " ", s)
+                cleaned.append(s)
+                progress.advance(task)
 
         return "\n".join(cleaned)
 
@@ -470,13 +488,11 @@ def export_results(
             "columns": len(df.columns) if df is not None else None,
         }
 
-        if isinstance(results, dict) and "text_summary" in results:
-            raw_summary = results.get("text_summary", "")
-        elif isinstance(results, str):
-            raw_summary = results
-        else:
-            raw_summary = str(results)
-
+        raw_summary = (
+            results.get("text_summary", "")
+            if isinstance(results, dict)
+            else str(results)
+        )
         cleaned_summary = _clean_summary_text(raw_summary)
         structured_summary = _parse_summary_table(cleaned_summary)
 
@@ -485,11 +501,9 @@ def export_results(
             "structured": structured_summary or None,
         }
 
-        # 🧩 Helper for choosing correct open function
         open_func = gzip.open if compress else open
         mode = "wt" if compress else "w"
 
-        # --- Write JSON top-level ---
         with open_func(export_path, mode, encoding="utf-8") as f:
             f.write("{\n")
             f.write(f'"metadata": {json.dumps(_json_safe(metadata), ensure_ascii=False)},\n')
@@ -498,26 +512,28 @@ def export_results(
 
             if df is not None and len(df) > 0:
                 total_chunks = math.ceil(len(df) / chunk_size)
-                for i, start in enumerate(range(0, len(df), chunk_size)):
-                    chunk = df.iloc[start : start + chunk_size]
-                    for j, row in enumerate(
-                        tqdm(
-                            chunk.itertuples(index=False),
-                            desc=f"Exporting chunk {i+1}/{total_chunks}",
-                            unit="rows",
-                        )
-                    ):
-                        row_dict = _json_safe(row._asdict(), preserve_numeric=True)
-                        row_json = json.dumps(row_dict, ensure_ascii=False)
-                        last_chunk = i == total_chunks - 1
-                        last_row = j == len(chunk) - 1
-                        if not (last_chunk and last_row):
-                            f.write(row_json + ",\n")
-                        else:
-                            f.write(row_json + "\n")
+                with Progress(
+                    TextColumn("[bold magenta]{task.description}"),
+                    BarColumn(),
+                    TextColumn("{task.completed}/{task.total} rows"),
+                    TimeRemainingColumn(),
+                ) as progress:
+                    total_task = progress.add_task("Exporting JSON rows...", total=len(df))
+                    for i, start in enumerate(range(0, len(df), chunk_size)):
+                        chunk = df.iloc[start : start + chunk_size]
+                        for j, row in enumerate(chunk.itertuples(index=False)):
+                            row_dict = _json_safe(row._asdict(), preserve_numeric=True)
+                            row_json = json.dumps(row_dict, ensure_ascii=False)
+                            last_chunk = i == total_chunks - 1
+                            last_row = j == len(chunk) - 1
+                            if not (last_chunk and last_row):
+                                f.write(row_json + ",\n")
+                            else:
+                                f.write(row_json + "\n")
+                            progress.advance(total_task)
 
             f.write("]\n}\n")
-    
+
     # ----------------------------------------
     # 🪶 Rich CSV / Parquet / Excel export
     # ----------------------------------------
@@ -586,17 +602,23 @@ def export_results(
             if df is None or df.empty:
                 raise ValueError(f"No DataFrame available for {export_format.upper()} export.")
 
-            # --- DEBUG: inspect df ---
+            # --- DEBUG info ---
             console.print(f"[cyan]💡 Debug: DataFrame shape={df.shape}, columns={df.columns.tolist()}[/cyan]")
             console.print(df.head(5))  # show first 5 rows
+
             total_rows = len(df)
 
-            # Optional: show tqdm progress for row export
-            for i, start in enumerate(tqdm(range(0, total_rows, chunk_size),
-                                            desc="Preparing Parquet chunks",
-                                            unit="rows")):
-                chunk = df.iloc[start:start+chunk_size]
-                tqdm.write(f"Chunk {i+1}: shape={chunk.shape}")
+            # --- Replace tqdm with Rich progress ---
+            with Progress() as progress:
+                task = progress.add_task("[green]Preparing Parquet chunks...", total=total_rows)
+
+                for i, start in enumerate(range(0, total_rows, chunk_size)):
+                    chunk = df.iloc[start:start + chunk_size]
+
+                    # optional: use console.print instead of tqdm.write
+                    console.print(f"[dim]Chunk {i + 1}: shape={chunk.shape}[/dim]")
+
+                    progress.advance(task, advance=len(chunk))
 
             # --- Build PyArrow table ---
             import pyarrow as pa

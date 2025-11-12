@@ -270,6 +270,13 @@ def run_csv_pipeline(file_path: Path, args, df: pd.DataFrame = None):
         console.print(f"[red]❌ Failed to compute statistics: {e}[/red]")
         df_stats, table_output = None, None
 
+    if getattr(args, "timeseries", False):
+        try:
+            console.print("[cyan]📈 Running time series visualization...[/cyan]")
+            _handle_timeseries_visualization(df, args)
+        except Exception as e:
+            console.print(f"[red]❌ Time series visualization failed: {e}[/red]")
+            
     # --- Step 3: Visualization ---
     visualize_csv(df, df_stats, args)
 
