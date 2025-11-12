@@ -11,7 +11,7 @@ Purpose:
 
 from __future__ import annotations
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple, Callable
+from typing import Any, Dict, Optional, Tuple, Callable, List
 from datetime import datetime
 import gzip
 import json
@@ -148,18 +148,30 @@ def _load_xml(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
         return None, None
 
 
-def _load_excel(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
+def _load_excel(path: Path, sheet_name: Optional[List[str]] = None):
+    """
+    Load Excel file. If sheet_name contains "all" or is None → load all sheets.
+    Returns (raw_sheets_dict, df_preview)
+    """
     try:
-        df = pd.read_excel(path, sheet_name=0)
-        return None, df
-    except Exception:
-        try:
-            all_sheets = pd.read_excel(path, sheet_name=None)
-            raw = {k: df.to_dict(orient="records") for k, df in all_sheets.items()}
-            df_first = next(iter(all_sheets.values())) if all_sheets else None
-            return raw, df_first
-        except Exception:
-            return None, None
+        # handle 'all' special case
+        if sheet_name and isinstance(sheet_name, list) and "all" in [s.lower() for s in sheet_name]:
+            sheet_name = None  # pandas interprets None as all sheets
+
+        sheets = pd.read_excel(path, sheet_name=sheet_name, engine="openpyxl")
+
+        if isinstance(sheets, dict):
+            raw = {k: df.to_dict(orient="records") for k, df in sheets.items()}
+            df_preview = pd.concat([v.assign(_sheet_name=k) for k, v in sheets.items()], ignore_index=True) if sheets else None
+            return raw, df_preview
+        else:
+            # single sheet
+            return None, sheets
+
+    except Exception as e:
+        console.print(f"[yellow]⚠️ Excel loader failed: {e}[/yellow]")
+        return None, None
+
 
 
 def _load_parquet(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
@@ -294,6 +306,9 @@ LOADER_REGISTRY: Dict[str, Callable[[Path], Tuple[Any, Optional[pd.DataFrame]]]]
     "yaml": _load_yaml,
     "xml": _load_xml,
     "excel": _load_excel,
+    "xlsx": _load_excel,
+    "xls": _load_excel,
+    "xlxm": _load_excel,
     "parquet": _load_parquet,
     "sqlite": _load_sqlite,
 }
@@ -352,6 +367,7 @@ def detect_and_load(file_path: str | Path, args=None) -> Dict[str, Any]:
         raise FileNotFoundError(f"File not found: {file_path}")
 
     file_type = detect_file_type(path)
+    sheet_name = getattr(args, "sheet_name", None)
 
     # === CSV/JSON passthrough: Do NOT load or inspect ===
     if file_type in {"csv", "json"}:
@@ -372,7 +388,7 @@ def detect_and_load(file_path: str | Path, args=None) -> Dict[str, Any]:
             "loader_spec": "passthrough",
         }
 
-    # === Normal loader path for all other file types ===
+    # === Loader path for other types ===
     loader_fn = LOADER_REGISTRY.get(file_type)
     raw = df = df_preview = None
     loader_spec = None
@@ -391,26 +407,42 @@ def detect_and_load(file_path: str | Path, args=None) -> Dict[str, Any]:
         try:
             desc = f"Loading {file_type.upper()} via loader"
             with tqdm(total=1, desc=desc, unit="file") as pbar:
-                raw, loaded_df = loader_fn(path)
+                if file_type in {"excel", "xls", "xlsx"}:
+                    # 🧭 Detect sheet names only — no full load
+                    try:
+                        excel_file = pd.ExcelFile(path, engine="openpyxl")
+                        sheet_list = excel_file.sheet_names
+                        raw = {"available_sheets": sheet_list}
+                        df = df_preview = None
+                        console.print(f"[green]Detected Excel sheets:[/green] {', '.join(sheet_list)}")
+                    except Exception as e:
+                        console.print(f"[red]❌ Failed to inspect Excel file: {e}[/red]")
+                        raw = {"available_sheets": []}
+                        df = df_preview = None
+                else:
+                    # 🧩 Normal loader behavior
+                    raw, loaded_df = loader_fn(path)
+                    if file_type == "xml":
+                        df_preview = loaded_df
+                    else:
+                        df = loaded_df
+
                 time.sleep(0.05)
                 pbar.update(1)
             metadata["loader_used"] = loader_spec
-            if file_type == "xml":
-                df_preview = loaded_df
-            else:
-                df = loaded_df
         except Exception as e:
             console.print(f"[yellow]⚠️ Loader for '{file_type}' failed: {e}[/yellow]")
     else:
         console.print(f"[yellow]⚠️ No loader registered for file type: {file_type}[/yellow]")
 
+    # === Metadata calculation ===
     try:
         target_df = df_preview if file_type == "xml" else df
         metadata["rows"] = int(target_df.shape[0]) if isinstance(target_df, pd.DataFrame) else (
             len(raw) if isinstance(raw, list) else (1 if isinstance(raw, dict) else 0)
         )
         metadata["cols"] = int(target_df.shape[1]) if isinstance(target_df, pd.DataFrame) else 0
-        metadata["validated"] = target_df is not None and not target_df.empty
+        metadata["validated"] = bool(target_df is not None and not getattr(target_df, "empty", True))
     except Exception:
         pass
 
@@ -424,6 +456,7 @@ def detect_and_load(file_path: str | Path, args=None) -> Dict[str, Any]:
         "metadata": metadata,
         "loader_spec": loader_spec,
     }
+
 
 
 # ---------------------------------------------------------------------

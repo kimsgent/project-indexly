@@ -13,6 +13,7 @@ from .json_pipeline import run_json_pipeline
 from .db_pipeline import run_db_pipeline
 from .xml_pipeline import run_xml_pipeline
 from .parquet_pipeline import run_parquet_pipeline
+from .excel_pipeline import run_excel_pipeline
 from .csv_analyzer import export_results
 from .analyze_utils import (
     load_cleaned_data,
@@ -93,7 +94,6 @@ def _persist_analysis(
 def analyze_file(args) -> Optional[AnalysisResult]:
     file_path = Path(args.file).resolve()
     file_type = detect_file_type(file_path)
-
     df = df_stats = table_output = metadata = summary = None
     df_preview = None
     legacy_mode = False
@@ -205,8 +205,34 @@ def analyze_file(args) -> Optional[AnalysisResult]:
                     file_path=file_path, args=args
                 )
             elif file_type == "excel":
-                from indexly.excel_pipeline import run_excel_pipeline
-                df, df_stats, table_output = run_excel_pipeline(df=df, args=args)
+                console.print(f"[cyan]📂 Processing Excel file: {file_path.name}[/cyan]")
+                try:
+                    df_input = df if df is not None else None
+
+                    # Pass args (which contains sheet_name) directly
+                    df, df_stats, table_output = run_excel_pipeline(
+                        file_path=file_path,
+                        df=df_input,
+                        args=args,  # <-- sheet_name must be in args.sheet_name
+                    )
+
+                except Exception as e:
+                    console.print(f"[red]❌ Excel pipeline failed: {e}[/red]")
+                    return None
+
+                # Render outputs
+                if getattr(args, "treeview", False) and table_output.get("tree"):
+                    console.print("\n🌳 [bold cyan]Tree-View Summary (Excel)[/bold cyan]")
+                    console.print(table_output["tree"])
+
+                if table_output.get("markdown"):
+                    console.print("\n🧾 [bold cyan]Markdown Summary (Excel)[/bold cyan]")
+                    console.print(table_output["markdown"])
+
+                if isinstance(df, pd.DataFrame) and not df.empty:
+                    console.print("\n🧩 [bold cyan]Sample Data Preview (Excel)[/bold cyan]")
+                    console.print(df.head(10).to_markdown(index=False))
+
             elif file_type == "parquet":
                 console.print(f"[cyan]📂 Processing Parquet file: {file_path.name}[/cyan]")
                 try:

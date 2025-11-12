@@ -545,6 +545,13 @@ def build_parser():
         action="store_true",
         help="Display XML tree view instead of invoice summary",
     )
+    # EXCEL options
+    analyze_file_parser.add_argument(
+        "--sheet-name",
+        nargs="+",
+        help="Specify one or more Excel sheet names to analyze (default: all sheets).",
+    )
+
 
     # Default binding
     analyze_file_parser.set_defaults(func=analyze_file)
