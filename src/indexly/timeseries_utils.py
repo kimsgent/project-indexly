@@ -113,6 +113,48 @@ def _ensure_datetime_series(series: pd.Series) -> pd.Series:
     return out
 
 
+# -----------------------------
+# NEW HELPER: infer optimal freq
+# [TS-POINT-1]
+# -----------------------------
+def _infer_optimal_freq(index: pd.DatetimeIndex) -> str:
+    """
+    Infer a sensible frequency string ('S', 'T', 'H', 'D', 'W', 'M', 'Q', 'Y')
+    based on the median gap between points.
+    Automatically adapts from seconds to years for broad datasets.
+    """
+    try:
+        if not isinstance(index, pd.DatetimeIndex) or len(index) < 3:
+            return "D"
+
+        # Compute time differences in seconds (fast + vectorized)
+        diffs = np.diff(index.view(np.int64) // 10**9)
+        if diffs.size == 0:
+            return "D"
+
+        median_gap = np.median(diffs)
+
+        # Frequency thresholds (in seconds)
+        if median_gap <= 60:              # up to 1 minute
+            return "S"
+        elif median_gap <= 3600:          # up to 1 hour
+            return "T"
+        elif median_gap <= 86400 * 1.5:   # up to ~1.5 days
+            return "H"
+        elif median_gap <= 86400 * 14:    # up to 2 weeks
+            return "D"
+        elif median_gap <= 86400 * 60:    # up to 2 months
+            return "W"
+        elif median_gap <= 86400 * 180:   # up to 6 months
+            return "M"
+        elif median_gap <= 86400 * 720:   # up to 2 years
+            return "Q"
+        else:
+            return "Y"
+    except Exception:
+        return "D"
+
+
 def prepare_timeseries(
     df: pd.DataFrame,
     date_col: str,
@@ -126,10 +168,14 @@ def prepare_timeseries(
     Prepare a DataFrame for plotting:
     - parse + set date_col as index (tz-aware)
     - optionally resample using freq + agg
-    - optionally apply rolling mean smoothing
+    - optionally apply rolling smoothing (configurable)
+    - optional metric transforms (diff, cumsum, pct_change) via the `agg` parameter
 
     Returns (prepared_df, metadata)
-    metadata keys: {'date_col', 'value_cols', 'freq', 'agg', 'rolling', 'start', 'end', 'n_points'}
+    metadata keys: {
+        'date_col', 'value_cols', 'freq', 'agg', 'rolling',
+        'start', 'end', 'n_points', 'granularity', 'missing_ratio', 'rolling_method'
+    }
     """
     if date_col not in df.columns:
         raise ValueError(f"date_col '{date_col}' not found in DataFrame")
@@ -164,42 +210,137 @@ def prepare_timeseries(
     # select working frame with only value columns (keep index)
     work = df_local[value_cols].astype("float64", errors="ignore").copy()
 
-    # if freq is provided, resample
+    # -----------------------------
+    # RESAMPLING (enhanced)
+    # [TS-POINT-2]
+    # -----------------------------
+    # Support freq="auto" to infer sensible frequency
     if freq:
+        if isinstance(agg, str) and agg.lower() in {"diff", "cumsum", "pct_change"}:
+            console.print(f"[cyan]🧩 Applying metric transform: {agg}[/cyan]")
+        if freq == "auto":
+            freq = _infer_optimal_freq(work.index)
+
         try:
-            if agg not in ("mean", "sum", "median", "min", "max"):
-                console.print(f"[yellow]⚠️ Unknown agg '{agg}', falling back to 'mean'[/yellow]")
-                agg = "mean"
-            if agg == "mean":
-                work = work.resample(freq).mean()
-            elif agg == "sum":
-                work = work.resample(freq).sum()
-            elif agg == "median":
-                work = work.resample(freq).median()
-            elif agg == "min":
-                work = work.resample(freq).min()
-            elif agg == "max":
-                work = work.resample(freq).max()
+            if not pd.api.types.is_datetime64_any_dtype(work.index):
+                console.print(f"[red]❌ Cannot resample: index is not datetime. Skipping.[/red]")
+                freq = None
+            else:
+                resampler = work.resample(freq)
+                valid_aggs = {
+                    "mean": resampler.mean,
+                    "sum": resampler.sum,
+                    "median": resampler.median,
+                    "min": resampler.min,
+                    "max": resampler.max,
+                    "count": resampler.count,
+                    "std": resampler.std,
+                    "var": resampler.var,
+                }
+                if agg not in valid_aggs:
+                    console.print(f"[yellow]⚠️ Unknown agg '{agg}', falling back to 'mean'[/yellow]")
+                    agg_to_call = valid_aggs["mean"]
+                else:
+                    agg_to_call = valid_aggs[agg]
+                work = agg_to_call()
+
+        except ValueError as e:
+            console.print(f"[red]❌ Invalid resampling frequency '{freq}': {e}[/red]")
+            return df_local, {
+                "value_cols": value_cols,
+                "start": str(df_local.index.min()),
+                "end": str(df_local.index.max()),
+                "n_points": len(df_local),
+                "freq": None,
+                "agg": agg,
+                "rolling": rolling,
+            }
+
         except Exception as e:
             console.print(f"[yellow]⚠️ Resampling failed ({e}); continuing without resampling[/yellow]")
-            freq = None  # honor failure
+            freq = None  # fallback gracefully
 
-    # rolling
-    if rolling and isinstance(rolling, int) and rolling > 1:
+
+    # -----------------------------
+    # ROLLING (enhanced)
+    # [TS-POINT-3]
+    # - supports int -> window periods
+    # - supports tuple (window, method) e.g. (7, "median")
+    # - supports time-based window strings like "7d"
+    # -----------------------------
+    if rolling:
         try:
-            work = work.rolling(window=rolling, min_periods=1).mean()
-        except Exception as e:
-            console.print(f"[yellow]⚠️ Rolling mean failed ({e}); continuing without rolling[/yellow]")
+            method = "mean"
+            window = rolling
 
-    # drop rows which are all-NaN (optional)
+            if isinstance(rolling, tuple) and len(rolling) == 2:
+                window, method = rolling
+            elif isinstance(rolling, str) and rolling.endswith("d"):
+                window = rolling  # time-based window, pandas supports offsets on DatetimeIndex
+
+            # keep a record of rolling method for metadata
+            meta["rolling_method"] = method if isinstance(method, str) else str(method)
+
+            roller = work.rolling(window=window, min_periods=1)
+            if method == "mean":
+                work = roller.mean()
+            elif method == "median":
+                work = roller.median()
+            elif method == "std":
+                work = roller.std()
+            elif method == "sum":
+                work = roller.sum()
+            elif method == "var":
+                work = roller.var()
+            else:
+                console.print(f"[yellow]⚠️ Unknown rolling method '{method}', defaulting to mean[/yellow]")
+                work = roller.mean()
+        except Exception as e:
+            console.print(f"[yellow]⚠️ Rolling failed ({e}); continuing without rolling[/yellow]")
+
+    # -----------------------------
+    # DROP NA AFTER TRANSFORMS
+    # -----------------------------
     if dropna_after_transform:
         work = work.dropna(how="all")
 
     if work.empty:
         raise ValueError("No data left after resampling/rolling/dropna.")
 
+    # -----------------------------
+    # METRIC TRANSFORMS (diff/cumsum/pct_change)
+    # [TS-POINT-4]
+    # - if agg is one of these, apply AFTER resample/rolling
+    # -----------------------------
+    transforms = {"diff", "cumsum", "pct_change"}
+    if isinstance(agg, str) and agg.lower() in transforms:
+        t = agg.lower()
+        try:
+            if t == "diff":
+                work = work.diff()
+            elif t == "cumsum":
+                work = work.cumsum()
+            elif t == "pct_change":
+                # expressed in percent to be more user-friendly
+                work = work.pct_change() * 100.0
+        except Exception as e:
+            console.print(f"[yellow]⚠️ Metric transform '{agg}' failed ({e}); continuing without transform[/yellow]")
+
+    # -----------------------------
+    # METADATA ENRICHMENT
+    # [TS-POINT-5]
+    # -----------------------------
     meta["start"] = str(work.index.min())
     meta["end"] = str(work.index.max())
     meta["n_points"] = len(work)
+    meta["granularity"] = freq
+    # missing_ratio: average fraction of NaNs across the DataFrame
+    try:
+        meta["missing_ratio"] = float(work.isna().mean().mean())
+    except Exception:
+        meta["missing_ratio"] = 0.0
+    # ensure rolling_method exists (may have been set above)
+    if "rolling_method" not in meta:
+        meta["rolling_method"] = None
 
     return work, meta

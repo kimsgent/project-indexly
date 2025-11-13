@@ -253,6 +253,11 @@ def visualize_timeseries_plot(
 
     # 1) detect x_col if not provided
     if x_col is None:
+        for col in df.columns:
+            if "date" in col.lower():
+                x_col = col
+                console.print(f"[green]📅 Auto-using '{x_col}' as time column[/green]")
+                break
         x_col = infer_date_column(df)
         if x_col is None:
             console.print("[red]❌ Could not infer a datetime column. Provide --x <column>[/red]")

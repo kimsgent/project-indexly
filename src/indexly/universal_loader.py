@@ -308,7 +308,7 @@ LOADER_REGISTRY: Dict[str, Callable[[Path], Tuple[Any, Optional[pd.DataFrame]]]]
     "excel": _load_excel,
     "xlsx": _load_excel,
     "xls": _load_excel,
-    "xlxm": _load_excel,
+    "xlsm": _load_excel,
     "parquet": _load_parquet,
     "sqlite": _load_sqlite,
 }
@@ -342,7 +342,7 @@ def detect_file_type(path: Path) -> str:
         return "json"
     if ext in {".db", ".sqlite"}:
         return "sqlite"
-    if ext in {".xlsx", ".xls"}:
+    if ext in {".xlsx", ".xls", ".xlsm"}:
         return "excel"
     if ext == ".parquet":
         return "parquet"
