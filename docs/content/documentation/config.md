@@ -18,7 +18,9 @@ keywords: [
   "Indexly watchdog"
 ]
 cta: "Optimize your Indexly setup"
-link: "/docs/content/documentation/config.md"
+canonicalURL: "/en/documentation/configuration/"
+aliases:
+  - /en/documentation/config/
 type: docs
 categories:
     - Features 
