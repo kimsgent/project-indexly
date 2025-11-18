@@ -19,7 +19,7 @@ keywords: [
   "modern terminal tools"
 ]
 cta: "Transform your terminal experience"
-link: "/docs/windows-terminal-setup/"
+canonicalURL: "/en/documentation/customizing-windows-terminal/"
 type: docs
 categories:
     - Platform Setup 

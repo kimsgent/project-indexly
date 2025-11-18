@@ -19,7 +19,7 @@ keywords: [
   "Indexly dev setup"
 ]
 cta: "Start building with Indexly"
-link: "/docs/developer-guide/"
+canonicalURL:: "/en/documentation/developer-guide/"
 type: docs
 categories:
     - Development 

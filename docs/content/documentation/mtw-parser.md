@@ -7,6 +7,7 @@ weight: 7
 description: "Learn how to extract, decode, and analyze Minitab MTW files using Indexly’s extract-mtw feature — including optional extended metadata extraction from WorksheetInfo streams."
 keywords: ["indexly", "extract-mtw", "mtw", "minitab", "data extraction", "worksheetinfo", "metadata", "cli"]
 summary: "The extract-mtw feature in Indexly introduces native support for Minitab (.MTW) files — decoding worksheets, handling binary streams, and optionally extracting independent WorksheetInfo metadata for extended insight."
+canonicalURL: /en/documentation/extract-mtw/
 categories:
     - Advance Usage
 tags: 

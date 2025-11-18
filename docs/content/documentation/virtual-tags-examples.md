@@ -1,6 +1,6 @@
 ---
 title: "Virtual Tag Detection — Examples & Tips"
-slug: "virtual-tag-detection"
+slug: "virtual-tags-detection"
 icon: "mdi:tag-multiple"
 weight: 3
 date: 2025-10-12
@@ -19,7 +19,7 @@ keywords: [
   "Indexly tagging system"
 ]
 cta: "Enhance your tagging system"
-link: "/docs/virtual-tags-examples/"
+canonicalURL:: "/en/documentation/virtual-tags-detection/"
 type: docs
 toc: true
 categories:

@@ -1,6 +1,6 @@
 ---
 title: "Indexly Tagging System"
-slug: "file-tagging"
+slug: "tagging"
 type: docs
 icon: "mdi:tag-multiple"
 weight: 2
@@ -9,7 +9,7 @@ summary: "Organize your files smarter with Indexly's tagging system — add, rem
 description: "Learn how to use Indexly's powerful file tagging system to categorize, organize, and search files effortlessly. Supports bulk tagging, recursive folder tagging, and instant tag lookups."
 keywords: ["Indexly", "file tagging", "file organization", "tagging system", "search files", "folder tagging", "data indexing", "productivity tools"]
 cta: "Learn how to manage tags"
-link: "/docs/tagging/"
+canonicalURL: "/en/documentation/tagging/"
 categories:
     - Core Features
 tags:

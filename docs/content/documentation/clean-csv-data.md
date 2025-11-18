@@ -28,7 +28,7 @@ categories:
   - Documentation
   - Data Analysis
   - CLI Tools
-canonicalURL: "https://projectindexly.com/en/documentation/clean-csv-data"
+canonicalURL: "/en/documentation/cleaning-csv-utilities/"
 summary: "Learn how Indexly’s Auto Clean feature transforms messy CSV files into structured, analysis-ready datasets with automated imputation, datetime parsing, and type inference. Includes commands, logic breakdown, and examples."
 seo_title: "CSV Data Cleaning with Indexly | Automated Preprocessing and Type Inference"
 og_title: "Cleaning CSV Data with Indexly – Automatic Type Inference and Imputation"
