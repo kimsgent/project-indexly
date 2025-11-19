@@ -1,6 +1,7 @@
 import json
 import pandas as pd
 from indexly.universal_loader import detect_and_load
+from tests.helpers import assert_passthrough
 
 def test_yaml_loading(tmp_path):
     p = tmp_path / "data.yaml"
@@ -40,18 +41,29 @@ def test_csv_fallback(tmp_path):
     p = tmp_path / "data.csv"
     p.write_text("a,b\n1,2\n3,4\n")
     result = detect_and_load(p)
-    assert result["file_type"] == "csv"
+
+    # Passthrough mode?
+    if result["loader_spec"] == "passthrough":
+        assert_passthrough(result, "csv")
+        return
+
+    # Loader mode
     assert isinstance(result["df"], pd.DataFrame)
     assert result["metadata"]["rows"] == 2
 
-
 def test_json_fallback(tmp_path):
-    import json
     p = tmp_path / "data.json"
     p.write_text(json.dumps({"records": [{"x": 1}, {"x": 2}]}))
     result = detect_and_load(p)
-    assert result["file_type"] == "json"
+
+    # Passthrough mode?
+    if result["loader_spec"] == "passthrough":
+        assert_passthrough(result, "json")
+        return
+
+    # Loader mode
     assert isinstance(result["raw"], dict)
     assert isinstance(result["df"], pd.DataFrame)
     assert result["metadata"]["rows"] >= 1
+
 
