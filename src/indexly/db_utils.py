@@ -179,7 +179,7 @@ def _sync_path_in_db(old_path: str, new_path: str):
 # 🧱 1. Connection Helper
 # ------------------------------------------------------
 def _get_db_connection():
-    from .analyze_json import _migrate_cleaned_data_schema
+
     import os, sqlite3
 
     db_path = os.path.join(os.path.expanduser("~"), ".indexly", "indexly.db")
