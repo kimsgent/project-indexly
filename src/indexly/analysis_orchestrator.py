@@ -20,6 +20,12 @@ from .analyze_utils import (
     validate_file_content,
     save_analysis_result,
 )
+from indexly.json_cache_normalizer import (
+    is_search_cache_json,
+    normalize_search_cache_json,
+    _print_search_summary,
+)
+
 from indexly.universal_loader import detect_and_load, detect_file_type
 
 console = Console()
@@ -205,7 +211,9 @@ def analyze_file(args) -> Optional[AnalysisResult]:
                     file_path=file_path, args=args
                 )
             elif file_type == "excel":
-                console.print(f"[cyan]📂 Processing Excel file: {file_path.name}[/cyan]")
+                console.print(
+                    f"[cyan]📂 Processing Excel file: {file_path.name}[/cyan]"
+                )
                 try:
                     df_input = df if df is not None else None
 
@@ -222,19 +230,27 @@ def analyze_file(args) -> Optional[AnalysisResult]:
 
                 # Render outputs
                 if getattr(args, "treeview", False) and table_output.get("tree"):
-                    console.print("\n🌳 [bold cyan]Tree-View Summary (Excel)[/bold cyan]")
+                    console.print(
+                        "\n🌳 [bold cyan]Tree-View Summary (Excel)[/bold cyan]"
+                    )
                     console.print(table_output["tree"])
 
                 if table_output.get("markdown"):
-                    console.print("\n🧾 [bold cyan]Markdown Summary (Excel)[/bold cyan]")
+                    console.print(
+                        "\n🧾 [bold cyan]Markdown Summary (Excel)[/bold cyan]"
+                    )
                     console.print(table_output["markdown"])
 
                 if isinstance(df, pd.DataFrame) and not df.empty:
-                    console.print("\n🧩 [bold cyan]Sample Data Preview (Excel)[/bold cyan]")
+                    console.print(
+                        "\n🧩 [bold cyan]Sample Data Preview (Excel)[/bold cyan]"
+                    )
                     console.print(df.head(10).to_markdown(index=False))
 
             elif file_type == "parquet":
-                console.print(f"[cyan]📂 Processing Parquet file: {file_path.name}[/cyan]")
+                console.print(
+                    f"[cyan]📂 Processing Parquet file: {file_path.name}[/cyan]"
+                )
                 try:
                     df, df_stats, table_output = run_parquet_pipeline(df=df, args=args)
                 except Exception as e:
@@ -242,24 +258,32 @@ def analyze_file(args) -> Optional[AnalysisResult]:
                     return None
                 # Optional TreeView rendering support
                 if getattr(args, "treeview", False) and table_output.get("tree"):
-                    console.print("\n🌳 [bold cyan]Tree-View Summary (Parquet)[/bold cyan]")
+                    console.print(
+                        "\n🌳 [bold cyan]Tree-View Summary (Parquet)[/bold cyan]"
+                    )
                     console.print(table_output["tree"])
                 # Markdown summary (if available)
                 if table_output.get("markdown"):
-                    console.print("\n🧾 [bold cyan]Markdown Summary (Parquet)[/bold cyan]")
+                    console.print(
+                        "\n🧾 [bold cyan]Markdown Summary (Parquet)[/bold cyan]"
+                    )
 
                     md_text = table_output["markdown"]
 
                     # Inject statistical overview if df_stats is available
                     if isinstance(df_stats, pd.DataFrame) and not df_stats.empty:
-                        stats_md = df_stats.round(3).to_markdown(index=True, tablefmt="github")
+                        stats_md = df_stats.round(3).to_markdown(
+                            index=True, tablefmt="github"
+                        )
                         if "_Statistics unavailable._" in md_text:
                             md_text = md_text.replace(
                                 "_Statistics unavailable._", f"\n{stats_md}\n"
                             )
                         else:
                             # Append stats if not already present
-                            md_text += "\n## 📊 Statistical Overview\n" + stats_md + "\n"
+                            md_text += (
+                                "\n## 📊 Statistical Overview\n" + stats_md + "\n"
+                            )
                     else:
                         if "_Statistics unavailable._" not in md_text:
                             md_text += "\n_Statistics unavailable._\n"
@@ -268,7 +292,9 @@ def analyze_file(args) -> Optional[AnalysisResult]:
 
                 # Optional sample preview
                 if isinstance(df, pd.DataFrame) and not df.empty:
-                    console.print("\n🧩 [bold cyan]Sample Data Preview (Parquet)[/bold cyan]")
+                    console.print(
+                        "\n🧩 [bold cyan]Sample Data Preview (Parquet)[/bold cyan]"
+                    )
                     console.print(df.head(10).to_markdown(index=False))
 
             else:
@@ -291,6 +317,30 @@ def analyze_file(args) -> Optional[AnalysisResult]:
                 f"[red]❌ Pipeline error for {file_path.name} ({file_type}): {e}[/red]"
             )
             return None
+        # --- JSON CACHE NORMALIZER INTEGRATION ---
+
+        if file_type == "json":
+
+            try:
+                df_norm = normalize_search_cache_json(Path(file_path))
+
+                # Replace pipeline output
+                df = df_norm
+                df_stats = {}  # JSON mode does not use df_stats
+                table_output = None
+
+                # Sorting if requested
+                sort_order = getattr(args, "sortdate_by", "asc")
+                ascending = sort_order == "asc"
+                df = df.sort_values("derived_date", ascending=ascending)
+
+                # Print final hierarchical summary
+                if getattr(args, "summarize_search", False):
+                    _print_search_summary(df, console)
+
+            except Exception as e:
+                console.print(f"[yellow]⚠️ JSON cache normalization skipped: {e}[/yellow]")
+
 
         # --- Persist universal loader results ---
         _persist_analysis(df, df_preview, file_path, file_type, table_output, args=args)
@@ -343,13 +393,17 @@ def analyze_file(args) -> Optional[AnalysisResult]:
             printed_any = False
             # Invoice markdown
             if getattr(args, "invoice", False) and summary.get("md"):
-                console.print(summary.get("md", "[yellow]No invoice summary available.[/yellow]"))
+                console.print(
+                    summary.get("md", "[yellow]No invoice summary available.[/yellow]")
+                )
                 printed_any = True
 
             # Tree view
             if getattr(args, "treeview", False) and summary.get("tree"):
                 console.print("\n🌳 [bold cyan]Tree-View Summary[/bold cyan]")
-                console.print(summary.get("tree", "[yellow]No tree view available.[/yellow]"))
+                console.print(
+                    summary.get("tree", "[yellow]No tree view available.[/yellow]")
+                )
                 printed_any = True
 
             # Sample Data Preview
@@ -360,7 +414,9 @@ def analyze_file(args) -> Optional[AnalysisResult]:
 
             # Fallback for XML
             if not printed_any:
-                console.print("[yellow]No summary or preview available for this XML file.[/yellow]")
+                console.print(
+                    "[yellow]No summary or preview available for this XML file.[/yellow]"
+                )
 
         # --------------------------
         # YAML / YML files
@@ -384,7 +440,11 @@ def analyze_file(args) -> Optional[AnalysisResult]:
         elif isinstance(df, pd.DataFrame) and not df.empty:
             term_width = shutil.get_terminal_size((120, 40)).columns
             col_fit_estimate = max(5, term_width // 25)
-            max_cols = len(df.columns) if getattr(args, "wide_view", False) else min(col_fit_estimate, len(df.columns))
+            max_cols = (
+                len(df.columns)
+                if getattr(args, "wide_view", False)
+                else min(col_fit_estimate, len(df.columns))
+            )
             truncate_len = max(20, term_width // 6)
             max_rows = 10
             display_cols = df.columns[:max_cols]
@@ -396,19 +456,33 @@ def analyze_file(args) -> Optional[AnalysisResult]:
                 df_display.columns = ["Field", "Value"]
                 console.print(df_display.head(40).to_markdown(index=False))
             else:
-                table = Table(title="Dataset Summary", show_header=True, header_style="bold magenta", expand=True)
+                table = Table(
+                    title="Dataset Summary",
+                    show_header=True,
+                    header_style="bold magenta",
+                    expand=True,
+                )
                 for col in display_cols:
                     table.add_column(f"{col} [{df[col].dtype}]")
                 for _, row in df.head(max_rows).iterrows():
-                    table.add_row(*[
-                        str(x)[:truncate_len] + ("…" if len(str(x)) > truncate_len else "") for x in row[display_cols]
-                    ])
+                    table.add_row(
+                        *[
+                            str(x)[:truncate_len]
+                            + ("…" if len(str(x)) > truncate_len else "")
+                            for x in row[display_cols]
+                        ]
+                    )
                 console.print(table)
 
             # Optional numeric summary
             numeric_cols = df.select_dtypes(include=["number"]).columns
             if len(numeric_cols) > 0:
-                stats_table = Table(title="Numeric Summary", show_header=True, header_style="bold green", expand=True)
+                stats_table = Table(
+                    title="Numeric Summary",
+                    show_header=True,
+                    header_style="bold green",
+                    expand=True,
+                )
                 stats_table.add_column("Column")
                 stats_table.add_column("Count")
                 stats_table.add_column("Mean")
@@ -433,7 +507,9 @@ def analyze_file(args) -> Optional[AnalysisResult]:
                 summary_path = export_dir / f"{file_path.stem}_summary.md"
                 try:
                     df.head(20).to_markdown(summary_path, index=False)
-                    console.print(f"[green]📁 Saved full summary to:[/green] {summary_path}")
+                    console.print(
+                        f"[green]📁 Saved full summary to:[/green] {summary_path}"
+                    )
                 except Exception as e:
                     console.print(f"[yellow]⚠️ Failed to save summary: {e}[/yellow]")
 
@@ -442,7 +518,6 @@ def analyze_file(args) -> Optional[AnalysisResult]:
         # --------------------------
         else:
             console.print("[yellow]No summary data available.[/yellow]")
-
 
         # Preserve formatted table output if exists
         if table_output and "pretty_text" in table_output:

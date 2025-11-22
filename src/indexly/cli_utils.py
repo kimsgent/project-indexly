@@ -503,6 +503,17 @@ def build_parser():
         action="store_true",
         help="Show extended summary of columns and derived fields",
     )
+    analyze_file_parser.add_argument(
+        "--summarize-search",
+        action="store_true",
+        help="Show normalized date/period summary for search-cache JSON files."
+    )
+
+    analyze_file_parser.add_argument(
+        "--sortdate-by",
+        choices=["date", "year", "month", "week"],
+        help="Sort normalized search results by derived date or period."
+    )
 
     # Additional display/export (from original)
     analyze_file_parser.add_argument(

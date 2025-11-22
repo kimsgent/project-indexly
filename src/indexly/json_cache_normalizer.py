@@ -3,7 +3,7 @@ json_cache_normalizer.py
 Enhanced normalizer for Indexly search-cache JSON files:
 - full datetime normalization (via datetime_utils)
 - derived_date column
-- internal date summary (year, month, day)
+- year / month_name / isoweek / calendar_week label
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ def is_search_cache_json(obj: Dict[str, Any]) -> bool:
 
 
 # ---------------------------------------------------------
-# Tag Cleaning Helpers
+# Tag cleaning + date extraction from snippet
 # ---------------------------------------------------------
 _SHORT_VAL = re.compile(r"^[a-zA-Z0-9]{1,2}$")
 _DATE_DDMMYY = re.compile(r"\b(\d{2}\.\d{2}\.\d{2,4})\b")
@@ -68,6 +68,61 @@ def _clean_tag(tag: str) -> str | None:
         return None
     return tag
 
+def _print_search_summary(df: pd.DataFrame, console):
+    if df.empty or "derived_date" not in df.columns:
+        console.print("[yellow]No date information available.[/yellow]")
+        return
+
+    console.print("\n📆 Summary by Date")
+    console.print("─" * 60)
+
+    # Ensure ordering
+    df = df.sort_values("derived_date")
+
+    # Grouping: year → month → week
+    grouped = (
+        df.groupby(["year", "month_name", "_week"], dropna=True, sort=True)
+    )
+
+    for (year, month, week), group in grouped:
+        console.print(f"\n{year}")
+        console.print(f"  └─ {month}")
+        console.print(f"       └─ KW{week}")
+
+        for idx, row in enumerate(group.itertuples(), start=1):
+            raw_dates = ", ".join(row.date_raw_list) if row.date_raw_list else "—"
+            tags = json.loads(row.tags) if isinstance(row.tags, str) else (row.tags or [])
+            snippet = (row.snippet[:50] + "…") if len(row.snippet) > 50 else row.snippet
+
+            console.print(
+                f"            {idx}) {row.path}\n"
+                f"               • Date: {row.derived_date.date()} (KW{week})\n"
+                f"               • Tags: {tags}\n"
+                f"               • Snippet: {snippet} ({len(snippet)} chars)\n"
+                f"               • Raw dates: {raw_dates}\n"
+            )
+
+    # ------------------------------------------------------------------
+    # NON-NUMERIC COLUMN OVERVIEW
+    # ------------------------------------------------------------------
+    console.print("\n📋 Non-Numeric Column Overview")
+    for col in ["path", "tags", "snippet"]:
+        vals = df[col].dropna()
+        if vals.empty:
+            continue
+
+        if col == "tags":
+            all_tags = []
+            for t in vals:
+                try:
+                    arr = json.loads(t)
+                    all_tags.extend(arr)
+                except Exception:
+                    pass
+            unique_tags = sorted(set(all_tags))
+            console.print(f"- tags: diverse, sample={unique_tags[:3]}")
+        else:
+            console.print(f"- {col}: {vals.nunique()} unique")
 
 # ---------------------------------------------------------
 # Normalization Core
@@ -78,9 +133,7 @@ def normalize_search_cache_json(path: Path) -> pd.DataFrame:
 
     rows = []
 
-    # ---------------------------------------------------------
     # Build rows
-    # ---------------------------------------------------------
     for cache_key, entry in raw.items():
         timestamp = entry.get("timestamp")
         results = entry.get("results", [])
@@ -89,20 +142,19 @@ def normalize_search_cache_json(path: Path) -> pd.DataFrame:
             snippet = r.get("snippet", "")
             path_val = r.get("path")
 
-            # Clean & dedupe tags
+            # Cleaned & deduped tags
             cleaned = []
             for t in r.get("tags", []):
                 ct = _clean_tag(t)
                 if ct:
                     cleaned.append(ct)
 
-            # Extract date candidates
+            # Extract date-like values
             extracted_dates = _extract_dates(snippet)
             for d in extracted_dates:
                 cleaned.append(f"date_raw: {d}")
 
-            # Deduplicate tags
-            uniq = list(dict.fromkeys(cleaned))  # preserves order
+            uniq = list(dict.fromkeys(cleaned))
 
             rows.append(
                 {
@@ -116,23 +168,17 @@ def normalize_search_cache_json(path: Path) -> pd.DataFrame:
             )
 
     df = pd.DataFrame(rows)
-
     if df.empty:
         return df
 
-    # ---------------------------------------------------------
-    # 1. Run datetime normalization (safe)
-    # ---------------------------------------------------------
+    # 1. Normalize datetime columns (safe)
     try:
         df, dt_summary = normalize_datetime_columns(df, source_type="cache")
     except Exception:
         dt_summary = {"normalized": False, "columns": []}
 
-    # ---------------------------------------------------------
-    # 2. Build derived_date column
-    # ---------------------------------------------------------
+    # 2. Build derived_date
     def _derive(row):
-        # normalized timestamp first
         ts = row.get("timestamp", None)
         if ts is not None:
             try:
@@ -142,7 +188,6 @@ def normalize_search_cache_json(path: Path) -> pd.DataFrame:
             except Exception:
                 pass
 
-        # fallback from snippet-extracted raw dates
         for d in row.get("date_raw_list", []):
             dt = pd.to_datetime(d, errors="coerce", dayfirst=True)
             if pd.notna(dt):
@@ -152,42 +197,51 @@ def normalize_search_cache_json(path: Path) -> pd.DataFrame:
 
     df["derived_date"] = df.apply(_derive, axis=1)
 
-
-    # ---------------------------------------------------------
-    # Calendar Week (numeric + label + callable-representation)
-    # ---------------------------------------------------------
+    # 3. Calendar breakdown
     if df["derived_date"].notna().any():
-        df["_year"] = df["derived_date"].dt.year
-        df["_year_month"] = df["derived_date"].dt.to_period("M").astype(str)
+
+        df["year"] = df["derived_date"].dt.year
+        df["month_name"] = df["derived_date"].dt.month_name()
         df["_date"] = df["derived_date"].dt.date
 
-        # numeric week
-        _week = df["derived_date"].dt.isocalendar().week.astype(int)
-        df["_week"] = _week
+        iso = df["derived_date"].dt.isocalendar()
+        df["_week"] = iso.week.astype(int)
+        df["calendar_week"] = df["_week"].apply(lambda x: f"calendar_week({x})")
 
-        # label: calendar_week(47)
-        df["calendar_week"] = _week.apply(lambda x: f"calendar_week({x})")
     else:
-        df["_year"] = None
-        df["_year_month"] = None
+        df["year"] = None
+        df["month_name"] = None
         df["_date"] = None
         df["_week"] = None
         df["calendar_week"] = None
 
-
-    # ---------------------------------------------------------
-    # 4. Serialize tags for storage
-    # ---------------------------------------------------------
+    # 4. Serialize tags
     df["tags"] = df["tags"].apply(lambda t: json.dumps(t, ensure_ascii=False))
 
-    # ---------------------------------------------------------
-    # 5. Store date summary internally
-    # ---------------------------------------------------------
+    # 5. Store summary in attrs
     df.attrs["date_summary"] = {
         "derived_dates_present": df["derived_date"].notna().sum(),
-        "years": sorted({y for y in df["_year"].dropna()}),
-        "months": sorted({m for m in df["_year_month"].dropna()}),
+        "years": sorted({y for y in df["year"].dropna()}),
+        "months": sorted({m for m in df["month_name"].dropna()}),
         "dt_summary": dt_summary,
     }
+    # ---------------------------------------------------------
+    # 6. Build external summary object for orchestrator
+    # ---------------------------------------------------------
+    summary = {
+        "total_rows": len(df),
+        "derived_dates": int(df["derived_date"].notna().sum()),
+        "years": sorted({int(y) for y in df["year"].dropna()}),
+        "months": sorted({m for m in df["month_name"].dropna()}),
+        "weeks": sorted({int(w) for w in df["_week"].dropna()}),
+        "calendar_week_labels": sorted({
+            f"calendar_week({int(w)})" for w in df["_week"].dropna()
+        }),
+        "dt_summary": df.attrs.get("date_summary", {}).get("dt_summary", {}),
+    }
+
+    # Attach it so orchestrator can read it safely
+    df.attrs["summary"] = summary
 
     return df
+
