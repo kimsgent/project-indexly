@@ -1,8 +1,17 @@
 # src/indexly/visualize_json.py
-from pathlib import Path
+import json
 import pandas as pd
+from pathlib import Path
+from rich.tree import Tree
 from rich.console import Console
 from rich.table import Table
+
+
+
+
+console = Console()
+
+
 
 console = Console()
 
@@ -58,3 +67,84 @@ def build_json_table_output(df: pd.DataFrame, dt_summary: dict = None) -> dict:
             console.print(f"- {col}: {info['unique']} unique, dtype={info['dtype']}, sample={info['sample']}")
 
     return table_output
+
+# -------------------------------------------------------
+# JSON VISUALIZATION HELPERS (drop into visualize_json.py)
+# -------------------------------------------------------
+
+def json_build_tree(obj, root_name="root"):
+    tree = Tree(f"[bold]{root_name}[/bold]")
+    _json_tree_walk(obj, tree)
+    return tree
+
+
+def _json_tree_walk(obj, node):
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            child = node.add(f"[cyan]{k}[/cyan]")
+            _json_tree_walk(v, child)
+    elif isinstance(obj, list):
+        for i, v in enumerate(obj):
+            child = node.add(f"[green][{i}][/green]")
+            _json_tree_walk(v, child)
+    else:
+        node.add(f"[white]{obj}[/white]")
+
+
+def json_preview(obj, max_items=10):
+    if isinstance(obj, dict):
+        keys = list(obj.keys())[:max_items]
+        return {k: obj[k] for k in keys}
+    if isinstance(obj, list):
+        return obj[:max_items]
+    return obj
+
+
+def json_metadata(obj):
+    return {
+        "type": type(obj).__name__,
+        "size": len(obj) if hasattr(obj, "__len__") else None,
+        "keys": list(obj.keys()) if isinstance(obj, dict) else None,
+        "sample": json_preview(obj),
+    }
+
+
+def json_detect_structures(obj):
+    if isinstance(obj, list) and all(isinstance(x, dict) for x in obj):
+        return "records"
+    if isinstance(obj, dict):
+        return "object"
+    return "unknown"
+
+
+def json_to_dataframe(obj):
+    try:
+        if isinstance(obj, list) and all(isinstance(x, dict) for x in obj):
+            return pd.DataFrame(obj)
+        if isinstance(obj, dict):
+            return pd.json_normalize(obj, sep=".")
+    except Exception:
+        return None
+    return None
+
+
+def json_visual_summary(obj):
+    struct = json_detect_structures(obj)
+    meta = json_metadata(obj)
+    preview = json_preview(obj)
+    return {
+        "structure": struct,
+        "metadata": meta,
+        "preview": preview,
+    }
+
+
+def json_render_terminal(tree, summary):
+    console.print("\n🌳 [bold cyan]JSON Structure[/bold cyan]")
+    console.print(tree)
+
+    console.print("\n📌 [bold cyan]Metadata[/bold cyan]")
+    console.print(summary["metadata"])
+
+    console.print("\n🔍 [bold cyan]Preview[/bold cyan]")
+    console.print(summary["preview"])

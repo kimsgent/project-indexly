@@ -9,7 +9,7 @@ from rich.console import Console
 from .export_utils import safe_export
 from .analysis_result import AnalysisResult
 from .csv_pipeline import run_csv_pipeline
-from .json_pipeline import run_json_pipeline
+from .json_pipeline import run_json_pipeline, run_json_generic_pipeline
 from .db_pipeline import run_db_pipeline
 from .xml_pipeline import run_xml_pipeline
 from .parquet_pipeline import run_parquet_pipeline
@@ -169,8 +169,125 @@ def analyze_file(args) -> Optional[AnalysisResult]:
         console.print("[red]❌ File validation failed — analysis aborted.[/red]")
         return None
 
-    # --- Universal loader (skip CSV/JSON passthrough)
-    if not legacy_mode:
+    # =====================================================================================
+    # JSON (non-legacy) — always route through the real JSON pipeline
+    # =====================================================================================
+    # --- JSON handling with search_cache.json auto-detection ---
+    if file_type == "json" and not legacy_mode:
+        try:
+            load_result = detect_and_load(str(file_path), args)
+            if not load_result:
+                console.print(f"[red]❌ JSON loader failed for {file_path.name}[/red]")
+                return None
+
+            loader_df = load_result.get("df")
+            loader_raw = load_result.get("raw")
+            metadata = load_result.get("metadata", {})
+            show_treeview = getattr(args, "treeview", False)
+
+            # ======================================================
+            # 1) SEARCH CACHE JSON DETECTED
+            # ======================================================
+            if metadata.get("json_mode") == "search_cache":
+                console.print(f"[cyan]🔎 Detected Indexly search_cache.json — using cache normalization[/cyan]")
+
+                try:
+                    df_norm = normalize_search_cache_json(Path(file_path))
+
+                    # no df_stats for search cache
+                    df = df_norm
+                    df_stats = {}
+                    table_output = None
+
+                    # sorting if required
+                    sort_order = getattr(args, "sortdate_by", "asc")
+                    ascending = sort_order == "asc"
+                    df = df.sort_values("derived_date", ascending=ascending)
+
+                    if getattr(args, "summarize_search", False):
+                        _print_search_summary(df, console)
+
+                    # Persist with unified saver
+                    _persist_analysis(
+                        df, None, file_path, "json",
+                        table_output=table_output, args=args
+                    )
+                    return df
+
+                except Exception as e:
+                    console.print(f"[yellow]⚠️ JSON cache normalization skipped: {e}[/yellow]")
+                    return None
+
+            # ======================================================
+            # 2) STRUCTURED JSON ("metadata" + "sample_data")
+            # ======================================================
+            if (
+                isinstance(loader_raw, dict)
+                and "metadata" in loader_raw
+                and "sample_data" in loader_raw
+            ):
+                preloaded_df = pd.DataFrame(loader_raw.get("sample_data", []))
+
+                df, df_stats, table_dict = run_json_pipeline(
+                    file_path=file_path,
+                    args=args,
+                    df=preloaded_df,
+                    verbose=getattr(args, "verbose", True)  
+                )
+
+                tree_dict = table_dict.get("tree", {}) if show_treeview else {}
+                summary_dict = table_dict
+
+            # ======================================================
+            # 3) GENERIC JSON (normal dict / list / nested)
+            # ======================================================
+            else:
+                console.print(
+                    f"[yellow]⚠️ JSON file {file_path.name} lacks structured metadata, using fallback preview[/yellow]"
+                )
+
+                df, df_stats, summary_dict = run_json_generic_pipeline(
+                    raw=loader_raw,
+                    meta=metadata or {},
+                    path=file_path,
+                    cli_args={
+                        "verbose": getattr(args, "verbose", True),
+                        "treeview": show_treeview,
+                    },
+                )
+                tree_dict = summary_dict.get("tree", {}) if show_treeview else {}
+
+            # ======================================================
+            # Optional sorting
+            # ======================================================
+            if isinstance(df, pd.DataFrame) and "derived_date" in df.columns:
+                ascending = getattr(args, "sortdate_by", "asc") == "asc"
+                df = df.sort_values("derived_date", ascending=ascending)
+
+            if getattr(args, "summarize_search", False):
+                _print_search_summary(df, console)
+
+            # ======================================================
+            # Persist using unified save
+            # ======================================================
+            save_analysis_result(
+                file_path=file_path,
+                file_type="json",
+                summary=summary_dict,
+                sample_data=df,
+                metadata=metadata,
+                row_count=len(df) if df is not None else 0,
+                col_count=len(df.columns) if df is not None else 0
+            )
+
+        except Exception as e:
+            console.print(f"[red]❌ JSON pipeline failed: {e}[/red]")
+            return None
+
+    # =====================================================================================
+    # Non-JSON universal loader (unchanged)
+    # =====================================================================================
+    elif not legacy_mode:
         try:
             load_result = detect_and_load(str(file_path), args)
             if not load_result:
@@ -178,23 +295,16 @@ def analyze_file(args) -> Optional[AnalysisResult]:
                     f"[red]❌ Universal loader failed for {file_path.name}[/red]"
                 )
                 return None
-        except Exception as e:
-            console.print(
-                f"[red]❌ Universal loader error for {file_path.name}: {e}[/red]"
-            )
-            return None
 
-        file_type = load_result.get("file_type", file_type)
-        raw = load_result.get("raw")
-        metadata = load_result.get("metadata", {})
-        df_preview = load_result.get("df_preview") if file_type == "xml" else None
-        df = load_result.get("df") if file_type != "xml" else None
+            file_type = load_result.get("file_type", file_type)
+            raw = load_result.get("raw")
+            metadata = load_result.get("metadata", {})
+            df_preview = load_result.get("df_preview") if file_type == "xml" else None
+            df = load_result.get("df") if file_type != "xml" else None
 
-        try:
-            # --- Direct passthrough for CSV/JSON (.gz handled by pipelines)
-            if file_type in {"csv", "json"}:
-                pipeline = run_csv_pipeline if file_type == "csv" else run_json_pipeline
-                df, df_stats, table_output = pipeline(file_path, args, df=df)
+            # --- Pass-through for CSV
+            if file_type == "csv":
+                df, df_stats, table_output = run_csv_pipeline(file_path, args, df=df)
             # --- Other pipelines unchanged
             elif file_type in {"sqlite", "db"}:
                 df, df_stats, table_output = run_db_pipeline(file_path, args)
@@ -317,30 +427,6 @@ def analyze_file(args) -> Optional[AnalysisResult]:
                 f"[red]❌ Pipeline error for {file_path.name} ({file_type}): {e}[/red]"
             )
             return None
-        # --- JSON CACHE NORMALIZER INTEGRATION ---
-
-        if file_type == "json":
-
-            try:
-                df_norm = normalize_search_cache_json(Path(file_path))
-
-                # Replace pipeline output
-                df = df_norm
-                df_stats = {}  # JSON mode does not use df_stats
-                table_output = None
-
-                # Sorting if requested
-                sort_order = getattr(args, "sortdate_by", "asc")
-                ascending = sort_order == "asc"
-                df = df.sort_values("derived_date", ascending=ascending)
-
-                # Print final hierarchical summary
-                if getattr(args, "summarize_search", False):
-                    _print_search_summary(df, console)
-
-            except Exception as e:
-                console.print(f"[yellow]⚠️ JSON cache normalization skipped: {e}[/yellow]")
-
 
         # --- Persist universal loader results ---
         _persist_analysis(df, df_preview, file_path, file_type, table_output, args=args)

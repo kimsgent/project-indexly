@@ -1,13 +1,22 @@
 # src/indexly/json_pipeline.py
 from __future__ import annotations
 from pathlib import Path
-from typing import Tuple, Dict, Any
+from typing import Tuple, Dict, Any, Optional
 import pandas as pd
 import json
 from rich.console import Console
 from indexly.csv_analyzer import export_results
 from .csv_analyzer import _json_safe
 from datetime import datetime
+from .visualize_json import (
+    json_visual_summary,
+    json_to_dataframe,
+    summarize_json_dataframe,
+    json_preview,
+    json_build_tree,
+    json_render_terminal,
+ 
+)
 
 
 console = Console()
@@ -17,13 +26,14 @@ from .analyze_json import (
     load_json_as_dataframe,
     analyze_json_dataframe,
     normalize_datetime_columns,
-    _print_datetime_summary
-
+    _print_datetime_summary,
+    
 )
 from .json_cache_normalizer import (
     is_search_cache_json,
     normalize_search_cache_json,
 )
+
 
 def run_json_pipeline(file_path: Path, args=None, df: pd.DataFrame | None = None, verbose: bool = True):
     """
@@ -109,6 +119,99 @@ def run_json_pipeline(file_path: Path, args=None, df: pd.DataFrame | None = None
     # Step 5 — Return
     return df, df_stats, table_dict
 
+
+
+def flatten_nested_json(obj, parent_key="", sep="."):
+    """
+    Flatten nested JSON dicts/lists into a list of flat dicts suitable for pandas DataFrame.
+    Each leaf item becomes a column with a dot-separated path.
+    """
+    records = []
+
+    if isinstance(obj, dict):
+        # Start with an empty record
+        temp = {}
+        for k, v in obj.items():
+            new_key = f"{parent_key}{sep}{k}" if parent_key else k
+            child_records = flatten_nested_json(v, new_key, sep)
+            if isinstance(child_records, list):
+                # Merge with current temp record
+                if not records:
+                    records = child_records
+                else:
+                    # Cartesian merge
+                    merged = []
+                    for r1 in records:
+                        for r2 in child_records:
+                            merged.append({**r1, **r2})
+                    records = merged
+            else:
+                temp.update(child_records)
+        if temp:
+            records.append(temp)
+    elif isinstance(obj, list):
+        # Flatten each element in list into separate records
+        for v in obj:
+            child_records = flatten_nested_json(v, parent_key, sep)
+            if isinstance(child_records, list):
+                records.extend(child_records)
+            else:
+                records.append(child_records)
+    else:
+        return {parent_key: obj}
+
+    return records
+
+
+def run_json_generic_pipeline(raw: Any, meta: dict, *, path: Path, cli_args: Optional[dict] = None):
+    """
+    Generic JSON pipeline compatible with nested JSON structures.
+    Returns: (df, summary_dict, tree_dict)
+    """
+    cli_args = cli_args or {}
+    show_tree = cli_args.get("treeview", False)
+    verbose = cli_args.get("verbose", True)
+
+    # ----- Flatten JSON and convert to DataFrame -----
+    flattened_records = flatten_nested_json(raw)
+    if not flattened_records:
+        df = pd.DataFrame()
+    elif isinstance(flattened_records, list):
+        df = pd.DataFrame(flattened_records)
+    else:
+        df = pd.DataFrame([flattened_records])
+
+    if df.empty:
+        summary_dict = json_visual_summary(raw)["metadata"]
+    else:
+        summary_dict = build_json_table_output(df)
+
+    # ----- TREE (optional) -----
+    tree_dict = {}
+    if show_tree:
+        try:
+            tree_obj = json_build_tree(raw, root_name=path.name if path else "root")
+            tree_dict = {"tree": tree_obj}
+            summary_dict["metadata"] = meta
+            summary_dict["preview"] = json_preview(raw)
+        except Exception as e:
+            tree_dict = {"note": f"Failed to build tree: {e}"}
+
+    # ----- PREVIEW -----
+    preview_dict = {"preview": json_preview(raw)}
+
+    # ----- CLI render -----
+
+    verbose = getattr(cli_args, "verbose", True)
+    if verbose:
+        print(f"\n📊 JSON Dataset Summary Preview for {path.name if path else 'file'}:")
+
+        # Optional tree rendering
+        if tree_dict.get("tree"):
+            json_render_terminal(tree_dict["tree"], summary_dict)
+
+
+    return df, summary_dict, tree_dict
 
 
 

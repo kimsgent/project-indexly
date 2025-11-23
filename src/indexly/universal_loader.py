@@ -97,6 +97,51 @@ def _load_json(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
     return None, None
 
 
+
+def load_json_or_ndjson(path: Path) -> Tuple[Any, Optional[dict]]:
+    """
+    Unified loader for JSON and NDJSON.
+    Returns:
+        - raw JSON / list / dict / list[dict]
+        - structure metadata (NO DataFrame!)
+    """
+    try:
+        text = path.read_text(encoding="utf-8")
+    except Exception:
+        return None, None
+
+    # Try standard JSON first
+    try:
+        parsed = json.loads(text)
+        meta = {
+            "type": "json",
+            "is_list": isinstance(parsed, list),
+            "is_dict": isinstance(parsed, dict),
+            "is_record_list": isinstance(parsed, list) and all(isinstance(x, dict) for x in parsed),
+        }
+        return parsed, meta
+
+    except json.JSONDecodeError:
+        # Try NDJSON
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        objs = []
+        for line in lines:
+            try:
+                objs.append(json.loads(line))
+            except Exception:
+                continue
+
+        if not objs:
+            return None, None
+
+        meta = {
+            "type": "ndjson",
+            "is_list": True,
+            "is_record_list": all(isinstance(x, dict) for x in objs),
+        }
+        return objs, meta
+
+
 def _load_yaml(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
     if yaml is None:
         raise ImportError("PyYAML is not installed. Run: pip install pyyaml")
@@ -302,7 +347,9 @@ def _load_sqlite(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
 # ---------------------------------------------------------------------
 LOADER_REGISTRY: Dict[str, Callable[[Path], Tuple[Any, Optional[pd.DataFrame]]]] = {
     "csv": _load_csv,
-    "json": _load_json,
+    "json": load_json_or_ndjson,
+    "ndjson": load_json_or_ndjson,
+    "generic_json": load_json_or_ndjson,
     "yaml": _load_yaml,
     "xml": _load_xml,
     "excel": _load_excel,
@@ -350,6 +397,23 @@ def detect_file_type(path: Path) -> str:
         return "yaml"
     if ext == ".xml":
         return "xml"
+    # --- new block at the end of detect_file_type ---
+    text_sample = _safe_read_text(path, max_lines=10)  # read only first 10 lines for performance
+    if text_sample:
+        try:
+            parsed = json.loads(text_sample)
+            # Indexly-exported JSON
+            if isinstance(parsed, dict) and "metadata" in parsed:
+                return "json"
+            # Generic JSON array or object
+            elif isinstance(parsed, dict) or isinstance(parsed, list):
+                return "generic_json"
+        except json.JSONDecodeError:
+            # NDJSON detection: check first few lines for JSON objects
+            lines = [line for line in text_sample.splitlines() if line.strip()]
+            if lines and all(line.startswith("{") and line.endswith("}") for line in lines[:min(5, len(lines))]):
+                return "ndjson"
+
     return "unknown"
 
 
@@ -361,6 +425,7 @@ import time
 
 
 def detect_and_load(file_path: str | Path, args=None) -> Dict[str, Any]:
+
     args = args or {}
     path = Path(file_path)
     if not path.exists():
@@ -369,8 +434,8 @@ def detect_and_load(file_path: str | Path, args=None) -> Dict[str, Any]:
     file_type = detect_file_type(path)
     sheet_name = getattr(args, "sheet_name", None)
 
-    # === CSV/JSON passthrough: Do NOT load or inspect ===
-    if file_type in {"csv", "json"}:
+    # --- CSV passthrough ---
+    if file_type == "csv":
         metadata = {
             "source_path": str(path),
             "validated": True,
@@ -388,11 +453,90 @@ def detect_and_load(file_path: str | Path, args=None) -> Dict[str, Any]:
             "loader_spec": "passthrough",
         }
 
-    # === Loader path for other types ===
+    # ============================================================
+    # --- JSON / NDJSON / generic_json unified loader & detection
+    # ============================================================
+    elif file_type in {"json", "ndjson", "generic_json"}:
+        loader_fn = LOADER_REGISTRY.get(file_type)
+        raw, struct_meta = loader_fn(path) if loader_fn else (None, None)
+
+        if raw is None:
+            return None
+
+        # ---------------------------------------------
+        # 1) Detect if the JSON is an Indexly search cache
+        # ---------------------------------------------
+        is_search_cache = False
+
+        if isinstance(raw, dict) and raw:
+            # Extract a random key's value
+            first_val = next(iter(raw.values()), None)
+
+            if (
+                isinstance(first_val, dict)
+                and "timestamp" in first_val
+                and "results" in first_val
+            ):
+                is_search_cache = True
+
+        # ---------------------------------------------
+        # 2) If search cache → announce + include json_mode tag
+        # ---------------------------------------------
+        if is_search_cache:
+            console.print(f"[cyan]🔍 Detected Indexly search cache JSON[/cyan]")
+
+            metadata = {
+                "source_path": str(path),
+                "validated": True,
+                "loader_used": "loader:search_cache_detector",
+                "rows": len(raw),
+                "cols": 0,
+                "loaded_at": datetime.utcnow().isoformat() + "Z",
+                "json_structure": "indexly_search_cache",
+                "json_mode": "search_cache",     # 🔥 FIX: this is the missing tag
+            }
+
+            return {
+                "file_type": "json",
+                "df": None,            # search cache handled later in orchestrator
+                "df_preview": None,
+                "raw": raw,            # raw dict → passed to orchestrator
+                "metadata": metadata,
+                "loader_spec": "loader:search_cache_detector",
+            }
+
+        # ---------------------------------------------
+        # 3) Normal JSON handling (unchanged)
+        # ---------------------------------------------
+        df = None
+        df_preview = None
+
+        metadata = {
+            "source_path": str(path),
+            "validated": True,
+            "loader_used": f"loader:{loader_fn.__name__}" if loader_fn else None,
+            "rows": len(raw) if isinstance(raw, list) else (1 if isinstance(raw, dict) else 0),
+            "cols": 0,
+            "loaded_at": datetime.utcnow().isoformat() + "Z",
+            "json_structure": struct_meta,
+        }
+
+        return {
+            "file_type": "json",
+            "df": None,
+            "df_preview": None,
+            "raw": raw,
+            "metadata": metadata,
+            "loader_spec": f"loader:{loader_fn.__name__}" if loader_fn else None,
+        }
+
+
+    # ============================================================
+    # --- Other loaders (XML, Excel, YAML, etc.)
+    # ============================================================
     loader_fn = LOADER_REGISTRY.get(file_type)
     raw = df = df_preview = None
     loader_spec = None
-
     metadata = {
         "source_path": str(path),
         "validated": False,
@@ -408,7 +552,6 @@ def detect_and_load(file_path: str | Path, args=None) -> Dict[str, Any]:
             desc = f"Loading {file_type.upper()} via loader"
             with tqdm(total=1, desc=desc, unit="file") as pbar:
                 if file_type in {"excel", "xls", "xlsx"}:
-                    # 🧭 Detect sheet names only — no full load
                     try:
                         excel_file = pd.ExcelFile(path, engine="openpyxl")
                         sheet_list = excel_file.sheet_names
@@ -420,13 +563,11 @@ def detect_and_load(file_path: str | Path, args=None) -> Dict[str, Any]:
                         raw = {"available_sheets": []}
                         df = df_preview = None
                 else:
-                    # 🧩 Normal loader behavior
                     raw, loaded_df = loader_fn(path)
                     if file_type == "xml":
                         df_preview = loaded_df
                     else:
                         df = loaded_df
-
                 time.sleep(0.05)
                 pbar.update(1)
             metadata["loader_used"] = loader_spec
@@ -435,7 +576,7 @@ def detect_and_load(file_path: str | Path, args=None) -> Dict[str, Any]:
     else:
         console.print(f"[yellow]⚠️ No loader registered for file type: {file_type}[/yellow]")
 
-    # === Metadata calculation ===
+    # Metadata calc
     try:
         target_df = df_preview if file_type == "xml" else df
         metadata["rows"] = int(target_df.shape[0]) if isinstance(target_df, pd.DataFrame) else (
@@ -492,5 +633,10 @@ def load_sqlite(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
 def load_csv(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
     return _load_csv(path)
 
-def load_json(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
-    return _load_json(path)
+def _load_json(path: Path) -> tuple[list | dict | None, pd.DataFrame | None]:
+    """
+    Adapter for orchestrator → new loader.
+    """
+    console.print("[green]✅ Detected JSON file — passing through to its analysis route...[/green]")
+    return load_json_or_ndjson(path)
+

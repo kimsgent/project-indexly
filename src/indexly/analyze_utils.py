@@ -20,6 +20,45 @@ from .db_utils import _get_db_connection
 
 console = Console()
 
+import json
+from pathlib import Path
+import gzip
+from rich.console import Console
+
+console = Console()
+
+def validate_json_content(file_path: Path) -> bool:
+    """
+    Validate standard JSON, NDJSON, or indexly-style JSON.
+    Returns True if valid, False otherwise.
+    """
+    opener = gzip.open if str(file_path).endswith(".gz") else open
+    try:
+        with opener(file_path, "rt", encoding="utf-8") as f:
+            text = f.read().strip()
+            if not text:
+                console.print(f"[red]❌ JSON file is empty[/red]")
+                return False
+            # Try standard JSON
+            try:
+                json.loads(text)
+                return True
+            except json.JSONDecodeError:
+                # Fallback: NDJSON (line-wise JSON objects)
+                lines = [line.strip() for line in text.splitlines() if line.strip()]
+                if not lines:
+                    return False
+                for i, line in enumerate(lines[:10]):  # inspect first 10 lines
+                    try:
+                        json.loads(line)
+                    except Exception as e:
+                        console.print(f"[red]❌ Invalid NDJSON line {i+1}: {e}[/red]")
+                        return False
+                return True
+    except Exception as e:
+        console.print(f"[red]❌ Cannot read JSON file: {e}[/red]")
+        return False
+
 
 def validate_file_content(file_path: Path, file_type: str) -> bool:
     """
@@ -87,15 +126,8 @@ def validate_file_content(file_path: Path, file_type: str) -> bool:
             return False
 
     # --- JSON (.json or .json.gz) ---
-    if file_type in {"json", "json_gz"} or file_path.suffixes[-2:] == [".json", ".gz"]:
-        try:
-            opener = gzip.open if str(file_path).endswith(".gz") else open
-            with opener(file_path, "rt", encoding="utf-8") as f:
-                json.load(f)
-            return True
-        except Exception as e:
-            console.print(f"[red]❌ Invalid JSON structure:[/red] {e}")
-            return False
+    if file_type in {"json", "json_gz", "ndjson", "generic_json"} or file_path.suffixes[-2:] == [".json", ".gz"]:
+            return validate_json_content(file_path)
 
     # --- YAML (.yaml or .yml) ---
     if file_type in {"yaml", "yml"} or file_path.suffix.lower() in {".yaml", ".yml"}:
