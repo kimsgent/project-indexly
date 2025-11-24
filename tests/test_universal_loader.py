@@ -52,32 +52,48 @@ def test_csv_fallback(tmp_path):
     assert result["metadata"]["rows"] == 2
 
 def test_json_fallback(tmp_path):
+    import pandas as pd
+    import json
+    from indexly.universal_loader import detect_and_load
+    from indexly.json_pipeline import run_json_generic_pipeline
+
+    # Prepare a simple record-list JSON (NDJSON style)
     p = tmp_path / "data.json"
     p.write_text(json.dumps({"records": [{"x": 1}, {"x": 2}]}))
+
     result = detect_and_load(p)
 
-    # Passthrough mode
-    if result.get("loader_spec") == "passthrough":
-        assert_passthrough(result, "json")
-        return
+    # Loader spec must exist
+    assert "loader_spec" in result
+    assert result["loader_spec"] is not None
 
-    # Loader mode
-    assert isinstance(result["raw"], dict)
+    # Raw JSON must be returned as dict
+    assert isinstance(result["raw"], dict) or isinstance(result["raw"], list)
 
-    df = result.get("df")
-    if df is not None:
-        assert isinstance(df, pd.DataFrame)
-        assert len(df) >= 1
-    else:
-        # Fallback: check that "records" exists in raw
-        records = result["raw"].get("records")
-        assert isinstance(records, list)
-        assert len(records) >= 1
-        assert all(isinstance(r, dict) for r in records)
+    # df is not guaranteed at this stage
+    assert result["df"] is None
 
+    # Metadata checks
     metadata = result.get("metadata", {})
-    # Either df exists or metadata reports rows
-    assert metadata.get("rows", len(result["raw"].get("records", []))) >= 1
+    assert metadata.get("rows", 0) >= 1
+    assert "loader_used" in metadata
+
+    # Optional: test DataFrame creation using the generic pipeline
+    df, summary_dict, tree_dict = run_json_generic_pipeline(
+    raw=result["raw"],
+    meta=metadata,
+    path=p,
+    cli_args={"verbose": False, "treeview": False},
+    )
+
+    assert isinstance(df, pd.DataFrame)
+
+    # For record-list JSON, check flattened column
+    if isinstance(result["raw"], dict) and "records" in result["raw"]:
+        assert not df.empty
+        # Flattened column is 'records.x'
+        assert "records.x" in df.columns
+
 
 
 
