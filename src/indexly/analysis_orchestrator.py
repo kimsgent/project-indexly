@@ -14,6 +14,7 @@ from .db_pipeline import run_db_pipeline
 from .xml_pipeline import run_xml_pipeline
 from .parquet_pipeline import run_parquet_pipeline
 from .excel_pipeline import run_excel_pipeline
+from .visualize_json import json_build_tree, json_preview, build_json_table_output
 from .csv_analyzer import export_results
 from .analyze_utils import (
     load_cleaned_data,
@@ -26,7 +27,11 @@ from indexly.json_cache_normalizer import (
     _print_search_summary,
 )
 
-from indexly.universal_loader import detect_and_load, detect_file_type
+from indexly.universal_loader import (
+    detect_and_load,
+    detect_file_type,
+    load_json_or_ndjson,
+)
 
 console = Console()
 
@@ -170,11 +175,11 @@ def analyze_file(args) -> Optional[AnalysisResult]:
         return None
 
     # =====================================================================================
-    # JSON (non-legacy) — always route through the real JSON pipeline
+    # JSON (non-legacy) — route through proper JSON paths (preserve search_cache logic)
     # =====================================================================================
-    # --- JSON handling with search_cache.json auto-detection ---
-    if file_type == "json" and not legacy_mode:
+    if file_type in {"json", "ndjson", "generic_json"} and not legacy_mode:
         try:
+            # Use the detector+loader that returns raw + metadata/json_mode
             load_result = detect_and_load(str(file_path), args)
             if not load_result:
                 console.print(f"[red]❌ JSON loader failed for {file_path.name}[/red]")
@@ -182,11 +187,11 @@ def analyze_file(args) -> Optional[AnalysisResult]:
 
             loader_df = load_result.get("df")
             loader_raw = load_result.get("raw")
-            metadata = load_result.get("metadata", {})
+            metadata = load_result.get("metadata", {}) or {}
             show_treeview = getattr(args, "treeview", False)
 
             # ======================================================
-            # 1) SEARCH CACHE JSON DETECTED
+            # 1) SEARCH CACHE JSON DETECTED (UNTOUCHED — keep exact behavior)
             # ======================================================
             if metadata.get("json_mode") == "search_cache":
                 console.print(f"[cyan]🔎 Detected Indexly search_cache.json — using cache normalization[/cyan]")
@@ -207,7 +212,7 @@ def analyze_file(args) -> Optional[AnalysisResult]:
                     if getattr(args, "summarize_search", False):
                         _print_search_summary(df, console)
 
-                    # Persist with unified saver
+                    # Persist with unified saver (unchanged)
                     _persist_analysis(
                         df, None, file_path, "json",
                         table_output=table_output, args=args
@@ -219,7 +224,7 @@ def analyze_file(args) -> Optional[AnalysisResult]:
                     return None
 
             # ======================================================
-            # 2) STRUCTURED JSON ("metadata" + "sample_data")
+            # 2) STRUCTURED INDEXLY JSON ("metadata" + "sample_data")
             # ======================================================
             if (
                 isinstance(loader_raw, dict)
@@ -232,21 +237,78 @@ def analyze_file(args) -> Optional[AnalysisResult]:
                     file_path=file_path,
                     args=args,
                     df=preloaded_df,
-                    verbose=getattr(args, "verbose", True)  
+                    verbose=getattr(args, "verbose", True)
                 )
 
                 tree_dict = table_dict.get("tree", {}) if show_treeview else {}
                 summary_dict = table_dict
 
             # ======================================================
-            # 3) GENERIC JSON (normal dict / list / nested)
+            # 3) NDJSON / record-list (list[dict]) — create DataFrame directly
+            # ======================================================
+            elif isinstance(loader_raw, list) and all(isinstance(x, dict) for x in loader_raw):
+                console.print(f"[cyan]📄 Detected record-list JSON (NDJSON style) — using record-list fallback[/cyan]")
+
+                df = pd.DataFrame(loader_raw)
+                df_preview = loader_raw[:5]
+
+                # ----- Robustly coerce numeric-like strings to numbers -----
+                def coerce_numeric(col_series):
+                    # Try numeric conversion; fallback to original if fails
+                    coerced = pd.to_numeric(col_series, errors="coerce")
+                    if coerced.notna().sum() > 0:  # Only replace if any valid numbers
+                        return coerced
+                    return col_series
+
+                for col in df.columns:
+                    df[col] = coerce_numeric(df[col])
+
+                # ----- Build summary safely -----
+                if not df.empty and df.shape[1] > 0:
+                    try:
+                        table_output = build_json_table_output(df)
+                    except Exception:
+                        table_output = {
+                            "numeric_summary": {},
+                            "non_numeric_summary": {},
+                            "rows": len(df),
+                            "cols": len(df.columns),
+                        }
+                else:
+                    table_output = {
+                        "numeric_summary": {},
+                        "non_numeric_summary": {},
+                        "rows": len(df),
+                        "cols": len(df.columns),
+                    }
+
+                summary_dict = {
+                    "detected_type": "ndjson",
+                    "rows": len(loader_raw),
+                    "columns": list(df.columns),
+                    "preview": df_preview if show_treeview else None,
+                    **table_output,
+                }
+
+                tree_dict = {}  # tree handled below if requested
+                if show_treeview:
+                    try:
+                        tree_obj = json_build_tree(loader_raw, root_name=file_path.name)
+                        tree_dict = {"tree": tree_obj}
+                        summary_dict["metadata"] = metadata
+                        summary_dict["preview"] = json_preview(loader_raw)
+                    except Exception as e:
+                        tree_dict = {"note": f"Failed to build tree: {e}"}
+
+            # ======================================================
+            # 4) GENERIC JSON (fallback to nested JSON handler)
             # ======================================================
             else:
                 console.print(
                     f"[yellow]⚠️ JSON file {file_path.name} lacks structured metadata, using fallback preview[/yellow]"
                 )
 
-                df, df_stats, summary_dict = run_json_generic_pipeline(
+                df, summary_dict, tree_dict = run_json_generic_pipeline(
                     raw=loader_raw,
                     meta=metadata or {},
                     path=file_path,
@@ -255,10 +317,36 @@ def analyze_file(args) -> Optional[AnalysisResult]:
                         "treeview": show_treeview,
                     },
                 )
+
+                # ----- Coerce numeric-like strings in DataFrame -----
+                if isinstance(df, pd.DataFrame) and not df.empty:
+                    def coerce_numeric(col_series):
+                        coerced = pd.to_numeric(col_series, errors="coerce")
+                        if coerced.notna().sum() > 0:  # Only replace if some valid numbers
+                            return coerced
+                        return col_series
+
+                    for col in df.columns:
+                        df[col] = coerce_numeric(df[col])
+
+                    # Rebuild table output safely
+                    try:
+                        table_output = build_json_table_output(df)
+                    except Exception:
+                        table_output = {
+                            "numeric_summary": {},
+                            "non_numeric_summary": {},
+                            "rows": len(df),
+                            "cols": len(df.columns),
+                        }
+
+                    summary_dict.update(table_output)
+
                 tree_dict = summary_dict.get("tree", {}) if show_treeview else {}
 
+
             # ======================================================
-            # Optional sorting
+            # Optional sorting (unchanged)
             # ======================================================
             if isinstance(df, pd.DataFrame) and "derived_date" in df.columns:
                 ascending = getattr(args, "sortdate_by", "asc") == "asc"
@@ -268,7 +356,7 @@ def analyze_file(args) -> Optional[AnalysisResult]:
                 _print_search_summary(df, console)
 
             # ======================================================
-            # Persist using unified save
+            # Persist using unified save (unchanged)
             # ======================================================
             save_analysis_result(
                 file_path=file_path,
@@ -283,6 +371,7 @@ def analyze_file(args) -> Optional[AnalysisResult]:
         except Exception as e:
             console.print(f"[red]❌ JSON pipeline failed: {e}[/red]")
             return None
+
 
     # =====================================================================================
     # Non-JSON universal loader (unchanged)

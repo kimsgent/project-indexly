@@ -46,12 +46,26 @@ def _open_text_maybe_gz(path: str | Path):
     return open(path_str, "r", encoding="utf-8")
 
 
-def _safe_read_text(path: str | Path) -> Optional[str]:
+def _safe_read_text(path: str | Path, max_lines: int | None = None) -> Optional[str]:
+    """
+    Safely read text from a file (supports .gz).
+    If max_lines is set, read only that many lines.
+    """
     try:
         with _open_text_maybe_gz(path) as fh:
-            return fh.read()
+            if max_lines is None:
+                return fh.read()
+            else:
+                lines = []
+                for _ in range(max_lines):
+                    line = fh.readline()
+                    if not line:
+                        break
+                    lines.append(line)
+                return "".join(lines)
     except Exception:
         return None
+
 
 
 def _normalize_raw_to_df(raw: Any) -> Optional[pd.DataFrame]:
@@ -89,14 +103,6 @@ def _load_csv(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
     return None, None
 
 
-def _load_json(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
-    """
-    JSON passthrough — actual processing handled by JSON analysis pipeline.
-    """
-    console.print("[green]✅ Detected JSON file — passing through to its analysis route...[/green]")
-    return None, None
-
-
 
 def load_json_or_ndjson(path: Path) -> Tuple[Any, Optional[dict]]:
     """
@@ -110,7 +116,7 @@ def load_json_or_ndjson(path: Path) -> Tuple[Any, Optional[dict]]:
     except Exception:
         return None, None
 
-    # Try standard JSON first
+    # Standard JSON
     try:
         parsed = json.loads(text)
         meta = {
@@ -120,26 +126,28 @@ def load_json_or_ndjson(path: Path) -> Tuple[Any, Optional[dict]]:
             "is_record_list": isinstance(parsed, list) and all(isinstance(x, dict) for x in parsed),
         }
         return parsed, meta
-
     except json.JSONDecodeError:
-        # Try NDJSON
-        lines = [line.strip() for line in text.splitlines() if line.strip()]
-        objs = []
-        for line in lines:
-            try:
-                objs.append(json.loads(line))
-            except Exception:
-                continue
+        pass
 
-        if not objs:
-            return None, None
+    # NDJSON
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    objs = []
+    for line in lines:
+        try:
+            objs.append(json.loads(line))
+        except Exception:
+            continue
 
+    if objs:
         meta = {
             "type": "ndjson",
             "is_list": True,
             "is_record_list": all(isinstance(x, dict) for x in objs),
         }
         return objs, meta
+
+    return None, None
+
 
 
 def _load_yaml(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
@@ -382,11 +390,8 @@ def detect_file_type(path: Path) -> str:
         return "yaml"
     if name.endswith(".xml.gz"):
         return "xml"
-
     if ext in {".csv", ".tsv"}:
         return "csv"
-    if ext == ".json":
-        return "json"
     if ext in {".db", ".sqlite"}:
         return "sqlite"
     if ext in {".xlsx", ".xls", ".xlsm"}:
@@ -397,22 +402,24 @@ def detect_file_type(path: Path) -> str:
         return "yaml"
     if ext == ".xml":
         return "xml"
-    # --- new block at the end of detect_file_type ---
-    text_sample = _safe_read_text(path, max_lines=10)  # read only first 10 lines for performance
-    if text_sample:
+    # JSON / NDJSON / generic JSON detection
+    if ext == ".json" or name.endswith(".json.gz"):
+        text_sample = _safe_read_text(path, max_lines=10)  # optional sample
+        if not text_sample:
+            return "json"
+
+        # Try standard JSON
         try:
             parsed = json.loads(text_sample)
-            # Indexly-exported JSON
             if isinstance(parsed, dict) and "metadata" in parsed:
-                return "json"
-            # Generic JSON array or object
-            elif isinstance(parsed, dict) or isinstance(parsed, list):
-                return "generic_json"
+                return "json"  # Indexly-style
+            return "generic_json"
         except json.JSONDecodeError:
-            # NDJSON detection: check first few lines for JSON objects
+            # NDJSON: check if most lines are JSON objects
             lines = [line for line in text_sample.splitlines() if line.strip()]
             if lines and all(line.startswith("{") and line.endswith("}") for line in lines[:min(5, len(lines))]):
                 return "ndjson"
+        return "json"
 
     return "unknown"
 
@@ -632,11 +639,3 @@ def load_sqlite(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
 
 def load_csv(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
     return _load_csv(path)
-
-def _load_json(path: Path) -> tuple[list | dict | None, pd.DataFrame | None]:
-    """
-    Adapter for orchestrator → new loader.
-    """
-    console.print("[green]✅ Detected JSON file — passing through to its analysis route...[/green]")
-    return load_json_or_ndjson(path)
-

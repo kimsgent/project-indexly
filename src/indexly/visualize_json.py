@@ -31,18 +31,55 @@ def summarize_json_dataframe(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     numeric_stats["sum"] = df[numeric_cols].sum()
     numeric_stats = numeric_stats[["count","nulls","mean","median","std","sum","min","max","q1","q3","iqr"]]
 
-    # Non-numeric columns
+    # ---- Extended non-numeric statistics (backward compatible) ----
     non_numeric_cols = df.select_dtypes(exclude="number").columns.tolist()
-    non_numeric_summary = {
-        col: {"dtype": str(df[col].dtype), "unique": df[col].nunique(), "sample": df[col].dropna().unique()[:3].tolist()}
-        for col in non_numeric_cols
-    }
+    non_numeric_summary = {}
+
+    for col in non_numeric_cols:
+        col_data = df[col].dropna()
+
+        info = {
+            "dtype": str(df[col].dtype),
+            "unique": col_data.nunique(),
+            "sample": col_data.unique()[:3].tolist(),
+        }
+
+        # NEW: top categories (safe fallback)
+        try:
+            top_vals = (
+                col_data.value_counts(dropna=True)
+                .head(3)
+                .to_dict()
+            )
+            info["top"] = top_vals
+        except Exception:
+            info["top"] = {}
+
+        # NEW: null counts
+        info["nulls"] = int(df[col].isnull().sum())
+
+        non_numeric_summary[col] = info
 
     return numeric_stats, non_numeric_summary
+
 
 def build_json_table_output(df: pd.DataFrame, dt_summary: dict = None) -> dict:
     numeric_summary, non_numeric_summary = summarize_json_dataframe(df)
     dt_summary = dt_summary or {}
+
+    # ---- NEW: lightweight datetime detection ----
+    for col in df.columns:
+        if col not in dt_summary:
+            try:
+                if pd.api.types.is_datetime64_any_dtype(df[col]):
+                    dt_summary[col] = {
+                        "min": str(df[col].min()),
+                        "max": str(df[col].max()),
+                        "nulls": int(df[col].isnull().sum()),
+                    }
+            except Exception:
+                pass
+
     table_output = {
         "numeric_summary": numeric_summary,
         "non_numeric_summary": non_numeric_summary,
@@ -64,7 +101,13 @@ def build_json_table_output(df: pd.DataFrame, dt_summary: dict = None) -> dict:
     if non_numeric_summary:
         console.print("\n📋 [bold cyan]Non-Numeric Column Overview[/bold cyan]")
         for col, info in non_numeric_summary.items():
-            console.print(f"- {col}: {info['unique']} unique, dtype={info['dtype']}, sample={info['sample']}")
+            console.print(
+                f"- {col}: {info['unique']} unique, "
+                f"dtype={info['dtype']}, "
+                f"sample={info['sample']}, "
+                f"top={info.get('top', {})}, "
+                f"nulls={info.get('nulls', 0)}"
+            )
 
     return table_output
 

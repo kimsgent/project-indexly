@@ -163,17 +163,24 @@ def flatten_nested_json(obj, parent_key="", sep="."):
     return records
 
 
+
 def run_json_generic_pipeline(raw: Any, meta: dict, *, path: Path, cli_args: Optional[dict] = None):
     """
     Generic JSON pipeline compatible with nested JSON structures.
     Returns: (df, summary_dict, tree_dict)
+
+    - preserves backwards compatibility
+    - avoids calling describe() on DataFrames with no columns
+    - always includes numeric + non-numeric summary when possible
+    - only injects metadata and preview into summary when --treeview is enabled
     """
     cli_args = cli_args or {}
-    show_tree = cli_args.get("treeview", False)
-    verbose = cli_args.get("verbose", True)
+    show_tree = bool(cli_args.get("treeview", False))
+    verbose = bool(cli_args.get("verbose", True))
 
     # ----- Flatten JSON and convert to DataFrame -----
     flattened_records = flatten_nested_json(raw)
+
     if not flattened_records:
         df = pd.DataFrame()
     elif isinstance(flattened_records, list):
@@ -181,10 +188,30 @@ def run_json_generic_pipeline(raw: Any, meta: dict, *, path: Path, cli_args: Opt
     else:
         df = pd.DataFrame([flattened_records])
 
-    if df.empty:
-        summary_dict = json_visual_summary(raw)["metadata"]
+    # ----- Build summary safely -----
+    # fallback visual summary if df has no columns
+    if df is None or df.empty or df.shape[1] == 0:
+        visual = json_visual_summary(raw)
+        summary_dict = visual.get("metadata", {"note": "No tabular structure detected."})
+        numeric_summary = pd.DataFrame()
+        non_numeric_summary = {}
     else:
-        summary_dict = build_json_table_output(df)
+        try:
+            numeric_summary, non_numeric_summary = summarize_json_dataframe(df)
+        except Exception:
+            numeric_summary = pd.DataFrame()
+            non_numeric_summary = {}
+
+        # build full table output without breaking existing console rendering
+        summary_dict = {
+            "numeric_summary": numeric_summary,
+            "non_numeric_summary": non_numeric_summary,
+            "rows": len(df),
+            "cols": len(df.columns),
+        }
+
+        # optional console print using existing function
+        table_output = build_json_table_output(df)
 
     # ----- TREE (optional) -----
     tree_dict = {}
@@ -197,21 +224,14 @@ def run_json_generic_pipeline(raw: Any, meta: dict, *, path: Path, cli_args: Opt
         except Exception as e:
             tree_dict = {"note": f"Failed to build tree: {e}"}
 
-    # ----- PREVIEW -----
-    preview_dict = {"preview": json_preview(raw)}
-
     # ----- CLI render -----
-
-    verbose = getattr(cli_args, "verbose", True)
     if verbose:
-        print(f"\n📊 JSON Dataset Summary Preview for {path.name if path else 'file'}:")
-
-        # Optional tree rendering
+        console.print(f"\n📊 JSON Dataset Summary Preview for {path.name if path else 'file'}:")
         if tree_dict.get("tree"):
             json_render_terminal(tree_dict["tree"], summary_dict)
 
-
     return df, summary_dict, tree_dict
+
 
 
 
