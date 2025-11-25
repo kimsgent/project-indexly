@@ -56,87 +56,45 @@ def _safe_export_file(path: str, content: str):
 # -------------------------
 # JSON loader / normalizer
 # -------------------------
-def load_json_as_dataframe(file_path: str | Path) -> Tuple[Any, pd.DataFrame]:
-    """
-    Load JSON (optionally .gz compressed) and return (original_parsed_json, DataFrame).
+def load_json_as_dataframe(file_path: str | Path, raw_json=None):
+    """Unified JSON loader used by analyze_json + json_pipeline."""
+    # Use provided raw JSON if present
+    if raw_json is not None:
+        data = raw_json
+    else:
+        file_path = str(file_path)
+        if not os.path.exists(file_path):
+            console.print(f"[red]❌ File not found: {file_path}[/red]")
+            return None, None
+        try:
+            if file_path.endswith(".gz"):
+                with gzip.open(file_path, "rt", encoding="utf-8") as fh:
+                    data = json.load(fh)
+            else:
+                with open(file_path, "r", encoding="utf-8") as fh:
+                    data = json.load(fh)
+        except Exception as e:
+            console.print(f"[red]❌ Failed to load JSON file: {e}[/red]")
+            return None, None
 
-    Handles:
-     - list of dicts -> DataFrame
-     - dict with list-valued key (use first list)
-     - flat dict -> one-row dataframe
-     - nested objects -> json_normalize
-     - primitive lists -> DataFrame(value=[...])
-     - transparent loading of .gz compressed JSON
-    """
-
-    # Ensure file_path is a string
-    file_path = str(file_path)
-
-    if not os.path.exists(file_path):
-        console.print(f"[red]❌ File not found: {file_path}[/red]")
-        return None, None
-
-    try:
-        if file_path.endswith(".gz"):
-            with gzip.open(file_path, "rt", encoding="utf-8") as fh:
-                data = json.load(fh)
-        else:
-            with open(file_path, "r", encoding="utf-8") as fh:
-                data = json.load(fh)
-    except Exception as e:
-        console.print(f"[red]❌ Failed to load JSON file: {e}[/red]")
-        return None, None
-
-    # --- convert loaded JSON to DataFrame ---
+    # Convert to DataFrame
     df = None
     try:
         if isinstance(data, list):
-            df = pd.DataFrame(data)
+            df = pd.json_normalize(data) if data and isinstance(data[0], dict) else pd.DataFrame({"value": data})
         elif isinstance(data, dict):
-            # pick the first list-valued key
-            list_vals = [v for v in data.values() if isinstance(v, list)]
-            if list_vals:
-                df = pd.DataFrame(list_vals[0])
+            preferred = next((data[k] for k in ["data", "records", "rows", "items"]
+                              if k in data and isinstance(data[k], list)), None)
+            if preferred is not None:
+                df = pd.json_normalize(preferred)
             else:
-                df = pd.json_normalize(data)
+                list_fields = [v for v in data.values() if isinstance(v, list)]
+                df = pd.json_normalize(list_fields[0]) if list_fields else pd.json_normalize(data)
         else:
-            df = pd.DataFrame({"value": data})
+            df = pd.DataFrame({"value": [str(data)]})
     except Exception as e:
         console.print(f"[yellow]⚠️ Could not convert JSON to DataFrame: {e}[/yellow]")
-
-    # -------------------------
-    # Structure normalization
-    # -------------------------
-    # Case: list
-    if isinstance(data, list):
-        if len(data) == 0:
-            df = pd.DataFrame()
-        elif all(isinstance(x, dict) for x in data):
-            df = pd.json_normalize(data)
-        else:
-            df = pd.DataFrame({"value": data})
-
-    # Case: dict
-    elif isinstance(data, dict):
-        preferred_keys = ["data", "records", "rows", "items"]
-        chosen = None
-        for k in preferred_keys:
-            if k in data and isinstance(data[k], list):
-                chosen = data[k]
-                break
-
-        if chosen is not None:
-            df = pd.json_normalize(chosen) if chosen else pd.DataFrame()
-        else:
-            list_fields = [v for v in data.values() if isinstance(v, list)]
-            if list_fields:
-                df = pd.json_normalize(list_fields[0])
-            else:
-                df = pd.json_normalize(data)
-
-    # Fallback case
-    else:
-        df = pd.DataFrame({"value": [str(data)]})
+        df = pd.DataFrame()
 
     df.columns = [str(c).strip() for c in df.columns]
     return data, df
@@ -155,7 +113,9 @@ def analyze_json_dataframe(df: pd.DataFrame) -> Tuple[pd.DataFrame, str, Dict[st
 
     meta = {"rows": int(df.shape[0]), "cols": int(df.shape[1])}
 
-    # Robust numeric coercion attempt like CSV analyzer
+    # -------------------------------
+    # Robust numeric coercion attempt
+    # -------------------------------
     for col in df.columns:
         if pd.api.types.is_numeric_dtype(df[col]):
             continue
@@ -187,20 +147,33 @@ def analyze_json_dataframe(df: pd.DataFrame) -> Tuple[pd.DataFrame, str, Dict[st
             })
         df_stats = pd.DataFrame(stats_list).set_index("column")
 
+    # -------------------------------
     # Build pretty textual structural summary
+    # -------------------------------
     lines = []
     lines.append(f"Rows: {meta['rows']}, Columns: {meta['cols']}")
     lines.append("\nColumn overview:")
+
     for c in df.columns:
         dtype = str(df[c].dtype)
-        n_unique = int(df[c].nunique(dropna=True))
-        sample = df[c].dropna().astype(str).head(3).tolist()
+
+        # Convert list/dict columns to string for unique/sample stats
+        safe_series = df[c].apply(lambda x: str(x) if isinstance(x, (list, dict)) else x)
+
+        try:
+            n_unique = int(safe_series.nunique(dropna=True))
+        except Exception:
+            n_unique = "N/A"
+
+        sample = safe_series.dropna().astype(str).head(3).tolist()
         lines.append(f" - {c} : {dtype} | unique={n_unique} | sample={sample}")
+
     lines.append("\nNumeric summary:")
     lines.append(str(df_stats) if df_stats is not None else "No numeric columns detected.")
 
     pretty = "\n".join(lines)
     return df_stats, pretty, meta
+
 
 
 # -------------------------
@@ -273,96 +246,76 @@ def _print_datetime_summary(summary_dict: dict):
 
 def run_analyze_json(args):
     """
-    CLI entry: analyze-json command handler.
+    CLI entry: indexly analyze-json <file>
+    Uses unified run_json_pipeline() + DB storage + export.
     """
-  
-    ripple = None
-
-    try:
-        from indexly.cli_utils import Ripple  # type: ignore
-        ripple = Ripple("JSON Analysis", speed="fast", rainbow=True)
-        ripple.start()
-    except Exception:
-        ripple = None
-
-    # Step 0 — Load JSON
-    from indexly.analyze_json import load_json_as_dataframe
-    data, df = load_json_as_dataframe(args.file)
-    if df is None:
-        if ripple:
-            ripple.stop()
+    from .json_pipeline import run_json_pipeline
+    file_path = args.file
+    if not file_path:
+        console.print("[red]❌ No JSON file provided.[/red]")
         return
 
-    _print_dataset_overview(df, args.file)
+    console.print(f"[cyan]🔍 Analyzing JSON:[/cyan] {os.path.basename(file_path)}\n")
 
-    # Step 1 — Normalize datetime columns
+    # ---------------------------------------------------------
+    # Call main pipeline
+    # ---------------------------------------------------------
+    df, stats_df, table_dict = run_json_pipeline(
+        file_path=Path(file_path),
+        args=args,
+        df=None,
+        verbose=True
+    )
 
-    dt_summary = {}
-    _suppress_datetime_warnings()
-    if normalize_datetime_columns is not None:
-        try:
-            df, dt_summary = normalize_datetime_columns(df, source_type="json")
-            _print_datetime_summary(dt_summary)
-        except Exception as e:
-            console.print(f"[yellow]⚠️ Datetime normalization failed: {e}[/yellow]")
+    if df is None:
+        console.print("[red]❌ JSON parsing failed.[/red]")
+        return
+
+    # ---------------------------------------------------------
+    # Print result to terminal
+    # ---------------------------------------------------------
+    if table_dict and "pretty_text" in table_dict:
+        console.print("[green]📊 Analysis Result:[/green]")
+        console.print(table_dict["pretty_text"])
+        console.print()
     else:
-        console.print(f"[yellow]⚠️ Datetime normalizer not available.[/yellow]")
+        console.print("[yellow]⚠️ No table output available.[/yellow]")
 
-    # Step 2 — Analysis
-    from indexly.analyze_json import analyze_json_dataframe
-    df_stats, pretty_out, meta = analyze_json_dataframe(df)
+    # ---------------------------------------------------------
+    # Save cleaned data + metadata to DB
+    # ---------------------------------------------------------
+    try:
+        conn = _get_db_connection()
+        _migrate_cleaned_data_schema(conn)
 
-    if ripple:
-        ripple.stop()
+        save_analysis_result(
+            conn=conn,
+            file_path=file_path,
+            raw_data=None,               # optional for JSON
+            cleaned_df=df,
+            meta={"table": table_dict},
+            analysis_type="json",
+            stats_df=stats_df,
+            dt_summary=None
+        )
 
-    console.print("\n[bold cyan]📘 JSON Analysis Result[/bold cyan]\n")
-    console.print(pretty_out)
+        conn.close()
+        console.print("[green]💾 Saved cleaned data + metadata to DB.[/green]")
+    except Exception as e:
+        console.print(f"[red]❌ Failed to write cleaned data to DB: {e}[/red]")
 
-    result_payload = {
-        "df": df,
-        "df_stats": df_stats,
-        "table_output": pretty_out,
-        "meta": meta,
-        "datetime_summary": dt_summary,
-        "source_file": getattr(args, "file", None),
-        "export_path": getattr(args, "export_path", None),
-        "export_format": getattr(args, "format", "txt").lower(),
-    }
-
-    if getattr(args, "show_summary", False):
-        console.print("\n[bold green]🧩 Structural Summary[/bold green]")
-        console.print(f"Rows: {meta['rows']}, Columns: {meta['cols']}")
-        console.print(f"Columns: {', '.join(df.columns)}")
-
-    # (Chart visualization section unchanged)
-    if getattr(args, "show_chart", False):
+    # ---------------------------------------------------------
+    # Export output if requested
+    # ---------------------------------------------------------
+    if getattr(args, "export", None):
+        export_path = args.export
         try:
-            import matplotlib.pyplot as plt
-            numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
-            if not numeric_cols:
-                console.print("[yellow]⚠️ No numeric columns to plot.[/yellow]")
-                return
-
-            dt_col = next(
-                (c for c in df.columns if pd.api.types.is_datetime64_any_dtype(df[c])
-                 or c.lower().endswith("_iso") or c.lower().endswith("_timestamp")),
-                None
-            )
-
-            if dt_col and pd.api.types.is_datetime64_any_dtype(df[dt_col]):
-                plt.figure(figsize=(10, 6))
-                for col in numeric_cols:
-                    plt.plot(df[dt_col], df[col], label=col, marker="o", linewidth=1)
-                plt.legend()
-                plt.title("Time-series view (detected datetime column)")
-            else:
-                df[numeric_cols].hist(figsize=(10, 6), bins=15)
-                plt.suptitle("Numeric distributions")
-
-            plt.tight_layout()
-            plt.show()
+            content = table_dict.get("pretty_text", "")
+            _safe_export_file(export_path, content)
+            console.print(f"[green]📁 Exported analysis →[/green] {export_path}")
         except Exception as e:
-            console.print(f"[red]❌ Visualization failed: {e}[/red]")
+            console.print(f"[red]❌ Export failed: {e}[/red]")
 
-    return result_payload
+    console.print("[bold green]✔ JSON analysis completed.[/bold green]\n")
+
 

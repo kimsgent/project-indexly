@@ -8,6 +8,7 @@ from rich.console import Console
 from indexly.csv_analyzer import export_results
 from .csv_analyzer import _json_safe
 from datetime import datetime
+from .universal_loader import _safe_read_text
 from .visualize_json import (
     json_visual_summary,
     json_to_dataframe,
@@ -15,7 +16,6 @@ from .visualize_json import (
     json_preview,
     json_build_tree,
     json_render_terminal,
- 
 )
 
 
@@ -27,7 +27,6 @@ from .analyze_json import (
     analyze_json_dataframe,
     normalize_datetime_columns,
     _print_datetime_summary,
-    
 )
 from .json_cache_normalizer import (
     is_search_cache_json,
@@ -35,7 +34,23 @@ from .json_cache_normalizer import (
 )
 
 
-def run_json_pipeline(file_path: Path, args=None, df: pd.DataFrame | None = None, verbose: bool = True):
+def _safe_dict_keys(d):
+    """Convert unhashable dict or list keys into safe tuples."""
+    if not isinstance(d, dict):
+        return d
+    out = {}
+    for k, v in d.items():
+        if isinstance(k, list):
+            k = tuple(k)
+        elif isinstance(k, dict):
+            k = tuple(sorted(k.items()))
+        out[k] = v
+    return out
+
+
+def run_json_pipeline(
+    file_path: Path, args=None, df: pd.DataFrame | None = None, verbose: bool = True
+):
     """
     Unified JSON pipeline:
         • Detects search-cache JSON → normalize and return immediately
@@ -56,7 +71,9 @@ def run_json_pipeline(file_path: Path, args=None, df: pd.DataFrame | None = None
 
             if is_search_cache_json(raw_json):
                 if verbose:
-                    console.print("[cyan]🔍 Detected search-cache JSON → applying cache normalizer[/cyan]")
+                    console.print(
+                        "[cyan]🔍 Detected search-cache JSON → applying cache normalizer[/cyan]"
+                    )
 
                 df = normalize_search_cache_json(path_obj)
 
@@ -64,31 +81,51 @@ def run_json_pipeline(file_path: Path, args=None, df: pd.DataFrame | None = None
                 stats = df.describe(include="all")
                 table_output = {
                     "pretty_text": df.head(40).to_string(index=False),
-                    "table": df.head(40)
+                    "table": df.head(40),
                 }
 
                 return df, stats, table_output
 
         except Exception:
-            pass   # allow fallback to normal JSON processing
-    # -------------------------------------------------------------------------
-    # Standard JSON workflow continues here
-    # -------------------------------------------------------------------------
+            pass  # allow fallback to normal JSON processing
 
     # Step 1 — Load JSON as DataFrame (unless orchestrator already loaded it)
     data = None
-    if df is None or getattr(df, "_from_orchestrator", False) is False:
+
+    # Only load JSON if orchestrator did NOT preload the DataFrame
+    should_load = df is None or getattr(df, "_from_orchestrator", False) is False
+
+    if should_load:
         if verbose:
             console.print(f"🔍 Loading JSON file: [bold]{path_obj.name}[/bold]")
 
+        # IMPORTANT: use safe-read with max_lines=None to fully read JSON files
+        text = _safe_read_text(path_obj, max_lines=None)
+        if text is None:
+            if verbose:
+                console.print(f"[red]❌ Could not read JSON: {path_obj}[/red]")
+            return None, None, None
+
+        try:
+            # Try to parse JSON normally
+            raw_json = json.loads(text)
+        except Exception as e:
+            if verbose:
+                console.print(f"[red]❌ Invalid JSON format: {e}[/red]")
+            return None, None, None
+
+        # Convert to DataFrame
         data, df = load_json_as_dataframe(str(path_obj))
 
         if df is not None:
             setattr(df, "_from_orchestrator", True)
             setattr(df, "_source_file_path", str(path_obj))
+
     else:
         if verbose:
-            console.print(f"[green]♻️ Using preloaded JSON DataFrame for {path_obj.name}[/green]")
+            console.print(
+                f"[green]♻️ Using preloaded JSON DataFrame for {path_obj.name}[/green]"
+            )
         data = None
 
     # Safety fail
@@ -106,19 +143,27 @@ def run_json_pipeline(file_path: Path, args=None, df: pd.DataFrame | None = None
             console.print(f"[yellow]⚠️ Datetime normalization failed: {e}[/yellow]")
 
     # Step 3 — Analyze DataFrame
+
     try:
         df_stats, table_output, meta = analyze_json_dataframe(df)
     except Exception as e:
         if verbose:
             console.print(f"[red]❌ JSON analysis failed: {e}[/red]")
-        return df, None, None
+
+        # NEW: sanitize unhashable keys so the pipeline can safely continue
+        try:
+            if isinstance(df_stats, dict):
+                df_stats = _safe_dict_keys(df_stats)
+        except:
+            df_stats = None
+
+        return df, df_stats, None
 
     # Step 4 — Build table output for terminal / UI
     table_dict = build_json_table_output(df, dt_summary=dt_summary)
 
     # Step 5 — Return
     return df, df_stats, table_dict
-
 
 
 def flatten_nested_json(obj, parent_key="", sep="."):
@@ -163,76 +208,128 @@ def flatten_nested_json(obj, parent_key="", sep="."):
     return records
 
 
-
-def run_json_generic_pipeline(raw: Any, meta: dict, *, path: Path, cli_args: Optional[dict] = None):
+def run_json_generic_pipeline(
+    file_path: Path,
+    args: Optional[dict] = None,
+    df: pd.DataFrame | None = None,
+    verbose: bool = True,
+    raw: dict | list | None = None,
+    meta: dict | None = None,
+):
     """
-    Generic JSON pipeline compatible with nested JSON structures.
-    Returns: (df, summary_dict, tree_dict)
-
-    - preserves backwards compatibility
-    - avoids calling describe() on DataFrames with no columns
-    - always includes numeric + non-numeric summary when possible
-    - only injects metadata and preview into summary when --treeview is enabled
+    Full JSON analysis pipeline for analyze-file:
+      - Flattened numeric table with aggregated stats
+      - Non-numeric overview
+      - Datetime summary
+      - Tree view + preview (optional)
+      - Search-cache detection
+      - Orchestrator preloaded DataFrame support
+    Returns: df, summary_dict, table_dict/tree_dict
     """
-    cli_args = cli_args or {}
-    show_tree = bool(cli_args.get("treeview", False))
-    verbose = bool(cli_args.get("verbose", True))
+    args = args or {}
+    show_tree = bool(args.get("treeview", False))
+    path_obj = Path(file_path)
+    
+    if meta:
+        args["meta"] = meta  # merge into args
+    show_tree = bool(args.get("treeview", False))
+    path_obj = Path(file_path)
 
-    # ----- Flatten JSON and convert to DataFrame -----
-    flattened_records = flatten_nested_json(raw)
-
-    if not flattened_records:
-        df = pd.DataFrame()
-    elif isinstance(flattened_records, list):
-        df = pd.DataFrame(flattened_records)
-    else:
-        df = pd.DataFrame([flattened_records])
-
-    # ----- Build summary safely -----
-    # fallback visual summary if df has no columns
-    if df is None or df.empty or df.shape[1] == 0:
-        visual = json_visual_summary(raw)
-        summary_dict = visual.get("metadata", {"note": "No tabular structure detected."})
-        numeric_summary = pd.DataFrame()
-        non_numeric_summary = {}
-    else:
+    # -------------------------------------------------------------------------
+    # 1. Early search-cache detection
+    # -------------------------------------------------------------------------
+    if df is None and raw is None:
         try:
-            numeric_summary, non_numeric_summary = summarize_json_dataframe(df)
+            with open(path_obj, "r", encoding="utf-8") as f:
+                raw_json = json.load(f)
+            if is_search_cache_json(raw_json):
+                if verbose:
+                    console.print(
+                        "[cyan]🔍 Detected search-cache JSON → normalizing[/cyan]"
+                    )
+                df = normalize_search_cache_json(path_obj)
+                stats = df.describe(include="all")
+                table_output = {
+                    "pretty_text": df.head(40).to_string(index=False),
+                    "table": df.head(40),
+                }
+                return df, stats, table_output
         except Exception:
-            numeric_summary = pd.DataFrame()
-            non_numeric_summary = {}
+            pass
 
-        # build full table output without breaking existing console rendering
-        summary_dict = {
-            "numeric_summary": numeric_summary,
-            "non_numeric_summary": non_numeric_summary,
-            "rows": len(df),
-            "cols": len(df.columns),
-        }
+    # -------------------------------------------------------------------------
+    # 2. Load JSON if not preloaded
+    # -------------------------------------------------------------------------
+    should_load = df is None or getattr(df, "_from_orchestrator", False) is False
+    raw_json = raw  # <-- use raw if provided
+    if should_load and raw_json is None:
+        text = _safe_read_text(path_obj, max_lines=None)
+        if text is None:
+            console.print(f"[red]❌ Could not read JSON: {path_obj}[/red]")
+            return None, None, None
+        try:
+            raw_json = json.loads(text)
+        except Exception as e:
+            console.print(f"[red]❌ Invalid JSON: {e}[/red]")
+            return None, None, None
 
-        # optional console print using existing function
-        table_output = build_json_table_output(df)
+        flattened_records = flatten_nested_json(raw_json)
+        df = pd.DataFrame(flattened_records) if flattened_records else pd.DataFrame()
+        setattr(df, "_from_orchestrator", True)
+        setattr(df, "_source_file_path", str(path_obj))
+    elif df is not None:
+        raw_json = raw_json or None
+        console.print(f"[green]♻️ Using preloaded DataFrame for {path_obj.name}[/green]")
 
-    # ----- TREE (optional) -----
+    if df.empty:
+        console.print(f"[red]❌ Empty JSON DataFrame: {path_obj}[/red]")
+        return None, None, None
+
+    # -------------------------------------------------------------------------
+    # 3. Normalize datetime columns
+    # -------------------------------------------------------------------------
+    dt_summary = {}
+    try:
+        df, dt_summary = normalize_datetime_columns(df, source_type="json")
+    except Exception as e:
+        console.print(f"[yellow]⚠️ Datetime normalization failed: {e}[/yellow]")
+
+    # -------------------------------------------------------------------------
+    # 4. Compute full flattened numeric + non-numeric stats
+    # -------------------------------------------------------------------------
+    numeric_summary, non_numeric_summary = summarize_json_dataframe(df)
+    summary_dict = {
+        "numeric_summary": numeric_summary,
+        "non_numeric_summary": non_numeric_summary,
+        "datetime_summary": dt_summary,
+        "rows": len(df),
+        "cols": len(df.columns),
+        "metadata": {"file": str(path_obj), **(args.get("meta", {}))},
+    }
+
+    table_output = summary_dict.copy()  # full summary object for downstream
+
+    # -------------------------------------------------------------------------
+    # 5. Optional tree + preview
+    # -------------------------------------------------------------------------
     tree_dict = {}
     if show_tree:
         try:
-            tree_obj = json_build_tree(raw, root_name=path.name if path else "root")
+            raw_json = raw_json or df.head(10).to_dict(orient="records")
+            tree_obj = json_build_tree(raw_json, root_name=path_obj.name)
             tree_dict = {"tree": tree_obj}
-            summary_dict["metadata"] = meta
-            summary_dict["preview"] = json_preview(raw)
+            summary_dict["preview"] = json_preview(raw_json)
         except Exception as e:
             tree_dict = {"note": f"Failed to build tree: {e}"}
 
-    # ----- CLI render -----
+    # -------------------------------------------------------------------------
+    # 6. CLI render
+    # -------------------------------------------------------------------------
     if verbose:
-        console.print(f"\n📊 JSON Dataset Summary Preview for {path.name if path else 'file'}:")
+        console.print(f"\n📊 JSON Dataset Summary Preview for {path_obj.name}:")
         if tree_dict.get("tree"):
             json_render_terminal(tree_dict["tree"], summary_dict)
+        else:
+            build_json_table_output(df, dt_summary=dt_summary)  # only once
 
-    return df, summary_dict, tree_dict
-
-
-
-
-
+    return df, summary_dict, tree_dict or table_output

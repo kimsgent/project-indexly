@@ -244,43 +244,29 @@ def analyze_file(args) -> Optional[AnalysisResult]:
                 summary_dict = table_dict
 
             # ======================================================
-            # 3) NDJSON / record-list (list[dict]) — create DataFrame
+            # 3) NDJSON / record-list (list[dict]) — create DataFrame directly
             # ======================================================
             elif isinstance(loader_raw, list) and all(isinstance(x, dict) for x in loader_raw):
-                console.print(f"[cyan]📄 Record-list JSON detected (NDJSON or flat list-of-dicts)[/cyan]")
+                console.print(f"[cyan]📄 Detected record-list JSON (NDJSON style) — using record-list fallback[/cyan]")
 
-                # --------------------------------------------------
-                # Optional unwrapping: [{ "foo": {...}}, ...] -> [{...}, ...]
-                # --------------------------------------------------
-                def _unwrap_single_key_records(lst):
-                    if not lst:
-                        return lst, False
-                    # All items must be dicts with exactly 1 key
-                    for item in lst:
-                        if not isinstance(item, dict) or len(item) != 1:
-                            return lst, False
-                    # unwrap
-                    unwrapped = [next(iter(item.values())) for item in lst]
-                    return unwrapped, True
+                df = pd.DataFrame(loader_raw)
+                df_preview = loader_raw[:5]
 
-                records, was_unwrapped = _unwrap_single_key_records(loader_raw)
+                # ----- Robustly coerce numeric-like strings to numbers -----
+                def coerce_numeric(col_series):
+                    # Try numeric conversion; fallback to original if fails
+                    coerced = pd.to_numeric(col_series, errors="coerce")
+                    if coerced.notna().sum() > 0:  # Only replace if any valid numbers
+                        return coerced
+                    return col_series
 
-                # --------------------------------------------------
-                # Create DataFrame (try flattening, fallback to raw)
-                # --------------------------------------------------
-                try:
-                    df = pd.json_normalize(records, sep=".")
-                except Exception:
-                    df = pd.DataFrame(records)
+                for col in df.columns:
+                    df[col] = coerce_numeric(df[col])
 
-                df_preview = records[:5]
-
-                # --------------------------------------------------
-                # Build full numeric + non-numeric stats
-                # --------------------------------------------------
+                # ----- Build summary safely -----
                 if not df.empty and df.shape[1] > 0:
                     try:
-                        table_output = build_json_table_output(df)  # already returns both summaries
+                        table_output = build_json_table_output(df)
                     except Exception:
                         table_output = {
                             "numeric_summary": {},
@@ -296,21 +282,15 @@ def analyze_file(args) -> Optional[AnalysisResult]:
                         "cols": len(df.columns),
                     }
 
-                # --------------------------------------------------
-                # Final summary structure
-                # --------------------------------------------------
                 summary_dict = {
-                    "detected_type": "json" if was_unwrapped else "ndjson",
-                    "rows": len(records),
+                    "detected_type": "ndjson",
+                    "rows": len(loader_raw),
                     "columns": list(df.columns),
                     "preview": df_preview if show_treeview else None,
                     **table_output,
                 }
 
-                # --------------------------------------------------
-                # Treeview (always built from original loader_raw)
-                # --------------------------------------------------
-                tree_dict = {}
+                tree_dict = {}  # tree handled below if requested
                 if show_treeview:
                     try:
                         tree_obj = json_build_tree(loader_raw, root_name=file_path.name)
@@ -329,13 +309,11 @@ def analyze_file(args) -> Optional[AnalysisResult]:
                 )
 
                 df, summary_dict, tree_dict = run_json_generic_pipeline(
-                    raw=loader_raw,
-                    meta=metadata or {},
-                    path=file_path,
-                    cli_args={
+                    file_path=file_path,
+                    args={
                         "verbose": getattr(args, "verbose", True),
                         "treeview": show_treeview,
-                    },
+                    }
                 )
 
                 # ----- Coerce numeric-like strings in DataFrame -----
@@ -364,7 +342,6 @@ def analyze_file(args) -> Optional[AnalysisResult]:
 
                 tree_dict = summary_dict.get("tree", {}) if show_treeview else {}
 
-
             # ======================================================
             # Optional sorting (unchanged)
             # ======================================================
@@ -387,6 +364,7 @@ def analyze_file(args) -> Optional[AnalysisResult]:
                 row_count=len(df) if df is not None else 0,
                 col_count=len(df.columns) if df is not None else 0
             )
+   
 
         except Exception as e:
             console.print(f"[red]❌ JSON pipeline failed: {e}[/red]")

@@ -67,7 +67,7 @@ def test_json_fallback(tmp_path):
     assert "loader_spec" in result
     assert result["loader_spec"] is not None
 
-    # Raw JSON must be returned as dict
+    # Raw JSON must be returned as dict or list
     assert isinstance(result["raw"], dict) or isinstance(result["raw"], list)
 
     # df is not guaranteed at this stage
@@ -80,10 +80,13 @@ def test_json_fallback(tmp_path):
 
     # Optional: test DataFrame creation using the generic pipeline
     df, summary_dict, tree_dict = run_json_generic_pipeline(
-    raw=result["raw"],
-    meta=metadata,
-    path=p,
-    cli_args={"verbose": False, "treeview": False},
+        file_path=p,
+        args={
+            "verbose": False,
+            "treeview": False,
+            "meta": metadata,
+            "raw": result["raw"]
+        }
     )
 
     assert isinstance(df, pd.DataFrame)
@@ -91,8 +94,8 @@ def test_json_fallback(tmp_path):
     # For record-list JSON, check flattened column
     if isinstance(result["raw"], dict) and "records" in result["raw"]:
         assert not df.empty
-        # Flattened column is 'records.x'
         assert "records.x" in df.columns
+
 
 
 

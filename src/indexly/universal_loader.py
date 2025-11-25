@@ -103,83 +103,51 @@ def _load_csv(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
     return None, None
 
 
+
 def load_json_or_ndjson(path: Path) -> Tuple[Any, Optional[dict]]:
     """
     Unified loader for JSON and NDJSON.
-    Decides type strictly here — orchestrator only routes.
     Returns:
-      - raw: parsed JSON or list of objects
-      - meta: structure metadata
+        - raw JSON / list / dict / list[dict]
+        - structure metadata (NO DataFrame!)
     """
     try:
         text = path.read_text(encoding="utf-8")
     except Exception:
         return None, None
 
-    # -------------------------------------------------
-    # 1) Try regular JSON first
-    # -------------------------------------------------
+    # Standard JSON
     try:
         parsed = json.loads(text)
-
-        def _has_nested(obj):
-            if isinstance(obj, dict):
-                return any(isinstance(v, (dict, list)) for v in obj.values())
-            if isinstance(obj, list):
-                return any(
-                    isinstance(item, dict)
-                    and any(isinstance(v, (dict, list)) for v in item.values())
-                    for item in obj
-                )
-            return False
-
         meta = {
             "type": "json",
             "is_list": isinstance(parsed, list),
             "is_dict": isinstance(parsed, dict),
             "is_record_list": isinstance(parsed, list) and all(isinstance(x, dict) for x in parsed),
-            "has_nested_objects": _has_nested(parsed),
         }
         return parsed, meta
-
     except json.JSONDecodeError:
         pass
 
-    # -------------------------------------------------
-    # 2) NDJSON fallback (STRICT)
-    # -------------------------------------------------
-    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
-    if not lines:
-        return None, None
-
+    # NDJSON
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
     objs = []
-    for ln in lines:
+    for line in lines:
         try:
-            obj = json.loads(ln)
+            objs.append(json.loads(line))
         except Exception:
-            return None, None  # invalid line → not NDJSON
+            continue
 
-        # STRICT rule: NDJSON must be FLAT
-        if isinstance(obj, dict) and any(isinstance(v, (dict, list)) for v in obj.values()):
-            return None, None  # nested → normal JSON in disguise
-
-        # must be dict or primitive
-        if not isinstance(obj, (dict, int, float, str, bool)) and obj is not None:
-            return None, None  # weird type → not NDJSON
-
-        objs.append(obj)
-
-    # If we collected at least 2 uniform objects → NDJSON
-    if objs and len(objs) >= 2:
+    if objs:
         meta = {
             "type": "ndjson",
             "is_list": True,
             "is_record_list": all(isinstance(x, dict) for x in objs),
-            "has_nested_objects": False,
         }
         return objs, meta
 
     return None, None
+
 
 
 def _load_yaml(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
@@ -436,55 +404,22 @@ def detect_file_type(path: Path) -> str:
         return "xml"
     # JSON / NDJSON / generic JSON detection
     if ext == ".json" or name.endswith(".json.gz"):
-        text_sample = _safe_read_text(path, max_lines=10)
+        text_sample = _safe_read_text(path, max_lines=10)  # optional sample
         if not text_sample:
             return "json"
 
-        # Try strict JSON first
+        # Try standard JSON
         try:
             parsed = json.loads(text_sample)
-
-            def _sample_has_nested(p):
-                if isinstance(p, dict):
-                    return any(isinstance(v, (dict, list)) for v in p.values())
-                if isinstance(p, list) and p:
-                    return any(
-                        isinstance(item, dict)
-                        and any(isinstance(v, (dict, list)) for v in item.values())
-                        for item in p[:5]
-                    )
-                return False
-
-            if _sample_has_nested(parsed):
-                return "json"
-
-            # Flat record-list → generic_json
-            if isinstance(parsed, list) and all(isinstance(x, dict) for x in parsed):
-                return "generic_json"
-
-            return "json"
-
+            if isinstance(parsed, dict) and "metadata" in parsed:
+                return "json"  # Indexly-style
+            return "generic_json"
         except json.JSONDecodeError:
-            # NDJSON probe (strict)
-            lines = [ln for ln in text_sample.splitlines() if ln.strip()]
-            objs = []
-            for ln in lines[:5]:
-                try:
-                    obj = json.loads(ln)
-                except Exception:
-                    return "json"
-
-                # nested → not ndjson
-                if isinstance(obj, dict) and any(isinstance(v, (dict, list)) for v in obj.values()):
-                    return "json"
-
-                objs.append(obj)
-
-            if len(objs) >= 2:
+            # NDJSON: check if most lines are JSON objects
+            lines = [line for line in text_sample.splitlines() if line.strip()]
+            if lines and all(line.startswith("{") and line.endswith("}") for line in lines[:min(5, len(lines))]):
                 return "ndjson"
-
-            return "json"
-
+        return "json"
 
     return "unknown"
 

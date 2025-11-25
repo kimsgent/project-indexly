@@ -12,9 +12,6 @@ from rich.table import Table
 console = Console()
 
 
-
-console = Console()
-
 def summarize_json_dataframe(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     """
     Returns:
@@ -31,23 +28,26 @@ def summarize_json_dataframe(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     numeric_stats["sum"] = df[numeric_cols].sum()
     numeric_stats = numeric_stats[["count","nulls","mean","median","std","sum","min","max","q1","q3","iqr"]]
 
-    # ---- Extended non-numeric statistics (backward compatible) ----
+    # ---- Extended non-numeric statistics (safe for lists/dicts) ----
     non_numeric_cols = df.select_dtypes(exclude="number").columns.tolist()
     non_numeric_summary = {}
 
     for col in non_numeric_cols:
         col_data = df[col].dropna()
 
+        # Convert unhashable types to string for safe unique/count
+        safe_col = col_data.apply(lambda x: str(x) if isinstance(x, (list, dict)) else x)
+
         info = {
             "dtype": str(df[col].dtype),
-            "unique": col_data.nunique(),
-            "sample": col_data.unique()[:3].tolist(),
+            "unique": safe_col.nunique(),
+            "sample": safe_col.head(3).tolist(),
         }
 
-        # NEW: top categories (safe fallback)
+        # Top categories (safe fallback)
         try:
             top_vals = (
-                col_data.value_counts(dropna=True)
+                safe_col.value_counts(dropna=True)
                 .head(3)
                 .to_dict()
             )
@@ -55,7 +55,7 @@ def summarize_json_dataframe(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
         except Exception:
             info["top"] = {}
 
-        # NEW: null counts
+        # Null counts
         info["nulls"] = int(df[col].isnull().sum())
 
         non_numeric_summary[col] = info
@@ -67,7 +67,7 @@ def build_json_table_output(df: pd.DataFrame, dt_summary: dict = None) -> dict:
     numeric_summary, non_numeric_summary = summarize_json_dataframe(df)
     dt_summary = dt_summary or {}
 
-    # ---- NEW: lightweight datetime detection ----
+    # Lightweight datetime detection
     for col in df.columns:
         if col not in dt_summary:
             try:
@@ -110,6 +110,7 @@ def build_json_table_output(df: pd.DataFrame, dt_summary: dict = None) -> dict:
             )
 
     return table_output
+
 
 # -------------------------------------------------------
 # JSON VISUALIZATION HELPERS (drop into visualize_json.py)
