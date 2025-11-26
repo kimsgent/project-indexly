@@ -7,8 +7,6 @@ from rich.console import Console
 from rich.table import Table
 
 
-
-
 console = Console()
 
 
@@ -26,7 +24,21 @@ def summarize_json_dataframe(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     numeric_stats["iqr"] = numeric_stats["q3"] - numeric_stats["q1"]
     numeric_stats["nulls"] = df[numeric_cols].isnull().sum()
     numeric_stats["sum"] = df[numeric_cols].sum()
-    numeric_stats = numeric_stats[["count","nulls","mean","median","std","sum","min","max","q1","q3","iqr"]]
+    numeric_stats = numeric_stats[
+        [
+            "count",
+            "nulls",
+            "mean",
+            "median",
+            "std",
+            "sum",
+            "min",
+            "max",
+            "q1",
+            "q3",
+            "iqr",
+        ]
+    ]
 
     # ---- Extended non-numeric statistics (safe for lists/dicts) ----
     non_numeric_cols = df.select_dtypes(exclude="number").columns.tolist()
@@ -36,7 +48,9 @@ def summarize_json_dataframe(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
         col_data = df[col].dropna()
 
         # Convert unhashable types to string for safe unique/count
-        safe_col = col_data.apply(lambda x: str(x) if isinstance(x, (list, dict)) else x)
+        safe_col = col_data.apply(
+            lambda x: str(x) if isinstance(x, (list, dict)) else x
+        )
 
         info = {
             "dtype": str(df[col].dtype),
@@ -46,11 +60,7 @@ def summarize_json_dataframe(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
 
         # Top categories (safe fallback)
         try:
-            top_vals = (
-                safe_col.value_counts(dropna=True)
-                .head(3)
-                .to_dict()
-            )
+            top_vals = safe_col.value_counts(dropna=True).head(3).to_dict()
             info["top"] = top_vals
         except Exception:
             info["top"] = {}
@@ -115,6 +125,7 @@ def build_json_table_output(df: pd.DataFrame, dt_summary: dict = None) -> dict:
 # -------------------------------------------------------
 # JSON VISUALIZATION HELPERS (drop into visualize_json.py)
 # -------------------------------------------------------
+
 
 def json_build_tree(obj, root_name="root"):
     tree = Tree(f"[bold]{root_name}[/bold]")

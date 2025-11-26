@@ -9,12 +9,21 @@ from rich.console import Console
 from .export_utils import safe_export
 from .analysis_result import AnalysisResult
 from .csv_pipeline import run_csv_pipeline
-from .json_pipeline import run_json_pipeline, run_json_generic_pipeline
+from .json_pipeline import (
+    run_json_pipeline,
+    run_json_generic_pipeline,
+    flatten_nested_json,
+)
 from .db_pipeline import run_db_pipeline
 from .xml_pipeline import run_xml_pipeline
 from .parquet_pipeline import run_parquet_pipeline
 from .excel_pipeline import run_excel_pipeline
-from .visualize_json import json_build_tree, json_preview, build_json_table_output
+from .visualize_json import (
+    json_build_tree,
+    json_preview,
+    build_json_table_output,
+    summarize_json_dataframe,
+)
 from .csv_analyzer import export_results
 from .analyze_utils import (
     load_cleaned_data,
@@ -49,14 +58,12 @@ def _persist_analysis(
 ) -> bool:
     """
     Persist cleaned/processed data to DB if not already persisted and not disabled via --no-persist.
-    Returns True if persisted, False if skipped.
+    Leaves pipeline handle everything, safely serializes datetime objects before saving.
     """
     # Respect --no-persist CLI flag
     if getattr(args, "no_persist", False):
         if verbose:
-            console.print(
-                f"[dim]💤 Skipping persistence (--no-persist) for {file_path.name}[/dim]"
-            )
+            console.print(f"[dim]💤 Skipping persistence (--no-persist) for {file_path.name}[/dim]")
         return False
 
     # Avoid double writes
@@ -71,15 +78,29 @@ def _persist_analysis(
             console.print(f"[yellow]⚠️ Nothing to persist for {file_path.name}[/yellow]")
         return False
 
+    def _serialize_timestamps(obj):
+        """Recursively convert pd.Timestamp objects to str for JSON safety."""
+        if isinstance(obj, dict):
+            return {k: _serialize_timestamps(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [_serialize_timestamps(v) for v in obj]
+        elif isinstance(obj, pd.Timestamp):
+            return str(obj)
+        else:
+            return obj
+
     try:
         summary_records = getattr(df, "_summary_records", None)
         derived_map = derived_map or getattr(df, "_derived_map", None)
 
+        # Serialize summary safely
+        summary_safe = _serialize_timestamps(summary_records or table_output or {})
+
         save_analysis_result(
             file_path=str(file_path),
             file_type=file_type,
-            summary=pd.DataFrame(summary_records) if summary_records else None,
-            sample_data=data_to_save.head(10),
+            summary=pd.DataFrame(summary_safe) if isinstance(summary_safe, dict) else None,
+            sample_data=data_to_save.head(10) if df is not None else None,
             metadata=derived_map or {},
             row_count=len(data_to_save),
             col_count=len(data_to_save.columns),
@@ -92,9 +113,8 @@ def _persist_analysis(
             df_preview._persisted = True
 
         if verbose:
-            console.print(
-                f"[green]✔ Persisted cleaned data for {file_path.name}[/green]"
-            )
+            console.print(f"[green]✔ Persisted cleaned data for {file_path.name}[/green]")
+
         return True
 
     except Exception as e:
@@ -194,7 +214,9 @@ def analyze_file(args) -> Optional[AnalysisResult]:
             # 1) SEARCH CACHE JSON DETECTED (UNTOUCHED — keep exact behavior)
             # ======================================================
             if metadata.get("json_mode") == "search_cache":
-                console.print(f"[cyan]🔎 Detected Indexly search_cache.json — using cache normalization[/cyan]")
+                console.print(
+                    f"[cyan]🔎 Detected Indexly search_cache.json — using cache normalization[/cyan]"
+                )
 
                 try:
                     df_norm = normalize_search_cache_json(Path(file_path))
@@ -214,13 +236,19 @@ def analyze_file(args) -> Optional[AnalysisResult]:
 
                     # Persist with unified saver (unchanged)
                     _persist_analysis(
-                        df, None, file_path, "json",
-                        table_output=table_output, args=args
+                        df,
+                        None,
+                        file_path,
+                        "json",
+                        table_output=table_output,
+                        args=args,
                     )
                     return df
 
                 except Exception as e:
-                    console.print(f"[yellow]⚠️ JSON cache normalization skipped: {e}[/yellow]")
+                    console.print(
+                        f"[yellow]⚠️ JSON cache normalization skipped: {e}[/yellow]"
+                    )
                     return None
 
             # ======================================================
@@ -237,7 +265,7 @@ def analyze_file(args) -> Optional[AnalysisResult]:
                     file_path=file_path,
                     args=args,
                     df=preloaded_df,
-                    verbose=getattr(args, "verbose", True)
+                    verbose=getattr(args, "verbose", True),
                 )
 
                 tree_dict = table_dict.get("tree", {}) if show_treeview else {}
@@ -246,28 +274,46 @@ def analyze_file(args) -> Optional[AnalysisResult]:
             # ======================================================
             # 3) NDJSON / record-list (list[dict]) — create DataFrame directly
             # ======================================================
-            elif isinstance(loader_raw, list) and all(isinstance(x, dict) for x in loader_raw):
-                console.print(f"[cyan]📄 Detected record-list JSON (NDJSON style) — using record-list fallback[/cyan]")
+            elif isinstance(loader_raw, list) and all(
+                isinstance(x, dict) for x in loader_raw
+            ):
+                console.print(
+                    f"[cyan]📄 Detected record-list JSON (NDJSON style) — using record-list fallback[/cyan]"
+                )
 
-                df = pd.DataFrame(loader_raw)
-                df_preview = loader_raw[:5]
+                # ----- Upgrade: promote single-key dicts (e.g., {"employee": {...}}) -----
+                promoted_raw = []
+                for item in loader_raw:
+                    if len(item) == 1 and isinstance(list(item.values())[0], dict):
+                        promoted_raw.append(list(item.values())[0])
+                    else:
+                        promoted_raw.append(item)
+
+                # ----- Flatten nested dicts/lists into flat records -----
+                flattened_records = flatten_nested_json(promoted_raw)
+                df = (
+                    pd.DataFrame(flattened_records)
+                    if flattened_records
+                    else pd.DataFrame()
+                )
+                df_preview = df.head(5).to_dict(orient="records")
 
                 # ----- Robustly coerce numeric-like strings to numbers -----
-                def coerce_numeric(col_series):
-                    # Try numeric conversion; fallback to original if fails
-                    coerced = pd.to_numeric(col_series, errors="coerce")
-                    if coerced.notna().sum() > 0:  # Only replace if any valid numbers
-                        return coerced
-                    return col_series
-
                 for col in df.columns:
-                    df[col] = coerce_numeric(df[col])
+                    coerced = pd.to_numeric(df[col], errors="coerce")
+                    if coerced.notna().sum() > 0:
+                        df[col] = coerced
 
-                # ----- Build summary safely -----
+                # ----- Compute full numeric + non-numeric summaries -----
                 if not df.empty and df.shape[1] > 0:
                     try:
+                        numeric_summary, non_numeric_summary = summarize_json_dataframe(
+                            df
+                        )
                         table_output = build_json_table_output(df)
                     except Exception:
+                        numeric_summary = {}
+                        non_numeric_summary = {}
                         table_output = {
                             "numeric_summary": {},
                             "non_numeric_summary": {},
@@ -275,6 +321,8 @@ def analyze_file(args) -> Optional[AnalysisResult]:
                             "cols": len(df.columns),
                         }
                 else:
+                    numeric_summary = {}
+                    non_numeric_summary = {}
                     table_output = {
                         "numeric_summary": {},
                         "non_numeric_summary": {},
@@ -284,19 +332,23 @@ def analyze_file(args) -> Optional[AnalysisResult]:
 
                 summary_dict = {
                     "detected_type": "ndjson",
-                    "rows": len(loader_raw),
+                    "rows": len(promoted_raw),
                     "columns": list(df.columns),
                     "preview": df_preview if show_treeview else None,
+                    "numeric_summary": numeric_summary,
+                    "non_numeric_summary": non_numeric_summary,
                     **table_output,
                 }
 
                 tree_dict = {}  # tree handled below if requested
                 if show_treeview:
                     try:
-                        tree_obj = json_build_tree(loader_raw, root_name=file_path.name)
+                        tree_obj = json_build_tree(
+                            promoted_raw, root_name=file_path.name
+                        )
                         tree_dict = {"tree": tree_obj}
                         summary_dict["metadata"] = metadata
-                        summary_dict["preview"] = json_preview(loader_raw)
+                        summary_dict["preview"] = json_preview(promoted_raw)
                     except Exception as e:
                         tree_dict = {"note": f"Failed to build tree: {e}"}
 
@@ -308,39 +360,54 @@ def analyze_file(args) -> Optional[AnalysisResult]:
                     f"[yellow]⚠️ JSON file {file_path.name} lacks structured metadata, using fallback preview[/yellow]"
                 )
 
-                df, summary_dict, tree_dict = run_json_generic_pipeline(
+                # --- Run generic pipeline with default verbose ---
+                df, pipeline_summary, _ = run_json_generic_pipeline(
                     file_path=file_path,
                     args={
-                        "verbose": getattr(args, "verbose", True),
-                        "treeview": show_treeview,
-                    }
+                        "verbose": True,  # pipeline handles printing
+                        "treeview": False,  # tree built separately
+                        "meta": metadata,
+                    },
+                    raw=loader_raw,
+                    meta=metadata,
                 )
 
-                # ----- Coerce numeric-like strings in DataFrame -----
+                summary_dict = {}  # initialize to avoid "not associated" error
+
                 if isinstance(df, pd.DataFrame) and not df.empty:
-                    def coerce_numeric(col_series):
-                        coerced = pd.to_numeric(col_series, errors="coerce")
-                        if coerced.notna().sum() > 0:  # Only replace if some valid numbers
-                            return coerced
-                        return col_series
-
+                    # ----- Coerce numeric-like strings to numbers -----
                     for col in df.columns:
-                        df[col] = coerce_numeric(df[col])
+                        coerced = pd.to_numeric(df[col], errors="coerce")
+                        if coerced.notna().sum() > 0:
+                            df[col] = coerced
 
-                    # Rebuild table output safely
+                    # ----- Ensure JSON-safe summary -----
+                    def _serialize_timestamps(obj):
+                        if isinstance(obj, dict):
+                            return {str(k): _serialize_timestamps(v) for k, v in obj.items()}
+                        elif isinstance(obj, list):
+                            return [_serialize_timestamps(v) for v in obj]
+                        elif isinstance(obj, pd.Timestamp):
+                            return str(obj)
+                        else:
+                            return obj
+
+                    for k, v in pipeline_summary.items():
+                        safe_key = str(k) if not isinstance(k, (str, int, float, bool, type(None))) else k
+                        if isinstance(v, pd.DataFrame):
+                            summary_dict[safe_key] = _serialize_timestamps(v.reset_index().to_dict(orient="records"))
+                        else:
+                            summary_dict[safe_key] = _serialize_timestamps(v)
+
+                # ----- Build tree if requested -----
+                tree_dict = {}
+                if show_treeview:
                     try:
-                        table_output = build_json_table_output(df)
-                    except Exception:
-                        table_output = {
-                            "numeric_summary": {},
-                            "non_numeric_summary": {},
-                            "rows": len(df),
-                            "cols": len(df.columns),
-                        }
-
-                    summary_dict.update(table_output)
-
-                tree_dict = summary_dict.get("tree", {}) if show_treeview else {}
+                        tree_obj = json_build_tree(loader_raw, root_name=file_path.name)
+                        tree_dict = {"tree": tree_obj}
+                        summary_dict["tree"] = tree_obj
+                    except Exception as e:
+                        tree_dict = {"note": f"Failed to build tree: {e}"}
 
             # ======================================================
             # Optional sorting (unchanged)
@@ -362,14 +429,12 @@ def analyze_file(args) -> Optional[AnalysisResult]:
                 sample_data=df,
                 metadata=metadata,
                 row_count=len(df) if df is not None else 0,
-                col_count=len(df.columns) if df is not None else 0
+                col_count=len(df.columns) if df is not None else 0,
             )
-   
 
         except Exception as e:
             console.print(f"[red]❌ JSON pipeline failed: {e}[/red]")
             return None
-
 
     # =====================================================================================
     # Non-JSON universal loader (unchanged)

@@ -27,6 +27,23 @@ from rich.console import Console
 
 console = Console()
 
+
+def _safe_convert(obj):
+    """Force anything numpy/pandas into plain Python JSON-safe structures."""
+    import numpy as np
+    import pandas as pd
+
+    if isinstance(obj, (np.ndarray,)):
+        return obj.tolist()
+
+    if isinstance(obj, (pd.Series,)):
+        return obj.to_dict()
+
+    if isinstance(obj, (pd.DataFrame,)):
+        return obj.to_dict(orient="records")
+
+    return obj
+
 def validate_json_content(file_path: Path) -> bool:
     """
     Validate standard JSON, NDJSON, or indexly-style JSON.
@@ -167,7 +184,7 @@ def validate_file_content(file_path: Path, file_type: str) -> bool:
 
 
 # ------------------------------------------------------
-# 🧱 3. Unified Save Function
+# 🧱 3. Unified Save Function (Patched)
 # ------------------------------------------------------
 def save_analysis_result(
     file_path: str,
@@ -179,8 +196,11 @@ def save_analysis_result(
     col_count: int | None = None,
 ) -> None:
     """
-    Save unified analysis results in JSON-safe format for CSV, JSON, SQLite, etc.
-    Adds source_path tracking and honors '--no-persist' global flag.
+    Robust unified persistence:
+    • Handles DataFrame summaries
+    • Handles dict-based summaries (JSON tree mode)
+    • Ensures everything stored is JSON-safe
+    • Backward compatible with CSV/SQL pipelines
     """
     import os
     import json
@@ -193,16 +213,12 @@ def save_analysis_result(
     # 🧩 Global no-persist guard
     # -------------------------------
     import builtins
-    no_persist_active = getattr(builtins, "__INDEXLY_NO_PERSIST__", False)
-    if no_persist_active:
+    if getattr(builtins, "__INDEXLY_NO_PERSIST__", False):
         file_name = os.path.basename(file_path)
-        console.print(f"[yellow]⚙️ Persistence globally disabled (--no-persist active).[/yellow]")
-        console.print(f"[dim]Skipped saving unified analysis result for {file_name} ({file_type})[/dim]")
+        console.print("[yellow]⚙️ Persistence disabled (--no-persist).[/yellow]")
+        console.print(f"[dim]Skipped saving for {file_name} ({file_type})[/dim]")
         return
 
-    # -------------------------------
-    # 🧱 Standard persistence logic
-    # -------------------------------
     try:
         conn = _get_db_connection()
         _migrate_cleaned_data_schema(conn)
@@ -210,28 +226,39 @@ def save_analysis_result(
         file_name = os.path.basename(file_path)
         source_path = os.path.abspath(file_path) if os.path.exists(file_path) else str(file_path)
 
-        # Convert data to JSON-safe structures
-        summary_json = (
-            _json_safe(summary.to_dict(orient="index"))
-            if isinstance(summary, pd.DataFrame)
-            else _json_safe(summary or {})
-        )
-        sample_json = (
-            _json_safe(sample_data.head(10).to_dict(orient="records"))
-            if isinstance(sample_data, pd.DataFrame)
-            else _json_safe(sample_data or [])
-        )
+        # ------------------------------------------------------
+        # 🧠 JSON-SAFE SUMMARY HANDLING
+        #    Supports:
+        #      • DataFrame summary (CSV, SQL)
+        #      • dict summary (JSON-tree mode)
+        # ------------------------------------------------------
+        if isinstance(summary, pd.DataFrame):
+            summary_json = _json_safe(summary.to_dict(orient="index"))
+        else:
+            summary_json = _json_safe(summary or {})
+
+        # ------------------------------------------------------
+        # 🧠 JSON-SAFE SAMPLE HANDLING
+        # ------------------------------------------------------
+        if isinstance(sample_data, pd.DataFrame):
+            sample_json = _json_safe(sample_data.head(10).to_dict(orient="records"))
+            cleaned_json = sample_data.to_dict(orient="records")
+        else:
+            sample_json = _json_safe(sample_data or [])
+            cleaned_json = sample_data or {}
+
         metadata_json = _json_safe(metadata or {})
 
+        # Main payload
         payload = {
             "file_name": file_name,
             "file_type": file_type,
-            "source_path": source_path,  # ✅ Added
+            "source_path": source_path,
             "summary_json": json.dumps(summary_json, ensure_ascii=False, indent=2),
             "sample_json": json.dumps(sample_json, ensure_ascii=False, indent=2),
             "metadata_json": json.dumps(metadata_json, ensure_ascii=False, indent=2),
             "cleaned_data_json": json.dumps(
-                _json_safe(sample_data if sample_data is not None else {}),
+                _json_safe(cleaned_json),
                 ensure_ascii=False,
                 indent=2,
             ),
@@ -239,6 +266,8 @@ def save_analysis_result(
             "cleaned_at": __import__("datetime").datetime.now().isoformat(),
             "row_count": row_count or 0,
             "col_count": col_count or 0,
+
+            # Combined blob for external export tools
             "data_json": json.dumps(
                 {
                     "summary_statistics": summary_json,
@@ -287,6 +316,7 @@ def save_analysis_result(
 
     except Exception as e:
         console.print(f"[red]Failed to save analysis result for {file_path}: {e}[/red]")
+
 
 
 

@@ -129,8 +129,10 @@ def analyze_json_dataframe(df: pd.DataFrame) -> Tuple[pd.DataFrame, str, Dict[st
         stats_list = []
         for col in numeric_cols:
             vals = df[col].dropna()
-            q1, q3 = (vals.quantile(0.25), vals.quantile(0.75)) if not vals.empty else (None, None)
-            iqr_val = (q3 - q1) if (q1 is not None and q3 is not None) else None
+            q1 = float(vals.quantile(0.25)) if not vals.empty else None
+            q3 = float(vals.quantile(0.75)) if not vals.empty else None
+            iqr_val = float(q3 - q1) if (q1 is not None and q3 is not None) else None
+
             stats_list.append({
                 "column": col,
                 "count": int(vals.count()),
@@ -141,9 +143,9 @@ def analyze_json_dataframe(df: pd.DataFrame) -> Tuple[pd.DataFrame, str, Dict[st
                 "sum": float(vals.sum()) if not vals.empty else None,
                 "min": float(vals.min()) if not vals.empty else None,
                 "max": float(vals.max()) if not vals.empty else None,
-                "q1": float(q1) if q1 is not None else None,
-                "q3": float(q3) if q3 is not None else None,
-                "iqr": float(iqr_val) if iqr_val is not None else None,
+                "q1": q1,
+                "q3": q3,
+                "iqr": iqr_val,
             })
         df_stats = pd.DataFrame(stats_list).set_index("column")
 
@@ -156,15 +158,11 @@ def analyze_json_dataframe(df: pd.DataFrame) -> Tuple[pd.DataFrame, str, Dict[st
 
     for c in df.columns:
         dtype = str(df[c].dtype)
-
-        # Convert list/dict columns to string for unique/sample stats
-        safe_series = df[c].apply(lambda x: str(x) if isinstance(x, (list, dict)) else x)
-
+        safe_series = df[c].apply(lambda x: str(x) if isinstance(x, (list, dict, np.ndarray)) else x)
         try:
             n_unique = int(safe_series.nunique(dropna=True))
         except Exception:
             n_unique = "N/A"
-
         sample = safe_series.dropna().astype(str).head(3).tolist()
         lines.append(f" - {c} : {dtype} | unique={n_unique} | sample={sample}")
 
@@ -173,7 +171,6 @@ def analyze_json_dataframe(df: pd.DataFrame) -> Tuple[pd.DataFrame, str, Dict[st
 
     pretty = "\n".join(lines)
     return df_stats, pretty, meta
-
 
 
 # -------------------------

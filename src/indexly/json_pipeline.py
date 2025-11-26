@@ -232,8 +232,6 @@ def run_json_generic_pipeline(
     
     if meta:
         args["meta"] = meta  # merge into args
-    show_tree = bool(args.get("treeview", False))
-    path_obj = Path(file_path)
 
     # -------------------------------------------------------------------------
     # 1. Early search-cache detection
@@ -244,9 +242,7 @@ def run_json_generic_pipeline(
                 raw_json = json.load(f)
             if is_search_cache_json(raw_json):
                 if verbose:
-                    console.print(
-                        "[cyan]🔍 Detected search-cache JSON → normalizing[/cyan]"
-                    )
+                    console.print("[cyan]🔍 Detected search-cache JSON → normalizing[/cyan]")
                 df = normalize_search_cache_json(path_obj)
                 stats = df.describe(include="all")
                 table_output = {
@@ -273,13 +269,25 @@ def run_json_generic_pipeline(
             console.print(f"[red]❌ Invalid JSON: {e}[/red]")
             return None, None, None
 
-        flattened_records = flatten_nested_json(raw_json)
-        df = pd.DataFrame(flattened_records) if flattened_records else pd.DataFrame()
-        setattr(df, "_from_orchestrator", True)
-        setattr(df, "_source_file_path", str(path_obj))
-    elif df is not None:
-        raw_json = raw_json or None
-        console.print(f"[green]♻️ Using preloaded DataFrame for {path_obj.name}[/green]")
+    # -------------------------------------------------------------------------
+    # 2a. Promote single-key dicts in list (e.g., {"employee": {...}}) before flattening
+    # -------------------------------------------------------------------------
+    if isinstance(raw_json, list) and all(isinstance(x, dict) for x in raw_json):
+        promoted_raw = []
+        for item in raw_json:
+            if len(item) == 1 and isinstance(list(item.values())[0], dict):
+                promoted_raw.append(list(item.values())[0])
+            else:
+                promoted_raw.append(item)
+        raw_json = promoted_raw
+
+    # -------------------------------------------------------------------------
+    # 2b. Flatten JSON
+    # -------------------------------------------------------------------------
+    flattened_records = flatten_nested_json(raw_json)
+    df = pd.DataFrame(flattened_records) if flattened_records else pd.DataFrame()
+    setattr(df, "_from_orchestrator", True)
+    setattr(df, "_source_file_path", str(path_obj))
 
     if df.empty:
         console.print(f"[red]❌ Empty JSON DataFrame: {path_obj}[/red]")
@@ -315,7 +323,6 @@ def run_json_generic_pipeline(
     tree_dict = {}
     if show_tree:
         try:
-            raw_json = raw_json or df.head(10).to_dict(orient="records")
             tree_obj = json_build_tree(raw_json, root_name=path_obj.name)
             tree_dict = {"tree": tree_obj}
             summary_dict["preview"] = json_preview(raw_json)
@@ -333,3 +340,4 @@ def run_json_generic_pipeline(
             build_json_table_output(df, dt_summary=dt_summary)  # only once
 
     return df, summary_dict, tree_dict or table_output
+

@@ -116,11 +116,40 @@ def load_json_or_ndjson(path: Path) -> Tuple[Any, Optional[dict]]:
     except Exception:
         return None, None
 
+    # -------------------------
     # Standard JSON
+    # -------------------------
     try:
         parsed = json.loads(text)
+
+        # Detect structured Indexly JSON
+        if isinstance(parsed, dict) and "metadata" in parsed and "sample_data" in parsed:
+            meta = {
+                "type": "json",
+                "json_mode": "structured_indexly",
+                "is_list": False,
+                "is_dict": True,
+                "is_record_list": False,
+            }
+            return parsed, meta
+
+        # Detect search cache
+        if isinstance(parsed, dict) and parsed:
+            first_val = next(iter(parsed.values()), None)
+            if isinstance(first_val, dict) and "timestamp" in first_val and "results" in first_val:
+                meta = {
+                    "type": "json",
+                    "json_mode": "search_cache",
+                    "is_list": False,
+                    "is_dict": True,
+                    "is_record_list": False,
+                }
+                return parsed, meta
+
+        # Generic JSON (dict/list)
         meta = {
             "type": "json",
+            "json_mode": "generic_json",
             "is_list": isinstance(parsed, list),
             "is_dict": isinstance(parsed, dict),
             "is_record_list": isinstance(parsed, list) and all(isinstance(x, dict) for x in parsed),
@@ -129,7 +158,9 @@ def load_json_or_ndjson(path: Path) -> Tuple[Any, Optional[dict]]:
     except json.JSONDecodeError:
         pass
 
+    # -------------------------
     # NDJSON
+    # -------------------------
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     objs = []
     for line in lines:
@@ -141,12 +172,14 @@ def load_json_or_ndjson(path: Path) -> Tuple[Any, Optional[dict]]:
     if objs:
         meta = {
             "type": "ndjson",
+            "json_mode": "ndjson",
             "is_list": True,
             "is_record_list": all(isinstance(x, dict) for x in objs),
         }
         return objs, meta
 
     return None, None
+
 
 
 
@@ -500,15 +533,16 @@ def detect_and_load(file_path: str | Path, args=None) -> Dict[str, Any]:
                 "cols": 0,
                 "loaded_at": datetime.utcnow().isoformat() + "Z",
                 "json_structure": "indexly_search_cache",
-                "json_mode": "search_cache",     # 🔥 FIX: this is the missing tag
+                "json_mode": "search_cache",
             }
 
             return {
                 "file_type": "json",
-                "df": None,            # search cache handled later in orchestrator
+                "df": None,
                 "df_preview": None,
-                "raw": raw,            # raw dict → passed to orchestrator
+                "raw": raw,
                 "metadata": metadata,
+                "json_mode": "search_cache",           # 🔥 ADD THIS LINE
                 "loader_spec": "loader:search_cache_detector",
             }
 
