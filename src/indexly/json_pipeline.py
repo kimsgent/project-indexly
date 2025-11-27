@@ -282,7 +282,42 @@ def run_json_generic_pipeline(
         raw_json = promoted_raw
 
     # -------------------------------------------------------------------------
-    # 2b. Flatten JSON
+    # 2b. Socrata detection + Lite mode guard
+    # -------------------------------------------------------------------------
+    socrata_mode = False
+    socrata_rows = None
+
+    if isinstance(raw_json, dict):
+        meta_block = raw_json.get("meta")
+        columns_block = raw_json.get("columns")
+        data_block = raw_json.get("data")
+
+        if meta_block and isinstance(columns_block, list) and isinstance(data_block, list):
+            socrata_mode = True
+            socrata_rows = len(data_block)
+
+            # Always notify user — even before big file test
+            console.print(f"[cyan]📘 Detected Socrata JSON structure ({socrata_rows} rows)[/cyan]")
+
+            # Trigger Lite mode for very large datasets
+            if socrata_rows > 500000:
+                console.print(
+                    "[yellow]⚠ Large Socrata dataset detected → Using Socrata-Lite mode (safe partial flatten)[/yellow]"
+                )
+
+                # take first 10k rows only
+                preview_limit = 10000
+                truncated = raw_json.copy()
+                truncated["data"] = data_block[:preview_limit]
+
+                raw_json = truncated
+                args["meta"] = args.get("meta", {})
+                args["meta"]["json_mode"] = "socrata-lite"
+                args["meta"]["rows_total"] = socrata_rows
+                args["meta"]["rows_sampled"] = preview_limit
+
+    # -------------------------------------------------------------------------
+    # 2c. Flatten JSON
     # -------------------------------------------------------------------------
     flattened_records = flatten_nested_json(raw_json)
     df = pd.DataFrame(flattened_records) if flattened_records else pd.DataFrame()
