@@ -56,16 +56,21 @@ def _safe_export_file(path: str, content: str):
 # -------------------------
 # JSON loader / normalizer
 # -------------------------
-def load_json_as_dataframe(file_path: str | Path, raw_json=None):
-    """Unified JSON loader used by analyze_json + json_pipeline."""
-    # Use provided raw JSON if present
+def load_json_as_dataframe(
+    file_path: str | Path, raw_json=None, max_rows: int = 50_000, max_cols: int = 150
+):
+    """Unified JSON loader with safe Socrata support and memory protection."""
+
+    # -------------------------
+    # 1. Load JSON safely
+    # -------------------------
     if raw_json is not None:
         data = raw_json
     else:
         file_path = str(file_path)
         if not os.path.exists(file_path):
             console.print(f"[red]❌ File not found: {file_path}[/red]")
-            return None, None
+            return None, pd.DataFrame()
         try:
             if file_path.endswith(".gz"):
                 with gzip.open(file_path, "rt", encoding="utf-8") as fh:
@@ -75,29 +80,92 @@ def load_json_as_dataframe(file_path: str | Path, raw_json=None):
                     data = json.load(fh)
         except Exception as e:
             console.print(f"[red]❌ Failed to load JSON file: {e}[/red]")
-            return None, None
+            return None, pd.DataFrame()
 
-    # Convert to DataFrame
-    df = None
+    df = pd.DataFrame()
+
+    # -------------------------
+    # 2. Detect Socrata-style JSON safely
+    # -------------------------
     try:
-        if isinstance(data, list):
-            df = pd.json_normalize(data) if data and isinstance(data[0], dict) else pd.DataFrame({"value": data})
+        if (
+            isinstance(data, dict)
+            and "data" in data
+            and "columns" in data
+            and isinstance(data["data"], list)
+            and isinstance(data["columns"], list)
+        ):
+            n_rows = len(data["data"])
+            n_cols = len(data["columns"])
+
+            if n_rows == 0 or n_cols == 0:
+                console.print("[yellow]⚠ JSON contains no data or columns[/yellow]")
+                return data, pd.DataFrame()
+
+            if n_rows > max_rows or n_cols > max_cols:
+                console.print(
+                    f"[yellow]⚠ Socrata dataset detected ({n_rows}×{n_cols}), "
+                    f"limiting to {max_rows} rows and {max_cols} columns to avoid RAM issues[/yellow]"
+                )
+
+            # Apply limits
+            limited_rows = data["data"][:max_rows]
+            limited_cols = data["columns"][:max_cols]
+            cols = [
+                col.get("fieldName") or col.get("name") or col.get("id") or f"col_{i}"
+                for i, col in enumerate(limited_cols)
+            ]
+
+            # Build DataFrame safely
+            df = pd.DataFrame(
+                [[row[j] if j < len(row) else None for j in range(len(cols))] for row in limited_rows],
+                columns=cols,
+            )
+
+        # -------------------------
+        # 3. List of dicts or simple JSON array
+        # -------------------------
+        elif isinstance(data, list):
+            if data and isinstance(data[0], dict):
+                df = pd.json_normalize(data[:max_rows])
+            else:
+                df = pd.DataFrame({"value": data[:max_rows]})
+
+        # -------------------------
+        # 4. Nested dicts
+        # -------------------------
         elif isinstance(data, dict):
-            preferred = next((data[k] for k in ["data", "records", "rows", "items"]
-                              if k in data and isinstance(data[k], list)), None)
+            preferred = next(
+                (data[k] for k in ["data", "records", "rows", "items"] if k in data and isinstance(data[k], list)),
+                None,
+            )
             if preferred is not None:
-                df = pd.json_normalize(preferred)
+                df = pd.json_normalize(preferred[:max_rows])
             else:
                 list_fields = [v for v in data.values() if isinstance(v, list)]
-                df = pd.json_normalize(list_fields[0]) if list_fields else pd.json_normalize(data)
+                df = pd.json_normalize(list_fields[0][:max_rows]) if list_fields else pd.json_normalize(data)
         else:
             df = pd.DataFrame({"value": [str(data)]})
+
     except Exception as e:
-        console.print(f"[yellow]⚠️ Could not convert JSON to DataFrame: {e}[/yellow]")
+        console.print(f"[yellow]⚠ Could not convert JSON to DataFrame: {e}[/yellow]")
         df = pd.DataFrame()
 
+    # -------------------------
+    # 5. Friendly fallback
+    # -------------------------
+    if df.empty:
+        console.print(
+            "[red]❌ JSON loaded, but no tabular structure could be detected.[/red]\n"
+            "[yellow]ℹ️ The file may contain nested objects or unsupported structures.[/yellow]"
+        )
+        return data, pd.DataFrame()
+
+    # Clean column names
     df.columns = [str(c).strip() for c in df.columns]
+
     return data, df
+
 
 
 # -------------------------
