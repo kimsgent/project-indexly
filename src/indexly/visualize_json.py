@@ -16,76 +16,108 @@ def summarize_json_dataframe(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
         numeric_summary: pd.DataFrame
         non_numeric_summary: dict
     """
-    numeric_cols = df.select_dtypes(include="number").columns.tolist()
-    numeric_stats = df[numeric_cols].describe().T
-    numeric_stats["median"] = df[numeric_cols].median()
-    numeric_stats["q1"] = df[numeric_cols].quantile(0.25)
-    numeric_stats["q3"] = df[numeric_cols].quantile(0.75)
-    numeric_stats["iqr"] = numeric_stats["q3"] - numeric_stats["q1"]
-    numeric_stats["nulls"] = df[numeric_cols].isnull().sum()
-    numeric_stats["sum"] = df[numeric_cols].sum()
-    numeric_stats = numeric_stats[
-        [
-            "count",
-            "nulls",
-            "mean",
-            "median",
-            "std",
-            "sum",
-            "min",
-            "max",
-            "q1",
-            "q3",
-            "iqr",
-        ]
-    ]
 
-    # ---- Extended non-numeric statistics (safe for lists/dicts) ----
+    # -----------------------
+    # SAFE NUMERIC SUMMARY
+    # -----------------------
+    numeric_cols = df.select_dtypes(include="number").columns.tolist()
+
+    if not numeric_cols:
+        numeric_stats = pd.DataFrame()
+    else:
+        try:
+            numeric_stats = df[numeric_cols].describe().T
+        except Exception:
+            numeric_stats = pd.DataFrame()
+
+        if not numeric_stats.empty:
+            numeric_stats["median"] = df[numeric_cols].median()
+            numeric_stats["q1"] = df[numeric_cols].quantile(0.25)
+            numeric_stats["q3"] = df[numeric_cols].quantile(0.75)
+            numeric_stats["iqr"] = numeric_stats["q3"] - numeric_stats["q1"]
+            numeric_stats["nulls"] = df[numeric_cols].isnull().sum()
+            numeric_stats["sum"] = df[numeric_cols].sum()
+
+            numeric_stats = numeric_stats[
+                [
+                    "count",
+                    "nulls",
+                    "mean",
+                    "median",
+                    "std",
+                    "sum",
+                    "min",
+                    "max",
+                    "q1",
+                    "q3",
+                    "iqr",
+                ]
+            ]
+
+    # -----------------------
+    # SAFE NON-NUMERIC SUMMARY
+    # -----------------------
     non_numeric_cols = df.select_dtypes(exclude="number").columns.tolist()
     non_numeric_summary = {}
 
     for col in non_numeric_cols:
         col_data = df[col].dropna()
 
-        # Convert unhashable types to string for safe unique/count
         safe_col = col_data.apply(
             lambda x: str(x) if isinstance(x, (list, dict)) else x
         )
 
         info = {
             "dtype": str(df[col].dtype),
-            "unique": safe_col.nunique(),
+            "unique": safe_col.nunique(dropna=True) if not safe_col.empty else 0,
             "sample": safe_col.head(3).tolist(),
+            "nulls": int(df[col].isnull().sum()),
         }
 
-        # Top categories (safe fallback)
         try:
-            top_vals = safe_col.value_counts(dropna=True).head(3).to_dict()
-            info["top"] = top_vals
+            info["top"] = safe_col.value_counts(dropna=True).head(3).to_dict()
         except Exception:
             info["top"] = {}
-
-        # Null counts
-        info["nulls"] = int(df[col].isnull().sum())
 
         non_numeric_summary[col] = info
 
     return numeric_stats, non_numeric_summary
 
 
-def build_json_table_output(df: pd.DataFrame, dt_summary: dict = None) -> dict:
-    numeric_summary, non_numeric_summary = summarize_json_dataframe(df)
+
+def build_json_table_output(df: pd.DataFrame, dt_summary: dict = None, max_rows: int = 1000, max_cols: int = 50) -> dict:
+    """Build JSON table output safely, with sampling for large DataFrames."""
+    
+    # Limit columns for analysis to avoid huge tables
+    if df.shape[1] > max_cols:
+        console.print(f"[yellow]⚠️ Limiting analysis to first {max_cols} columns of {df.shape[1]}[/yellow]")
+        df = df.iloc[:, :max_cols]
+
+    # Sample rows if too large
+    if df.shape[0] > max_rows:
+        console.print(f"[yellow]⚠️ Sampling {max_rows} rows from {df.shape[0]} total[/yellow]")
+        df_sample = df.sample(n=max_rows, random_state=1)
+    else:
+        df_sample = df
+
+    # Compute summaries
+    try:
+        numeric_summary, non_numeric_summary = summarize_json_dataframe(df_sample)
+    except Exception as e:
+        console.print(f"[red]❌ Failed to summarize DataFrame: {e}[/red]")
+        numeric_summary, non_numeric_summary = pd.DataFrame(), {}
+
     dt_summary = dt_summary or {}
 
     # Lightweight datetime detection
-    for col in df.columns:
+    for col in df_sample.columns:
         if col not in dt_summary:
             try:
-                if pd.api.types.is_datetime64_any_dtype(df[col]):
+                if pd.api.types.is_datetime64_any_dtype(df_sample[col]):
                     dt_summary[col] = {
-                        "min": str(df[col].min()),
-                        "max": str(df[col].max()),
-                        "nulls": int(df[col].isnull().sum()),
+                        "min": str(df_sample[col].min()),
+                        "max": str(df_sample[col].max()),
+                        "nulls": int(df_sample[col].isnull().sum()),
                     }
             except Exception:
                 pass
@@ -98,28 +130,35 @@ def build_json_table_output(df: pd.DataFrame, dt_summary: dict = None) -> dict:
         "datetime_summary": dt_summary,
     }
 
-    # Console print
+    # Console print safely
     console.print("\n📊 [bold cyan]Numeric Summary Statistics[/bold cyan]")
-    table = Table(show_header=True, header_style="bold magenta")
-    table.add_column("Column")
-    for col in numeric_summary.columns:
-        table.add_column(str(col))
-    for col_name, row in numeric_summary.iterrows():
-        table.add_row(col_name, *[f"{v}" for v in row])
-    console.print(table)
+    if not numeric_summary.empty:
+        table = Table(show_header=True, header_style="bold magenta")
+        table.add_column("Column")
+        for col in numeric_summary.columns:
+            table.add_column(str(col))
+        for col_name, row in numeric_summary.iterrows():
+            table.add_row(col_name, *[f"{v}" for v in row])
+        console.print(table)
+    else:
+        console.print("[yellow]⚠️ No numeric columns to display[/yellow]")
 
     if non_numeric_summary:
         console.print("\n📋 [bold cyan]Non-Numeric Column Overview[/bold cyan]")
         for col, info in non_numeric_summary.items():
-            console.print(
-                f"- {col}: {info['unique']} unique, "
-                f"dtype={info['dtype']}, "
-                f"sample={info['sample']}, "
-                f"top={info.get('top', {})}, "
-                f"nulls={info.get('nulls', 0)}"
-            )
+            try:
+                console.print(
+                    f"- {col}: {info['unique']} unique, "
+                    f"dtype={info['dtype']}, "
+                    f"sample={info['sample']}, "
+                    f"top={info.get('top', {})}, "
+                    f"nulls={info.get('nulls', 0)}"
+                )
+            except Exception:
+                console.print(f"- {col}: [red]Could not display summary[/red]")
 
     return table_output
+
 
 
 # -------------------------------------------------------
