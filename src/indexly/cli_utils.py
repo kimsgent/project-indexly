@@ -23,6 +23,7 @@ from .rename_utils import SUPPORTED_DATE_FORMATS
 from .clean_csv import clear_cleaned_data
 from . import __version__, __author__, __license__
 from .analysis_orchestrator import analyze_file
+from .log_utils import handle_log_clean
 
 
 # CLI display configurations here
@@ -514,7 +515,7 @@ def build_parser():
         choices=["date", "year", "month", "week"],
         help="Sort normalized search results by derived date or period."
     )
-
+    
     # Additional display/export (from original)
     analyze_file_parser.add_argument(
         "--wide-view",
@@ -711,6 +712,49 @@ def build_parser():
     )
 
     update_db.set_defaults(func=lambda args: handle_update_db(args))
+    
+    # ------------------------------------------------------------
+    # LOG-CLEAN SUBCOMMAND
+    # ------------------------------------------------------------
+    sub_log_clean = subparsers.add_parser(
+        "log-clean",
+        help="Clean one or multiple index log files (auto-detects *_index.log)",
+    )
+
+    sub_log_clean.add_argument(
+        "file",
+        help="Path to a single index log file OR a directory containing multiple logs.",
+    )
+
+    sub_log_clean.add_argument(
+        "--export",
+        default="json",
+        choices=["json", "csv", "ndjson"],
+        help="Export format for cleaned logs.",
+    )
+
+    sub_log_clean.add_argument(
+        "--out",
+        help=(
+            "Output file or directory. "
+            "If processing multiple logs without --combine-log, this should be a directory. "
+            "Default: auto-generated filenames in the same folder."
+        ),
+    )
+
+    sub_log_clean.add_argument(
+        "--combine-log",
+        action="store_true",
+        help="Merge all found logs into a single combined export.",
+    )
+
+    sub_log_clean.add_argument(
+        "--no-dedupe",
+        action="store_true",
+        help="Disable deduplication when combining logs.",
+    )
+
+    sub_log_clean.set_defaults(func=handle_log_clean)
 
     # -------------------------------------------------------------------
     # show-help command
