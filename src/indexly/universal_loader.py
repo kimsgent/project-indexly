@@ -707,7 +707,8 @@ def detect_file_type(path: Path) -> str:
     if ext == ".xml":
         return "xml"
     # JSON / NDJSON / generic JSON detection
-    if ext == ".json" or name.endswith(".json.gz"):
+
+    if ext == ".json" or name.endswith(".json.gz") or ext == ".ndjson":
         text_sample = _safe_read_text(path, max_lines=10)  # optional sample
         if not text_sample:
             return "json"
@@ -727,6 +728,7 @@ def detect_file_type(path: Path) -> str:
             ):
                 return "ndjson"
         return "json"
+
 
     return "unknown"
 
