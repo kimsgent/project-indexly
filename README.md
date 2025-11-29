@@ -1,5 +1,6 @@
 # 🔍 Project Indexly
-**Blazing-fast Local File Search Tool with SQLite FTS5, Tagging, and Export**
+
+**Blazing-fast Local File Search Tool with SQLite FTS5, Tagging & Advanced Analysis**
 
 > Privacy-first, offline file search made elegant.
 
@@ -12,36 +13,33 @@
 ---
 
 ## 🚀 Overview
-**Project Indexly** is a lightweight Python-powered tool that indexes local files into an SQLite FTS5 database with support for:
 
-- Full-text search  
-- Tagging  
-- Metadata filtering  
-- Export (CSV/Markdown/JSON)  
+**Project Indexly** is a high-performance local file search and analysis tool powered by SQLite FTS5. It indexes your files, enriches them with metadata, and lets you search, tag, analyze, and export results efficiently — all **100% offline**.
 
-Designed to work **100% offline**, it’s perfect for researchers, writers, developers, and digital organizers.
+Ideal for developers, researchers, writers, analysts, and anyone who works with large document collections.
 
 ---
 
 ## ✨ Key Features
 
-- 🔍 **Blazing-fast search** via SQLite FTS5  
-- 🏷️ Tagging & custom metadata support  
-- 📁 File-type detection with MIME parsing  
-- 📤 Export to CSV, Markdown, JSON  
-- 🔁 Smart re-indexing with `watchdog`  
-- 📊 CLI preview of search results  
-- 🔒 Privacy-first: no data leaves your machine  
-- 🧠 Caches recently used queries  
-- 🛠️ Configurable via `.env` or CLI flags  
+* ⚡ **Fast full-text search** using FTS5
+* 📁 Smart file-type detection (TXT, MD, CSV, XML, JSON, images & more)
+* 🧠 **Advanced CSV & JSON analysis**
+* 🕒 **Time-series visualization (CSV)**
+* 🏷️ Tag management
+* 📤 Export to CSV, Markdown, JSON
+* 🔁 Real-time reindexing (optional)
+* 🔒 Zero network calls — full privacy
+* 🗂️ Rich metadata extraction (documents & images)
+* 🎨 Colorized CLI output
 
 ---
 
-## 📸 Screenshots
+## 📸 Screenshot
 
-| Indexing Files | Search Preview |
-|----------------|----------------|
-| ![Index](docs/static/images/indexly_indexing.png) | ![Search](docs/static/images/search-demo-placeholder.png) |
+| Demo Preview                                               |
+| ---------------------------------------------------------- |
+| ![Preview](docs/static/images/plot.png) |
 
 ---
 
@@ -53,126 +51,101 @@ cd project-indexly
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-````
+```
 
 ---
 
 ## ⚙️ Usage Examples
 
-### 🔍 Indexing a Folder
+### 🔍 Index files
 
 ```bash
 indexly index /path/to/folder
 ```
 
-### 🧠 Searching Files
+### 🧠 Search
 
 ```bash
-indexly search "project OR report"
+indexly search "report OR analysis"
 ```
 
-### 🏷️ Tagging and Metadata
+### 🏷️ Add tags
 
 ```bash
-indexly tag add --files /path/to/file --tags archive invoice
+indexly tag add --files notes.txt --tags project meeting
 ```
 
-### 📤 Exporting Results
+### 📤 Export results
 
 ```bash
-indexly search --export-format json --output result.json
+indexly search "invoice" --export-format csv --output invoices.csv
+```
+
+### 📊 Analyze CSV (summary + time-series)
+
+```bash
+indexly analyze-csv data.csv --auto-clean --show-summary
 ```
 
 ---
 
 ## 📁 Supported File Types
 
-| Type    | Notes                 |
-| ------- | --------------------- |
-| `.txt`  | Full-text indexed     |
-| `.md`   | Markdown supported    |
-| `.pdf`  | (Coming soon)         |
-| `.html` | Stripped and indexed  |
-| `.csv`  | Header-aware indexing |
-| Others  | Filtered by MIME type |
+| Type    | Notes                    |
+| ------- | ------------------------ |
+| `.txt`  | Full-text indexed        |
+| `.md`   | Markdown supported       |
+| `.csv`  | Header-aware, analyzable |
+| `.json` | NDJSON + structured JSON |
+| `.xml`  | Structured tree analysis |
+| Images  | Metadata extracted       |
+| Others  | MIME-based detection     |
 
 ---
 
 ## 🧱 Project Structure
 
 ```text
-project-indexly/
-├── indexly/                # Main package
-│   ├── core/               # Core logic
-│   ├── cli/                # CLI commands
-│   ├── utils/              # Helpers and utilities
-│   ├── exports/            # Export formats
-│   ├── config/             # Env settings and constants
-│   └── templates/          # Markdown/HTML templates
-├── docs/                   # Hugo site (documentation)
-├── scripts/                # Utility scripts
-├── tests/                  # Test suite
-├── LICENSE.txt
-├── pyproject.toml
-├── requirements.txt
-└── README.md
+indexly/
+├── core/
+├── cli/
+├── utils/
+├── analysis/
+├── exports/
+├── docs/
+└── tests/
 ```
-
----
-
-## 🔐 Technical Notes
-
-* SQLite FTS5 full-text indexing
-* MIME detection via `python-magic`
-* Cross-platform path handling
-* Environment variables via `python-dotenv`
-* `watchdog` support for live indexing (optional)
 
 ---
 
 ## 🛣️ Roadmap
 
-* [x] FTS5-based search
-* [x] Tagging support
-* [x] Export in multiple formats
-* [x] PDF parsing and indexing
-* [ ] GUI interface
-* [ ] Web interface (optional self-hosted)
+* [x] CSV & JSON analyzers
+* [x] Time-series visualization
+* [ ] GUI
+* [ ] Self-hosted web dashboard
 
 ---
 
 ## 📚 Documentation
 
-Full usage, configuration, and integration guides:
-👉 [Project Indexly Docs](https://projectindexly.com)
+👉 *“Project Indexly Docs”* — [https://projectindexly.com](https://projectindexly.com)
 
 ---
 
-## 🧑‍💻 Contributing
+## 📬 Contact
 
-Contributions are welcome!
-Please check [CONTRIBUTING.md](./CONTRIBUTING.md) before submitting pull requests.
-👉 [Project Indexly on GitHub](https://github.com/kimsgent/project-indexly)
-
----
-
-## 📬 Contact & Support
-
-📩 Contact Page
-✉️ Email: gentkims@gmail.com
+✉️ [gentkims@gmail.com](mailto:gentkims@gmail.com)
 
 ---
 
 ## 👨‍💻 Author
 
-**N. K Franklin-Gent**
-Built with 💻, ☕, and 💡 in Dieburg, Germany.
-
-Co-created with **ChatGPT** 🤝
+**N. K Franklin-Gent** — built in Dieburg, Germany.
+Co-created with ChatGPT 🤝
 
 ---
 
 ## 📝 License
 
-This project is licensed under the **MIT License** — see [LICENSE](./LICENSE.txt) for details.
-
+MIT — see `LICENSE.txt`.

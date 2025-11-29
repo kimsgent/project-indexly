@@ -1,30 +1,52 @@
-import importlib.resources
+from indexly import __version__, __author__
 import os
 import sys
+import site
+import importlib.resources
 import importlib.metadata
-from indexly import __version__, __author__
+from pathlib import Path
 from rich.console import Console
 from rich.text import Text
 
 console = Console()
 
+
+
+
 def _find_license_file():
+    # 1. Try inside package folder
     try:
         path = importlib.resources.files("indexly").joinpath("LICENSE.txt")
         if path.is_file():
             return path
     except Exception:
         pass
+
+    # 2. Try dist-info licenses folder using metadata
     try:
-        dist_path = importlib.metadata.distribution("indexly").locate_file("licenses/LICENSE.txt")
-        if os.path.isfile(dist_path):
-            return dist_path
+        dist = importlib.metadata.distribution("indexly")
+        license_path = Path(dist.locate_file("licenses/LICENSE.txt"))
+        if license_path.exists():
+            return license_path
     except Exception:
         pass
-    candidate = os.path.join(os.path.dirname(__file__), "..", "..", "LICENSE.txt")
-    if os.path.exists(candidate):
+
+    # 3. Fallback: glob for indexly-*.dist-info/licenses/LICENSE.txt in sys.path
+    for site_path in [Path(p) for p in sys.path if "site-packages" in p]:
+        for dist_info in site_path.glob("indexly-*.dist-info"):
+            candidate = dist_info / "licenses" / "LICENSE.txt"
+            if candidate.exists():
+                return candidate
+
+    # 4. Source fallback
+    candidate = Path(__file__).parent.parent.parent / "LICENSE.txt"
+    if candidate.exists():
         return candidate
+
     return None
+
+
+
 
 def get_license_excerpt(lines=2):
     path = _find_license_file()

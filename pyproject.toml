@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "indexly"
-version = "1.0.4"
+version = "1.0.5"
 description = "A local file indexing and search tool with FTS5, regex, and CSV analysis support."
 readme = "src/indexly/docs/README.md"
 license = { text = "MIT" }
@@ -51,6 +51,7 @@ dependencies = [
     "odfpy>=1.4.1",
     "rich>=13.7.1",
     "pandas>=2.1.1",
+    "PyYAML>=6.0.0",
 
     # --- Visualization & Analysis Support ---
     # Terminal-based ASCII plots
@@ -101,6 +102,7 @@ include = [
 
 [tool.hatch.build.targets.wheel]
 include = [
+  "LICENSE.txt",
   "src/indexly/LICENSE.txt",
   "src/indexly/docs/README.md",
   "src/indexly/assets/fonts/*.ttf",
