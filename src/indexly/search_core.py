@@ -254,8 +254,8 @@ def normalize_logical_expression(query: str, near_distance: int = 5) -> str:
     if not query or not query.strip():
         return ""
 
-    # Basic sanitization
-    if not re.match(r'^[\w\s"\'()*+:\-~<>/]+$', query):
+    # Basic sanitization (allow common punctuation like dots and commas)
+    if not re.match(r'^[\w\s"\'().,+\-:;!?/~<>]+$', query):
         raise ValueError(f"Unsafe FTS term: {query}")
 
     q = re.sub(r'\s+', ' ', query.strip())
@@ -273,17 +273,13 @@ def normalize_logical_expression(query: str, near_distance: int = 5) -> str:
     finally:
         conn.close()
 
-    # Apply NEAR distance only if supported
     if supports_near_n:
         q = re.sub(r'\bNEAR\b(?!/\d+)', f'NEAR/{near_distance}', q, flags=re.IGNORECASE)
     else:
-        # Just ensure NEAR is uppercased and spacing normalized
         q = re.sub(r'\bNEAR\b(?!/\d+)', 'NEAR', q, flags=re.IGNORECASE)
 
-    # Uppercase logical operators
     q = re.sub(r'\b(and|or|not|near(?:/\d+)?)\b', lambda m: m.group(1).upper(), q, flags=re.IGNORECASE)
 
-    # Quote single terms safely
     if not any(op in q.upper() for op in ("AND", "OR", "NOT", "NEAR")) and not re.search(r'["()]', q):
         q = f'"{q}"'
 

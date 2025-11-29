@@ -12,292 +12,304 @@ import os
 import json
 import sqlite3
 import argparse
+from rich.console import Console
+from rich.table import Table
+from rich.json import JSON
 from .config import DB_FILE
 from .db_utils import connect_db
 
+console = Console()
 
-# -----------------------------------------------------------------------------
-# FILE INDEX DEBUG (now joins alias from file_metadata)
-# -----------------------------------------------------------------------------
+
+# =============================================================================
+# FILE INDEX DEBUG (joins alias from file_metadata)
+# =============================================================================
 def debug_file_index_table():
-    print("\n📁 Debugging file_index table...\n")
+    console.rule("[bold yellow]📁 file_index Debug[/bold yellow]")
 
     if not os.path.exists(DB_FILE):
-        print(f"❌ DB file not found at: {DB_FILE}")
+        console.print(f"[red]❌ DB not found:[/red] {DB_FILE}")
         return
 
     conn = connect_db()
     conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
+    cur = conn.cursor()
 
-    # Check if table exists
-    cursor.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='file_index';"
-    )
-    if not cursor.fetchone():
-        print("❌ file_index table not found.")
+    # Table check
+    cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='file_index';")
+    if not cur.fetchone():
+        console.print("[red]❌ file_index table not found.[/red]")
         conn.close()
         return
 
-    # Show column info
-    print("📋 Columns in file_index:")
-    cursor.execute("PRAGMA table_info(file_index);")
-    for col in cursor.fetchall():
-        print(f"  - {col['name']}")
+    # Columns
+    console.print("[cyan]📋 Columns:[/cyan]")
+    cur.execute("PRAGMA table_info(file_index);")
+    cols = [c["name"] for c in cur.fetchall()]
+    console.print(", ".join(cols))
 
-    # Count total rows
-    cursor.execute("SELECT COUNT(*) AS total FROM file_index;")
-    total = cursor.fetchone()["total"]
-    print(f"\n📊 Total rows: {total}")
+    # Row count
+    cur.execute("SELECT COUNT(*) AS total FROM file_index;")
+    total = cur.fetchone()["total"]
+    console.print(f"[green]📊 Total rows:[/green] {total}")
 
-    # Show sample entries (join alias from file_metadata)
-    print("\n🔍 Sample entries (joining alias from file_metadata):")
+    # Sample entries
+    console.print("\n[bold]🔍 Sample entries (with alias):[/bold]")
     try:
-        cursor.execute(
+        cur.execute(
             """
-            SELECT 
-                fi.path,
-                fm.alias,
-                fi.tag,
-                fi.modified,
-                substr(fi.content, 1, 80) AS snippet
+            SELECT fi.path, fm.alias, fi.tag, fi.modified, substr(fi.content, 1, 100) AS snippet
             FROM file_index fi
             LEFT JOIN file_metadata fm ON fi.path = fm.path
             ORDER BY fi.modified DESC
             LIMIT 5;
-        """
-        )
-        rows = cursor.fetchall()
-        if not rows:
-            print("⚠️ No entries found in file_index.")
-        for row in rows:
-            print(f"- path: {row['path']}")
-            print(f"  alias: {row['alias']}")
-            print(f"  tag: {row['tag']}")
-            print(f"  modified: {row['modified']}")
-            print(f"  content snippet: {row['snippet']}\n")
-    except Exception as e:
-        print(f"⚠️ Error fetching file_index rows: {e}")
-
-    # Show alias summary (from file_metadata, not file_index)
-    print("📦 Alias summary (from file_metadata):")
-    try:
-        cursor.execute(
             """
-            SELECT 
-                COUNT(*) AS total_aliases,
-                COUNT(DISTINCT alias) AS unique_aliases
-            FROM file_metadata
-            WHERE alias IS NOT NULL AND alias != '';
-        """
         )
-        stats = cursor.fetchone()
-        print(f"  Total aliases: {stats['total_aliases']}")
-        print(f"  Unique aliases: {stats['unique_aliases']}")
+        rows = cur.fetchall()
+        if not rows:
+            console.print("[yellow]⚠️ No entries found.[/yellow]")
+        else:
+            table = Table(show_header=True, header_style="bold magenta")
+            table.add_column("Path", overflow="fold")
+            table.add_column("Alias")
+            table.add_column("Tag")
+            table.add_column("Modified")
+            table.add_column("Snippet", overflow="fold")
+
+            for r in rows:
+                table.add_row(
+                    r["path"] or "",
+                    r["alias"] or "",
+                    r["tag"] or "",
+                    str(r["modified"] or ""),
+                    r["snippet"] or "",
+                )
+            console.print(table)
     except Exception as e:
-        print(f"⚠️ Error counting alias stats: {e}")
+        console.print(f"[red]⚠️ Query error:[/red] {e}")
+
+    # Alias summary
+    console.print("\n[bold cyan]📦 Alias summary (file_metadata)[/bold cyan]")
+    try:
+        cur.execute(
+            """
+            SELECT COUNT(*) AS total_aliases, COUNT(DISTINCT alias) AS unique_aliases
+            FROM file_metadata WHERE alias IS NOT NULL AND alias != '';
+            """
+        )
+        stats = cur.fetchone()
+        console.print(
+            f"  Total aliases: [green]{stats['total_aliases']}[/green] | "
+            f"Unique aliases: [green]{stats['unique_aliases']}[/green]"
+        )
+    except Exception as e:
+        console.print(f"[red]⚠️ Alias stats error:[/red] {e}")
 
     conn.close()
 
 
-# -----------------------------------------------------------------------------
+# =============================================================================
 # FILE METADATA + TAGS DEBUG
-# -----------------------------------------------------------------------------
+# =============================================================================
 def debug_metadata_table():
-    print("📂 Database file check:")
-    if os.path.exists(DB_FILE):
-        size = os.path.getsize(DB_FILE)
-        print(f"✅ DB exists at: {DB_FILE}")
-        print(f"   Size: {size / 1024:.2f} KB")
-    else:
-        print(f"❌ DB file not found at: {DB_FILE}")
+    console.rule("[bold yellow]📂 Metadata Debug[/bold yellow]")
+
+    if not os.path.exists(DB_FILE):
+        console.print(f"[red]❌ DB not found:[/red] {DB_FILE}")
         return
+
+    size = os.path.getsize(DB_FILE)
+    console.print(f"[green]✅ DB:[/green] {DB_FILE} ({size/1024:.2f} KB)")
 
     conn = connect_db()
     conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
+    cur = conn.cursor()
 
-    # List tables
-    print("\n📋 Checking available tables...")
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
-    tables = [row["name"] for row in cursor.fetchall()]
-    print("✅ Found tables:", tables if tables else "⚠️ None found")
+    # Tables
+    cur.execute("SELECT name FROM sqlite_master WHERE type='table';")
+    tables = [r["name"] for r in cur.fetchall()]
+    console.print(f"📋 Tables: [cyan]{', '.join(tables) if tables else 'None'}[/cyan]")
 
-    # Debug file_metadata
+    # file_metadata
     if "file_metadata" in tables:
-        print("\n📋 Columns in file_metadata:")
-        cursor.execute("PRAGMA table_info(file_metadata);")
-        for col in cursor.fetchall():
-            print(f"  - {col['name']}")
+        console.print("\n[bold]🔹 file_metadata columns:[/bold]")
+        cur.execute("PRAGMA table_info(file_metadata);")
+        console.print(", ".join(c["name"] for c in cur.fetchall()))
 
-        print("\n🔍 Sample entries (including alias and core metadata):")
         try:
-            cursor.execute(
+            cur.execute(
                 """
-                SELECT 
-                    path,
-                    alias,
-                    title,
-                    author,
-                    camera,
-                    created,
-                    dimensions,
-                    format,
-                    gps
+                SELECT path, alias, title, author, camera, created,
+                       dimensions, format, gps
                 FROM file_metadata
-                ORDER BY created DESC
-                LIMIT 3;
-            """
+                ORDER BY created DESC LIMIT 3;
+                """
             )
-            rows = cursor.fetchall()
+            rows = cur.fetchall()
             if not rows:
-                print("⚠️ No rows found in file_metadata.")
-            for row in rows:
-                print(dict(row))
+                console.print("[yellow]⚠️ No rows in file_metadata[/yellow]")
+            else:
+                table = Table(show_header=True, header_style="bold blue")
+                table.add_column("Path", overflow="fold")
+                table.add_column("Alias")
+                table.add_column("Title")
+                table.add_column("Author")
+                table.add_column("Camera")
+                table.add_column("Created")
+                for r in rows:
+                    table.add_row(
+                        r["path"] or "",
+                        r["alias"] or "",
+                        r["title"] or "",
+                        r["author"] or "",
+                        r["camera"] or "",
+                        str(r["created"] or ""),
+                    )
+                console.print(table)
         except Exception as e:
-            print(f"⚠️ Error fetching metadata rows: {e}")
+            console.print(f"[red]⚠️ Error reading metadata:[/red] {e}")
     else:
-        print("❌ file_metadata table not found")
+        console.print("[red]❌ file_metadata table missing[/red]")
 
-    # Debug file_tags
+    # file_tags
     if "file_tags" in tables:
-        print("\n🏷️ Sample entries in file_tags:")
+        console.print("\n[bold]🏷️ file_tags preview:[/bold]")
         try:
-            cursor.execute("SELECT path, tags FROM file_tags LIMIT 3;")
-            for row in cursor.fetchall():
-                print(dict(row))
+            cur.execute("SELECT path, tags FROM file_tags LIMIT 3;")
+            rows = cur.fetchall()
+            for r in rows:
+                console.print(f"• [green]{r['path']}[/green]: {r['tags']}")
         except Exception as e:
-            print(f"⚠️ Error fetching tags rows: {e}")
+            console.print(f"[red]⚠️ file_tags error:[/red] {e}")
     else:
-        print("❌ file_tags table not found")
+        console.print("[yellow]⚠️ file_tags table not found[/yellow]")
 
     conn.close()
 
 
-# -----------------------------------------------------------------------------
+# =============================================================================
 # MIGRATION HISTORY
-# -----------------------------------------------------------------------------
+# =============================================================================
 def show_migrations(db: str | None = None, last: int | None = None):
     db_path = db or DB_FILE
     if not os.path.exists(db_path):
-        print(f"❌ DB file not found at: {db_path}")
+        console.print(f"[red]❌ DB not found:[/red] {db_path}")
         return
 
     conn = connect_db()
     conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
+    cur = conn.cursor()
 
-    cursor.execute(
-        """
-        SELECT name FROM sqlite_master 
-        WHERE type='table' AND name='schema_migrations';
-    """
+    cur.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_migrations';"
     )
-    if not cursor.fetchone():
-        print("⚠️ No migration history table found.")
+    if not cur.fetchone():
+        console.print("[yellow]⚠️ No schema_migrations table found[/yellow]")
         conn.close()
         return
 
-    print("\n📜 Migration History:")
+    query = "SELECT id, migration, applied_at FROM schema_migrations ORDER BY id DESC"
     if last:
-        cursor.execute(
-            "SELECT id, migration, applied_at FROM schema_migrations ORDER BY id DESC LIMIT ?;",
-            (last,),
-        )
-        rows = cursor.fetchall()
-        rows.reverse()
-    else:
-        cursor.execute(
-            "SELECT id, migration, applied_at FROM schema_migrations ORDER BY id;"
-        )
-        rows = cursor.fetchall()
+        query += f" LIMIT {last}"
 
-    if rows:
-        for row in rows:
-            print(f"#{row['id']:03d} | {row['migration']} | {row['applied_at']}")
+    cur.execute(query)
+    rows = cur.fetchall()
+    rows.reverse()
+
+    if not rows:
+        console.print("[yellow]⚠️ No migrations recorded[/yellow]")
     else:
-        print("⚠️ No migrations recorded yet.")
+        table = Table(show_header=True, header_style="bold cyan")
+        table.add_column("ID", justify="right")
+        table.add_column("Migration")
+        table.add_column("Applied At")
+        for r in rows:
+            table.add_row(str(r["id"]), r["migration"], r["applied_at"])
+        console.print(table)
+
     conn.close()
 
 
-# -----------------------------------------------------------------------------
+# =============================================================================
 # CLEANED DATA
-# -----------------------------------------------------------------------------
-
-
+# =============================================================================
 def debug_cleaned_data_table(limit: int = 10):
+    """
+    Enhanced cleaned_data debug:
+    - Works for CSV and JSON sources
+    - Handles legacy list-style JSON
+    - Uses Rich JSON preview
+    """
     from .cleaning.auto_clean import _get_db_connection
-    from rich.console import Console
-    from rich.json import JSON
 
-    console = Console()
-
-    print("\n🧹 Debugging cleaned_data table...\n")
-
+    console.rule("[bold yellow]🧹 Cleaned Data Debug[/bold yellow]")
     conn = _get_db_connection()
-    cursor = conn.cursor()
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
 
-    # Check if table exists
-    cursor.execute(
+    cur.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='cleaned_data';"
     )
-    if not cursor.fetchone():
-        print("⚠️ cleaned_data table not found.")
+    if not cur.fetchone():
+        console.print("[yellow]⚠️ cleaned_data table not found[/yellow]")
         conn.close()
         return
 
-    # Show column info
-    print("📋 Columns in cleaned_data:")
-    cursor.execute("PRAGMA table_info(cleaned_data);")
-    for col in cursor.fetchall():
-        print(f"  - {col['name']}")
+    # Columns
+    cur.execute("PRAGMA table_info(cleaned_data);")
+    console.print("📋 Columns:", ", ".join(c["name"] for c in cur.fetchall()))
 
-    # Show total rows
-    cursor.execute("SELECT COUNT(*) AS total FROM cleaned_data;")
-    total = cursor.fetchone()[0]
-    print(f"\n📊 Total rows: {total}")
+    # Row count
+    cur.execute("SELECT COUNT(*) AS total FROM cleaned_data;")
+    console.print(f"📊 Total rows: {cur.fetchone()['total']}")
 
-    # Show sample entries (all fields)
-    print(f"\n🔍 Sample {limit} entries:")
-    cursor.execute(
+    # Samples
+    cur.execute(
         f"SELECT * FROM cleaned_data ORDER BY cleaned_at DESC LIMIT {limit};"
     )
-    rows = cursor.fetchall()
-    for row in rows:
-        preview = json.loads(row["data_json"])[:5]
-        console.print(f"[bold cyan]ID:[/bold cyan] {row['id']} — {row['file_name']}")
+    for r in cur.fetchall():
+        row = dict(r)
+        console.print(f"\n[cyan]ID {row.get('id','?')}[/cyan] — {row.get('file_name','—')}")
         console.print(
-            f"[dim]Cleaned at:[/dim] {row['cleaned_at']}, Rows: {row['row_count']}, Cols: {row['col_count']}"
+            f"[dim]Cleaned at {row.get('cleaned_at','—')} | "
+            f"Rows:{row.get('row_count','?')} | Cols:{row.get('col_count','?')} | "
+            f"Src:{row.get('source_path','unknown')}[/dim]"
         )
-        console.print(JSON.from_data(preview))
+        try:
+            data = json.loads(row.get("data_json", "{}"))
+            if isinstance(data, list):
+                preview = data[:5]
+            elif isinstance(data, dict):
+                preview = (
+                    data.get("sample_data")
+                    or list(data.get("summary_statistics", {}).items())[:5]
+                    or {k: data[k] for k in list(data.keys())[:5]}
+                )
+            else:
+                preview = str(data)[:300]
+            console.print(JSON.from_data(preview))
+        except Exception as e:
+            console.print(f"[red]❌ JSON parse error:[/red] {e}")
         console.rule()
 
     conn.close()
 
 
-# -----------------------------------------------------------------------------
+# =============================================================================
 # MAIN CLI HANDLER
-# -----------------------------------------------------------------------------
+# =============================================================================
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Debug indexly database tables and migrations"
+        description="Debug Indexly database tables and migrations"
     )
-    parser.add_argument(
-        "--show-index",
-        action="store_true",
-        help="Show file_index table with stats (alias from file_metadata)",
-    )
-    parser.add_argument(
-        "--show-migrations", action="store_true", help="Show migration history"
-    )
-    parser.add_argument(
-        "--last",
-        type=int,
-        help="Show only the last N migrations (requires --show-migrations)",
-    )
-    parser.add_argument(
-        "--show-cleaned", action="store_true", help="Show cleaned_data table entries"
-    )
+    parser.add_argument("--show-index", action="store_true",
+                        help="Show file_index table with alias stats")
+    parser.add_argument("--show-migrations", action="store_true",
+                        help="Show migration history")
+    parser.add_argument("--last", type=int,
+                        help="Limit to last N migrations (requires --show-migrations)")
+    parser.add_argument("--show-cleaned", action="store_true",
+                        help="Show cleaned_data table entries")
 
     args = parser.parse_args()
 
@@ -305,7 +317,7 @@ if __name__ == "__main__":
         show_migrations(last=args.last)
     elif args.show_index:
         debug_file_index_table()
-    elif getattr(args, "show_cleaned", False):
+    elif args.show_cleaned:
         debug_cleaned_data_table()
     else:
         debug_metadata_table()

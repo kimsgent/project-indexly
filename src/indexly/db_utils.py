@@ -12,13 +12,22 @@ Usage:
     Used during indexing, searching, and tagging operations.
 """
 
-import sqlite3
+
 import os
 import re
 import signal
 import logging
+import sqlite3
+import json
+import pandas as pd
 from .config import DB_FILE
 from .path_utils import normalize_path
+from pathlib import Path
+from datetime import datetime
+from .analysis_result import AnalysisResult
+from rich.console import Console
+
+console = Console()
 
 
 logger = logging.getLogger(__name__)
@@ -166,6 +175,109 @@ def _sync_path_in_db(old_path: str, new_path: str):
         )
         return False
 
+# ------------------------------------------------------
+# 🧱 1. Connection Helper
+# ------------------------------------------------------
+def _get_db_connection():
+
+    import os, sqlite3
+
+    db_path = os.path.join(os.path.expanduser("~"), ".indexly", "indexly.db")
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+
+    # Ensure base table exists
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS cleaned_data (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            file_name TEXT UNIQUE,
+            file_type TEXT,
+            source_path TEXT,        -- ✅ Added for real file source tracking
+            summary_json TEXT,
+            sample_json TEXT,
+            metadata_json TEXT,
+            cleaned_at TEXT,
+            row_count INTEGER,
+            col_count INTEGER,
+            data_json TEXT,
+            cleaned_data_json TEXT,
+            raw_data_json TEXT
+        );
+    """)
+    conn.commit()
+
+    # Apply migrations / schema evolution
+    _migrate_cleaned_data_schema(conn)
+
+    return conn
+
+
+# ------------------------------------------------------
+# 🧱 Schema Migration Helper (Unified)
+# ------------------------------------------------------
+def _migrate_cleaned_data_schema(conn: sqlite3.Connection) -> None:
+    """
+    Ensures that the 'cleaned_data' table supports all unified fields,
+    including the new 'source_path' column.
+    """
+    import sqlite3
+    from rich.console import Console
+
+    console = Console()
+
+    # ✅ Expected unified schema (now includes source_path)
+    expected_columns = {
+        "id",
+        "file_name",
+        "file_type",
+        "source_path",         # <-- new column
+        "summary_json",
+        "sample_json",
+        "metadata_json",
+        "cleaned_at",
+        "row_count",
+        "col_count",
+        "data_json",
+        "cleaned_data_json",
+        "raw_data_json",
+    }
+
+    # Ensure table exists in current form
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS cleaned_data (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            file_name TEXT UNIQUE,
+            file_type TEXT,
+            source_path TEXT,
+            summary_json TEXT,
+            sample_json TEXT,
+            metadata_json TEXT,
+            cleaned_at TEXT,
+            row_count INTEGER,
+            col_count INTEGER,
+            data_json TEXT,
+            cleaned_data_json TEXT,
+            raw_data_json TEXT
+        );
+    """)
+    conn.commit()
+
+    # Add missing columns if upgrading from older schema
+    existing_cols = {
+        row[1] for row in conn.execute("PRAGMA table_info(cleaned_data)").fetchall()
+    }
+    missing = expected_columns - existing_cols
+
+    for col in missing:
+        conn.execute(f"ALTER TABLE cleaned_data ADD COLUMN {col} TEXT")
+
+    if missing:
+        conn.commit()
+        console.print(
+            f"[yellow]Migrated cleaned_data schema to include: {', '.join(sorted(missing))}[/yellow]"
+        )
 
 def regexp(pattern, string):
     if user_interrupted:
