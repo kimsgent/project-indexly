@@ -295,7 +295,7 @@ def auto _clean _csv(df, file _path, method="mean", save _cleaned=False, date _f
 
 ## Next Steps
 
- * Continue with [Analyze CSV Visualization](data-analysis.md#visual-exploration)
+ * Continue with [Analyze CSV Visualization](data-analysis.md#visual-exploration) / [Time-Series Visualization→](time-series-visualization.md)
  * Explore [Statistical Transformation  & Scaling](data-analysis.md#transformation--scaling)
  * Learn about [Data Tagging  & Metadata Indexing](tagging.md)
 
