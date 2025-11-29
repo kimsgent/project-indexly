@@ -21,6 +21,7 @@ odfpy>=1.4.1
 rich>=13.7.1
 pandas>=2.1.1
 PyYAML>=6.0.0
+xmltodict>=0.13.0
 
 # --- Visualization dependencies ---
 numpy>=1.26.0

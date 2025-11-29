@@ -1,10 +1,11 @@
 # ===============================================
 # CI Dependencies for Indexly
-# Lightweight set: skips heavy OCR/image libraries
-# Ensures coverage for data analysis + visualization
+# Minimal, fast, and deterministic installation
+# Covers indexing, parsing, CSV/JSON/XML/YAML, FTS,
+# visualization-lite, and CLI tests.
 # ===============================================
 
-# --- Runtime essentials ---
+# --- Runtime Essentials ---
 nltk>=3.8.0
 pymupdf>=1.23.0
 Pillow>=11.3.0
@@ -23,20 +24,32 @@ ebooklib>=0.18
 odfpy>=1.4.1
 rich>=13.7.1
 pandas>=2.2.0
+PyYAML>=6.0.0
 
-# --- Lightweight visualization (for test_bin_dist, CSV stats, etc.) ---
+# --- JSON / XML / YAML Analysis ---
+xmltodict>=0.13.0
+
+# --- File-Type / Format Specific ---
+# (Tesseract-based OCR is disabled in CI)
+# extract_msg, eml-parser excluded (heavy/unstable)
+# JSON/XML/YAML handled via builtin + bs4 + PyYAML
+
+# --- Visualization (lightweight only) ---
 numpy>=1.26.0
-matplotlib>=3.8.0
-plotext>=5.2.8  # ASCII terminal visualization (lightweight, no GUI)
+matplotlib>=3.8.0       # headless safe
+plotext>=5.2.8          # ASCII terminal plots (no GUI)
 
 # NOTE:
-# Plotly excluded from CI to reduce setup time and dependency weight.
-# (It’s included in full requirements for interactive visualization mode.)
+# Plotly intentionally excluded to reduce CI time.
+# Use full requirements.txt locally or for wheel builds.
 
-# --- Dev/test tools ---
+# --- Dev / Test Tools ---
 pytest>=8.4.2
 pytest-cov>=4.1.0
 flake8>=6.1.0
 black>=23.9.1
 isort>=5.12.0
 mypy>=1.6.0
+
+# --- Optional: Speed up Pandas / PyArrow in CI ---
+# pyarrow>=16.0.0 already included above.
