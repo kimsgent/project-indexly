@@ -74,9 +74,9 @@ flowchart TD
 * [Advanced Options](config.md#advanced-options)
 * [Renaming Files with Patterns →](rename-file.md)
 * [Extracting Minitab MTW files →](mtw-parser.md)
-* New in v1.0.4: [Cleaning CSV Data →](clean-csv-data.md)
-* New in v1.0.4: [Analyze CSV →](data-analysis.md)
-* New in v1.0.4: [DB Update & Migration Utilities →](db-migration-utility.md)
+* New in v1.0.5: [Data Analysis Overview →](data-analysis-overview.md)
+* New in v1.0.5: [Time-Series Visualization→](time-series-visualization.md)
+* [DB Update & Migration Utilities →](db-migration-utility.md)
 * [Developer Notes](developer.md)
 * [License & Credits](#license-credits)
 
@@ -87,7 +87,7 @@ flowchart TD
 * Full-text search via SQLite FTS5
 * Regex & fuzzy search
 * Tagging & filtering
-* CSV analysis & stats
+* CSV, JSON analysis & stats
 * Watchdog real-time indexing
 * Export to PDF, TXT, JSON
 * Developer-friendly modular CLI

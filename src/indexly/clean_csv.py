@@ -16,9 +16,10 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 from pathlib import Path
-from .cleaning.auto_clean import _get_db_connection
+from .db_utils import _get_db_connection
 from rich.table import Table
 from rich.console import Console
+
 
 # ---------------------
 # 🧹 CLEANING PIPELINE
@@ -112,85 +113,116 @@ def _summarize_post_clean(summary, title):
 
 def clean_csv_data(df, file_name, method="mean", save_data=False):
     """
-    Clean numeric data (fill NaNs with mean/median) and optionally persist.
-    Optimized for performance and column stability.
+    Clean CSV data by filling missing values for numeric and categorical columns.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input DataFrame.
+    file_name : str
+        Name of source file.
+    method : str, default="mean"
+        Method to fill numeric NaNs. Options: "mean", "median".
+    save_data : bool, default=False
+        If True, attach persistence metadata for orchestrator.
+
+    Returns
+    -------
+    cleaned_df : pd.DataFrame
+    summary_records : list of dicts
     """
-    # 🧩 Prevent redundant "_cleaned_1_2" inflation
-    df.columns = [c if "_cleaned_" not in c else c.split("_cleaned_")[0] + "_cleaned" for c in df.columns]
+    import pandas as pd
+    import numpy as np
 
-    # ⚙️ Conditional copy for memory efficiency
-    cleaned_df = df if not save_data else df.copy()
+    # Normalize columns (prevent repeated "_cleaned_1_2" inflation)
+    df.columns = [
+        c if "_cleaned_" not in c else c.split("_cleaned_")[0] + "_cleaned"
+        for c in df.columns
+    ]
 
-    # 📊 Type-based column detection (single pass)
-    dtypes = cleaned_df.dtypes
-    numeric_cols = dtypes[dtypes.apply(np.issubdtype, args=(np.number,))].index
+    cleaned_df = df.copy()  # always copy, avoid mutating input
+    summary_records = []
 
-    # ⚡ Vectorized NaN fill
-    if method == "mean":
-        means = cleaned_df[numeric_cols].mean()
-        cleaned_df[numeric_cols] = cleaned_df[numeric_cols].fillna(means)
-    elif method == "median":
-        medians = cleaned_df[numeric_cols].median()
-        cleaned_df[numeric_cols] = cleaned_df[numeric_cols].fillna(medians)
+    numeric_cols = cleaned_df.select_dtypes(include=np.number).columns
+    fill_values = (
+        cleaned_df[numeric_cols].mean()
+        if method == "mean"
+        else cleaned_df[numeric_cols].median()
+    )
 
-    # 💾 Persistence (optional)
+    for col in cleaned_df.columns:
+        n_missing_before = df[col].isna().sum()
+
+        if col in numeric_cols:
+            cleaned_df[col] = cleaned_df[col].fillna(fill_values[col])
+            action = f"filled missing values (method={method})"
+
+        elif cleaned_df[col].dtype == object:
+            mode_val = cleaned_df[col].mode(dropna=True)
+            fill_val = mode_val[0] if not mode_val.empty else ""
+            cleaned_df[col] = cleaned_df[col].fillna(fill_val)
+            action = "filled missing values (method=mode)"
+
+        else:
+            action = "preserved"
+
+        n_filled = n_missing_before - cleaned_df[col].isna().sum()
+
+        # ✅ Fixed validity percentage calculation
+        total_rows = len(cleaned_df)
+        missing_count = cleaned_df[col].isna().sum()
+        if total_rows > 0:
+            valid_pct = (1 - (missing_count / total_rows)) * 100
+        else:
+            valid_pct = 0.0
+
+        summary_records.append({
+            "column": col,
+            "dtype": str(cleaned_df[col].dtype),
+            "action": action,
+            "valid%": round(valid_pct, 2),
+            "filled": int(n_filled),
+            "notes": "",
+        })
+
+    # Attach persistence info (orchestrator uses this)
     if save_data:
-        save_cleaned_data(cleaned_df, file_name)
+        cleaned_df._persist_ready = {
+            "summary": summary_records,
+            "sample_data": cleaned_df.head(10).to_dict(orient="records"),
+            "metadata": {
+                "cleaned_at": pd.Timestamp.now().isoformat(),
+                "source_file": file_name,
+                "row_count": cleaned_df.shape[0],
+                "col_count": cleaned_df.shape[1],
+            },
+        }
+        cleaned_df._persisted = False
+        print(f"💡 Cleaned data ready for orchestrator persistence: {file_name}")
     else:
+        cleaned_df._persist_ready = None
+        cleaned_df._persisted = False
         print("⚙️ Data cleaned in-memory only. Use --save-data to persist cleaned results.")
 
-    return cleaned_df
+    return cleaned_df, summary_records
 
 
 
 # ----------------------------------
-# 💾 SAVE / DELETE CLEANED DATA LOGIC
+# DELETE CLEANED DATA LOGIC
 # ----------------------------------
-
-
-def save_cleaned_data(df, file_path: str):
-    """
-    Save cleaned data into SQLite DB.
-    Stored as compressed JSON for portability.
-    Uses absolute CSV path as file_name to ensure uniqueness and proper clearing.
-    """
-    conn = _get_db_connection()
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS cleaned_data (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            file_name TEXT UNIQUE,
-            cleaned_at TEXT,
-            row_count INTEGER,
-            col_count INTEGER,
-            data_json TEXT
-        );
-        """
-    )
-    conn.commit()
-
-    abs_path = str(Path(file_path).resolve())  # absolute path for uniqueness
-    cleaned_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    data_json = df.to_json(orient="records", date_format="iso")
-
-    conn.execute(
-        """
-        INSERT OR REPLACE INTO cleaned_data (file_name, cleaned_at, row_count, col_count, data_json)
-        VALUES (?, ?, ?, ?, ?)
-        """,
-        (abs_path, cleaned_at, len(df), len(df.columns), data_json),
-    )
-    conn.commit()
-    conn.close()
-
-    print(f"✅ Cleaned data saved to DB for: {abs_path}")
-
 
 def clear_cleaned_data(file_path: str = None, remove_all: bool = False):
     """
-    Remove entries from cleaned_data table.
+    Remove entries from the cleaned_data table.
+    
+    Behavior:
     - If remove_all=True, deletes all records.
-    - Otherwise, deletes the specific file_path record.
+    - If file_path is provided, deletes the record by matching either:
+      1. Full absolute path (case-insensitive)
+      2. Basename only (case-insensitive)
+    
+    This ensures it works across OSes and mixed case file names.
     """
     conn = _get_db_connection()
     cur = conn.cursor()
@@ -209,13 +241,28 @@ def clear_cleaned_data(file_path: str = None, remove_all: bool = False):
         return
 
     abs_path = str(Path(file_path).resolve())
-    cur.execute("DELETE FROM cleaned_data WHERE file_name = ?", (abs_path,))
+    file_name = Path(file_path).name
+
+    # First try: absolute path (case-insensitive)
+    cur.execute(
+        "DELETE FROM cleaned_data WHERE LOWER(file_name) = LOWER(?)",
+        (abs_path,),
+    )
     deleted_rows = cur.rowcount
+
+    # Fallback: basename only (case-insensitive)
+    if deleted_rows == 0:
+        cur.execute(
+            "DELETE FROM cleaned_data WHERE LOWER(file_name) = LOWER(?)",
+            (file_name,),
+        )
+        deleted_rows = cur.rowcount
+
     conn.commit()
     conn.close()
 
     if deleted_rows:
-        print(f"🧹 Cleared cleaned data entry for: {abs_path}")
+        print(f"🧹 Cleared cleaned data entry for: {file_name} ({deleted_rows} record{'s' if deleted_rows > 1 else ''} removed)")
     else:
-        print(f"⚠️ No cleaned data found for: {abs_path}")
+        print(f"❌ No cleaned data entry found for: {file_name}")
 

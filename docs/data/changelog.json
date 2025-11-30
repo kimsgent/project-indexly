@@ -2,6 +2,36 @@
   "project": "FTS5 File Search Tool",
   "versions": [
     {
+      "version": "1.0.5",
+      "date": "2025-11-29",
+      "changes": [
+        "fix(loader): correctly validate .ndjson files when extension is provided, resolving NDJSON fallback and allowing Indexly-exported concatenated logs to be analyzed directly",
+        "feat(log-clean): added multi-log cleaning with NDJSON/CSV export, path normalization and filename sanitization",
+        "fix(analyze-json): prevent fallback warnings for structured JSON inputs and improve structured detection",
+        "feat(json): added Socrata/OpenData JSON detection with safe streaming extractor for large datasets",
+        "fix(json): unified JSON analysis logic and ensured correct scalar statistics persistence",
+        "feat(json): enhanced JSON pipeline with deeper structure handling, array summarization, and improved metadata propagation",
+        "fix(json): corrected test-case handling, flattening logic, and numeric-like string normalization",
+        "feat(json): introduced json_cache_normalizer and integrated stable cache normalization into JSON pipeline",
+        "feat(xml): implemented full generic XML analysis, including XRechnung (all 3 formats), nested dictionaries, and invoice-compatible treeview summaries",
+        "fix(xml): resolved dataset summary preview by properly using db_dict/summary fallbacks",
+        "feat(excel): added multi-sheet Excel support and unified loader behavior for XLSX metadata and summaries",
+        "feat(parquet): improved parquet analysis pipeline, normalization, markdown summary, and treeview generation",
+        "feat(csv): unified CSV/Parquet/Excel export logic and improved CSV visualization & summary statistics",
+        "feat(timeseries): enhanced multi-series time-series pipeline with aggregation, resampling, and visualization integration",
+        "feat(visualization): improved visualization pipeline (Plotly + Matplotlib) and stabilized column type inference",
+        "fix(datetime): unified datetime parsing, preserved non-datetime fields, and ensured stable derived features (calendar week, date parts)",
+        "feat(cleaning): added advanced CSV auto-clean pipeline with robust chunking, fallback logic, summary persistence, and error handling",
+        "feat(loader): improved universal loader detection across CSV, JSON, XML, YAML, Excel, and Parquet, ensuring safer DataFrame assignment",
+        "feat(analysis): unified orchestration layer for analyze-file, analyze-json, and analyze-csv to guarantee predictable pipeline delegation",
+        "feat(search-cache): added JSON normalization and improved hierarchical summary handling for summarize-search",
+        "feat(cli): improved CLI version output, license excerpt, and project-links in --version",
+        "docs: updated documentation for JSON, XML, CSV pipelines and visualization; improved SEO metadata and Hugo structure",
+        "meta: prepared Indexly v1.0.5 release including NDJSON fix, enhanced loaders, unified pipelines, and improved stability across all formats"
+      ]
+    },
+    
+    {
       "version": "1.0.4",
       "date": "2025-10-26",
       "changes": [

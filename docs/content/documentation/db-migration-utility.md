@@ -70,6 +70,7 @@ Optional flags:
 --dry-run           # Preview changes without applying
 --no-backup         # Skip automatic backup creation
 --db path/to/custom.db  # Use a specific database file
+
 ```
 
 To explore all available parameters, run:

@@ -4,9 +4,42 @@ build-backend = "hatchling.build"
 
 [project]
 name = "indexly"
-version = "1.0.4"
+version = "1.0.5"
 description = "A local file indexing and search tool with FTS5, regex, and CSV analysis support."
-readme = "src/indexly/docs/README.md"
+readme = { file = "src/indexly/docs/README.md", content-type = "text/markdown" }
+
+# Optional but strongly recommended
+# Long PyPI-facing description for SEO 
+long_description = """
+Indexly is a fast, local-first file indexing and search engine powered by SQLite FTS5.
+It scans documents, media, archives, spreadsheets, images, and structured data, then
+provides instant full-text search, regex matching, metadata extraction, CSV profiling,
+time-series visualizations, and XML/YAML/JSON parsing.
+
+### Key Features
+- **FTS5 full-text search** (fast, incremental, cached)
+- **Regex search engine** with snippet extraction
+- **OCR support** using Tesseract for image/PDF text extraction
+- **CSV & JSON analysis** with summary statistics and pretty printed tables
+- **XML + YAML loader** with validation and tree-view rendering
+- **Document parsing**: PDF, DOCX, PPTX, XLSX, EPUB, ODT, MSG, EML
+- **Image metadata extraction** (EXIF, dimensions, camera, timestamps)
+- **Visualization**: ASCII plots, matplotlib charts, Plotly web graphs
+- **Async real-time folder watching** with automatic re-indexing
+- **Tagging system** for organizing files
+- **Rich CLI output** powered by the `rich` library
+- **Cross-platform**: Linux, macOS, Windows
+
+### Why Indexly?
+Indexly is built for developers, analysts, and power users who want a transparent,
+lightweight alternative to desktop search tools—without sending data to the cloud.
+
+### Links
+- Documentation: https://projectindexly.com
+- Source Code: https://github.com/kimsgent/project-indexly
+- Issues: https://github.com/kimsgent/project-indexly/issues
+"""
+
 license = { text = "MIT" }
 authors = [
     { name = "N. K Franklin-Gent" },
@@ -51,6 +84,8 @@ dependencies = [
     "odfpy>=1.4.1",
     "rich>=13.7.1",
     "pandas>=2.1.1",
+    "PyYAML>=6.0.0",
+    "xmltodict>=0.13.0",
 
     # --- Visualization & Analysis Support ---
     # Terminal-based ASCII plots
@@ -101,6 +136,8 @@ include = [
 
 [tool.hatch.build.targets.wheel]
 include = [
+  "LICENSE.txt",
+  "src/indexly/LICENSE.txt",
   "src/indexly/docs/README.md",
   "src/indexly/assets/fonts/*.ttf",
   "src/indexly/assets/csv/*.csv"

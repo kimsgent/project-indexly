@@ -1,0 +1,26 @@
+{
+  "metadata": {
+    "source": "synthetic test for numeric fidelity",
+    "description": "Contains large integers, decimals, fractions, and NaN/Inf values"
+  },
+  "data": [
+    {
+      "id": 1,
+      "large_int": 9223372036854775807,
+      "huge_int": 123456789012345678901234567890,
+      "decimal_val": "12.345678901234567890123456789",
+      "fraction_val": "3/7",
+      "nan_val": "NaN",
+      "inf_val": "Infinity"
+    },
+    {
+      "id": 2,
+      "large_int": 9223372036854775806,
+      "huge_int": -123456789012345678901234567890,
+      "decimal_val": "0.000000000000000000000001",
+      "fraction_val": "22/7",
+      "nan_val": "-Infinity",
+      "inf_val": "NaN"
+    }
+  ]
+}

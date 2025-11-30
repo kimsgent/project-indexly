@@ -59,8 +59,7 @@ Indexly is a lightweight, modular document indexing + search engine. Here’s th
 * Computes mean, median, stddev, IQR
 * Value counts for categorical data
 * Outputs in Markdown or TXT
-* [Cleaning CSV Data →](/documentation/clean-csv-data.md)
-* [Analyze CSV →](/documentation/data-analysis.md)
+* [Cleaning CSV Data and Analyze CSV](/documentation/data-analysis-overview.md#CSV)
 
 > ![CSV analysis placeholder](/images/csv-analysis-placeholder.png)
 

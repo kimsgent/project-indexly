@@ -1,5 +1,8 @@
 # Clean description + stat functions
 
+import re
+import json
+import math
 import os
 import sys
 import csv
@@ -10,14 +13,21 @@ import importlib.util
 import subprocess
 from pathlib import Path
 from rich.console import Console
+from rich.progress import Progress
+from datetime import datetime
+from rich.console import Console
+
+console = Console()
 
 REQUIRED_PACKAGES = ["pandas", "numpy", "scipy", "tabulate"]
+
 
 def ensure_packages(packages):
     for pkg in packages:
         if importlib.util.find_spec(pkg) is None:
-            print(f"📦 Installing missing package: {pkg}...")
+            console.print(f"📦 Installing missing package: {pkg}...")
             subprocess.check_call([sys.executable, "-m", "pip", "install", pkg])
+
 
 ensure_packages(REQUIRED_PACKAGES)
 
@@ -25,8 +35,15 @@ ensure_packages(REQUIRED_PACKAGES)
 import pandas as pd
 import numpy as np
 import shutil
+import json
+import math
+from decimal import Decimal
+from fractions import Fraction
 from scipy.stats import iqr
 from tabulate import tabulate
+from datetime import datetime, date
+import datetime as dt
+from rich.progress import Progress
 
 
 try:
@@ -46,48 +63,38 @@ def check_requirements():
             os.system(f"{sys.executable} -m pip install scipy")
 
 
-
 def detect_delimiter(file_path):
     import re
     import csv
 
-    """
-    Detects CSV delimiter using regex scoring and csv.Sniffer fallback.
-    Handles irregular/mixed CSVs more reliably.
-    """
     with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
         sample = f.read(4096)
 
-    # --- Step 1: Regex-based scoring ---
     possible_delims = [",", ";", "\t", "|", ":", "~"]
-    line_splits = [re.split(r"[\r\n]+", sample.strip())[:10]]  # first 10 lines
+    lines = re.split(r"[\r\n]+", sample.strip())[:10]
     freq_scores = {}
 
     for delim in possible_delims:
-        counts = [line.count(delim) for line in line_splits[0] if line]
+        counts = [line.count(delim) for line in lines if line]
         if counts:
             avg = sum(counts) / len(counts)
             variance = sum((c - avg) ** 2 for c in counts) / len(counts)
-            # Lower variance + higher avg = more consistent delimiter
             freq_scores[delim] = avg / (1 + variance)
 
-    if freq_scores:
-        best_delim = max(freq_scores, key=freq_scores.get)
-    else:
-        best_delim = None
+    best_delim = max(freq_scores, key=freq_scores.get) if freq_scores else None
 
-    # --- Step 2: Validate with Sniffer ---
     try:
         sniffer_delim = csv.Sniffer().sniff(sample).delimiter
     except csv.Error:
         sniffer_delim = None
 
-    # --- Step 3: Merge logic ---
-    delimiter = best_delim or sniffer_delim or ","
+    delimiter = best_delim or sniffer_delim
+    if not delimiter:
+        print("❌ Could not detect a valid CSV delimiter.")
+        return None
 
-    print(f"📄 Detected delimiter (regex): '{delimiter}'")
+    # 👇 Removed print here
     return delimiter
-
 
 
 def analyze_csv(file_or_df, from_df=False):
@@ -124,8 +131,13 @@ def analyze_csv(file_or_df, from_df=False):
 
         try:
             delimiter = detect_delimiter(file_path)
+            delimiter = delimiter or ','                       # <-- fallback
             console.print(f"📄 Detected delimiter: '{delimiter}'", style="bold cyan")
-            df = pd.read_csv(file_path, delimiter=delimiter, encoding="utf-8")
+            try:
+                df = pd.read_csv(file_path, delimiter=delimiter, encoding='utf-8', on_bad_lines='skip')
+            except UnicodeDecodeError:
+                df = pd.read_csv(file_path, delimiter=delimiter, encoding='utf-8-sig', on_bad_lines='skip')
+
         except Exception as e:
             console.print(f"[!] Failed to read CSV: {e}", style="bold red")
             return None, None, None
@@ -159,10 +171,16 @@ def analyze_csv(file_or_df, from_df=False):
         datetime_numeric_cols = [c for c in df.columns if c.endswith("_timestamp")]
         if datetime_numeric_cols:
             numeric_cols = datetime_numeric_cols
-            console.print("ℹ️ Using datetime-derived numeric columns for analysis...", style="bold cyan")
+            console.print(
+                "ℹ️ Using datetime-derived numeric columns for analysis...",
+                style="bold cyan",
+            )
 
     if not numeric_cols:
-        console.print("⚠️ No valid numeric or date columns available for analysis.", style="bold yellow")
+        console.print(
+            "⚠️ No valid numeric or date columns available for analysis.",
+            style="bold yellow",
+        )
         return df, None, None
 
     numeric_df = df[numeric_cols]
@@ -179,24 +197,36 @@ def analyze_csv(file_or_df, from_df=False):
         q1, q3 = values.quantile(0.25), values.quantile(0.75)
         col_iqr = iqr(values) if callable(iqr) else (q3 - q1)
 
-        stats.append([
-            col,
-            values.count(),
-            df[col].isnull().sum(),
-            values.mean(),
-            values.median(),
-            values.std(),
-            values.sum(),
-            values.min(),
-            values.max(),
-            q1,
-            q3,
-            col_iqr,
-        ])
+        stats.append(
+            [
+                col,
+                values.count(),
+                df[col].isnull().sum(),
+                values.mean(),
+                values.median(),
+                values.std(),
+                values.sum(),
+                values.min(),
+                values.max(),
+                q1,
+                q3,
+                col_iqr,
+            ]
+        )
 
     headers = [
-        "Column", "Count", "Nulls", "Mean", "Median", "Std Dev",
-        "Sum", "Min", "Max", "Q1", "Q3", "IQR"
+        "Column",
+        "Count",
+        "Nulls",
+        "Mean",
+        "Median",
+        "Std Dev",
+        "Sum",
+        "Min",
+        "Max",
+        "Q1",
+        "Q3",
+        "IQR",
     ]
     df_stats = pd.DataFrame(stats, columns=headers)
 
@@ -209,7 +239,7 @@ def analyze_csv(file_or_df, from_df=False):
                 return "-"
             if abs(val) >= 1e6 or abs(val) < 1e-3:
                 return f"{val:.3e}"
-            return f"{val:,.3f}".rstrip('0').rstrip('.')
+            return f"{val:,.3f}".rstrip("0").rstrip(".")
         return str(val)
 
     df_stats = df_stats.apply(lambda col: col.map(format_number))
@@ -224,7 +254,11 @@ def analyze_csv(file_or_df, from_df=False):
 
     for c in df_stats.columns:
         df_stats[c] = df_stats[c].apply(
-            lambda v: str(v)[:max_col_width - 1] + "…" if len(str(v)) > max_col_width else str(v)
+            lambda v: (
+                str(v)[: max_col_width - 1] + "…"
+                if len(str(v)) > max_col_width
+                else str(v)
+            )
         )
 
     # ---------------------------
@@ -235,21 +269,438 @@ def analyze_csv(file_or_df, from_df=False):
     return df, df_stats, table_output
 
 
+## JSON Export
 
-def export_results(results, export_path, export_format):
-    # If export_path is a directory, generate a filename automatically
+
+def _json_safe(obj, preserve_numeric: bool = True):
+    """
+    Recursively convert objects to JSON-safe types.
+    Handles pandas, numpy, datetime, Timestamp, Decimal, and Fraction types.
+
+    Args:
+        obj: Object to convert.
+        preserve_numeric: If True, keeps all numeric types as numeric rather than stringifying.
+                          Recommended for analytical exports.
+    """
+
+    # --- Basic numeric types ---
+    if isinstance(obj, (pd.Timestamp, np.datetime64)):
+        return str(pd.to_datetime(obj).isoformat())
+    elif isinstance(obj, (dt.datetime, dt.date)):
+        return obj.isoformat()
+
+    # --- Numeric preservation logic ---
+    elif isinstance(obj, (np.integer, int)):
+        return int(obj)
+    elif isinstance(obj, (np.floating, float)):
+        # Handle NaN and infinities for strict JSON compliance
+        if math.isnan(obj) or math.isinf(obj):
+            return None
+        return float(obj)
+    elif isinstance(obj, Decimal):
+        # Decimal is not JSON serializable by default
+        if preserve_numeric:
+            return float(obj)
+        else:
+            return str(obj)
+    elif isinstance(obj, Fraction):
+        if preserve_numeric:
+            return float(obj)
+        else:
+            return str(obj)
+
+    # --- Containers ---
+    elif isinstance(obj, dict):
+        return {
+            k: _json_safe(v, preserve_numeric=preserve_numeric) for k, v in obj.items()
+        }
+    elif isinstance(obj, (list, tuple, set)):
+        return [_json_safe(v, preserve_numeric=preserve_numeric) for v in obj]
+
+    # --- Pandas containers ---
+    elif isinstance(obj, pd.DataFrame):
+        return _json_safe(
+            obj.to_dict(orient="records"), preserve_numeric=preserve_numeric
+        )
+    elif isinstance(obj, pd.Series):
+        return _json_safe(obj.to_dict(), preserve_numeric=preserve_numeric)
+
+    # --- Numpy scalar ---
+    elif isinstance(obj, np.generic):
+        return obj.item()
+
+    # --- Fallback ---
+    return obj
+
+
+def export_results(
+    results,
+    export_path=None,
+    export_format="txt",
+    df=None,
+    source_file=None,
+    chunk_size=10000,
+    compress=False,
+    db_mode="replace",
+):
+    """
+    Export analysis results to text, markdown, or JSON formats.
+    - Cleans summary statistics text for readability
+    - When exporting to JSON, includes both text and structured table form (if available)
+    - Streams large dataframes in chunks for memory safety
+    - Optional gzip compression for JSON export (.json.gz)
+    """
+
+    import os, re, json, math, gzip
+    from datetime import datetime
+    import pandas as pd
+    from rich.console import Console
+    from rich.progress import Progress, BarColumn, TextColumn, TimeRemainingColumn
+
+    console = Console()
+
+    # --- Normalize export path ---
+    if not export_path or str(export_path).strip() == "":
+        base_name = "analysis"
+        if source_file:
+            base_name = os.path.splitext(os.path.basename(source_file))[0]
+        export_path = f"{base_name}.{export_format}"
+
     if os.path.isdir(export_path):
-        filename = f"csv_analysis.{export_format}"
+        filename = f"analysis.{export_format}"
         export_path = os.path.join(export_path, filename)
 
-    # Ensure parent directory exists
-    os.makedirs(os.path.dirname(export_path), exist_ok=True)
+    if compress and not export_path.endswith(".gz"):
+        export_path = f"{export_path}.gz"
 
-    with open(export_path, 'w', encoding='utf-8') as f:
-        if export_format == 'md':
-            f.write(results.replace('+', '|'))
+    export_path = str(export_path)
+    os.makedirs(os.path.dirname(export_path) or ".", exist_ok=True)
+
+    # --- Cleanup conflicting file names (case insensitive) ---
+    dir_name = os.path.dirname(export_path) or "."
+    base_name = os.path.basename(export_path).lower()
+    try:
+        for f in os.listdir(dir_name):
+            if f.lower() == base_name and f != os.path.basename(export_path):
+                os.remove(os.path.join(dir_name, f))
+    except Exception:
+        pass
+
+    # ----------------------------------------
+    # 🔧 Helper: Clean text summary
+    # ----------------------------------------
+    def _clean_summary_text(text: str) -> str:
+        if not text or not isinstance(text, str):
+            return text or ""
+
+        lines = text.splitlines()
+        cleaned = []
+
+        with Progress(
+            TextColumn("[bold blue]{task.description}"),
+            BarColumn(),
+            TextColumn("{task.completed}/{task.total} lines"),
+            TimeRemainingColumn(),
+        ) as progress:
+            task = progress.add_task("Cleaning summary statistics...", total=len(lines))
+            for line in lines:
+                s = line.strip()
+                if re.fullmatch(r"^[\+\-\=\| ]+$", s):
+                    progress.advance(task)
+                    continue
+
+                def _sci_to_full(match):
+                    token = match.group(0)
+                    try:
+                        val = float(token)
+                        if abs(val) >= 1e6 and float(val).is_integer():
+                            return str(int(val))
+                        return ("{:.6f}".format(val)).rstrip("0").rstrip(".")
+                    except Exception:
+                        return token
+
+                s = re.sub(r"\b\d+\.?\d*e[+\-]?\d+\b", _sci_to_full, s, flags=re.IGNORECASE)
+                s = re.sub(r"\s{2,}", " ", s)
+                cleaned.append(s)
+                progress.advance(task)
+
+        return "\n".join(cleaned)
+
+    # ----------------------------------------
+    # 🧩 Helper: Parse markdown-like table → JSON list
+    # ----------------------------------------
+    def _parse_summary_table(text: str):
+        if not text or "|" not in text:
+            return []
+
+        lines = [ln.strip() for ln in text.splitlines() if "|" in ln]
+        if not lines or len(lines) < 2:
+            return []
+
+        headers = [h.strip() for h in lines[0].split("|") if h.strip()]
+        data_rows = []
+
+        for ln in lines[1:]:
+            if set(ln.replace("|", "").strip()) <= {"─", "━", "═", "╇", "╪", "┼", "-"}:
+                continue
+
+            parts = [c.strip() for c in ln.split("|") if c.strip()]
+            if len(parts) != len(headers):
+                continue
+
+            record = {}
+            for h, val in zip(headers, parts):
+                if val in {"-", "–", "—", "N/A", "NaN", "None", ""}:
+                    record[h] = None
+                    continue
+                if val.endswith("%"):
+                    try:
+                        record[h] = float(val.strip("%").replace(",", "").strip())
+                        continue
+                    except Exception:
+                        pass
+                val_no_commas = val.replace(",", "")
+                if re.match(r"^-?\d+(\.\d+)?$", val_no_commas):
+                    try:
+                        num_val = float(val_no_commas)
+                        record[h] = int(num_val) if num_val.is_integer() else num_val
+                        continue
+                    except Exception:
+                        pass
+                record[h] = val
+            data_rows.append(record)
+        return data_rows
+
+    # ----------------------------------------
+    # ✍️ Export
+    # ----------------------------------------
+    if export_format in ("md", "txt"):
+        with open(export_path, "w", encoding="utf-8") as f:
+            content = results.replace("+", "|") if export_format == "md" else results
+            f.write(content)
+
+    elif export_format == "json":
+        metadata = {
+            "analyzed_at": datetime.utcnow().isoformat() + "Z",
+            "source_file": str(source_file) if source_file else None,
+            "export_format": "json",
+            "rows": len(df) if df is not None else None,
+            "columns": len(df.columns) if df is not None else None,
+        }
+
+        raw_summary = (
+            results.get("text_summary", "")
+            if isinstance(results, dict)
+            else str(results)
+        )
+        cleaned_summary = _clean_summary_text(raw_summary)
+        structured_summary = _parse_summary_table(cleaned_summary)
+
+        summary_data = {
+            "text_summary": cleaned_summary,
+            "structured": structured_summary or None,
+        }
+
+        open_func = gzip.open if compress else open
+        mode = "wt" if compress else "w"
+
+        with open_func(export_path, mode, encoding="utf-8") as f:
+            f.write("{\n")
+            f.write(f'"metadata": {json.dumps(_json_safe(metadata), ensure_ascii=False)},\n')
+            f.write(f'"summary_statistics": {json.dumps(_json_safe(summary_data), ensure_ascii=False)},\n')
+            f.write('"sample_data": [\n')
+
+            if df is not None and len(df) > 0:
+                total_chunks = math.ceil(len(df) / chunk_size)
+                with Progress(
+                    TextColumn("[bold magenta]{task.description}"),
+                    BarColumn(),
+                    TextColumn("{task.completed}/{task.total} rows"),
+                    TimeRemainingColumn(),
+                ) as progress:
+                    total_task = progress.add_task("Exporting JSON rows...", total=len(df))
+                    for i, start in enumerate(range(0, len(df), chunk_size)):
+                        chunk = df.iloc[start : start + chunk_size]
+                        for j, row in enumerate(chunk.itertuples(index=False)):
+                            row_dict = _json_safe(row._asdict(), preserve_numeric=True)
+                            row_json = json.dumps(row_dict, ensure_ascii=False)
+                            last_chunk = i == total_chunks - 1
+                            last_row = j == len(chunk) - 1
+                            if not (last_chunk and last_row):
+                                f.write(row_json + ",\n")
+                            else:
+                                f.write(row_json + "\n")
+                            progress.advance(total_task)
+
+            f.write("]\n}\n")
+
+    # ----------------------------------------
+    # 🪶 Rich CSV / Parquet / Excel export
+    # ----------------------------------------
+    elif export_format in ("csv", "excel", "parquet", "db"):
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+        import pandas as pd
+
+        if df is None or df.empty:
+            raise ValueError(f"No DataFrame available for {export_format.upper()} export.")
+
+        metadata = {
+            "analyzed_at": datetime.utcnow().isoformat() + "Z",
+            "source_file": str(source_file) if source_file else None,
+            "rows": len(df),
+            "columns": len(df.columns),
+            "format": export_format,
+        }
+
+        # 🧩 Construct summary if present
+        if isinstance(results, dict) and "text_summary" in results:
+            summary_text = results.get("text_summary", "")
+        elif isinstance(results, str):
+            summary_text = results
         else:
-            f.write(results)
+            summary_text = ""
 
-    print(f"[+] Exported to: {export_path}")
+        summary_text = _clean_summary_text(summary_text)
+        structured_summary = _parse_summary_table(summary_text)
+        summary_info = {
+            "text_summary": summary_text,
+            "structured": structured_summary or None,
+        }
+
+        # --- Enrich summary_info with pipeline stats ---
+        if isinstance(results, dict):
+            if "datetime_summary" in results:
+                summary_info["datetime_summary"] = results["datetime_summary"]
+            if "df_stats" in results:
+                summary_info["numeric_stats"] = json.loads(results["df_stats"].to_json(orient="index"))
+            if "meta" in results:
+                summary_info["meta_info"] = results["meta"]
+
+        # --- CSV ---
+        if export_format == "csv":
+            meta_path = export_path.replace(".csv", "_meta.json")
+            df.to_csv(export_path, index=False)
+            with open(meta_path, "w", encoding="utf-8") as m:
+                json.dump({"metadata": metadata, "summary": summary_info}, m, ensure_ascii=False, indent=2)
+
+        # --- Excel ---
+        elif export_format == "excel":
+            meta_path = export_path.replace(".xlsx", "_meta.json")
+            with pd.ExcelWriter(export_path, engine="xlsxwriter") as writer:
+                df.to_excel(writer, index=False, sheet_name="data")
+                # Write summary as a new sheet
+                summary_df = pd.DataFrame(summary_info.get("structured") or [])
+                if not summary_df.empty:
+                    summary_df.to_excel(writer, index=False, sheet_name="summary")
+            with open(meta_path, "w", encoding="utf-8") as m:
+                json.dump(metadata, m, ensure_ascii=False, indent=2)
+
+        # --- Parquet ---
+
+        elif export_format == "parquet":
+            if df is None or df.empty:
+                raise ValueError(f"No DataFrame available for {export_format.upper()} export.")
+
+            # --- DEBUG info ---
+            console.print(f"[cyan]💡 Debug: DataFrame shape={df.shape}, columns={df.columns.tolist()}[/cyan]")
+            console.print(df.head(5))  # show first 5 rows
+
+            total_rows = len(df)
+
+            # --- Replace tqdm with Rich progress ---
+            with Progress() as progress:
+                task = progress.add_task("[green]Preparing Parquet chunks...", total=total_rows)
+
+                for i, start in enumerate(range(0, total_rows, chunk_size)):
+                    chunk = df.iloc[start:start + chunk_size]
+
+                    # optional: use console.print instead of tqdm.write
+                    console.print(f"[dim]Chunk {i + 1}: shape={chunk.shape}[/dim]")
+
+                    progress.advance(task, advance=len(chunk))
+
+            # --- Build PyArrow table ---
+            import pyarrow as pa
+            import pyarrow.parquet as pq
+
+            table = pa.Table.from_pandas(df)
+            meta_bytes = json.dumps({"metadata": metadata, "summary": summary_info}, ensure_ascii=False).encode("utf-8")
+            table = table.replace_schema_metadata({**(table.schema.metadata or {}), b"indexly_meta": meta_bytes})
+
+            # --- Write table ---
+            pq.write_table(table, export_path, compression="snappy" if compress else None)
+            console.print(f"[green]✅ Parquet export complete: {export_path} ({total_rows} rows)[/green]")
+        
+        # --- SQLite Database Export ---
+        elif export_format == "db":
+            import sqlite3
+            from pathlib import Path
+
+            if df is None or df.empty:
+                raise ValueError("No DataFrame available for DB export.")
+
+            # 🧩 Prepare metadata
+            table_name = Path(source_file).stem.replace("-", "_").replace(" ", "_")
+            metadata = {
+                "analyzed_at": datetime.utcnow().isoformat() + "Z",
+                "source_file": str(source_file) if source_file else None,
+                "rows": len(df),
+                "columns": len(df.columns),
+                "format": "db",
+                "table_name": table_name,
+            }
+
+            # ✨ Smart Bonus: Auto-clean and infer best dtypes
+            df = df.convert_dtypes()
+
+            # --- Optional: Add summary enrichment ---
+            summary_text = ""
+            if isinstance(results, dict) and "text_summary" in results:
+                summary_text = results.get("text_summary", "")
+            elif isinstance(results, str):
+                summary_text = results
+            summary_text = _clean_summary_text(summary_text)
+
+            structured_summary = _parse_summary_table(summary_text)
+            summary_info = {
+                "text_summary": summary_text,
+                "structured": structured_summary or None,
+            }
+            if isinstance(results, dict):
+                if "datetime_summary" in results:
+                    summary_info["datetime_summary"] = results["datetime_summary"]
+                if "df_stats" in results:
+                    summary_info["numeric_stats"] = json.loads(results["df_stats"].to_json(orient="index"))
+                if "meta" in results:
+                    summary_info["meta_info"] = results["meta"]
+
+
+            # --- Write SQLite DB ---
+            try:
+                conn = sqlite3.connect(export_path)
+                df.to_sql(table_name, conn, if_exists=db_mode, index=False)
+                conn.commit()
+                conn.close()
+
+                # --- Write meta file next to DB ---
+                meta_path = export_path.replace(".db", "_meta.json")
+                with open(meta_path, "w", encoding="utf-8") as m:
+                    json.dump({"metadata": metadata, "summary": summary_info}, m, ensure_ascii=False, indent=2)
+
+                # 🪶 Rich console feedback
+                console.print(f"[green]✅ SQLite export complete:[/green] [bold]{export_path}[/bold]")
+                console.print(f"   ┗━ Table: [cyan]{table_name}[/cyan] | Rows: [yellow]{len(df)}[/yellow] | Columns: [yellow]{len(df.columns)}[/yellow]")
+
+            except Exception as e:
+                console.print(f"[red]❌ Failed to export SQLite DB: {e}[/red]")
+
+    else:
+        raise ValueError(f"Unsupported export format: {export_format}")
+
+
+
+
+
+
 
