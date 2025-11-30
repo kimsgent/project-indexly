@@ -29,7 +29,7 @@ categories:
   - Documentation
   - Data Analysis
   - CLI Tools
-canonicalURL: "/en/documentation/data-analysis"
+canonicalURL: "/en/documentation/data-analysis/"
 summary: "Learn how Indexly’s analyze-csv command transforms raw CSVs into visual insights — from statistical summaries to adaptive ASCII histograms and automatic skew normalization."
 seo_title: "Analyze CSV Data in Indexly | Transform, Visualize, and Normalize Your Data"
 og_title: "Analyze CSV with Indexly — Terminal Visualization and Statistical Insights"
@@ -249,7 +249,7 @@ Continue exploring Indexly’s analytical capabilities:
 * 🔍 [Configuration & Optimization](config.md)
 * 🏷️ [Tagging & Metadata Management](tagging.md)
 * ⚡ [Real-Time Watchdog Indexing](config.md#watchdog-real-time-indexing)
-* 📊 [Search & Filter with FTS5](/features/search/_index.en.md#search)
+* 📊 [Search & Filter with FTS5](/features/_index.en.md#search)
 
 ---
 

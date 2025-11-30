@@ -19,7 +19,7 @@ keywords: [
   "Indexly tutorial"
 ]
 cta: "Get started with Indexly"
-canonicalURL: "/en/documentation/usage-guide"
+canonicalURL: "/en/documentation/usage-guide/"
 type: docs
 toc: true
 categories:

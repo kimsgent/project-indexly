@@ -6,32 +6,38 @@ weight: 10
 ---
 
 
-## Latest Release: v1.0.4 (2025-10-26)
+## Latest Release: v1.0.5 (2025-11-29)
 
 ### Changes
-- feat(csv-cleaning): implemented a fully automated CSV data cleaning pipeline with smart datetime parsing, mixed-type handling, missing-value imputation, and Rich-based summary display
-- feat(csv-cleaning): added delimiter fallback detection and dynamic visualization integration for clean and intuitive data exploration
-- feat(csv-cleaning): improved compatibility with numeric, categorical, and mixed-type columns, ensuring robust handling of nullable Pandas dtypes (Int64, Float64, object)
-- feat(csv-cleaning): integrated data cleaning with live chart previews (ASCII, Matplotlib, and Plotly) and summary export for downstream analytics
-- docs(cleaning): added comprehensive documentation, developer notes, and usage examples for the auto-clean pipeline
-- fix(csv-cleaning): resolved datetime format help string issue and enhanced scatter plot visualization behavior for diverse datasets
-- feat(csv-visualization): introduced unified visualization engine supporting numeric, categorical, and datetime axes with adaptive aggregation and clean auto-formatting
-- feat(csv-visualization): added automatic detection and conversion of Pandas dtypes, datetime strings, and category labels for seamless plotting
-- feat(csv-visualization): implemented dual rendering system (Plotly for interactive and Matplotlib for static/headless environments) with graceful fallback
-- feat(csv-visualization): added smart aggregation by mean for duplicate x-values and adaptive axis formatting for categorical, numeric, and datetime data
-- feat(csv-visualization): enabled high-quality exports to HTML, PNG, and SVG with automatic title and label generation
-- fix(csv-visualization): ensured robust handling of missing or mixed-value columns without crashes; improved data type coercion and visualization stability
-- docs(visualization): updated developer and user documentation to cover CSV visualization setup, supported chart types, and example pipelines
-- feat(db-update): added automatic backup and safe FTS5 database rebuild with schema validation and CLI integration for consistent metadata handling
-- refactor(db-update): relocated alias column from file_index to file_metadata and updated all dependent queries for schema clarity
-- feat(db-update): improved schema migration utility with timestamped backups, vacuum optimization, and detailed logging for safer updates
-- docs: optimized documentation for SEO and GitHub visibility; added structured metadata, improved keyword coverage, and refreshed README sections
-- meta: prepared project Indexly v1.0.4 release with unified CSV cleaning and visualization capabilities, enhanced database reliability, and improved developer experience
+- fix(loader): correctly validate .ndjson files when extension is provided, resolving NDJSON fallback and allowing Indexly-exported concatenated logs to be analyzed directly
+- feat(log-clean): added multi-log cleaning with NDJSON/CSV export, path normalization and filename sanitization
+- fix(analyze-json): prevent fallback warnings for structured JSON inputs and improve structured detection
+- feat(json): added Socrata/OpenData JSON detection with safe streaming extractor for large datasets
+- fix(json): unified JSON analysis logic and ensured correct scalar statistics persistence
+- feat(json): enhanced JSON pipeline with deeper structure handling, array summarization, and improved metadata propagation
+- fix(json): corrected test-case handling, flattening logic, and numeric-like string normalization
+- feat(json): introduced json_cache_normalizer and integrated stable cache normalization into JSON pipeline
+- feat(xml): implemented full generic XML analysis, including XRechnung (all 3 formats), nested dictionaries, and invoice-compatible treeview summaries
+- fix(xml): resolved dataset summary preview by properly using db_dict/summary fallbacks
+- feat(excel): added multi-sheet Excel support and unified loader behavior for XLSX metadata and summaries
+- feat(parquet): improved parquet analysis pipeline, normalization, markdown summary, and treeview generation
+- feat(csv): unified CSV/Parquet/Excel export logic and improved CSV visualization & summary statistics
+- feat(timeseries): enhanced multi-series time-series pipeline with aggregation, resampling, and visualization integration
+- feat(visualization): improved visualization pipeline (Plotly + Matplotlib) and stabilized column type inference
+- fix(datetime): unified datetime parsing, preserved non-datetime fields, and ensured stable derived features (calendar week, date parts)
+- feat(cleaning): added advanced CSV auto-clean pipeline with robust chunking, fallback logic, summary persistence, and error handling
+- feat(loader): improved universal loader detection across CSV, JSON, XML, YAML, Excel, and Parquet, ensuring safer DataFrame assignment
+- feat(analysis): unified orchestration layer for analyze-file, analyze-json, and analyze-csv to guarantee predictable pipeline delegation
+- feat(search-cache): added JSON normalization and improved hierarchical summary handling for summarize-search
+- feat(cli): improved CLI version output, license excerpt, and project-links in --version
+- docs: updated documentation for JSON, XML, CSV pipelines and visualization; improved SEO metadata and Hugo structure
+- meta: prepared Indexly v1.0.5 release including NDJSON fix, enhanced loaders, unified pipelines, and improved stability across all formats
 
 ---
 
 ## Archive
 
+- [Release v1.0.4](/releases/v1.0.4/) (2025-10-26)
 - [Release v1.0.3](/releases/v1.0.3/) (2025-10-12)
 - [Release v1.0.2](/releases/v1.0.2/) (2025-09-20)
 - [Release v1.0.1](/releases/v1.0.1/) (2025-09-20)

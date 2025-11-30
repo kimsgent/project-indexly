@@ -25,7 +25,7 @@ slug: "data-analysis-pipeline"
 type: docs
 weight: 18
 toc: true
-canonicalURL: "https://projectindexly.com/en/documentation/data-analysis-pipeline"
+canonicalURL: "/en/documentation/data-analysis-pipeline/"
 ---
 
 ---

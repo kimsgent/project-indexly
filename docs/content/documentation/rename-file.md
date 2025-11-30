@@ -7,7 +7,7 @@ icon: "mdi:rename-box"
 cta: "Learn how to rename files"
 description: "Learn how to rename files in Indexly using smart patterns with dates, counters, and titles — safely preview changes using dry-run mode."
 summary: "Easily rename files or entire folders using flexible patterns like {date}, {title}, and {counter}. Perfect for organizing notes, documents, and datasets with consistent, searchable filenames."
-canonicalURL: /en/documentation/renaming-file/
+canonicalURL: "/en/documentation/renaming-file/"
 ---
 
 # Rename Files Easily with `rename-file`
