@@ -19,15 +19,145 @@ import hashlib
 import json
 import os
 import re
-from datetime import datetime
+import glob
+import threading
+from datetime import datetime, date, timedelta
 from pathlib import Path
 from typing import Iterable, List, Dict, Any, Tuple
+from .config import LOG_DIR, LOG_MAX_BYTES, LOG_RETENTION_DAYS
+from .path_utils import normalize_path
+
+_log_lock = threading.Lock()
+_log_cache_date: str | None = None
+_log_cache_filename: str | None = None
+
+# Ensure log directory exists
+Path(LOG_DIR).mkdir(parents=True, exist_ok=True)
 
 
-def log_index_event(event_type, path):
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    print(f"[{timestamp}] [{event_type}] {path}")
+def log_index_summary(root: str, count: int, duration: float):
+    entry = {
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "event": "INDEX_SUMMARY",
+        "root": normalize_path(root),
+        "count": count,
+        "duration_seconds": duration,
+    }
+    target = _choose_today_log_filename()
+    with _log_lock:
+        with open(target, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
+
+def _unified_log_entry(event_type: str, raw_path: str):
+    # Clean path same as parse_log_lines
+    cleaned = _clean_path(raw_path)
+    parts = cleaned.split("/")
+    filename = parts[-1] if parts else ""
+    extension = filename.split(".")[-1].lower() if "." in filename else ""
+
+    year = month = customer = None
+    if len(parts) >= 5:
+        maybe_year = parts[-4]
+        maybe_month = parts[-3]
+        maybe_customer = parts[-2]
+
+        if (
+            maybe_year.isdigit() and len(maybe_year) == 4
+            and maybe_month.isdigit()
+        ):
+            year = maybe_year
+            month = maybe_month
+            customer = maybe_customer
+
+    cleaned_filename = _clean_filename(filename)
+    cleaned_path = (
+        "/".join(parts[:-1] + [cleaned_filename]) if parts else cleaned_filename
+    )
+
+    return {
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "event": event_type,
+        "path": cleaned_path,
+        "filename": cleaned_filename,
+        "extension": extension,
+        "customer": customer,
+        "year": year,
+        "month": month,
+    }
+
+
+def _choose_today_log_filename():
+    today = date.today().isoformat()
+    base = f"{today}_index_events"
+    base_file = os.path.join(LOG_DIR, f"{base}.ndjson")
+
+    matches = sorted(glob.glob(os.path.join(LOG_DIR, f"{base}*.ndjson")))
+    if matches:
+        if base_file in matches:
+            return base_file
+        return matches[0]
+    return base_file
+
+
+def _rotate_if_needed(file_path: str):
+    if not os.path.exists(file_path):
+        return file_path
+
+    if os.path.getsize(file_path) < LOG_MAX_BYTES:
+        return file_path
+
+    base = Path(file_path)
+    counter = 1
+
+    while True:
+        rotated = base.with_name(f"{base.stem}_{counter}{base.suffix}")
+        if not rotated.exists():
+            return str(rotated)
+        counter += 1
+
+
+def _apply_retention():
+    cutoff = datetime.now() - timedelta(days=LOG_RETENTION_DAYS)
+
+    for f in Path(LOG_DIR).glob("*.ndjson"):
+        ts = f.name.split("_")[0]  # YYYY-MM-DD
+        try:
+            f_date = datetime.strptime(ts, "%Y-%m-%d")
+        except Exception:
+            continue
+
+        if f_date < cutoff:
+            try:
+                f.unlink()
+            except Exception:
+                pass
+
+
+def log_index_event(event_type: str, path: str):
+    global _log_cache_date, _log_cache_filename
+
+    entry = _unified_log_entry(event_type, path)
+    print(f"[{entry['timestamp']}] [{event_type}] {path}")
+
+    today_str = date.today().isoformat()
+
+    with _log_lock:
+        if _log_cache_date != today_str or not _log_cache_filename:
+            _log_cache_filename = _choose_today_log_filename()
+            _log_cache_date = today_str
+
+        target_file = _rotate_if_needed(_log_cache_filename)
+
+        try:
+            with open(target_file, "a", encoding="utf-8") as fh:
+                fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        except Exception:
+            fallback = os.path.join(LOG_DIR, f"{today_str}_index_events.ndjson")
+            with open(fallback, "a", encoding="utf-8") as fh:
+                fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+        _apply_retention()
 
 # -------------------------
 # Basic cleaners / utils

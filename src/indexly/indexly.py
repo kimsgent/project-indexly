@@ -188,7 +188,18 @@ async def scan_and_index_files(root_dir: str, mtw_extended=False):
 
     clean_cache_duplicates()
 
-    log_filename = datetime.now().strftime("%Y-%m-%d_index.log")
+    base_name = datetime.now().strftime("%Y-%m-%d_index")
+    log_filename = f"{base_name}.log"
+
+    if os.path.exists(log_filename):
+        counter = 1
+        while True:
+            log_candidate = f"{base_name}_{counter:02d}.log"
+            if not os.path.exists(log_candidate):
+                log_filename = log_candidate
+                break
+            counter += 1
+
     with open(log_filename, "w", encoding="utf-8") as log:
         log.write(f"[INDEX LOG] Completed at {datetime.now().isoformat()}\n")
         log.writelines(f"{path}\n" for path in file_paths)
@@ -678,7 +689,7 @@ def main():
         show_full_license()  # prints full license and exits
 
     if getattr(args, "version", False):
-        print_version()      # prints colored multi-line version
+        print_version()  # prints colored multi-line version
         sys.exit(0)
 
     # Step 2: parse all args (including subcommands)
