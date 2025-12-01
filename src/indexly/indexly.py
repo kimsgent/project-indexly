@@ -59,7 +59,7 @@ from indexly.license_utils import show_full_license, print_version, show_full_li
 from .config import DB_FILE
 from .path_utils import normalize_path
 from .db_update import check_schema, apply_migrations
-
+from .log_utils import _unified_log_entry, log_index_event_dict
 
 # Force UTF-8 output encoding (Recommended for Python 3.7+)
 sys.stdout.reconfigure(encoding="utf-8")
@@ -170,42 +170,46 @@ async def async_index_file(full_path, mtw_extended=False):
 
 
 async def scan_and_index_files(root_dir: str, mtw_extended=False):
-    root_dir = normalize_path(root_dir)
+    from .cache_utils import clean_cache_duplicates
 
+    root_dir = normalize_path(root_dir)
     conn = connect_db()
     conn.close()
 
-    from .cache_utils import clean_cache_duplicates
-
+    # Gather all supported files
     file_paths = [
         os.path.join(folder, f)
         for folder, _, files in os.walk(root_dir)
         for f in files
         if Path(f).suffix.lower() in SUPPORTED_EXTENSIONS
     ]
+
+    # Index files asynchronously
     tasks = [async_index_file(path, mtw_extended=mtw_extended) for path in file_paths]
     await asyncio.gather(*tasks)
 
     clean_cache_duplicates()
 
-    base_name = datetime.now().strftime("%Y-%m-%d_index")
-    log_filename = f"{base_name}.log"
+    # Log each file using _unified_log_entry
+    for path in file_paths:
+        entry = _unified_log_entry("FILE_INDEXED", path)
+        log_index_event_dict(entry)  # helper to write dict directly to NDJSON
 
-    if os.path.exists(log_filename):
-        counter = 1
-        while True:
-            log_candidate = f"{base_name}_{counter:02d}.log"
-            if not os.path.exists(log_candidate):
-                log_filename = log_candidate
-                break
-            counter += 1
+    # Log summary
+    start_time = datetime.now()
+    duration = (datetime.now() - start_time).total_seconds()
+    summary_entry = {
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "event": "INDEX_SUMMARY",
+        "root": root_dir,
+        "count": len(file_paths),
+        "duration_seconds": duration,
+    }
+    log_index_event_dict(summary_entry)
 
-    with open(log_filename, "w", encoding="utf-8") as log:
-        log.write(f"[INDEX LOG] Completed at {datetime.now().isoformat()}\n")
-        log.writelines(f"{path}\n" for path in file_paths)
-
-    print(f"📝 Index log created: {log_filename}")
+    print(f"📝 Indexed {len(file_paths)} files and logged summary")
     return file_paths
+
 
 
 def run_stats(args):

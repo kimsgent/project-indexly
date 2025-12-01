@@ -63,3 +63,4 @@ src/indexly/profiles.json
 # Logs
 # ----------------
 *.log
+src/indexly/log/

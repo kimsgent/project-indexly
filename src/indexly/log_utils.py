@@ -35,45 +35,50 @@ _log_cache_filename: str | None = None
 Path(LOG_DIR).mkdir(parents=True, exist_ok=True)
 
 
-def log_index_summary(root: str, count: int, duration: float):
-    entry = {
-        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "event": "INDEX_SUMMARY",
-        "root": normalize_path(root),
-        "count": count,
-        "duration_seconds": duration,
-    }
-    target = _choose_today_log_filename()
-    with _log_lock:
-        with open(target, "a", encoding="utf-8") as fh:
-            fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 
 def _unified_log_entry(event_type: str, raw_path: str):
-    # Clean path same as parse_log_lines
     cleaned = _clean_path(raw_path)
     parts = cleaned.split("/")
     filename = parts[-1] if parts else ""
     extension = filename.split(".")[-1].lower() if "." in filename else ""
 
     year = month = customer = None
+
+    # --- 1) Folder-based extraction (existing logic)
     if len(parts) >= 5:
         maybe_year = parts[-4]
         maybe_month = parts[-3]
         maybe_customer = parts[-2]
 
-        if (
-            maybe_year.isdigit() and len(maybe_year) == 4
-            and maybe_month.isdigit()
-        ):
+        if maybe_year.isdigit() and len(maybe_year) == 4 and maybe_month.isdigit():
             year = maybe_year
             month = maybe_month
             customer = maybe_customer
 
     cleaned_filename = _clean_filename(filename)
-    cleaned_path = (
-        "/".join(parts[:-1] + [cleaned_filename]) if parts else cleaned_filename
-    )
+    cleaned_path = "/".join(parts[:-1] + [cleaned_filename]) if parts else cleaned_filename
+
+    # --- 2) Filename-based fallback
+    if year is None or month is None:
+        import re
+
+        # Match YYYY or YYYYMM or YYYY-MM or YYYY_MM or YYYYMMDD
+        m = re.search(r"(19|20)\d{2}[^\d]?\d{2}?", cleaned_filename)
+        if m:
+            token = m.group(0)
+            digits = "".join([c for c in token if c.isdigit()])
+
+            if len(digits) >= 4:
+                year = digits[:4]
+                if len(digits) >= 6:
+                    month = digits[4:6]
+
+    # --- 3) Filesystem timestamp fallback
+    if (year is None or month is None) and os.path.exists(raw_path):
+        ts = datetime.fromtimestamp(os.path.getmtime(raw_path))
+        year = year or ts.strftime("%Y")
+        month = month or ts.strftime("%m")
 
     return {
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -133,6 +138,19 @@ def _apply_retention():
             except Exception:
                 pass
 
+# Helper to append a dict to NDJSON log
+def log_index_event_dict(entry: dict):
+    target = _choose_today_log_filename()
+    with _log_lock:
+        target = _rotate_if_needed(target)
+        try:
+            with open(target, "a", encoding="utf-8") as fh:
+                fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        except Exception:
+            fallback = os.path.join(LOG_DIR, f"{date.today().isoformat()}_index_events.ndjson")
+            with open(fallback, "a", encoding="utf-8") as fh:
+                fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        _apply_retention()
 
 def log_index_event(event_type: str, path: str):
     global _log_cache_date, _log_cache_filename
