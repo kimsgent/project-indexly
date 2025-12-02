@@ -34,3 +34,6 @@ CACHE_FILE = os.path.join(BASE_DIR, "search_cache.json")
 MAX_REFRESH_ENTRIES = 50
 CACHE_REFRESH_INTERVAL = 86400  # 24h
 
+LOG_DIR = os.path.join(BASE_DIR, "log")
+LOG_MAX_BYTES = 5 * 1024 * 1024  # 5MB rotation
+LOG_RETENTION_DAYS = 7  # keep logs for 7 days
