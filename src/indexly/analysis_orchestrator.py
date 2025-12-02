@@ -459,7 +459,33 @@ def analyze_file(args) -> Optional[AnalysisResult]:
                 df, df_stats, table_output = run_csv_pipeline(file_path, args, df=df)
             # --- Other pipelines unchanged
             elif file_type in {"sqlite", "db"}:
-                df, df_stats, table_output = run_db_pipeline(file_path, args)
+                # Receive everything from universal loader
+                load_result = detect_and_load(file_path, args)
+                raw = load_result.get("raw")        # dict: tables, schemas, counts
+                dfs = load_result.get("dfs", {})    # dict[str, DataFrame]
+                df = load_result.get("df")          # default df (first table) or None
+
+                # Run DB pipeline (Indexly or generic)
+                result = run_db_pipeline(file_path, args, raw=raw, df=df)
+
+                # Dynamic unpacking
+                if len(result) == 3:
+                    df, df_stats, table_output = result
+                    extra = None
+                else:
+                    df, df_stats, table_output, extra = result
+
+                # Ensure df_stats is never None or empty
+                if df_stats is None or df_stats.empty:
+                    if dfs:
+                        df_stats = pd.DataFrame(
+                            [(t, dfs[t].shape[0], dfs[t].shape[1]) for t in dfs],
+                            columns=["table", "rows", "cols"]
+                        )
+                    else:
+                        df_stats = pd.DataFrame(columns=["table", "rows", "cols"])
+
+
             elif file_type in {"yaml", "yml"}:
                 from indexly.yaml_pipeline import run_yaml_pipeline
 
