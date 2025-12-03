@@ -41,33 +41,32 @@ from contextlib import suppress
 
 
 def _extract_docx(path):
+    import re
+    import docx
     from .fts_core import extract_virtual_tags
 
     doc = docx.Document(path)
 
-    # Extract paragraphs
-    raw_paragraphs = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
+    clean = lambda x: re.sub(r"\s+", " ", re.sub(r"[\u200b\u00a0\r\n\t]+", " ", x)).strip(" .:").strip()
 
-    # Extract structured table info
-    table_lines = []
+    meta = {}
     for table in doc.tables:
         for row in table.rows:
-            cells = [cell.text.strip() for cell in row.cells if cell.text.strip()]
-            if len(cells) >= 2:
-                key = cells[0]
-                value = " ".join(cells[1:])
-                table_lines.append(f"{key}: {value}")
-            elif cells:
-                table_lines.append(" | ".join(cells))
+            if len(row.cells) < 2:
+                continue
 
-    # Combine all text (paragraphs + flattened tables)
-    full_text = "\n".join(raw_paragraphs + table_lines)
-    full_text = re.sub(r"\s+", " ", full_text)  # normalize all whitespace
-    full_text = re.sub(r"\b(\w+)( \1\b)+", r"\1", full_text)  # remove repeated words
+            key = clean(row.cells[0].text)
+            value = clean(row.cells[1].text)
 
-    extract_virtual_tags(path, text=full_text)
+            if key and value and len(value) > 1:
+                meta[key.lower()] = value
 
-    return full_text.strip()
+    paragraphs = [clean(p.text) for p in doc.paragraphs if p.text.strip()]
+    full_text = "\n".join(paragraphs)
+
+    extract_virtual_tags(path, text=full_text, meta=meta)
+    return full_text
+
 
 
 # safe_get helper for .msg and.eml to clean stings
