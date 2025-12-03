@@ -101,8 +101,10 @@ def analyze_db(args):
     # 5) Persist (if enabled)
     # --------------------------------------------------------------
     if not args.no_persist and args.persist_level != "none":
-        saved = save_json(summary, db_path)
+        out_base = Path(db_path)
+        saved = save_json(summary, out_base)
         console.print(f"[green]✔ Persisted summary to {saved}[/green]")
+
 
     # --------------------------------------------------------------
     # 6) Show summary to terminal
