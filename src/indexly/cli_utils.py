@@ -1,5 +1,5 @@
 # New: CLI handlers for tagging, exporting, profiles
-
+from . import __version__, __author__, __license__
 import os
 import sys
 import json
@@ -21,7 +21,7 @@ from .path_utils import normalize_path
 from .migration_manager import run_migrations
 from .rename_utils import SUPPORTED_DATE_FORMATS
 from .clean_csv import clear_cleaned_data
-from . import __version__, __author__, __license__
+from .analyze_db import analyze_db
 from .analysis_orchestrator import analyze_file
 from .log_utils import handle_log_clean
 
@@ -385,14 +385,15 @@ def build_parser():
 
     analyze_file_parser = subparsers.add_parser(
         "analyze-file",
-        help="Analyze any supported file (CSV, JSON, SQLite, XML, YAML, Parquet, etc.)"
+        help="Analyze any supported file (CSV, JSON, SQLite, XML, YAML, Parquet, etc.)",
     )
 
     analyze_file_parser.add_argument("file", help="Path to the file to analyze")
 
     # Export options
     analyze_file_parser.add_argument(
-        "--export-path", help="Export analysis table to file (txt, md, xlsx, db, json, parquet)"
+        "--export-path",
+        help="Export analysis table to file (txt, md, xlsx, db, json, parquet)",
     )
     analyze_file_parser.add_argument(
         "--format",
@@ -438,11 +439,21 @@ def build_parser():
     analyze_file_parser.add_argument(
         "--timeseries", action="store_true", help="Plot timeseries if CSV"
     )
-    analyze_file_parser.add_argument("--x", type=str, help="Datetime column for timeseries X-axis")
-    analyze_file_parser.add_argument("--y", type=str, help="Comma-separated numeric columns for Y-axis")
-    analyze_file_parser.add_argument("--freq", type=str, help="Resample frequency (D,W,M,Q,Y)")
-    analyze_file_parser.add_argument("--agg", type=str, default="mean", help="Aggregation for resampling")
-    analyze_file_parser.add_argument("--rolling", type=int, help="Rolling mean window size")
+    analyze_file_parser.add_argument(
+        "--x", type=str, help="Datetime column for timeseries X-axis"
+    )
+    analyze_file_parser.add_argument(
+        "--y", type=str, help="Comma-separated numeric columns for Y-axis"
+    )
+    analyze_file_parser.add_argument(
+        "--freq", type=str, help="Resample frequency (D,W,M,Q,Y)"
+    )
+    analyze_file_parser.add_argument(
+        "--agg", type=str, default="mean", help="Aggregation for resampling"
+    )
+    analyze_file_parser.add_argument(
+        "--rolling", type=int, help="Rolling mean window size"
+    )
     analyze_file_parser.add_argument(
         "--mode",
         type=str,
@@ -450,7 +461,9 @@ def build_parser():
         choices=["interactive", "static"],
         help="Plotting backend",
     )
-    analyze_file_parser.add_argument("--output", type=str, help="Output filename for chart")
+    analyze_file_parser.add_argument(
+        "--output", type=str, help="Output filename for chart"
+    )
     analyze_file_parser.add_argument("--title", type=str, help="Plot title override")
 
     # Cleaning options
@@ -507,15 +520,15 @@ def build_parser():
     analyze_file_parser.add_argument(
         "--summarize-search",
         action="store_true",
-        help="Show normalized date/period summary for search-cache JSON files."
+        help="Show normalized date/period summary for search-cache JSON files.",
     )
 
     analyze_file_parser.add_argument(
         "--sortdate-by",
         choices=["date", "year", "month", "week"],
-        help="Sort normalized search results by derived date or period."
+        help="Sort normalized search results by derived date or period.",
     )
-    
+
     # Additional display/export (from original)
     analyze_file_parser.add_argument(
         "--wide-view",
@@ -564,10 +577,66 @@ def build_parser():
         help="Specify one or more Excel sheet names to analyze (default: all sheets).",
     )
 
-
     # Default binding
     analyze_file_parser.set_defaults(func=analyze_file)
 
+    # -----------------------------------------
+    # analyze-db subcommand
+    # -----------------------------------------
+    analyze_db_parser = subparsers.add_parser(
+        "analyze-db", help="Analyze a SQLite database"
+    )
+
+    # Positional argument
+    analyze_db_parser.add_argument("db_path", help="Path to SQLite database file")
+
+    # Options
+    analyze_db_parser.add_argument(
+        "--show-summary", action="store_true", help="Print summary to console"
+    )
+
+    analyze_db_parser.add_argument(
+        "--table", "-t", help="Inspect a single table (default: first table)"
+    )
+
+    analyze_db_parser.add_argument(
+        "--all-tables",
+        action="store_true",
+        help="Profile all tables (can be slow for large DBs)",
+    )
+
+    analyze_db_parser.add_argument(
+        "--sample-size",
+        type=int,
+        default=1000,
+        help="Rows to sample per table for profiling",
+    )
+
+    analyze_db_parser.add_argument(
+        "--persist-level",
+        choices=["none", "summary", "detailed"],
+        default="summary",
+        help="Level of persistence for analysis results",
+    )
+
+    analyze_db_parser.add_argument(
+        "--no-persist", action="store_true", help="Disable persistence entirely"
+    )
+
+    analyze_db_parser.add_argument(
+        "--export",
+        choices=["json", "md", "html", "none"],
+        default="json",
+        help="Export format for results",
+    )
+    analyze_db_parser.add_argument(
+        "--diagram",
+        choices=["mermaid", "none"],
+        default="none",
+        help="Generate relationship diagram (mermaid)",
+    )
+    # Bind handler
+    analyze_db_parser.set_defaults(func=analyze_db)
 
     # Stats
     stats_parser = subparsers.add_parser("stats", help="Show database statistics")
@@ -712,7 +781,7 @@ def build_parser():
     )
 
     update_db.set_defaults(func=lambda args: handle_update_db(args))
-    
+
     # ------------------------------------------------------------
     # LOG-CLEAN SUBCOMMAND
     # ------------------------------------------------------------

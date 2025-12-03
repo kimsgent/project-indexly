@@ -22,10 +22,10 @@ import html
 import json
 import logging
 import pandas as pd
+from typing import Any, Dict
 from datetime import datetime
 from fpdf import FPDF
 from reportlab.lib.pagesizes import A4
-from .db_utils import get_tags_for_file
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
@@ -33,6 +33,11 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from fpdf.errors import FPDFException
 from pathlib import Path
 from typing import Any, Optional
+from .db_utils import get_tags_for_file
+from .mermaid_diagram import build_mermaid_from_schema
+
+
+
 
 
 
@@ -310,3 +315,41 @@ def safe_export(
     print(f"✅ Exported {export_format.upper()} to: {export_path} at {timestamp}")
 
     return str(export_path)
+
+
+# Export Utils for analyze-db
+
+
+def save_json(obj: Any, out_path: Path) -> Path:
+    out = out_path.with_suffix(out_path.suffix + ".analysis.json")
+    with open(out, "w", encoding="utf-8") as fh:
+        json.dump(obj, fh, default=str, indent=2)
+    return out
+
+def save_markdown(summary: Dict, out_path: Path, include_diagram: bool=False) -> Path:
+    out = out_path.with_suffix(out_path.suffix + ".analysis.md")
+    lines = ["# Database Analysis\n"]
+    lines.append("## Meta\n")
+    for k, v in summary.get("meta", {}).items():
+        lines.append(f"- **{k}**: {v}")
+    lines.append("\n## Tables\n")
+    for tbl, prof in summary.get("profiles", {}).items():
+        lines.append(f"### {tbl}")
+        lines.append(f"- rows: {prof.get('rows')}")
+        lines.append(f"- cols: {len(prof.get('columns', []))}")
+        if prof.get("non_numeric"):
+            lines.append(f"- top values: {list(prof['non_numeric'].keys())[:6]}")
+    if include_diagram and "schema_summary" in summary:
+        mermaid = build_mermaid_from_schema(summary["schema_summary"])
+        lines.append("\n## Relationship Diagram (Mermaid)\n")
+        lines.append("```mermaid\n" + mermaid + "\n```\n")
+    out.write_text("\n".join(lines), encoding="utf-8")
+    return out
+
+def save_html(summary: Dict, out_path: Path, include_diagram: bool=False) -> Path:
+    out = out_path.with_suffix(out_path.suffix + ".analysis.html")
+    md = save_markdown(summary, out_path, include_diagram=include_diagram)
+    md_text = md.read_text(encoding="utf-8")
+    html = f"""<!doctype html><html><head><meta charset="utf-8"><title>DB Analysis</title></head><body><pre>{md_text}</pre></body></html>"""
+    out.write_text(html, encoding="utf-8")
+    return out
