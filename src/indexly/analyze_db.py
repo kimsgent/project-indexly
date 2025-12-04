@@ -42,7 +42,7 @@ def _print_unified_table(inspect_res, schema_summary, filter_table: str | None =
 
 
 def analyze_db(args):
-    """Entry point for indexly analyze-db subcommand."""
+    """Entry point for indexly analyze-db subcommand with Phase 2 profiler."""
 
     db_path = args.db_path
     if not Path(db_path).exists():
@@ -70,6 +70,7 @@ def analyze_db(args):
         relations.get("heuristics", []),
         relations.get("fts_relations", []),
     )
+
     # --------------------------------------------------------------
     # 2) Decide which tables to profile
     # --------------------------------------------------------------
@@ -86,28 +87,73 @@ def analyze_db(args):
         tables_to_profile = [inspect_res["tables"][0]] if inspect_res["tables"] else []
 
     # --------------------------------------------------------------
-    # 3) Profile tables
+    # 3) Profile tables using Phase 2 profiler
     # --------------------------------------------------------------
+
     profiles = {
-        tbl: profile_table(db_path, tbl, sample_size=args.sample_size)
+        tbl: profile_table(
+            db_path,
+            tbl,
+            sample_size=args.sample_size,
+            full_stats=True  # enable enhanced metrics
+        )
         for tbl in tables_to_profile
     }
 
     # --------------------------------------------------------------
-    # 4) Unified Summary
+    # 4) Unified Summary (enhanced: global, warnings, indexly, visual)
     # --------------------------------------------------------------
+    from .indexly_detector import build_indexly_block
+
+    conn = sqlite3.connect(db_path)
+    try:
+        indexly_block = build_indexly_block(conn, normalized_schemas).get("indexly", {})
+    finally:
+        conn.close()
+
+    counts = inspect_res.get("counts", {}) or {}
+    row_estimates = {
+        tbl: int(counts.get(tbl) or profiles.get(tbl, {}).get("rows") or 0)
+        for tbl in inspect_res.get("tables", [])
+    }
+
+    total_rows = sum(row_estimates.values())
+    largest_table = max(row_estimates.items(), key=lambda x: x[1]) if row_estimates else None
+
+    warnings: list[str] = []
+    if not inspect_res.get("tables"):
+        warnings.append("No tables discovered in database.")
+    if not counts:
+        warnings.append("Row counts missing; using profile-based estimates where available.")
+    if total_rows > 5_000_000:
+        warnings.append(f"Database appears large (≈{total_rows} rows). Consider using --sample-size or --parallel.")
+
+    global_block = {
+        "db_path": str(inspect_res["path"]),
+        "db_size_bytes": inspect_res.get("db_size_bytes"),
+        "table_count": len(inspect_res.get("tables", [])),
+        "total_rows_estimated": int(total_rows),
+        "largest_table": {"name": largest_table[0], "rows": int(largest_table[1])} if largest_table else None,
+        "warnings": warnings,
+    }
+
     summary = {
         "meta": {
             "db_path": str(inspect_res["path"]),
             "db_size_bytes": inspect_res.get("db_size_bytes"),
             "tables": inspect_res["tables"],
         },
-        "schemas": normalized_schemas,  # <- pass dict, not function
+        "global": global_block,
+        "schemas": normalized_schemas,
         "schema_summary": schema_summary,
         "relations": schema_summary.get("relations"),
         "adjacency_graph": adj_graph,
-        "counts": inspect_res.get("counts", {}),
+        "counts": counts,
+        "row_estimates": row_estimates,
         "profiles": profiles,
+        "indexly": indexly_block,
+        "visual": {},
+        "warnings": warnings,
     }
 
     # --------------------------------------------------------------
@@ -159,12 +205,11 @@ def analyze_db(args):
                     )
                 console.print(t_h)
 
-        # Sample rows preview
+        # Sample rows
         first_tbl = tables_to_profile[0] if tables_to_profile else None
         if first_tbl:
             try:
                 from pandas import read_sql_query
-
                 conn = sqlite3.connect(db_path)
                 preview = read_sql_query(f"SELECT * FROM '{first_tbl}' LIMIT 10", conn)
                 conn.close()
@@ -173,14 +218,36 @@ def analyze_db(args):
             except Exception:
                 pass
 
-        # Table profile metrics
+        # Profile output
         for tbl, prof in profiles.items():
             t = Table(title=f"Profile: {tbl}", show_lines=False)
             t.add_column("Metric")
             t.add_column("Value")
+
             t.add_row("rows", str(prof.get("rows")))
             t.add_row("cols", str(len(prof.get("columns", []))))
             t.add_row("key_hints", ", ".join(prof.get("key_hints", [])))
+
+            # numeric stats
+            for col, stats in prof.get("numeric_summary", {}).items():
+                if stats:  # only if numeric
+                    t.add_row(f"{col} (count)", str(stats.get("count")))
+                    t.add_row(f"{col} (mean)", str(stats.get("mean")))
+                    t.add_row(f"{col} (std)", str(stats.get("std")))
+                    t.add_row(f"{col} (min)", str(stats.get("min")))
+                    t.add_row(f"{col} (25%)", str(stats.get("25%")))
+                    t.add_row(f"{col} (50%)", str(stats.get("50%")))
+                    t.add_row(f"{col} (75%)", str(stats.get("75%")))
+                    t.add_row(f"{col} (IQR)", str(stats.get("IQR")))
+                    t.add_row(f"{col} (max)", str(stats.get("max")))
+
+            # non-numeric stats
+            for col, info in prof.get("non_numeric", {}).items():
+                t.add_row(f"{col} (unique)", f"{info.get('unique')}")
+                t.add_row(f"{col} (nulls)", f"{info.get('nulls')}")
+                t.add_row(f"{col} (top)", f"{info.get('top')}")
+                t.add_row(f"{col} (sample)", f"{info.get('sample')}")
+
             console.print(t)
 
     # --------------------------------------------------------------
