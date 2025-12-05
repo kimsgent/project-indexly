@@ -42,8 +42,9 @@ def numeric_stats(df: pd.DataFrame, percentiles=[0.25, 0.5, 0.75]) -> Dict[str, 
 def non_numeric_summary(df: pd.DataFrame) -> Dict[str, Any]:
     out = {}
     for col in df.select_dtypes(exclude="number").columns:
-        ser = df[col].dropna().astype(str)
         try:
+            # Safe conversion to string, ignoring decoding errors
+            ser = df[col].dropna().apply(lambda x: str(x) if not isinstance(x, bytes) else x.decode('utf-8', errors='ignore'))
             vc = ser.value_counts()
             out[col] = {
                 "unique": int(ser.nunique()),
@@ -54,6 +55,7 @@ def non_numeric_summary(df: pd.DataFrame) -> Dict[str, Any]:
         except Exception:
             out[col] = {"unique": None, "nulls": None, "sample": [], "top": {}}
     return out
+
 
 
 # ---------------------------------------
