@@ -24,6 +24,7 @@ from .clean_csv import clear_cleaned_data
 from .analyze_db import analyze_db
 from .analysis_orchestrator import analyze_file
 from .log_utils import handle_log_clean
+from .read_indexly_json import read_indexly_json
 
 
 # CLI display configurations here
@@ -695,6 +696,48 @@ def build_parser():
     )
 
     rename_file_parser.set_defaults(func=handle_rename_file)
+
+    # ----------------------- read-json -----------------------
+    read_json_parser = subparsers.add_parser(
+        "read-json",
+        help="Read and display indexly JSON file",
+        description="Read and view Indexly JSON files.",
+    )
+
+    read_json_parser.add_argument(
+        "file",
+        help="Path to Indexly JSON file"
+    )
+
+    read_json_parser.add_argument(
+        "--treeview",
+        action="store_true",
+        help="Display full Rich tree view"
+    )
+
+    read_json_parser.add_argument(
+        "--preview",
+        type=int,
+        default=3,
+        help="Number of top-level keys/items to preview in compact view"
+    )
+
+    read_json_parser.add_argument(
+        "--show-summary",
+        action="store_true",
+        help="Display database-aware summary of JSON content"
+    )
+
+    # IMPORTANT: always set func → otherwise argparse prints top-level help
+    read_json_parser.set_defaults(
+        func=lambda args: read_indexly_json(
+            file_path=args.file,
+            treeview=args.treeview,
+            preview=args.preview,
+            show_summary=args.show_summary,
+        )
+    )
+
 
     # Migrate
     migrate_parser = subparsers.add_parser(
