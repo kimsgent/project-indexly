@@ -1,4 +1,4 @@
-# read_indexly_json.py
+# read_indexly_json_summary_v5.py - COMPLETE VERSION
 import json
 from pathlib import Path
 from typing import Any, Dict, List
@@ -16,7 +16,6 @@ def load_indexly_json(file_path: str | Path) -> dict:
     with open(file_path, "r", encoding="utf-8") as f:
         return json.load(f)
 
-
 # ---------------- Human-readable size ----------------
 def _human_readable_size(n_bytes: int) -> str:
     for unit in ["B", "KB", "MB", "GB"]:
@@ -25,154 +24,164 @@ def _human_readable_size(n_bytes: int) -> str:
         n_bytes /= 1024
     return f"{n_bytes:.1f} TB"
 
-
 # ---------------- DB-style JSON Detection ----------------
 def _is_db_style_json(obj: dict) -> bool:
-    if not isinstance(obj, dict):
-        return False
-    required_keys = {"global", "schemas", "meta"}
-    return required_keys.issubset(obj.keys())
+    return isinstance(obj, dict) and {"global", "schemas", "meta"}.issubset(obj.keys())
 
+# ---------------- Schema Analyzer ----------------
+def _summarize_schemas(schemas: Dict[str, List[Dict]]) -> None:
+    console.print("\n[bold]🔹 Detailed Schema[/bold]")
+    
+    console.print("\n[italic]Column Types by Table[/italic]")
+    table1 = Table(show_header=True, header_style="bold cyan")
+    table1.add_column("Table", style="magenta", no_wrap=True)
+    table1.add_column("Total")
+    table1.add_column("PK")
+    table1.add_column("INTEGER")
+    table1.add_column("NVARCHAR")
+    table1.add_column("Nullable")
+    
+    for tname, cols in sorted(schemas.items()):
+        total = len(cols)
+        pks = sum(1 for col in cols if col.get("primary_key"))
+        integer = sum(1 for col in cols if "INTEGER" in col.get("type", ""))
+        nvarchar = sum(1 for col in cols if "NVARCHAR" in col.get("type", ""))
+        nullable = sum(1 for col in cols if not col.get("not_null"))
+        table1.add_row(tname, str(total), str(pks), str(integer), str(nvarchar), str(nullable))
+    console.print(table1)
+    
+    console.print("\n[italic]Likely Foreign Key Columns[/italic]")
+    table2 = Table(show_header=True, header_style="bold green")
+    table2.add_column("Table", style="cyan")
+    table2.add_column("Column")
+    table2.add_column("Type")
+    table2.add_column("Nullable")
+    
+    fk_candidates = []
+    for tname, cols in schemas.items():
+        for col in cols:
+            col_name = col.get("name", "")
+            if col_name.endswith("Id") and not col.get("primary_key"):
+                fk_candidates.append((
+                    tname, col_name, col.get("type", "?"), 
+                    "Yes" if not col.get("not_null") else "No"
+                ))
+    for tname, col, typ, nullable in sorted(fk_candidates)[:12]:
+        table2.add_row(tname, col, typ, nullable)
+    console.print(table2)
 
-# ---------------- Database Summary ----------------
-def show_db_summary(data: Dict[str, Any]):
+# ---------------- Sample Data Preview ----------------
+def _preview_sample_data(schemas: Dict[str, List[Dict]], counts: Dict, preview: int = 3):
+    console.print("\n[bold]🔹 Sample Data Preview[/bold]")
+    
+    console.print("\n[italic]Top Tables by Size[/italic]")
+    table = Table(show_header=True, header_style="bold magenta")
+    table.add_column("Table", style="cyan")
+    table.add_column("Rows")
+    table.add_column("Sample Columns")
+    table.add_column("Data Preview")
+    
+    table_data = []
+    for tname, row_count in sorted(counts.items(), key=lambda x: x[1], reverse=True):
+        if tname in schemas:
+            cols = schemas[tname]
+            sample_cols = []
+            pk_col = next((c["name"] for c in cols if c.get("primary_key")), None)
+            if pk_col: sample_cols.append(pk_col)
+            
+            text_cols = [c for c in cols if "NVARCHAR" in c.get("type", "")]
+            num_cols = [c for c in cols if "INTEGER" in c.get("type", "") or "NUMERIC" in c.get("type", "")]
+            if text_cols: sample_cols.append(text_cols[0]["name"])
+            if num_cols and len(sample_cols) < 3: sample_cols.append(num_cols[0]["name"])
+            
+            col_names = ", ".join(sample_cols[:3])
+            preview_str = f"{row_count} rows × {len(cols)} cols"
+            table_data.append((tname, row_count, col_names, preview_str))
+    
+    for tname, rows, cols, preview in table_data[:8]:
+        table.add_row(tname, str(rows), cols, preview)
+    console.print(table)
+    
+    console.print("\n[italic]Business Entities[/italic]")
+    entities = {
+        "customers": f"📧 {counts.get('customers', '?')} customers",
+        "employees": f"👥 {counts.get('employees', '?')} employees", 
+        "invoices": f"💰 {counts.get('invoices', '?')} invoices",
+        "tracks": f"🎵 {counts.get('tracks', '?')} tracks",
+        "albums": f"💿 {counts.get('albums', '?')} albums"
+    }
+    for entity, desc in entities.items():
+        console.print(f"  {desc}")
+
+# ---------------- Full Summary Renderer ----------------
+def summarize_indexly_json(data: dict, preview: int = 3):
+    console.print("\n[bold]🔹 Global Info[/bold]")
     global_info = data.get("global", {})
-    schema_summary = data.get("schema_summary", {})
-    table_meta = schema_summary.get("tables", {})
+    console.print(f"- DB Path: {global_info.get('db_path', 'unknown')}")
+    console.print(f"- DB Size: {_human_readable_size(int(global_info.get('db_size_bytes', 0)))}")
+    console.print(f"- Tables: {global_info.get('table_count', 'unknown')}")
+    console.print(f"- Total Rows: {global_info.get('total_rows_estimated', 'unknown')}")
+
+    console.print("\n[bold]🔹 Tables & Schema[/bold]")
+    schema_summary = data.get("schema_summary", {}).get("tables", {})
     counts = data.get("counts", {})
-
-    db_path = global_info.get("db_path", "unknown")
-    db_size_bytes = int(global_info.get("db_size_bytes", 0))
-    db_size_hr = _human_readable_size(db_size_bytes)
-
-    table_count = global_info.get("table_count", len(table_meta) or len(counts))
-    total_rows = global_info.get(
-        "total_rows_estimated",
-        sum(counts.values()) if isinstance(counts, dict) else "unknown",
-    )
-
-    largest_table = global_info.get("largest_table", {})
-    largest_name = largest_table.get("name", "unknown")
-    largest_rows = largest_table.get("rows", "unknown")
-
-    console.print("\n[bold]Database Summary[/bold]")
-    console.print(f"DB Path: {db_path}")
-    console.print(f"DB Size: {db_size_hr}")
-    console.print(f"Tables: {table_count}")
-    console.print(f"Total Rows: {total_rows}")
-    console.print(f"Largest Table: {largest_name} ({largest_rows} rows)\n")
-
-    console.print("[bold]Table Overview[/bold]")
     table = Table(show_header=True, header_style="bold green")
     table.add_column("Table")
     table.add_column("Columns")
     table.add_column("Primary Keys")
     table.add_column("Rows")
-
-    table_names = list(table_meta.keys()) or list(counts.keys())
-    for tname in sorted(table_names):
-        meta = table_meta.get(tname, {})
+    for tname in sorted(schema_summary.keys() or counts.keys()):
+        meta = schema_summary.get(tname, {})
         cols = meta.get("columns", "?")
         pk_list = meta.get("primary_keys", [])
         pk_str = ", ".join(pk_list) if isinstance(pk_list, list) else str(pk_list or "")
         row_count = counts.get(tname, "?")
         table.add_row(tname, str(cols), pk_str, str(row_count))
-
     console.print(table)
-    console.print()
 
+    schemas = data.get("schemas", {})
+    if schemas:
+        _summarize_schemas(schemas)
+        _preview_sample_data(schemas, counts, preview)
 
-# ---------------- Database Tree ----------------
-def build_db_tree(data: Dict[str, Any]) -> Tree:
-    global_info = data.get("global", {})
-    relations = data.get("relations", {})
-    graph = relations.get("graph") or data.get("adjacency_graph") or {}
-    foreign_keys = relations.get("foreign_keys", [])
-
-    db_path = global_info.get("db_path", "Database")
-    root_label = Path(db_path).name if isinstance(db_path, str) else "Database"
-    root = Tree(f"[bold]{root_label}[/bold]")
-
-    fk_by_from_table: Dict[str, List[Dict[str, Any]]] = {}
-    for fk in foreign_keys:
-        from_table = fk.get("from_table")
-        if from_table:
-            fk_by_from_table.setdefault(from_table, []).append(fk)
-
-    for tname in sorted(graph.keys()):
-        table_node = root.add(f"[cyan]{tname}[/cyan]")
-        for fk in fk_by_from_table.get(tname, []):
-            table_node.add(f"{fk.get('from_column', '?')} → {fk.get('to_table', '?')}")
-
-    return root
-
-
-def render_db_tree(data: Dict[str, Any]):
-    tree = build_db_tree(data)
-    console.print("\n🌳 [bold cyan]Database Tree[/bold cyan]")
-    console.print(tree)
-
-
-# ---------------- Generic Compact Viewer ----------------
-def render_compact(obj, max_preview=3, level=0):
-    indent = "  " * level
-    if isinstance(obj, dict):
-        for k, v in list(obj.items())[:max_preview]:
-            console.print(f"{indent}- [cyan]{k}[/cyan]: {type(v).__name__}")
-            if isinstance(v, (dict, list)):
-                render_compact(v, max_preview=max_preview, level=level + 1)
-    elif isinstance(obj, list):
-        for i, v in enumerate(obj[:max_preview]):
-            console.print(f"{indent}- [{i}]: {type(v).__name__}")
-            if isinstance(v, (dict, list)):
-                render_compact(v, max_preview=max_preview, level=level + 1)
+    profiles = data.get("profiles", {})
+    if profiles:
+        console.print("\n[bold]🔹 Column Profiles[/bold]")
+        for tname, prof in profiles.items():
+            console.print(f"\n[cyan]{tname}[/cyan]")
+            numeric = prof.get("numeric_summary", {})
+            for col, stats in numeric.items():
+                stats_str = ", ".join(f"{k}={v:.1f}" if isinstance(v, float) else f"{k}={v}" 
+                                    for k, v in stats.items() if k != "is_numeric")
+                console.print(f"  - {col}: {stats_str}")
+            non_numeric = prof.get("non_numeric", {})
+            for col, info in non_numeric.items():
+                unique = info.get("unique", "?")
+                nulls = info.get("nulls", "?")
+                sample = info.get("sample", ["-"])[0][:40] + "..." if info.get("sample") else "-"
+                console.print(f"  - {col}: unique={unique}, nulls={nulls}, sample={sample}")
     else:
-        console.print(f"{indent}- {obj}")
+        console.print("\n[bold yellow]⚠️ No detailed profiles available[/bold yellow]")
 
-
-# ---------------- Generic Tree Viewer ----------------
-def build_tree(obj, name="root"):
+# ---------------- Optional Tree Viewer ----------------
+def build_tree(obj, name="root") -> Tree:
     node = Tree(f"[bold]{name}[/bold]")
-    _walk_tree(obj, node)
+    def _walk(o, n):
+        if isinstance(o, dict):
+            for k, v in o.items(): _walk(v, n.add(f"[cyan]{k}[/cyan]"))
+        elif isinstance(o, list):
+            for i, v in enumerate(o): _walk(v, n.add(f"[green][{i}][/green]"))
+        else: n.add(f"[white]{o}[/white]")
+    _walk(obj, node)
     return node
 
-
-def _walk_tree(obj, node):
-    if isinstance(obj, dict):
-        for k, v in obj.items():
-            child = node.add(f"[cyan]{k}[/cyan]")
-            _walk_tree(v, child)
-    elif isinstance(obj, list):
-        for i, v in enumerate(obj):
-            child = node.add(f"[green][{i}][/green]")
-            _walk_tree(v, child)
-    else:
-        node.add(f"[white]{obj}[/white]")
-
-
-def render_tree(obj):
-    console.print("\n🌳 [bold cyan]JSON Structure[/bold cyan]")
-    console.print(build_tree(obj))
-
+def render_tree(obj): console.print("\n🌳 [bold cyan]JSON Structure[/bold cyan]"); console.print(build_tree(obj))
 
 # ---------------- Main Reader ----------------
-def read_indexly_json(
-    file_path: str | Path,
-    treeview: bool = False,
-    preview: int = 3,
-    show_summary: bool = False,
-):
+def read_indexly_json(file_path: str | Path, treeview: bool = False, preview: int = 3, show_summary: bool = True):
     data = load_indexly_json(file_path)
     db_mode = _is_db_style_json(data)
-
-    if db_mode and show_summary:
-        if treeview:
-            render_db_tree(data)
-        show_db_summary(data)
-    else:
-        if treeview:
-            render_tree(data)
-        else:
-            render_compact(data, max_preview=preview)
-
+    if db_mode and show_summary: summarize_indexly_json(data, preview=preview)
+    if treeview: render_tree(data)
     return data
+
