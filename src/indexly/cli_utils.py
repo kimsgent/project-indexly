@@ -584,60 +584,107 @@ def build_parser():
     # -----------------------------------------
     # analyze-db subcommand
     # -----------------------------------------
+
     analyze_db_parser = subparsers.add_parser(
-        "analyze-db", help="Analyze a SQLite database"
-    )
-
-    # Positional argument
-    analyze_db_parser.add_argument("db_path", help="Path to SQLite database file")
-
-    # Options
-    analyze_db_parser.add_argument(
-        "--show-summary", action="store_true", help="Print summary to console"
+        "analyze-db",
+        help="Inspect a SQLite DB and generate analysis summary."
     )
 
     analyze_db_parser.add_argument(
-        "--table", "-t", help="Inspect a single table (default: first table)"
+        "db_path",
+        help="Path to the SQLite database file."
+    )
+
+    analyze_db_parser.add_argument(
+        "--table",
+        help="Only analyze a specific table.",
     )
 
     analyze_db_parser.add_argument(
         "--all-tables",
         action="store_true",
-        help="Profile all tables (can be slow for large DBs)",
+        help="Analyze all tables instead of auto-selecting one.",
     )
 
+    # -------------------------
+    # Sampling controls
+    # -------------------------
     analyze_db_parser.add_argument(
         "--sample-size",
         type=int,
-        default=1000,
-        help="Rows to sample per table for profiling",
+        default=None,
+        help="Maximum number of rows to sample per table. "
+            "If omitted, adaptive sampling is applied."
     )
 
+    analyze_db_parser.add_argument(
+        "--all-data",
+        action="store_true",
+        help="Disable sampling and use full table data."
+    )
+
+    analyze_db_parser.add_argument(
+        "--fast",
+        action="store_true",
+        help="Fast mode: lighter profiling for huge tables."
+    )
+
+    # -------------------------
+    # Output controls
+    # -------------------------
+    analyze_db_parser.add_argument(
+        "--show-summary",
+        action="store_true",
+        help="Print analysis overview to terminal.",
+    )
+
+    analyze_db_parser.add_argument(
+        "--no-persist",
+        action="store_true",
+        help="Do not write summary file to disk.",
+    )
+    analyze_db_parser.add_argument(
+        "--parallel",
+        action="store_true",
+        help="Profile multiple tables in parallel using multiple CPU cores",
+    )
+    analyze_db_parser.add_argument(
+        "--max-workers",
+        type=int,
+        default=os.cpu_count(),
+        help="Maximum number of parallel workers (default = CPU count)",
+    )
+    analyze_db_parser.add_argument(
+        "--fast-mode",
+        action="store_true",
+        help="Enable fast profiling mode (lighter metrics, faster)",
+    )
+    analyze_db_parser.add_argument(
+        "--timeout",
+        type=int,
+        default=None,
+        help="Per-table profiling timeout in seconds",
+    )
     analyze_db_parser.add_argument(
         "--persist-level",
-        choices=["none", "summary", "detailed"],
-        default="summary",
-        help="Level of persistence for analysis results",
-    )
-
-    analyze_db_parser.add_argument(
-        "--no-persist", action="store_true", help="Disable persistence entirely"
+        choices=["minimal", "full", "none"],
+        default="full",
     )
 
     analyze_db_parser.add_argument(
         "--export",
-        choices=["json", "md", "html", "none"],
-        default="json",
-        help="Export format for results",
+        choices=["json", "md", "html"],
+        help="Export summary in the chosen format."
     )
+
     analyze_db_parser.add_argument(
         "--diagram",
-        choices=["mermaid", "none"],
-        default="none",
-        help="Generate relationship diagram (mermaid)",
+        choices=["mermaid"],
+        help="Include diagrams in MD/HTML export.",
     )
-    # Bind handler
+
     analyze_db_parser.set_defaults(func=analyze_db)
+
 
     # Stats
     stats_parser = subparsers.add_parser("stats", help="Show database statistics")
@@ -704,28 +751,23 @@ def build_parser():
         description="Read and view Indexly JSON files.",
     )
 
-    read_json_parser.add_argument(
-        "file",
-        help="Path to Indexly JSON file"
-    )
+    read_json_parser.add_argument("file", help="Path to Indexly JSON file")
 
     read_json_parser.add_argument(
-        "--treeview",
-        action="store_true",
-        help="Display full Rich tree view"
+        "--treeview", action="store_true", help="Display full Rich tree view"
     )
 
     read_json_parser.add_argument(
         "--preview",
         type=int,
         default=3,
-        help="Number of top-level keys/items to preview in compact view"
+        help="Number of top-level keys/items to preview in compact view",
     )
 
     read_json_parser.add_argument(
         "--show-summary",
         action="store_true",
-        help="Display database-aware summary of JSON content"
+        help="Display database-aware summary of JSON content",
     )
 
     # IMPORTANT: always set func → otherwise argparse prints top-level help
@@ -737,7 +779,6 @@ def build_parser():
             show_summary=args.show_summary,
         )
     )
-
 
     # Migrate
     migrate_parser = subparsers.add_parser(

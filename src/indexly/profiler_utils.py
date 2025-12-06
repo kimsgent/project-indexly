@@ -1,16 +1,66 @@
 # profiler_utils.py
 
-from typing import Dict, Any
 import pandas as pd
+from typing import Dict, Any
 
 # ---------------------------------------
-# Numeric statistics
+# Sampling defaults
 # ---------------------------------------
-def numeric_stats(df: pd.DataFrame, percentiles=[0.25, 0.5, 0.75]) -> Dict[str, Any]:
+def determine_sample_size(total_rows: int, user_size: int | None) -> int | None:
+    if user_size is not None:
+        return user_size
+
+    if total_rows < 200_000:
+        return None
+
+    if total_rows <= 2_000_000:
+        return max(5_000, min(int(total_rows * 0.05), 100_000))
+
+    return max(10_000, min(int(total_rows * 0.01), 100_000))
+
+
+def sample_dataframe(df: pd.DataFrame, user_size: int | None) -> pd.DataFrame:
+    total = len(df)
+    n = determine_sample_size(total, user_size)
+
+    if n is None or n >= total:
+        print(f"ℹ️ Using full table ({total} rows)")
+        return df
+
+    print(f"ℹ️ Sampling {n} rows from {total} total rows")
+    return df.sample(n=n, random_state=42)
+
+
+# ---------------------------------------
+# Numeric statistics (fast_mode aware)
+# ---------------------------------------
+def numeric_stats(df: pd.DataFrame, fast_mode: bool = False,
+                  percentiles=[0.25, 0.5, 0.75]) -> Dict[str, Any]:
     numeric = df.select_dtypes(include="number")
     if numeric.empty:
         return {}
 
+    # Fast mode: skip percentiles & std (expensive)
+    if fast_mode:
+        base = numeric.agg(['count', 'mean', 'min', 'max'])
+        out = {}
+
+        for col in numeric.columns:
+            out[col] = {
+                "count": base.loc["count", col],
+                "mean": base.loc["mean", col],
+                "min": base.loc["min", col],
+                "max": base.loc["max", col],
+                "std": None,
+                "25%": None,
+                "50%": None,
+                "75%": None,
+                "IQR": None,
+                "is_numeric": True,
+            }
+        return out
+
+    # Full stats
     out = {}
     base = numeric.agg(['count', 'mean', 'std', 'min', 'max'])
     q = numeric.quantile(percentiles)
@@ -29,7 +79,6 @@ def numeric_stats(df: pd.DataFrame, percentiles=[0.25, 0.5, 0.75]) -> Dict[str, 
             "is_numeric": True,
         }
 
-        # NaN → None
         for k, v in out[col].items():
             out[col][k] = None if pd.isna(v) else v
 
@@ -37,14 +86,25 @@ def numeric_stats(df: pd.DataFrame, percentiles=[0.25, 0.5, 0.75]) -> Dict[str, 
 
 
 # ---------------------------------------
-# Non-numeric summary
+# Non-numeric summary (fast-mode light)
 # ---------------------------------------
-def non_numeric_summary(df: pd.DataFrame) -> Dict[str, Any]:
+def non_numeric_summary(df: pd.DataFrame, fast_mode: bool = False) -> Dict[str, Any]:
     out = {}
     for col in df.select_dtypes(exclude="number").columns:
         try:
-            # Safe conversion to string, ignoring decoding errors
-            ser = df[col].dropna().apply(lambda x: str(x) if not isinstance(x, bytes) else x.decode('utf-8', errors='ignore'))
+            ser = df[col].dropna().apply(
+                lambda x: str(x) if not isinstance(x, bytes) else x.decode("utf-8", errors="ignore")
+            )
+
+            if fast_mode:
+                out[col] = {
+                    "unique": int(ser.nunique()),
+                    "nulls": int(df[col].isna().sum()),
+                    "sample": ser.head(3).tolist(),
+                    "top": {},
+                }
+                continue
+
             vc = ser.value_counts()
             out[col] = {
                 "unique": int(ser.nunique()),
@@ -55,7 +115,6 @@ def non_numeric_summary(df: pd.DataFrame) -> Dict[str, Any]:
         except Exception:
             out[col] = {"unique": None, "nulls": None, "sample": [], "top": {}}
     return out
-
 
 
 # ---------------------------------------
@@ -76,7 +135,11 @@ def null_ratios(df: pd.DataFrame) -> Dict[str, Any]:
 # ---------------------------------------
 # Duplicate detection
 # ---------------------------------------
-def duplicate_stats(df: pd.DataFrame) -> Dict[str, int]:
+def duplicate_stats(df: pd.DataFrame, fast_mode: bool = False) -> Dict[str, int]:
+    if fast_mode:
+        # Light-weight check only
+        return {col: None for col in df.columns}
+
     out = {}
     for col in df.columns:
         try:
@@ -86,14 +149,17 @@ def duplicate_stats(df: pd.DataFrame) -> Dict[str, int]:
     return out
 
 
-def duplicate_rows(df: pd.DataFrame) -> int:
-    return int(df.duplicated().sum())
+def duplicate_rows(df: pd.DataFrame, fast_mode: bool = False) -> int:
+    return 0 if fast_mode else int(df.duplicated().sum())
 
 
 # ---------------------------------------
 # Key inference
 # ---------------------------------------
-def infer_key_candidates(df: pd.DataFrame) -> Dict[str, Any]:
+def infer_key_candidates(df: pd.DataFrame, fast_mode: bool = False) -> Dict[str, Any]:
+    if fast_mode:
+        return {}
+
     total = len(df)
     out = {}
 
@@ -112,25 +178,28 @@ def infer_key_candidates(df: pd.DataFrame) -> Dict[str, Any]:
     return out
 
 
-## ---------------------------------------
+# ---------------------------------------
 # Full unified profile builder
 # ---------------------------------------
-def profile_dataframe(df: pd.DataFrame) -> Dict[str, Any]:
-    core = {
+def profile_dataframe(
+    df: pd.DataFrame,
+    sample_size: int | None = None,
+    full_data: bool = False,
+    fast_mode: bool = False
+) -> Dict[str, Any]:
+
+    if not full_data:
+        df = sample_dataframe(df, sample_size)
+
+    return {
         "row_count": len(df),
         "columns": list(df.columns),
-        "numeric_summary": numeric_stats(df),
+        "numeric_summary": numeric_stats(df, fast_mode=fast_mode),
         "null_ratios": null_ratios(df),
-        "duplicate_columns": duplicate_stats(df),
-        "duplicate_rows": duplicate_rows(df),
-        "key_candidates": infer_key_candidates(df),
+        "duplicate_columns": duplicate_stats(df, fast_mode=fast_mode),
+        "duplicate_rows": duplicate_rows(df, fast_mode=fast_mode),
+        "key_candidates": infer_key_candidates(df, fast_mode=fast_mode),
+        "extra": {
+            "non_numeric_summary": non_numeric_summary(df, fast_mode=fast_mode)
+        }
     }
-
-    # everything non-core → extra
-    extra = {
-        "non_numeric_summary": non_numeric_summary(df)
-    }
-
-    core["extra"] = extra
-    return core
-

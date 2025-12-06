@@ -1,25 +1,41 @@
-# table_profiler.py
-
-from typing import Dict, Any, Optional
-import pandas as pd
 import sqlite3
+import pandas as pd
+from rich.console import Console
 from collections import Counter
-from . import profiler_utils
+from .profiler_utils import profile_dataframe
+from rich.table import Table
+from pathlib import Path
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from typing import Dict, Any
 
 
 
+
+console = Console()
+
+# Worker wrapper for parallel profiling
+def _profile_table_worker(db_path, tbl, sample_size, full_stats, fast_mode):
+    try:
+        result = profile_table(
+            db_path,
+            tbl,
+            sample_size=sample_size,
+            full_stats=full_stats,
+            fast_mode=fast_mode
+        )
+        return tbl, result
+    except Exception as e:
+        console.print(f"[red]⚠ Profiling failed for {tbl}: {e}[/red]")
+        return tbl, {}
 
 def profile_table(
     db_path: str,
     table: str,
-    sample_size: int = 1000,
+    sample_size: int | None = None,
     full_stats: bool = False,
     fast_mode: bool = False
 ) -> Dict[str, Any]:
     """Profile a table including numeric, non-numeric, nulls, duplicates, keys."""
-    import sqlite3
-    import pandas as pd
-    from .profiler_utils import profile_dataframe
 
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
@@ -47,36 +63,29 @@ def profile_table(
     out["cols"] = len(cols)
 
     # -------------------------
-    # Sampling
+    # Load table
     # -------------------------
     try:
-        if full_stats and row_count and row_count <= sample_size * 2:
-            df = pd.read_sql_query(f"SELECT * FROM '{table}'", conn)
-        else:
-            df = pd.read_sql_query(
-                f"SELECT * FROM '{table}' LIMIT {int(sample_size)}", conn
-            )
-
-        # Safe numeric inference (no deprecated errors="ignore")
-        for col in df.columns:
-            try:
-                df[col] = pd.to_numeric(df[col])
-            except Exception:
-                pass
-
+        df = pd.read_sql_query(f"SELECT * FROM '{table}'", conn)
     except Exception:
         df = pd.DataFrame()
 
     conn.close()
 
     # -------------------------
-    # Run full unified profiling
+    # Unified profiling (sampling handled inside)
+    # REMOVED: fast_mode (not supported by profile_dataframe)
     # -------------------------
-    profile = profile_dataframe(df)
+    profile = profile_dataframe(
+        df=df,
+        sample_size=sample_size,
+        full_data=full_stats
+    )
+
     out.update(profile)
 
     # -------------------------
-    # Flatten numeric for printing
+    # Flatten numeric stats
     # -------------------------
     numeric_flat = {}
     numeric_summary = profile.get("numeric_summary", {})
@@ -86,9 +95,8 @@ def profile_table(
     out["numeric_flat"] = numeric_flat
 
     # -------------------------
-    # Restore non-numeric printing
+    # Non-numeric printing format
     # -------------------------
     out["non_numeric"] = profile.get("extra", {}).get("non_numeric_summary", {})
 
     return out
-
