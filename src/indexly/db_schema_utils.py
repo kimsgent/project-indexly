@@ -10,7 +10,7 @@ from .relation_detector import (
     detect_fts_shadow_tables,
     build_relation_graph,
 )
-
+from .mermaid_diagram import build_mermaid_from_schema
 
 def normalize_schema(raw_schema: List[tuple], table_name: Optional[str] = None) -> List[Dict[str, Any]]:
     """
@@ -74,36 +74,36 @@ def summarize_schema(
     conn: Optional[Union[sqlite3.Connection, str, Path]] = None,
     filter_table: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """
-    Produce unified schema summary including PKs and relation model.
 
-    - schemas: dict mapping table -> normalized schema list
-    - conn: optional sqlite3.Connection or database path
-    - filter_table: optional single table to summarize
-    """
-    # Table info + PK detection
-    table_info: Dict[str, Any] = {}
+    # -----------------------------------------
+    # 1) PROFILES / TABLE INFO (expected by save_markdown)
+    # -----------------------------------------
+    profiles: Dict[str, Any] = {}
     for table, cols in schemas.items():
         if filter_table and table.lower() != filter_table.lower():
             continue
-        table_info[table] = {
-            "columns": len(cols),
-            "primary_keys": [
-                c["name"] for c in cols if c.get("primary_key") or c["name"].lower() == f"{table.lower()}id"
-            ],
+
+        profiles[table] = {
+            "rows": None,            # (row estimation added later or externally)
+            "columns": cols,         # store raw column objects for flexibility
+            "non_numeric": {},       # placeholder for profiling results
         }
 
-    # Relations
+    # -----------------------------------------
+    # 2) RELATIONS
+    # -----------------------------------------
     conn_obj, opened_here = _open_conn_if_needed(conn)
     try:
         if conn_obj is not None:
-            relations_block = analyze_relations(conn_obj, schemas).get("relations", {})
+            # Full FK/heuristic/fts detection
+            rel_block = analyze_relations(conn_obj, schemas).get("relations", {})
         else:
+            # No DB handle → fallback mode (still universal)
             heuristics = detect_heuristic_relations(schemas)
             fts_rel = detect_fts_shadow_tables(schemas)
             foreign_keys: List[Dict[str, Any]] = []
             graph = build_relation_graph(foreign_keys, heuristics, fts_rel)
-            relations_block = {
+            rel_block = {
                 "foreign_keys": foreign_keys,
                 "heuristic_relations": heuristics,
                 "fts_relations": fts_rel,
@@ -113,7 +113,55 @@ def summarize_schema(
         if opened_here and conn_obj is not None:
             conn_obj.close()
 
-    return {
-        "tables": table_info,
-        "relations": relations_block,
+    # -----------------------------------------
+    # 3) BUILD SCHEMA SUMMARY (universal for Mermaid)
+    # -----------------------------------------
+    schema_summary = {}
+    for table, cols in schemas.items():
+        schema_summary[table] = {
+            "columns": [
+                {
+                    "name": c["name"],
+                    "type": c.get("type", "string"),
+                    "pk": bool(c.get("primary_key")),
+                }
+                for c in cols
+            ],
+            "fks": [],
+        }
+
+    # Normalize FK formats
+    for fk in rel_block.get("foreign_keys", []):
+        if isinstance(fk, dict) and {
+            "from_table", "from_column", "to_table", "to_column"
+        } <= fk.keys():
+            schema_summary[fk["from_table"]]["fks"].append(
+                (fk["from_column"], fk["to_table"], fk["to_column"])
+            )
+
+    # -----------------------------------------
+    # 4) GENERATE MERMAID DIAGRAM
+    # -----------------------------------------
+    rel_block["mermaid"] = build_mermaid_from_schema(schema_summary, rel_block)
+
+    # -----------------------------------------
+    # 5) META (universal, safe)
+    # -----------------------------------------
+    meta = {
+        "tables_count": len(schemas),
+        "has_connection": conn_obj is not None,
     }
+
+    # -----------------------------------------
+    # 6) FINAL SUMMARY (compatible with save_markdown)
+    # -----------------------------------------
+    summary = {
+        "meta": meta,
+        "profiles": profiles,
+        "relations": rel_block,
+        "schema_summary": schema_summary,
+        "adjacency_graph": rel_block.get("graph", {}),
+    }
+
+    return summary
+

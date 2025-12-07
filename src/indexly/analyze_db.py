@@ -76,7 +76,7 @@ def analyze_db(args):
 
     adj_graph = build_relation_graph(
         relations.get("foreign_keys", []),
-        relations.get("heuristics", []),
+        relations.get("heuristic_relations", []),
         relations.get("fts_relations", []),
     )
 

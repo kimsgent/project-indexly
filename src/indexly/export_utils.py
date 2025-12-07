@@ -370,7 +370,7 @@ def save_markdown(summary: Dict, out_path: Path, include_diagram: bool = False) 
 
     # Mermaid ER diagram
     if include_diagram and "schema_summary" in summary:
-        mermaid = build_mermaid_from_schema(summary["schema_summary"])
+        mermaid = build_mermaid_from_schema(summary["schema_summary"], summary["relations"])
         lines.append("\n## Relationship Diagram (Mermaid)\n")
         lines.append("```mermaid")
         lines.append(mermaid)
