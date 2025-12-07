@@ -74,19 +74,19 @@ def summarize_schema(
     conn: Optional[Union[sqlite3.Connection, str, Path]] = None,
     filter_table: Optional[str] = None,
 ) -> Dict[str, Any]:
-
     # -----------------------------------------
-    # 1) PROFILES / TABLE INFO (expected by save_markdown)
+    # 1) TABLE INFO
     # -----------------------------------------
-    profiles: Dict[str, Any] = {}
+    table_info: Dict[str, Any] = {}
     for table, cols in schemas.items():
         if filter_table and table.lower() != filter_table.lower():
             continue
-
-        profiles[table] = {
-            "rows": None,            # (row estimation added later or externally)
-            "columns": cols,         # store raw column objects for flexibility
-            "non_numeric": {},       # placeholder for profiling results
+        table_info[table] = {
+            "columns": len(cols),
+            "primary_keys": [
+                c["name"] for c in cols
+                if c.get("primary_key") or c["name"].lower() == f"{table.lower()}id"
+            ],
         }
 
     # -----------------------------------------
@@ -95,15 +95,13 @@ def summarize_schema(
     conn_obj, opened_here = _open_conn_if_needed(conn)
     try:
         if conn_obj is not None:
-            # Full FK/heuristic/fts detection
-            rel_block = analyze_relations(conn_obj, schemas).get("relations", {})
+            relations_block = analyze_relations(conn_obj, schemas).get("relations", {})
         else:
-            # No DB handle → fallback mode (still universal)
             heuristics = detect_heuristic_relations(schemas)
             fts_rel = detect_fts_shadow_tables(schemas)
             foreign_keys: List[Dict[str, Any]] = []
             graph = build_relation_graph(foreign_keys, heuristics, fts_rel)
-            rel_block = {
+            relations_block = {
                 "foreign_keys": foreign_keys,
                 "heuristic_relations": heuristics,
                 "fts_relations": fts_rel,
@@ -114,54 +112,47 @@ def summarize_schema(
             conn_obj.close()
 
     # -----------------------------------------
-    # 3) BUILD SCHEMA SUMMARY (universal for Mermaid)
+    # 3) BUILD SCHEMA SUMMARY (for Mermaid & PK)
+    # Include all tables for FK normalization
     # -----------------------------------------
-    schema_summary = {}
+    schema_summary = {"tables": {}}
     for table, cols in schemas.items():
-        schema_summary[table] = {
+        pk_list = [c["name"] for c in cols if c.get("primary_key") or c["name"].lower() == f"{table.lower()}id"]
+        schema_summary["tables"][table] = {
             "columns": [
-                {
-                    "name": c["name"],
-                    "type": c.get("type", "string"),
-                    "pk": bool(c.get("primary_key")),
-                }
+                {"name": c["name"], "type": c.get("type", "string"), "pk": bool(c.get("primary_key"))}
                 for c in cols
             ],
             "fks": [],
+            "primary_keys": pk_list,
         }
 
     # Normalize FK formats
-    for fk in rel_block.get("foreign_keys", []):
-        if isinstance(fk, dict) and {
-            "from_table", "from_column", "to_table", "to_column"
-        } <= fk.keys():
-            schema_summary[fk["from_table"]]["fks"].append(
-                (fk["from_column"], fk["to_table"], fk["to_column"])
-            )
+    for fk in relations_block.get("foreign_keys", []):
+        if isinstance(fk, dict) and {"from_table","from_column","to_table","to_column"} <= fk.keys():
+            # only append if table exists
+            if fk["from_table"] in schema_summary["tables"]:
+                schema_summary["tables"][fk["from_table"]]["fks"].append(
+                    (fk["from_column"], fk["to_table"], fk["to_column"])
+                )
 
     # -----------------------------------------
-    # 4) GENERATE MERMAID DIAGRAM
+    # 4) MERMAID DIAGRAM
     # -----------------------------------------
-    rel_block["mermaid"] = build_mermaid_from_schema(schema_summary, rel_block)
+    relations_block["mermaid"] = build_mermaid_from_schema(schema_summary, relations_block)
 
     # -----------------------------------------
-    # 5) META (universal, safe)
+    # 5) RETURN SUMMARY
     # -----------------------------------------
-    meta = {
-        "tables_count": len(schemas),
-        "has_connection": conn_obj is not None,
-    }
+    # Filter table_info if needed for --table display
+    filtered_table_info = table_info
+    if filter_table:
+        filtered_table_info = {filter_table: table_info.get(filter_table)} if table_info.get(filter_table) else {}
 
-    # -----------------------------------------
-    # 6) FINAL SUMMARY (compatible with save_markdown)
-    # -----------------------------------------
-    summary = {
-        "meta": meta,
-        "profiles": profiles,
-        "relations": rel_block,
+    return {
+        "tables": filtered_table_info,
+        "relations": relations_block,
         "schema_summary": schema_summary,
-        "adjacency_graph": rel_block.get("graph", {}),
     }
 
-    return summary
 
