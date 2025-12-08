@@ -139,18 +139,32 @@ def _apply_retention():
                 pass
 
 # Helper to append a dict to NDJSON log
+# cached active file - shared
+_active_log_file = None
+_active_log_date = None
+
 def log_index_event_dict(entry: dict):
-    target = _choose_today_log_filename()
+    global _active_log_file, _active_log_date
+
+    today_str = date.today().isoformat()
+
     with _log_lock:
-        target = _rotate_if_needed(target)
-        try:
-            with open(target, "a", encoding="utf-8") as fh:
-                fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
-        except Exception:
-            fallback = os.path.join(LOG_DIR, f"{date.today().isoformat()}_index_events.ndjson")
-            with open(fallback, "a", encoding="utf-8") as fh:
-                fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        # switch file once per day
+        if _active_log_date != today_str or not _active_log_file:
+            _active_log_file = _choose_today_log_filename()
+            _active_log_date = today_str
+
+        # rotate only active file
+        rotated = _rotate_if_needed(_active_log_file)
+        if rotated != _active_log_file:
+            _active_log_file = rotated  # update active file
+
+        # append entry
+        with open(_active_log_file, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
         _apply_retention()
+
 
 def log_index_event(event_type: str, path: str):
     global _log_cache_date, _log_cache_filename

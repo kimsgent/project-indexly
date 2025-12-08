@@ -48,13 +48,10 @@ def add_common_arguments(parser):
     parser.add_argument("--filetype", nargs="+", help="Filter by filetype(s)")
     parser.add_argument("--date-from", help="Start date (YYYY-MM-DD)")
     parser.add_argument("--date-to", help="End date (YYYY-MM-DD)")
-    parser.add_argument(
-        "--path-contains", help="Only search files with paths containing this string"
-    )
+    parser.add_argument("--path-contains", help="Only search files with paths containing this string")
     parser.add_argument("--filter-tag", help="Filter by tag")
-    parser.add_argument(
-        "--context", type=int, default=150, help="Context characters around match"
-    )
+    parser.add_argument("--context", type=int, default=150, help="Context around match")
+
     parser.add_argument(
         "--no-cache",
         action="store_true",
@@ -62,15 +59,14 @@ def add_common_arguments(parser):
     )
 
     parser.add_argument(
-        "--export-format", choices=["txt", "md", "pdf", "json"], help="Export format"
+        "--no-refresh-write",
+        action="store_true",
+        help="Do not write refreshed cache back to disk",
     )
-    parser.add_argument(
-        "--pdf-lib",
-        choices=["fpdf", "reportlab"],
-        default="fpdf",
-        help="Choose PDF library for PDF export (default: fpdf)",
-    )
-    parser.add_argument("--output", help="Output file path")
+
+    parser.add_argument("--export-format", choices=["txt", "md", "pdf", "json"])
+    parser.add_argument("--pdf-lib", choices=["fpdf", "reportlab"], default="fpdf")
+    parser.add_argument("--output")
 
 
 def build_parser():
