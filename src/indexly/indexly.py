@@ -59,8 +59,7 @@ from indexly.license_utils import show_full_license, print_version, show_full_li
 from .config import DB_FILE
 from .path_utils import normalize_path
 from .db_update import check_schema, apply_migrations
-from .log_utils import _unified_log_entry, log_index_event_dict
-
+from .log_utils import _unified_log_entry, _default_logger
 # Force UTF-8 output encoding (Recommended for Python 3.7+)
 sys.stdout.reconfigure(encoding="utf-8")
 
@@ -190,22 +189,24 @@ async def scan_and_index_files(root_dir: str, mtw_extended=False):
 
     clean_cache_duplicates()
 
-    # Log each file using _unified_log_entry
+    # record start time before indexing
+    start_time = datetime.now()
+
+    # Log each indexed file (using new unified logger)
     for path in file_paths:
         entry = _unified_log_entry("FILE_INDEXED", path)
-        log_index_event_dict(entry)  # helper to write dict directly to NDJSON
+        _default_logger.log(entry)  # async-safe
 
     # Log summary
-    start_time = datetime.now()
-    duration = (datetime.now() - start_time).total_seconds()
     summary_entry = {
-        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "event": "INDEX_SUMMARY",
-        "root": root_dir,
+        "timestamp": datetime.now().isoformat(timespec="seconds"),
+        "root": str(root_dir),
         "count": len(file_paths),
-        "duration_seconds": duration,
+        "duration_seconds": (datetime.now() - start_time).total_seconds(),
     }
-    log_index_event_dict(summary_entry)
+
+    _default_logger.log(summary_entry)  # async-safe
 
     print(f"📝 Indexed {len(file_paths)} files and logged summary")
     return file_paths
@@ -264,14 +265,20 @@ def run_stats(args):
 def handle_index(args):
     ripple = Ripple("Indexing", speed="fast", rainbow=True)
     ripple.start()
+
     try:
         logging.info("Indexing started.")
-        indexed_files = asyncio.run(
-            scan_and_index_files(
+
+        async def _run():
+            # Run main indexing
+            return await scan_and_index_files(
                 root_dir=normalize_path(args.folder),
                 mtw_extended=args.mtw_extended,
             )
-        )
+
+        # Execute everything in one event loop
+        indexed_files = asyncio.run(_run())
+
         logging.info("Indexing completed.")
 
     finally:

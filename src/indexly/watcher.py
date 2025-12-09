@@ -9,7 +9,7 @@ from pathlib import Path
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from .fts_core import index_single_file_async, remove_file_from_index
-from .log_utils import log_index_event
+from .log_utils import _default_logger, _unified_log_entry
 from .filetype_utils import SUPPORTED_EXTENSIONS
 
 
@@ -21,6 +21,7 @@ def is_temp_file(path):
         or filename.startswith(".~")
         or filename.lower().endswith(".lock")
     )
+
 
 def start_watcher(paths_to_watch):
     if isinstance(paths_to_watch, str):
@@ -51,7 +52,8 @@ def start_watcher(paths_to_watch):
             if Path(event.src_path).suffix.lower() not in SUPPORTED_EXTENSIONS:
                 return
             if self._should_process(event.src_path):
-                log_index_event("CREATED", event.src_path)
+                entry = _unified_log_entry("CREATED", event.src_path)
+                asyncio.create_task(_default_logger.alog(entry))
                 print(f"🕒 Queued for indexing: {event.src_path}")
                 event_loop.call_soon_threadsafe(queue.put_nowait, event.src_path)
 
@@ -61,16 +63,17 @@ def start_watcher(paths_to_watch):
             if Path(event.src_path).suffix.lower() not in SUPPORTED_EXTENSIONS:
                 return
             if self._should_process(event.src_path):
-                log_index_event("MODIFIED", event.src_path)
+                entry = _unified_log_entry("MODIFIED", event.src_path)
+                asyncio.create_task(_default_logger.alog(entry))
                 print(f"🕒 Queued for indexing: {event.src_path}")
                 event_loop.call_soon_threadsafe(queue.put_nowait, event.src_path)
 
         def on_deleted(self, event):
             if event.is_directory:
                 return
-            log_index_event("DELETED", event.src_path)
+            entry = _unified_log_entry("DELETED", event.src_path)
+            asyncio.create_task(_default_logger.alog(entry))
             remove_file_from_index(event.src_path)
-            # if it's a ~$ Word lock file, retry indexing the base file
             if event.src_path.endswith(".docx") and "~$" in event.src_path:
                 base_name = event.src_path.replace("~$", "")
                 if os.path.exists(base_name):
