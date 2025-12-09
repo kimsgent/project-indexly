@@ -44,6 +44,8 @@ import base64
 import asyncio
 import threading
 from threading import Lock
+import logging
+
 
 # ---------------- CONFIG DEFAULTS ----------------
 # Legacy .log files (can be converted manually if needed)
@@ -66,23 +68,70 @@ def _choose_today_ndjson_filename():
 
 
 # ---------------- UNIFIED LOG ENTRY ----------------
+
 def _unified_log_entry(event_type: str, raw_path: str) -> dict:
+    cleaned = normalize_path(raw_path)
+    parts = cleaned.split("/")
+    filename = parts[-1] if parts else ""
+    extension = filename.split(".")[-1].lower() if "." in filename else ""
+
+    year = month = customer = None
+
+    # --- 1) Folder-based extraction
+    if len(parts) >= 5:
+        maybe_year = parts[-4]
+        maybe_month = parts[-3]
+        maybe_customer = parts[-2]
+
+        if (
+            maybe_year.isdigit() and len(maybe_year) == 4
+            and maybe_month.isdigit()
+        ):
+            year = maybe_year
+            month = maybe_month
+            customer = maybe_customer
+
+    # cleaned filename + cleaned path
+    cleaned_filename = filename.replace(" ", "_")
+    cleaned_path = "/".join(parts[:-1] + [cleaned_filename]) if parts else cleaned_filename
+
+    # --- 2) Filename-based fallback (YYYY / YYYYMM / YYYY-MM / YYYYMMDD)
+    if year is None or month is None:
+        import re
+        m = re.search(r"(19|20)\d{2}[^\d]?\d{2}?", cleaned_filename)
+        if m:
+            token = m.group(0)
+            digits = "".join(c for c in token if c.isdigit())
+            if len(digits) >= 4:
+                year = digits[:4]
+                if len(digits) >= 6:
+                    month = digits[4:6]
+
+    # --- 3) Filesystem timestamp fallback
+    p = Path(raw_path)
+    if (year is None or month is None) and p.exists():
+        ts = datetime.fromtimestamp(p.stat().st_mtime)
+        year = year or ts.strftime("%Y")
+        month = month or ts.strftime("%m")
+
     return {
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "event": event_type,
-        "path": str(raw_path)
+        "path": cleaned_path,
+        "filename": cleaned_filename,
+        "extension": extension,
+        "customer": customer,
+        "year": year,
+        "month": month,
     }
+
 
 
 # ---------------- LOG MANAGER ----------------
 class LogManager:
     """
-    LogManager handles NDJSON logging with:
-    - async batching
-    - compression
-    - rotation
-    - retention
-    - optional partitioning/subdirs
+    Async NDJSON logger with clean shutdown (no pending tasks,
+    no event-loop-closed errors).
     """
 
     def __init__(
@@ -107,24 +156,25 @@ class LogManager:
         self.flush_interval = flush_interval
 
         self._lock = threading.Lock()
-        self._active_files = {}  # key -> active file path
+        self._active_files = {}
+        self._stopped = False
+
+        # async components
         self._queue: asyncio.Queue | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
-        self._worker_task: asyncio.Future | None = None
-        self._stopped = False
+        self._worker_task = None
+        self._thread = None
+        self._stop_event = threading.Event()
 
         if self.async_mode:
             self._queue = asyncio.Queue()
             self._start_background_worker()
 
-    # ---------- PATH HELPERS ----------
+    # ---------------- PATH HELPERS ----------------
     def _partition_base(self, now: datetime) -> str:
-        if self.partition == "hourly":
-            return now.strftime("%Y-%m-%d_%H")
-        return now.strftime("%Y-%m-%d")
+        return now.strftime("%Y-%m-%d_%H") if self.partition == "hourly" else now.strftime("%Y-%m-%d")
 
     def _build_subdir(self, entry: dict) -> Path:
-        # simple directory-level partitioning; could extend with customer/year/month
         return self.log_dir
 
     def _choose_log_path(self, entry: dict) -> str:
@@ -140,38 +190,39 @@ class LogManager:
                 return file_path
         except OSError:
             return file_path
+
         base = Path(file_path)
         counter = 1
         while True:
-            candidate = base.with_name(f"{base.stem}_{counter}{base.suffix}")
-            if not candidate.exists():
-                return str(candidate)
+            cand = base.with_name(f"{base.stem}_{counter}{base.suffix}")
+            if not cand.exists():
+                return str(cand)
             counter += 1
 
     def _apply_retention(self):
         cutoff = datetime.now() - timedelta(days=self.retention_days)
-        for f in self.log_dir.glob("**/*.ndjson"):
+        for f in self.log_dir.glob("*.ndjson"):
             try:
-                ts = f.stem.split("_")[0]  # YYYY-MM-DD or YYYY-MM-DD_HH
+                ts = f.stem.split("_")[0]
                 f_date = datetime.strptime(ts, "%Y-%m-%d")
                 if f_date < cutoff:
                     f.unlink()
-            except Exception:
-                continue
+            except:
+                pass
 
-    # ---------- COMPRESSION ----------
+    # ---------------- COMPRESSION ----------------
     def _compress_if_needed(self, entry: dict) -> dict:
         e = entry.copy()
         for key in ("content", "snippet"):
-            val = e.get(key)
-            if isinstance(val, str) and len(val) >= self.compress_threshold:
-                compressed = zlib.compress(val.encode("utf-8"))
-                e[f"{key}_compressed"] = base64.b64encode(compressed).decode("ascii")
+            v = e.get(key)
+            if isinstance(v, str) and len(v) >= self.compress_threshold:
+                comp = zlib.compress(v.encode("utf-8"))
+                e[f"{key}_compressed"] = base64.b64encode(comp).decode("ascii")
                 e[f"{key}_compression"] = "zlib+base64"
                 del e[key]
         return e
 
-    # ---------- WRITES ----------
+    # ---------------- SYNC WRITE ----------------
     def _write_sync(self, entry: dict):
         entry = self._compress_if_needed(entry)
         target = self._choose_log_path(entry)
@@ -180,8 +231,7 @@ class LogManager:
             active = self._active_files.get(target) or target
             Path(active).parent.mkdir(parents=True, exist_ok=True)
             rotated = self._rotate_if_needed(active)
-            if rotated != active:
-                active = rotated
+            active = rotated
             self._active_files[target] = active
 
             with open(active, "a", encoding="utf-8") as fh:
@@ -189,53 +239,54 @@ class LogManager:
 
             self._apply_retention()
 
-    # ---------- ASYNC WORKER ----------
+    # ---------------- ASYNC WORKER ----------------
     def _start_background_worker(self):
-        def _run_loop(loop: asyncio.AbstractEventLoop):
+        def runner(loop):
             asyncio.set_event_loop(loop)
             loop.run_forever()
 
         self._loop = asyncio.new_event_loop()
-        t = threading.Thread(target=_run_loop, args=(self._loop,), daemon=True)
-        t.start()
+        self._thread = threading.Thread(target=runner, args=(self._loop,), daemon=True)
+        self._thread.start()
+
         self._worker_task = asyncio.run_coroutine_threadsafe(self._async_worker(), self._loop)
 
     async def _async_worker(self):
         batch = []
-        last_flush = asyncio.get_event_loop().time()
-        while True:
+        last_flush = asyncio.get_running_loop().time()
+
+        while not self._stop_event.is_set():
             try:
-                item = await asyncio.wait_for(self._queue.get(), timeout=self.flush_interval)
-                batch.append(item)
+                entry = await asyncio.wait_for(self._queue.get(), timeout=self.flush_interval)
+                batch.append(entry)
                 self._queue.task_done()
             except asyncio.TimeoutError:
                 pass
 
-            now = asyncio.get_event_loop().time()
-            if (batch and len(batch) >= self.batch_size) or (batch and now - last_flush >= self.flush_interval):
+            now = asyncio.get_running_loop().time()
+            if batch and (len(batch) >= self.batch_size or now - last_flush >= self.flush_interval):
                 self._flush_batch(batch)
                 batch.clear()
                 last_flush = now
 
-            if self._stopped:
-                if batch:
-                    self._flush_batch(batch)
-                break
+        # stop → flush remaining
+        if batch:
+            self._flush_batch(batch)
 
-    def _flush_batch(self, batch: list[dict]):
-        for entry in batch:
+    def _flush_batch(self, batch):
+        for e in batch:
             try:
-                self._write_sync(entry)
-            except Exception:
+                self._write_sync(e)
+            except:
                 pass
 
-    # ---------- PUBLIC API ----------
+    # ---------------- PUBLIC API ----------------
     def log(self, entry: dict):
         if self.async_mode and self._queue:
-            future = asyncio.run_coroutine_threadsafe(self._queue.put(entry), self._loop)
+            fut = asyncio.run_coroutine_threadsafe(self._queue.put(entry), self._loop)
             try:
-                future.result(timeout=1.0)
-            except Exception:
+                fut.result(timeout=1)
+            except:
                 self._write_sync(entry)
         else:
             self._write_sync(entry)
@@ -246,18 +297,28 @@ class LogManager:
         else:
             self._write_sync(entry)
 
+    # ---------------- CLEAN SHUTDOWN ----------------
     def stop(self, timeout: float = 2.0):
-        self._stopped = True
-        if self._worker_task and self._loop:
-            try:
-                if self._queue:
-                    asyncio.run_coroutine_threadsafe(self._queue.join(), self._loop).result(timeout=timeout)
-            except Exception:
-                pass
-            try:
-                self._loop.call_soon_threadsafe(self._loop.stop)
-            except Exception:
-                pass
+        if not self.async_mode:
+            return
+
+        self._stop_event.set()
+
+        try:
+            if self._queue:
+                asyncio.run_coroutine_threadsafe(self._queue.join(), self._loop).result(timeout=timeout)
+        except:
+            pass
+
+        try:
+            self._loop.call_soon_threadsafe(self._loop.stop)
+        except:
+            pass
+
+        try:
+            self._thread.join(timeout=timeout)
+        except:
+            pass
 
 
 # ---------------- SINGLETON LOGGER ----------------
@@ -276,7 +337,26 @@ def log_index_event(event_type: str, path: str):
 
 
 def shutdown_logger(timeout: float = 2.0):
-    _default_logger.stop(timeout=timeout)
+    global _default_logger
+    if not _default_logger:
+        return
+
+    logger = _default_logger
+    _default_logger = None
+
+    try:
+        # signal async worker to stop
+        logger._stop_event.set()
+
+        # wake the event loop so it notices the stop event
+        if logger._loop and logger._loop.is_running():
+            logger._loop.call_soon_threadsafe(lambda: None)
+
+        # wait for worker thread to finish
+        logger._thread.join(timeout=timeout)
+    except Exception as e:
+        logging.error(f"Logger shutdown error: {e}")
+
 
 
 

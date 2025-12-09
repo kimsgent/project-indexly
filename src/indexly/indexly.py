@@ -59,7 +59,7 @@ from indexly.license_utils import show_full_license, print_version, show_full_li
 from .config import DB_FILE
 from .path_utils import normalize_path
 from .db_update import check_schema, apply_migrations
-from .log_utils import _unified_log_entry, _default_logger
+from .log_utils import _unified_log_entry, _default_logger, shutdown_logger
 # Force UTF-8 output encoding (Recommended for Python 3.7+)
 sys.stdout.reconfigure(encoding="utf-8")
 
@@ -207,6 +207,7 @@ async def scan_and_index_files(root_dir: str, mtw_extended=False):
     }
 
     _default_logger.log(summary_entry)  # async-safe
+    
 
     print(f"📝 Indexed {len(file_paths)} files and logged summary")
     return file_paths
@@ -270,19 +271,17 @@ def handle_index(args):
         logging.info("Indexing started.")
 
         async def _run():
-            # Run main indexing
             return await scan_and_index_files(
                 root_dir=normalize_path(args.folder),
                 mtw_extended=args.mtw_extended,
             )
 
-        # Execute everything in one event loop
         indexed_files = asyncio.run(_run())
-
         logging.info("Indexing completed.")
 
     finally:
         ripple.stop()
+        shutdown_logger(timeout=2.0)
 
 
 def handle_search(args):
