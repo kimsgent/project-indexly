@@ -96,6 +96,12 @@ def build_parser():
         action="store_true",  # <--- must be store_true to detect flag
         help="Show version, author, short license excerpt, and project links.",
     )
+    parser.add_argument(
+        "--check-updates",
+        action="store_true",
+        help="Check if a new Indexly version is available"
+    )
+    parser.add_argument("--no-update-check", action="store_true")
 
     # ----------------------------------------
     # 🪪 --show-license flag

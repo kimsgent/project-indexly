@@ -39,6 +39,7 @@ from .extract_utils import update_file_metadata
 from .mtw_extractor import _extract_mtw
 from .rename_utils import rename_file, rename_files_in_dir, SUPPORTED_DATE_FORMATS
 from .clean_csv import clear_cleaned_data
+from .update_utils import check_for_updates
 
 from .profiles import (
     save_profile,
@@ -72,6 +73,7 @@ logging.getLogger("fontTools").setLevel(logging.ERROR)
 
 db_lock = asyncio.Lock()
 
+console = Console()
 
 async def async_index_file(full_path, mtw_extended=False):
     from .fts_core import calculate_hash
@@ -691,27 +693,59 @@ def handle_show_help(args):
 def main():
     parser = build_parser()
 
-    # Step 1: parse known args to catch top-level flags
+    # -----------------------------
+    # 1) Parse top-level arguments
+    # -----------------------------
     args, remaining_args = parser.parse_known_args()
 
-    # Handle top-level flags immediately
+    # Handle top-level flags first
     if getattr(args, "show_license", False):
-        show_full_license()  # prints full license and exits
-
-    if getattr(args, "version", False):
-        print_version()  # prints colored multi-line version
+        show_full_license()
         sys.exit(0)
 
-    # Step 2: parse all args (including subcommands)
-    args = parser.parse_args()  # now subcommand is included in args
+    if getattr(args, "version", False):
+        print_version()
+        sys.exit(0)
 
-    # Optional: handle profile logic
+    # ----------------------------------
+    # 2) Automatic update check (FIXED)
+    # ----------------------------------
+    if not getattr(args, "no_update_check", False):
+        try:
+            info = check_for_updates()
+            if info["update_available"]:
+                console.print(
+                    f"\n[bold yellow]🔔 New indexly version available: "
+                    f"{info['latest']} (you run {info['current']})[/bold yellow]\n"
+                )
+        except Exception:
+            pass
+
+    # ----------------------------------
+    # 3) Manual "--check-updates" mode
+    # ----------------------------------
+    if getattr(args, "check_updates", False):
+        info = check_for_updates()
+        console.print(f"Current: {info['current']}")
+        console.print(f"Latest:  {info['latest'] or 'unknown'}")
+        console.print("Update available: " +
+                      ("yes" if info["update_available"] else "no"))
+        sys.exit(0)
+
+    # --------------------------
+    # 4) Full argument parsing
+    # --------------------------
+    args = parser.parse_args()
+
+    # Optional: profile support
     if hasattr(args, "profile") and args.profile:
         profile_data = apply_profile(args.profile)
         if profile_data:
             args = apply_profile_to_args(args, profile_data)
 
-    # Step 3: dispatch subcommand
+    # --------------------------
+    # 5) Dispatch subcommand
+    # --------------------------
     if hasattr(args, "func"):
         args.func(args)
 
@@ -722,3 +756,4 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("\n🛑 Operation cancelled by user.")
         sys.exit(1)
+
