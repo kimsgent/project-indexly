@@ -1,5 +1,6 @@
 import json
 import time
+from datetime import datetime
 from pathlib import Path
 import requests
 from indexly import __version__
@@ -58,6 +59,7 @@ def check_for_updates() -> dict:
         latest_raw = fetch_latest_version()
         cache["latest"] = latest_raw or cache.get("latest")
         cache["last_check"] = time.time()
+        cache["last_check_human"] = datetime.now().isoformat(timespec="seconds")
         _save_cache(cache)
 
     current = _normalize(__version__)
