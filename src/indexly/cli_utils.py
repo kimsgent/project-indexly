@@ -483,7 +483,7 @@ def build_parser():
         "--datetime-formats",
         nargs="+",
         metavar="FMT",
-        help="Optional list of datetime formats to apply (e.g. '%Y-%m-%d' '%d/%m/%Y %H:%M')",
+        help="Optional list of datetime formats to apply (e.g. '%%Y-%%m-%%d' '%%d/%%m/%%Y %%H:%%M')",
     )
     analyze_file_parser.add_argument(
         "--derive-dates",

@@ -175,7 +175,11 @@ class LogManager:
         return now.strftime("%Y-%m-%d_%H") if self.partition == "hourly" else now.strftime("%Y-%m-%d")
 
     def _build_subdir(self, entry: dict) -> Path:
-        return self.log_dir
+        now = datetime.now()
+        year = now.strftime("%Y")
+        month = now.strftime("%m")
+        return self.log_dir / year / month
+
 
     def _choose_log_path(self, entry: dict) -> str:
         base = self._partition_base(datetime.now())
@@ -200,15 +204,19 @@ class LogManager:
             counter += 1
 
     def _apply_retention(self):
-        cutoff = datetime.now() - timedelta(days=self.retention_days)
-        for f in self.log_dir.glob("*.ndjson"):
+        cutoff = datetime.now().date() - timedelta(days=self.retention_days)
+
+        for f in self.log_dir.rglob("*.ndjson"):
             try:
-                ts = f.stem.split("_")[0]
-                f_date = datetime.strptime(ts, "%Y-%m-%d")
+                # Filename format: YYYY-MM-DD_index_events.ndjson
+                ts = f.stem.split("_")[0]  # → "2025-12-11"
+                f_date = datetime.strptime(ts, "%Y-%m-%d").date()
+
                 if f_date < cutoff:
                     f.unlink()
-            except:
-                pass
+            except Exception:
+                # ignore files with unexpected names
+                continue
 
     # ---------------- COMPRESSION ----------------
     def _compress_if_needed(self, entry: dict) -> dict:
