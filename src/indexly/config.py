@@ -35,5 +35,10 @@ MAX_REFRESH_ENTRIES = 50
 CACHE_REFRESH_INTERVAL = 86400  # 24h
 
 LOG_DIR = os.path.join(BASE_DIR, "log")
-LOG_MAX_BYTES = 5 * 1024 * 1024  # 5MB rotation
-LOG_RETENTION_DAYS = 7  # keep logs for 7 days
+
+MAX_LOG_SIZE = 5 * 1024 * 1024  # 5MB rotation limit
+BATCH_SIZE = 50
+FLUSH_INTERVAL = 2.0
+COMPRESS_THRESHOLD = 4096  # 4KB
+LOG_RETENTION_DAYS = 30
+LOG_PARTITION = "daily"  # 'daily' or 'hourly'

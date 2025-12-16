@@ -25,6 +25,7 @@ odfpy>=1.4.1
 rich>=13.7.1
 pandas>=2.2.0
 PyYAML>=6.0.0
+requests>=2.32.3
 
 # --- JSON / XML / YAML Analysis ---
 xmltodict>=0.13.0

@@ -24,59 +24,93 @@ import threading
 from datetime import datetime, date, timedelta
 from pathlib import Path
 from typing import Iterable, List, Dict, Any, Tuple
-from .config import LOG_DIR, LOG_MAX_BYTES, LOG_RETENTION_DAYS
+from .config import (
+    BASE_DIR,
+    LOG_DIR as CONFIG_LOG_DIR,
+    MAX_LOG_SIZE,
+    BATCH_SIZE,
+    FLUSH_INTERVAL,
+    COMPRESS_THRESHOLD,
+    LOG_RETENTION_DAYS,
+    LOG_PARTITION,
+)
 from .path_utils import normalize_path
 
-_log_lock = threading.Lock()
-_log_cache_date: str | None = None
-_log_cache_filename: str | None = None
+# -----------------------------------------
+# indexly/log_utils.py – unified async logger
+# -----------------------------------------
+import zlib
+import base64
+import asyncio
+import threading
+from threading import Lock
+import logging
 
-# Ensure log directory exists
-Path(LOG_DIR).mkdir(parents=True, exist_ok=True)
+
+# ---------------- CONFIG DEFAULTS ----------------
+# Legacy .log files (can be converted manually if needed)
+LEGACY_LOG_DIR = Path(CONFIG_LOG_DIR)  # anchored to BASE_DIR/log
+LEGACY_LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+# NDJSON log files (used by LogManager)
+NDJSON_LOG_DIR = Path(BASE_DIR) / "log"
+NDJSON_LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 
 
+_log_lock = Lock()
 
-def _unified_log_entry(event_type: str, raw_path: str):
-    cleaned = _clean_path(raw_path)
+
+# ---------------- PATH HELPERS ----------------
+def _choose_today_ndjson_filename():
+    today = date.today().isoformat()
+    return NDJSON_LOG_DIR / f"indexly-{today}.ndjson"
+
+
+# ---------------- UNIFIED LOG ENTRY ----------------
+
+def _unified_log_entry(event_type: str, raw_path: str) -> dict:
+    cleaned = normalize_path(raw_path)
     parts = cleaned.split("/")
     filename = parts[-1] if parts else ""
     extension = filename.split(".")[-1].lower() if "." in filename else ""
 
     year = month = customer = None
 
-    # --- 1) Folder-based extraction (existing logic)
+    # --- 1) Folder-based extraction
     if len(parts) >= 5:
         maybe_year = parts[-4]
         maybe_month = parts[-3]
         maybe_customer = parts[-2]
 
-        if maybe_year.isdigit() and len(maybe_year) == 4 and maybe_month.isdigit():
+        if (
+            maybe_year.isdigit() and len(maybe_year) == 4
+            and maybe_month.isdigit()
+        ):
             year = maybe_year
             month = maybe_month
             customer = maybe_customer
 
-    cleaned_filename = _clean_filename(filename)
+    # cleaned filename + cleaned path
+    cleaned_filename = filename.replace(" ", "_")
     cleaned_path = "/".join(parts[:-1] + [cleaned_filename]) if parts else cleaned_filename
 
-    # --- 2) Filename-based fallback
+    # --- 2) Filename-based fallback (YYYY / YYYYMM / YYYY-MM / YYYYMMDD)
     if year is None or month is None:
         import re
-
-        # Match YYYY or YYYYMM or YYYY-MM or YYYY_MM or YYYYMMDD
         m = re.search(r"(19|20)\d{2}[^\d]?\d{2}?", cleaned_filename)
         if m:
             token = m.group(0)
-            digits = "".join([c for c in token if c.isdigit()])
-
+            digits = "".join(c for c in token if c.isdigit())
             if len(digits) >= 4:
                 year = digits[:4]
                 if len(digits) >= 6:
                     month = digits[4:6]
 
     # --- 3) Filesystem timestamp fallback
-    if (year is None or month is None) and os.path.exists(raw_path):
-        ts = datetime.fromtimestamp(os.path.getmtime(raw_path))
+    p = Path(raw_path)
+    if (year is None or month is None) and p.exists():
+        ts = datetime.fromtimestamp(p.stat().st_mtime)
         year = year or ts.strftime("%Y")
         month = month or ts.strftime("%m")
 
@@ -92,90 +126,247 @@ def _unified_log_entry(event_type: str, raw_path: str):
     }
 
 
-def _choose_today_log_filename():
-    today = date.today().isoformat()
-    base = f"{today}_index_events"
-    base_file = os.path.join(LOG_DIR, f"{base}.ndjson")
 
-    matches = sorted(glob.glob(os.path.join(LOG_DIR, f"{base}*.ndjson")))
-    if matches:
-        if base_file in matches:
-            return base_file
-        return matches[0]
-    return base_file
+# ---------------- LOG MANAGER ----------------
+class LogManager:
+    """
+    Async NDJSON logger with clean shutdown (no pending tasks,
+    no event-loop-closed errors).
+    """
+
+    def __init__(
+        self,
+        log_dir: Path = NDJSON_LOG_DIR,
+        max_bytes: int = MAX_LOG_SIZE,
+        retention_days: int = LOG_RETENTION_DAYS,
+        partition: str = LOG_PARTITION,
+        async_mode: bool = True,
+        compress_threshold: int = COMPRESS_THRESHOLD,
+        batch_size: int = BATCH_SIZE,
+        flush_interval: float = FLUSH_INTERVAL,
+    ):
+        self.log_dir = Path(log_dir)
+        self.log_dir.mkdir(parents=True, exist_ok=True)
+        self.max_bytes = max_bytes
+        self.retention_days = retention_days
+        self.partition = partition if partition in ("daily", "hourly") else "daily"
+        self.async_mode = async_mode
+        self.compress_threshold = compress_threshold
+        self.batch_size = batch_size
+        self.flush_interval = flush_interval
+
+        self._lock = threading.Lock()
+        self._active_files = {}
+        self._stopped = False
+
+        # async components
+        self._queue: asyncio.Queue | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._worker_task = None
+        self._thread = None
+        self._stop_event = threading.Event()
+
+        if self.async_mode:
+            self._queue = asyncio.Queue()
+            self._start_background_worker()
+
+    # ---------------- PATH HELPERS ----------------
+    def _partition_base(self, now: datetime) -> str:
+        return now.strftime("%Y-%m-%d_%H") if self.partition == "hourly" else now.strftime("%Y-%m-%d")
+
+    def _build_subdir(self, entry: dict) -> Path:
+        now = datetime.now()
+        year = now.strftime("%Y")
+        month = now.strftime("%m")
+        return self.log_dir / year / month
 
 
-def _rotate_if_needed(file_path: str):
-    if not os.path.exists(file_path):
-        return file_path
+    def _choose_log_path(self, entry: dict) -> str:
+        base = self._partition_base(datetime.now())
+        subdir = self._build_subdir(entry)
+        return str(subdir / f"{base}_index_events.ndjson")
 
-    if os.path.getsize(file_path) < LOG_MAX_BYTES:
-        return file_path
-
-    base = Path(file_path)
-    counter = 1
-
-    while True:
-        rotated = base.with_name(f"{base.stem}_{counter}{base.suffix}")
-        if not rotated.exists():
-            return str(rotated)
-        counter += 1
-
-
-def _apply_retention():
-    cutoff = datetime.now() - timedelta(days=LOG_RETENTION_DAYS)
-
-    for f in Path(LOG_DIR).glob("*.ndjson"):
-        ts = f.name.split("_")[0]  # YYYY-MM-DD
+    def _rotate_if_needed(self, file_path: str) -> str:
+        if not os.path.exists(file_path):
+            return file_path
         try:
-            f_date = datetime.strptime(ts, "%Y-%m-%d")
-        except Exception:
-            continue
+            if os.path.getsize(file_path) < self.max_bytes:
+                return file_path
+        except OSError:
+            return file_path
 
-        if f_date < cutoff:
+        base = Path(file_path)
+        counter = 1
+        while True:
+            cand = base.with_name(f"{base.stem}_{counter}{base.suffix}")
+            if not cand.exists():
+                return str(cand)
+            counter += 1
+
+    def _apply_retention(self):
+        cutoff = datetime.now().date() - timedelta(days=self.retention_days)
+
+        for f in self.log_dir.rglob("*.ndjson"):
             try:
-                f.unlink()
+                # Filename format: YYYY-MM-DD_index_events.ndjson
+                ts = f.stem.split("_")[0]  # → "2025-12-11"
+                f_date = datetime.strptime(ts, "%Y-%m-%d").date()
+
+                if f_date < cutoff:
+                    f.unlink()
             except Exception:
+                # ignore files with unexpected names
+                continue
+
+    # ---------------- COMPRESSION ----------------
+    def _compress_if_needed(self, entry: dict) -> dict:
+        e = entry.copy()
+        for key in ("content", "snippet"):
+            v = e.get(key)
+            if isinstance(v, str) and len(v) >= self.compress_threshold:
+                comp = zlib.compress(v.encode("utf-8"))
+                e[f"{key}_compressed"] = base64.b64encode(comp).decode("ascii")
+                e[f"{key}_compression"] = "zlib+base64"
+                del e[key]
+        return e
+
+    # ---------------- SYNC WRITE ----------------
+    def _write_sync(self, entry: dict):
+        entry = self._compress_if_needed(entry)
+        target = self._choose_log_path(entry)
+
+        with self._lock:
+            active = self._active_files.get(target) or target
+            Path(active).parent.mkdir(parents=True, exist_ok=True)
+            rotated = self._rotate_if_needed(active)
+            active = rotated
+            self._active_files[target] = active
+
+            with open(active, "a", encoding="utf-8") as fh:
+                fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+            self._apply_retention()
+
+    # ---------------- ASYNC WORKER ----------------
+    def _start_background_worker(self):
+        def runner(loop):
+            asyncio.set_event_loop(loop)
+            loop.run_forever()
+
+        self._loop = asyncio.new_event_loop()
+        self._thread = threading.Thread(target=runner, args=(self._loop,), daemon=True)
+        self._thread.start()
+
+        self._worker_task = asyncio.run_coroutine_threadsafe(self._async_worker(), self._loop)
+
+    async def _async_worker(self):
+        batch = []
+        last_flush = asyncio.get_running_loop().time()
+
+        while not self._stop_event.is_set():
+            try:
+                entry = await asyncio.wait_for(self._queue.get(), timeout=self.flush_interval)
+                batch.append(entry)
+                self._queue.task_done()
+            except asyncio.TimeoutError:
                 pass
 
-# Helper to append a dict to NDJSON log
-def log_index_event_dict(entry: dict):
-    target = _choose_today_log_filename()
-    with _log_lock:
-        target = _rotate_if_needed(target)
+            now = asyncio.get_running_loop().time()
+            if batch and (len(batch) >= self.batch_size or now - last_flush >= self.flush_interval):
+                self._flush_batch(batch)
+                batch.clear()
+                last_flush = now
+
+        # stop → flush remaining
+        if batch:
+            self._flush_batch(batch)
+
+    def _flush_batch(self, batch):
+        for e in batch:
+            try:
+                self._write_sync(e)
+            except:
+                pass
+
+    # ---------------- PUBLIC API ----------------
+    def log(self, entry: dict):
+        if self.async_mode and self._queue:
+            fut = asyncio.run_coroutine_threadsafe(self._queue.put(entry), self._loop)
+            try:
+                fut.result(timeout=1)
+            except:
+                self._write_sync(entry)
+        else:
+            self._write_sync(entry)
+
+    async def alog(self, entry: dict):
+        if self._queue:
+            await self._queue.put(entry)
+        else:
+            self._write_sync(entry)
+
+    # ---------------- CLEAN SHUTDOWN ----------------
+    def stop(self, timeout: float = 2.0):
+        if not self.async_mode:
+            return
+
+        self._stop_event.set()
+
         try:
-            with open(target, "a", encoding="utf-8") as fh:
-                fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
-        except Exception:
-            fallback = os.path.join(LOG_DIR, f"{date.today().isoformat()}_index_events.ndjson")
-            with open(fallback, "a", encoding="utf-8") as fh:
-                fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
-        _apply_retention()
+            if self._queue:
+                asyncio.run_coroutine_threadsafe(self._queue.join(), self._loop).result(timeout=timeout)
+        except:
+            pass
+
+        try:
+            self._loop.call_soon_threadsafe(self._loop.stop)
+        except:
+            pass
+
+        try:
+            self._thread.join(timeout=timeout)
+        except:
+            pass
+
+
+# ---------------- SINGLETON LOGGER ----------------
+_default_logger = LogManager(async_mode=True)
+
+
+# ---------------- TOP-LEVEL FUNCTIONS ----------------
+def log_index_event_dict(entry: dict):
+    _default_logger.log(entry)
+
 
 def log_index_event(event_type: str, path: str):
-    global _log_cache_date, _log_cache_filename
-
     entry = _unified_log_entry(event_type, path)
     print(f"[{entry['timestamp']}] [{event_type}] {path}")
+    _default_logger.log(entry)
 
-    today_str = date.today().isoformat()
 
-    with _log_lock:
-        if _log_cache_date != today_str or not _log_cache_filename:
-            _log_cache_filename = _choose_today_log_filename()
-            _log_cache_date = today_str
+def shutdown_logger(timeout: float = 2.0):
+    global _default_logger
+    if not _default_logger:
+        return
 
-        target_file = _rotate_if_needed(_log_cache_filename)
+    logger = _default_logger
+    _default_logger = None
 
-        try:
-            with open(target_file, "a", encoding="utf-8") as fh:
-                fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
-        except Exception:
-            fallback = os.path.join(LOG_DIR, f"{today_str}_index_events.ndjson")
-            with open(fallback, "a", encoding="utf-8") as fh:
-                fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    try:
+        # signal async worker to stop
+        logger._stop_event.set()
 
-        _apply_retention()
+        # wake the event loop so it notices the stop event
+        if logger._loop and logger._loop.is_running():
+            logger._loop.call_soon_threadsafe(lambda: None)
+
+        # wait for worker thread to finish
+        logger._thread.join(timeout=timeout)
+    except Exception as e:
+        logging.error(f"Logger shutdown error: {e}")
+
+
+
 
 # -------------------------
 # Basic cleaners / utils

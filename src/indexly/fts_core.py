@@ -103,33 +103,65 @@ def remove_file_from_index(path):
 
 
 def extract_virtual_tags(path: str, text: str = None, meta: dict = None):
-    
+
     path = normalize_path(path)
     tags = []
 
+    # --- helper to clean values ---
+    def clean(v):
+        if not v:
+            return None
+        v = re.sub(r"[\u200b\u00a0\r\n\t]+", " ", v)  # hidden unicode cleanup
+        v = re.sub(r"\s+", " ", v)
+        v = v.strip(" .:-").strip()
+        return v if len(v) > 1 else None  # reject garbage like "n" / "u"
+
+    # ============================================================
+    # 1) TABLE-BASED EXTRACTION (META) — MOST RELIABLE SOURCE
+    # ============================================================
+    extracted = {}
+
     if meta:
         for k, v in meta.items():
-            if v:
-                tags.append(f"{k}: {v.strip()}")
-    elif text:
-        tag_fields = {
-            "Kunde": r"\bKunde[:\.]?\s*([\w\-]+)",
-            "Key-Nr": r"Key[-‐–]Nr[:\.]?\s*(\d{2}-\d{5})",
-            "Erstellt von": r"Erstellt von[:\.]?\s*(\w+)",
-            "Bereich": r"Bereich[:\.]?\s*([\w\s\-]+?)\s",
-            "Erstellt am": r"Erstellt am[:\.]?\s*(\d{2}\.\d{2}\.\d{2,4})",
-            "Version Kunde": r"Version Kunde[:\.]?\s*(V\s*[\d\.]+)",
-            "Patch": r"Patch[:\.]?\s*(\d+)",
-        }
+            key = clean(str(k))
+            val = clean(str(v))
+            if key and val:
+                extracted[key] = val
 
-        for label, pattern in tag_fields.items():
-            match = re.search(pattern, text, re.IGNORECASE)
-            if match:
-                tags.append(f"{label}: {match.group(1).strip()}")
+    # ============================================================
+    # 2) REGEX FALLBACK — ONLY IF META DID NOT PROVIDE FIELD
+    # ============================================================
+    fallback_patterns = {
+        "Kunde": r"\bKunde[:\.]?\s*([\w\-\s]+)",
+        "Key-Nr": r"\bKey[-‐–]?Nr[:\.]?\s*(\d{2}-\d{5})",
+        "Erstellt von": r"\bErstellt von[:\.]?\s*([\w\-]+)",
+        "Bereich": r"\bBereich[:\.]?\s*([\w\s\-]+)",
+        "Erstellt am": r"\bErstellt am[:\.]?\s*(\d{2}\.\d{2}\.\d{2,4})",
+        "Version Kunde": r"\bVersion Kunde[:\.]?\s*(V[\d\.]+)",
+        "Patch": r"\bPatch[:\.]?\s*(\d+)",
+    }
 
+    if text:
+        for label, pattern in fallback_patterns.items():
+            if label.lower() in (k.lower() for k in extracted.keys()):
+                continue  # meta already provided this key
+
+            m = re.search(pattern, text, re.IGNORECASE)
+            if m:
+                value = clean(m.group(1))
+                if value:
+                    extracted[label] = value
+
+    # ============================================================
+    # 3) FORMAT FOR STORAGE
+    # ============================================================
+    for k, v in extracted.items():
+        tags.append(f"{k}: {v}")
+
+    # Deduplicate + save
     if tags:
-        add_tags_to_file(path, list(set(tags)))  # deduplicated
-
+        add_tags_to_file(path, list(set(tags)))
 
     return tags
+
 

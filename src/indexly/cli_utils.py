@@ -1,5 +1,5 @@
 # New: CLI handlers for tagging, exporting, profiles
-
+from . import __version__, __author__, __license__
 import os
 import sys
 import json
@@ -21,9 +21,10 @@ from .path_utils import normalize_path
 from .migration_manager import run_migrations
 from .rename_utils import SUPPORTED_DATE_FORMATS
 from .clean_csv import clear_cleaned_data
-from . import __version__, __author__, __license__
+from .analyze_db import analyze_db
 from .analysis_orchestrator import analyze_file
 from .log_utils import handle_log_clean
+from .read_indexly_json import read_indexly_json
 
 
 # CLI display configurations here
@@ -47,13 +48,10 @@ def add_common_arguments(parser):
     parser.add_argument("--filetype", nargs="+", help="Filter by filetype(s)")
     parser.add_argument("--date-from", help="Start date (YYYY-MM-DD)")
     parser.add_argument("--date-to", help="End date (YYYY-MM-DD)")
-    parser.add_argument(
-        "--path-contains", help="Only search files with paths containing this string"
-    )
+    parser.add_argument("--path-contains", help="Only search files with paths containing this string")
     parser.add_argument("--filter-tag", help="Filter by tag")
-    parser.add_argument(
-        "--context", type=int, default=150, help="Context characters around match"
-    )
+    parser.add_argument("--context", type=int, default=150, help="Context around match")
+
     parser.add_argument(
         "--no-cache",
         action="store_true",
@@ -61,15 +59,14 @@ def add_common_arguments(parser):
     )
 
     parser.add_argument(
-        "--export-format", choices=["txt", "md", "pdf", "json"], help="Export format"
+        "--no-refresh-write",
+        action="store_true",
+        help="Do not write refreshed cache back to disk",
     )
-    parser.add_argument(
-        "--pdf-lib",
-        choices=["fpdf", "reportlab"],
-        default="fpdf",
-        help="Choose PDF library for PDF export (default: fpdf)",
-    )
-    parser.add_argument("--output", help="Output file path")
+
+    parser.add_argument("--export-format", choices=["txt", "md", "pdf", "json"])
+    parser.add_argument("--pdf-lib", choices=["fpdf", "reportlab"], default="fpdf")
+    parser.add_argument("--output")
 
 
 def build_parser():
@@ -99,6 +96,12 @@ def build_parser():
         action="store_true",  # <--- must be store_true to detect flag
         help="Show version, author, short license excerpt, and project links.",
     )
+    parser.add_argument(
+        "--check-updates",
+        action="store_true",
+        help="Check if a new Indexly version is available"
+    )
+    parser.add_argument("--no-update-check", action="store_true")
 
     # ----------------------------------------
     # 🪪 --show-license flag
@@ -280,7 +283,7 @@ def build_parser():
         "--datetime-formats",
         nargs="+",
         metavar="FMT",
-        help="Optional list of datetime formats to apply (e.g. '%Y-%m-%d' '%d/%m/%Y %H:%M')",
+        help="Optional list of datetime formats to apply (e.g. '%%Y-%%m-%%d' '%%d/%%m/%%Y %%H:%%M')",
     )
     csv_parser.add_argument(
         "--derive-dates",
@@ -385,14 +388,15 @@ def build_parser():
 
     analyze_file_parser = subparsers.add_parser(
         "analyze-file",
-        help="Analyze any supported file (CSV, JSON, SQLite, XML, YAML, Parquet, etc.)"
+        help="Analyze any supported file (CSV, JSON, SQLite, XML, YAML, Parquet, etc.)",
     )
 
     analyze_file_parser.add_argument("file", help="Path to the file to analyze")
 
     # Export options
     analyze_file_parser.add_argument(
-        "--export-path", help="Export analysis table to file (txt, md, xlsx, db, json, parquet)"
+        "--export-path",
+        help="Export analysis table to file (txt, md, xlsx, db, json, parquet)",
     )
     analyze_file_parser.add_argument(
         "--format",
@@ -438,11 +442,21 @@ def build_parser():
     analyze_file_parser.add_argument(
         "--timeseries", action="store_true", help="Plot timeseries if CSV"
     )
-    analyze_file_parser.add_argument("--x", type=str, help="Datetime column for timeseries X-axis")
-    analyze_file_parser.add_argument("--y", type=str, help="Comma-separated numeric columns for Y-axis")
-    analyze_file_parser.add_argument("--freq", type=str, help="Resample frequency (D,W,M,Q,Y)")
-    analyze_file_parser.add_argument("--agg", type=str, default="mean", help="Aggregation for resampling")
-    analyze_file_parser.add_argument("--rolling", type=int, help="Rolling mean window size")
+    analyze_file_parser.add_argument(
+        "--x", type=str, help="Datetime column for timeseries X-axis"
+    )
+    analyze_file_parser.add_argument(
+        "--y", type=str, help="Comma-separated numeric columns for Y-axis"
+    )
+    analyze_file_parser.add_argument(
+        "--freq", type=str, help="Resample frequency (D,W,M,Q,Y)"
+    )
+    analyze_file_parser.add_argument(
+        "--agg", type=str, default="mean", help="Aggregation for resampling"
+    )
+    analyze_file_parser.add_argument(
+        "--rolling", type=int, help="Rolling mean window size"
+    )
     analyze_file_parser.add_argument(
         "--mode",
         type=str,
@@ -450,7 +464,9 @@ def build_parser():
         choices=["interactive", "static"],
         help="Plotting backend",
     )
-    analyze_file_parser.add_argument("--output", type=str, help="Output filename for chart")
+    analyze_file_parser.add_argument(
+        "--output", type=str, help="Output filename for chart"
+    )
     analyze_file_parser.add_argument("--title", type=str, help="Plot title override")
 
     # Cleaning options
@@ -467,7 +483,7 @@ def build_parser():
         "--datetime-formats",
         nargs="+",
         metavar="FMT",
-        help="Optional list of datetime formats to apply (e.g. '%Y-%m-%d' '%d/%m/%Y %H:%M')",
+        help="Optional list of datetime formats to apply (e.g. '%%Y-%%m-%%d' '%%d/%%m/%%Y %%H:%%M')",
     )
     analyze_file_parser.add_argument(
         "--derive-dates",
@@ -507,15 +523,15 @@ def build_parser():
     analyze_file_parser.add_argument(
         "--summarize-search",
         action="store_true",
-        help="Show normalized date/period summary for search-cache JSON files."
+        help="Show normalized date/period summary for search-cache JSON files.",
     )
 
     analyze_file_parser.add_argument(
         "--sortdate-by",
         choices=["date", "year", "month", "week"],
-        help="Sort normalized search results by derived date or period."
+        help="Sort normalized search results by derived date or period.",
     )
-    
+
     # Additional display/export (from original)
     analyze_file_parser.add_argument(
         "--wide-view",
@@ -564,9 +580,112 @@ def build_parser():
         help="Specify one or more Excel sheet names to analyze (default: all sheets).",
     )
 
-
     # Default binding
     analyze_file_parser.set_defaults(func=analyze_file)
+
+    # -----------------------------------------
+    # analyze-db subcommand
+    # -----------------------------------------
+
+    analyze_db_parser = subparsers.add_parser(
+        "analyze-db",
+        help="Inspect a SQLite DB and generate analysis summary."
+    )
+
+    analyze_db_parser.add_argument(
+        "db_path",
+        help="Path to the SQLite database file."
+    )
+
+    analyze_db_parser.add_argument(
+        "--table",
+        help="Only analyze a specific table.",
+    )
+
+    analyze_db_parser.add_argument(
+        "--all-tables",
+        action="store_true",
+        help="Analyze all tables instead of auto-selecting one.",
+    )
+
+    # -------------------------
+    # Sampling controls
+    # -------------------------
+    analyze_db_parser.add_argument(
+        "--sample-size",
+        type=int,
+        default=None,
+        help="Maximum number of rows to sample per table. "
+            "If omitted, adaptive sampling is applied."
+    )
+
+    analyze_db_parser.add_argument(
+        "--all-data",
+        action="store_true",
+        help="Disable sampling and use full table data."
+    )
+
+    analyze_db_parser.add_argument(
+        "--fast",
+        action="store_true",
+        help="Fast mode: lighter profiling for huge tables."
+    )
+
+    # -------------------------
+    # Output controls
+    # -------------------------
+    analyze_db_parser.add_argument(
+        "--show-summary",
+        action="store_true",
+        help="Print analysis overview to terminal.",
+    )
+
+    analyze_db_parser.add_argument(
+        "--no-persist",
+        action="store_true",
+        help="Do not write summary file to disk.",
+    )
+    analyze_db_parser.add_argument(
+        "--parallel",
+        action="store_true",
+        help="Profile multiple tables in parallel using multiple CPU cores",
+    )
+    analyze_db_parser.add_argument(
+        "--max-workers",
+        type=int,
+        default=os.cpu_count(),
+        help="Maximum number of parallel workers (default = CPU count)",
+    )
+    analyze_db_parser.add_argument(
+        "--fast-mode",
+        action="store_true",
+        help="Enable fast profiling mode (lighter metrics, faster)",
+    )
+    analyze_db_parser.add_argument(
+        "--timeout",
+        type=int,
+        default=None,
+        help="Per-table profiling timeout in seconds",
+    )
+    analyze_db_parser.add_argument(
+        "--persist-level",
+        choices=["minimal", "full", "none"],
+        default="full",
+    )
+
+    analyze_db_parser.add_argument(
+        "--export",
+        choices=["json", "md", "html"],
+        help="Export summary in the chosen format."
+    )
+
+    analyze_db_parser.add_argument(
+        "--diagram",
+        choices=["mermaid"],
+        help="Include diagrams in MD/HTML export.",
+    )
+
+    analyze_db_parser.set_defaults(func=analyze_db)
 
 
     # Stats
@@ -626,6 +745,42 @@ def build_parser():
     )
 
     rename_file_parser.set_defaults(func=handle_rename_file)
+
+    # ----------------------- read-json -----------------------
+    read_json_parser = subparsers.add_parser(
+        "read-json",
+        help="Read and display indexly JSON file",
+        description="Read and view Indexly JSON files.",
+    )
+
+    read_json_parser.add_argument("file", help="Path to Indexly JSON file")
+
+    read_json_parser.add_argument(
+        "--treeview", action="store_true", help="Display full Rich tree view"
+    )
+
+    read_json_parser.add_argument(
+        "--preview",
+        type=int,
+        default=3,
+        help="Number of top-level keys/items to preview in compact view",
+    )
+
+    read_json_parser.add_argument(
+        "--show-summary",
+        action="store_true",
+        help="Display database-aware summary of JSON content",
+    )
+
+    # IMPORTANT: always set func → otherwise argparse prints top-level help
+    read_json_parser.set_defaults(
+        func=lambda args: read_indexly_json(
+            file_path=args.file,
+            treeview=args.treeview,
+            preview=args.preview,
+            show_summary=args.show_summary,
+        )
+    )
 
     # Migrate
     migrate_parser = subparsers.add_parser(
@@ -712,7 +867,7 @@ def build_parser():
     )
 
     update_db.set_defaults(func=lambda args: handle_update_db(args))
-    
+
     # ------------------------------------------------------------
     # LOG-CLEAN SUBCOMMAND
     # ------------------------------------------------------------

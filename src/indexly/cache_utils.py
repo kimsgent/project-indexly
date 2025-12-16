@@ -45,7 +45,7 @@ def calculate_query_hash(term: str, args: dict) -> str:
     return hashlib.sha256(key_data.encode("utf-8")).hexdigest()
 
 
-def load_cache(cache_file="search_cache.json"):
+def load_cache(cache_file: str = CACHE_FILE):
     try:
         with open(cache_file, "r", encoding="utf-8") as f:
             return json.load(f, object_pairs_hook=OrderedDict)
@@ -53,11 +53,11 @@ def load_cache(cache_file="search_cache.json"):
         print(f"⚠️ Cache load failed: {e}. Resetting cache.")
         return OrderedDict()
 
-def save_cache(cache, cache_file="search_cache.json"):
+def save_cache(cache, cache_file: str = CACHE_FILE):
     tmp_file = cache_file + ".tmp"
     with open(tmp_file, "w", encoding="utf-8") as f:
         json.dump(cache, f, indent=2, ensure_ascii=False)
-    os.replace(tmp_file, cache_file)  # Atomic replace
+    os.replace(tmp_file, cache_file)
 
 
 def cache_key(args):
