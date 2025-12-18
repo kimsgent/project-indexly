@@ -9,7 +9,7 @@ pagination.paperSize = 20
 
 [params]
   copyright = "Project Indexly"
-  author = "Project Indexly"
+  author = "N.K. Franklin-Gent"
   footer = true
   description = "Indexly is a fast, offline local file search tool for Word, PDF, and text files. Built for researchers, academics, and power users."
   keywords = "local file search, Word document indexing, offline file search, academic research tool, SQLite FTS5, regex file search"
