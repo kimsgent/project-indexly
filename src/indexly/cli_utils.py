@@ -388,200 +388,172 @@ def build_parser():
 
     analyze_file_parser = subparsers.add_parser(
         "analyze-file",
-        help="Analyze any supported file (CSV, JSON, SQLite, XML, YAML, Parquet, etc.)",
+        help="Analyze any supported file (CSV, JSON, SQLite, XML, YAML, Parquet, Excel etc.)",
     )
 
     analyze_file_parser.add_argument("file", help="Path to the file to analyze")
 
-    # Export options
-    analyze_file_parser.add_argument(
-        "--export-path",
-        help="Export analysis table to file (txt, md, xlsx, db, json, parquet)",
-    )
-    analyze_file_parser.add_argument(
+    # -------------------------------
+    # Common options (all file types)
+    # -------------------------------
+    common = analyze_file_parser.add_argument_group("Common options")
+
+    common.add_argument("--export-path", help="Export analysis table to file")
+    common.add_argument(
         "--format",
         choices=["txt", "md", "db", "csv", "json", "parquet", "excel"],
         default="txt",
         help="Output format for exported data",
     )
-    analyze_file_parser.add_argument(
-        "--compress-export",
+    common.add_argument("--no-persist", action="store_true", help="Disable database writes")
+    common.add_argument(
+        "--show-summary",
         action="store_true",
-        help="Compress JSON export output into .json.gz format",
+        help="Show extended summary of columns and derived fields",
+    )
+    common.add_argument(
+        "--wide-view",
+        action="store_true",
+        help="Display full column width for wide screens",
+    )
+    common.add_argument(
+        "--export-summary",
+        action="store_true",
+        help="Export dataset summary preview as Markdown (.md)",
+    )
+    common.add_argument(
+        "--use-saved",
+        action="store_true",
+        help="Use previously saved analysis data",
     )
 
-    # Visualization options
-    analyze_file_parser.add_argument(
-        "--show-chart",
-        choices=["ascii", "static", "interactive"],
-        help="Visualize CSV data in terminal, static image, or interactive HTML",
-    )
-    analyze_file_parser.add_argument(
-        "--chart-type",
-        choices=["bar", "line", "box", "hist", "scatter", "pie"],
-        default="None",
-        help="Chart type for visualizing numeric data",
-    )
-    analyze_file_parser.add_argument(
-        "--export-plot", help="Export chart to file (png, svg, html)"
-    )
-    analyze_file_parser.add_argument("--x-col", help="X-axis column for scatter plot")
-    analyze_file_parser.add_argument("--y-col", help="Y-axis column for scatter plot")
-    analyze_file_parser.add_argument(
-        "--transform",
-        choices=["none", "log", "sqrt", "softplus", "exp-log", "auto"],
-        default="none",
-        help="Apply data transformation before visualization",
-    )
-    analyze_file_parser.add_argument(
-        "--bar-scale",
-        choices=["sqrt", "log"],
-        default="sqrt",
-        help="Scaling method for ASCII histogram bars",
-    )
-    analyze_file_parser.add_argument(
-        "--timeseries", action="store_true", help="Plot timeseries if CSV"
-    )
-    analyze_file_parser.add_argument(
-        "--x", type=str, help="Datetime column for timeseries X-axis"
-    )
-    analyze_file_parser.add_argument(
-        "--y", type=str, help="Comma-separated numeric columns for Y-axis"
-    )
-    analyze_file_parser.add_argument(
-        "--freq", type=str, help="Resample frequency (D,W,M,Q,Y)"
-    )
-    analyze_file_parser.add_argument(
-        "--agg", type=str, default="mean", help="Aggregation for resampling"
-    )
-    analyze_file_parser.add_argument(
-        "--rolling", type=int, help="Rolling mean window size"
-    )
-    analyze_file_parser.add_argument(
-        "--mode",
-        type=str,
-        default="interactive",
-        choices=["interactive", "static"],
-        help="Plotting backend",
-    )
-    analyze_file_parser.add_argument(
-        "--output", type=str, help="Output filename for chart"
-    )
-    analyze_file_parser.add_argument("--title", type=str, help="Plot title override")
+    # -------------------------------
+    # CSV-specific options
+    # -------------------------------
+    csv_opts = analyze_file_parser.add_argument_group("CSV-specific options")
 
-    # Cleaning options
-    analyze_file_parser.add_argument(
-        "--auto-clean", action="store_true", help="Run robust cleaning pipeline"
+    csv_opts.add_argument(
+        "--auto-clean", action="store_true", help="Run robust CSV cleaning pipeline"
     )
-    analyze_file_parser.add_argument(
+    csv_opts.add_argument(
         "--fill-method",
         choices=["mean", "median"],
         default="mean",
-        help="Method to fill missing numeric values",
+        help="Fill missing numeric values",
     )
-    analyze_file_parser.add_argument(
+    csv_opts.add_argument(
         "--datetime-formats",
         nargs="+",
         metavar="FMT",
-        help="Optional list of datetime formats to apply (e.g. '%%Y-%%m-%%d' '%%d/%%m/%%Y %%H:%%M')",
+        help="Explicit datetime formats for CSV parsing",
     )
-    analyze_file_parser.add_argument(
+    csv_opts.add_argument(
         "--derive-dates",
         choices=["all", "minimal", "none"],
         default="all",
-        help="How many derived datetime features to generate",
+        help="Generate derived datetime features",
     )
-    analyze_file_parser.add_argument(
+    csv_opts.add_argument(
         "--date-threshold",
         type=float,
         default=0.3,
         help="Minimum valid ratio for date detection",
     )
-    analyze_file_parser.add_argument(
-        "--use-cleaned",
-        action="store_true",
-        help="Use previously saved cleaned dataset",
-    )
-    analyze_file_parser.add_argument(
-        "--no-persist",
-        action="store_true",
-        help="Disable saving cleaned or analyzed results to the database",
-    )
-    analyze_file_parser.add_argument(
+    csv_opts.add_argument(
         "--normalize",
         action="store_true",
-        help="Normalize numeric columns after cleaning",
+        help="Normalize numeric columns",
     )
-    analyze_file_parser.add_argument(
-        "--remove-outliers", action="store_true", help="Remove outliers after cleaning"
-    )
-    analyze_file_parser.add_argument(
-        "--show-summary",
+    csv_opts.add_argument(
+        "--remove-outliers",
         action="store_true",
-        help="Show extended summary of columns and derived fields",
+        help="Remove numeric outliers",
     )
-    analyze_file_parser.add_argument(
+    csv_opts.add_argument(
+        "--use-cleaned",
+        action="store_true",
+        help="Use previously cleaned CSV dataset",
+    )
+
+    # -------------------------------
+    # CSV visualization options
+    # -------------------------------
+    csv_viz = analyze_file_parser.add_argument_group("CSV visualization options")
+
+    csv_viz.add_argument(
+        "--show-chart",
+        choices=["ascii", "static", "interactive"],
+        help="Visualize CSV data",
+    )
+    csv_viz.add_argument(
+        "--chart-type",
+        choices=["bar", "line", "box", "hist", "scatter", "pie"],
+        default="None",
+        help="Chart type",
+    )
+    csv_viz.add_argument("--x-col", help="X-axis column")
+    csv_viz.add_argument("--y-col", help="Y-axis column")
+    csv_viz.add_argument("--export-plot", help="Export chart to file")
+    csv_viz.add_argument(
+        "--timeseries",
+        action="store_true",
+        help="Plot CSV timeseries data",
+    )
+    csv_viz.add_argument("--x", help="Datetime column for timeseries X-axis")
+    csv_viz.add_argument("--y", help="Comma-separated numeric Y columns")
+    csv_viz.add_argument("--freq", help="Resample frequency (D,W,M,Q,Y)")
+    csv_viz.add_argument("--agg", default="mean", help="Aggregation method")
+    csv_viz.add_argument("--rolling", type=int, help="Rolling window size")
+
+    # -------------------------------
+    # JSON-specific options
+    # -------------------------------
+    json_opts = analyze_file_parser.add_argument_group("JSON-specific options")
+
+    json_opts.add_argument(
         "--summarize-search",
         action="store_true",
-        help="Show normalized date/period summary for search-cache JSON files.",
+        help="Summarize normalized search-cache JSON files",
     )
-
-    analyze_file_parser.add_argument(
+    json_opts.add_argument(
         "--sortdate-by",
         choices=["date", "year", "month", "week"],
-        help="Sort normalized search results by derived date or period.",
+        help="Sort normalized JSON search results",
     )
 
-    # Additional display/export (from original)
-    analyze_file_parser.add_argument(
-        "--wide-view",
-        action="store_true",
-        help="Display full column width for wide screens (show all columns)",
-    )
-    analyze_file_parser.add_argument(
-        "--export-summary",
-        action="store_true",
-        help="Export dataset summary preview as Markdown (.md) file",
-    )
+    # -------------------------------
+    # XML options
+    # -------------------------------
+    xml_opts = analyze_file_parser.add_argument_group("XML-specific options")
 
-    # Database persistence
-    analyze_file_parser.add_argument(
-        "--use-saved",
-        action="store_true",
-        help="Use previously saved data (CSV or JSON)",
-    )
-    analyze_file_parser.add_argument(
-        "--db-mode",
-        choices=["replace", "append"],
-        default="replace",
-        help="Mode for writing to database when exporting to .db (default: replace)",
-    )
-
-    # XML invoice options
-    analyze_file_parser.add_argument(
+    xml_opts.add_argument(
         "--invoice",
         action="store_true",
-        help="Treat XML file as e-invoice for detailed summary",
+        help="Treat XML file as e-invoice",
     )
-    analyze_file_parser.add_argument(
+    xml_opts.add_argument(
         "--invoice-export",
-        type=str,
-        help="Export e-invoice summary to Markdown file (active only with --invoice)",
+        help="Export e-invoice summary to Markdown",
     )
-    analyze_file_parser.add_argument(
+    xml_opts.add_argument(
         "--treeview",
         action="store_true",
-        help="Display XML tree view instead of invoice summary",
-    )
-    # EXCEL options
-    analyze_file_parser.add_argument(
-        "--sheet-name",
-        nargs="+",
-        help="Specify one or more Excel sheet names to analyze (default: all sheets).",
+        help="Display XML tree view",
     )
 
-    # Default binding
+    # -------------------------------
+    # Excel options
+    # -------------------------------
+    excel_opts = analyze_file_parser.add_argument_group("Excel-specific options")
+
+    excel_opts.add_argument(
+        "--sheet-name",
+        nargs="+",
+        help="Excel sheet names to analyze (default: all)",
+    )
+
     analyze_file_parser.set_defaults(func=analyze_file)
+
 
     # -----------------------------------------
     # analyze-db subcommand
