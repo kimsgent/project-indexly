@@ -5,6 +5,7 @@ import sys
 import json
 import time
 import argparse
+import getpass
 from pathlib import Path
 from importlib import resources
 from datetime import datetime
@@ -25,6 +26,7 @@ from .analyze_db import analyze_db
 from .analysis_orchestrator import analyze_file
 from .log_utils import handle_log_clean
 from .read_indexly_json import read_indexly_json
+from indexly.organize.cli_wrapper import handle_organize, handle_lister
 
 
 # CLI display configurations here
@@ -48,7 +50,9 @@ def add_common_arguments(parser):
     parser.add_argument("--filetype", nargs="+", help="Filter by filetype(s)")
     parser.add_argument("--date-from", help="Start date (YYYY-MM-DD)")
     parser.add_argument("--date-to", help="End date (YYYY-MM-DD)")
-    parser.add_argument("--path-contains", help="Only search files with paths containing this string")
+    parser.add_argument(
+        "--path-contains", help="Only search files with paths containing this string"
+    )
     parser.add_argument("--filter-tag", help="Filter by tag")
     parser.add_argument("--context", type=int, default=150, help="Context around match")
 
@@ -99,7 +103,7 @@ def build_parser():
     parser.add_argument(
         "--check-updates",
         action="store_true",
-        help="Check if a new Indexly version is available"
+        help="Check if a new Indexly version is available",
     )
     parser.add_argument("--no-update-check", action="store_true")
 
@@ -405,7 +409,9 @@ def build_parser():
         default="txt",
         help="Output format for exported data",
     )
-    common.add_argument("--no-persist", action="store_true", help="Disable database writes")
+    common.add_argument(
+        "--no-persist", action="store_true", help="Disable database writes"
+    )
     common.add_argument(
         "--show-summary",
         action="store_true",
@@ -554,20 +560,15 @@ def build_parser():
 
     analyze_file_parser.set_defaults(func=analyze_file)
 
-
     # -----------------------------------------
     # analyze-db subcommand
     # -----------------------------------------
 
     analyze_db_parser = subparsers.add_parser(
-        "analyze-db",
-        help="Inspect a SQLite DB and generate analysis summary."
+        "analyze-db", help="Inspect a SQLite DB and generate analysis summary."
     )
 
-    analyze_db_parser.add_argument(
-        "db_path",
-        help="Path to the SQLite database file."
-    )
+    analyze_db_parser.add_argument("db_path", help="Path to the SQLite database file.")
 
     analyze_db_parser.add_argument(
         "--table",
@@ -588,19 +589,19 @@ def build_parser():
         type=int,
         default=None,
         help="Maximum number of rows to sample per table. "
-            "If omitted, adaptive sampling is applied."
+        "If omitted, adaptive sampling is applied.",
     )
 
     analyze_db_parser.add_argument(
         "--all-data",
         action="store_true",
-        help="Disable sampling and use full table data."
+        help="Disable sampling and use full table data.",
     )
 
     analyze_db_parser.add_argument(
         "--fast",
         action="store_true",
-        help="Fast mode: lighter profiling for huge tables."
+        help="Fast mode: lighter profiling for huge tables.",
     )
 
     # -------------------------
@@ -648,7 +649,7 @@ def build_parser():
     analyze_db_parser.add_argument(
         "--export",
         choices=["json", "md", "html"],
-        help="Export summary in the chosen format."
+        help="Export summary in the chosen format.",
     )
 
     analyze_db_parser.add_argument(
@@ -659,6 +660,88 @@ def build_parser():
 
     analyze_db_parser.set_defaults(func=analyze_db)
 
+    # ------------------------
+    # Organizer CLI
+    # ------------------------
+    organize_parser = subparsers.add_parser(
+        "organize", help="Organize files in a folder by date or name"
+    )
+    organize_parser.add_argument("folder", help="Folder to organize")
+    organize_parser.add_argument(
+        "--sort-by",
+        choices=["date", "name", "extension"],
+        default="date",
+        help="Sort files by date, name or extension",
+    )
+    organize_parser.add_argument(
+        "--backup",
+        help="Optional backup folder to store copies of organized files",
+    )
+    organize_parser.add_argument(
+        "--log-dir",
+        help="Optional folder to store organizer logs (default: <folder>/log)",
+    )
+    organize_parser.add_argument(
+        "--executed-by",
+        default=getpass.getuser(),
+        help="Name of the user performing the organization (default: system user)",
+    )
+    organize_parser.add_argument(
+        "--lister",
+        action="store_true",
+        help="List files from the organizer log AFTER organizing (uses generated JSON log)",
+    )
+
+    organize_parser.add_argument("--lister-ext", help="Filter listed files by extension")
+    organize_parser.add_argument("--lister-category", help="Filter listed files by category")
+    organize_parser.add_argument("--lister-date", help="Filter listed files by used date")
+    organize_parser.add_argument(
+        "--lister-duplicates",
+        action="store_true",
+        help="Show only duplicate files",
+    )
+
+    organize_parser.set_defaults(
+        func=lambda args: handle_organize(
+            folder=args.folder,
+            sort_by=args.sort_by,
+            backup=args.backup,
+            log_dir=args.log_dir,
+            executed_by=args.executed_by,
+            lister=args.lister,
+            lister_ext=args.lister_ext,
+            lister_category=args.lister_category,
+            lister_date=args.lister_date,
+            lister_duplicates=args.lister_duplicates,
+        )
+    )
+
+    # Lister
+    lister_parser = subparsers.add_parser(
+        "lister",
+        help="List files from organizer log",
+    )
+    lister_parser.add_argument(
+        "source",
+        help="Organizer JSON log file or directory containing logs",
+    )
+    lister_parser.add_argument("--ext", help="Filter by extension (e.g. .json)")
+    lister_parser.add_argument("--category", help="Filter by category")
+    lister_parser.add_argument("--date", help="Filter by YYYY-MM")
+    lister_parser.add_argument(
+        "--duplicates",
+        action="store_true",
+        help="Show only duplicate files",
+    )
+    lister_parser.set_defaults(
+        func=lambda args: handle_lister(
+            args.source,
+            ext=args.ext,
+            category=args.category,
+            date=args.date,
+            duplicates=args.duplicates,
+        )
+    )
 
     # Stats
     stats_parser = subparsers.add_parser("stats", help="Show database statistics")
