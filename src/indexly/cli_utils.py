@@ -27,6 +27,8 @@ from .analysis_orchestrator import analyze_file
 from .log_utils import handle_log_clean
 from .read_indexly_json import read_indexly_json
 from indexly.organize.cli_wrapper import handle_organize, handle_lister
+from indexly.backup.cli import handle_backup
+from indexly.backup.cli_restore import handle_restore
 
 
 # CLI display configurations here
@@ -836,6 +838,68 @@ def build_parser():
             show_summary=args.show_summary,
         )
     )
+
+    # Backup
+    backup_parser = subparsers.add_parser(
+        "backup",
+        help="Create a full or incremental backup",
+    )
+
+    backup_parser.add_argument(
+        "folder",
+        nargs="?",
+        help="Folder to back up (required for manual backup or --init-auto)",
+    )
+
+    backup_parser.add_argument(
+        "--incremental",
+        action="store_true",
+        help="Create an incremental backup (default: full backup)",
+    )
+    backup_parser.add_argument(
+        "--manual",
+        action="store_true",
+        help="Force interactive/manual mode even if auto-backup is enabled"
+    )
+
+    backup_parser.add_argument(
+        "--encrypt",
+        metavar="PASSWORD",
+        help="Encrypt backup with password",
+    )
+
+    # 🔹 Automatic backup controls
+    backup_parser.add_argument(
+        "--init-auto",
+        action="store_true",
+        help="Initialize automatic backup structure (opt-in)",
+    )
+
+    backup_parser.add_argument(
+        "--disable-auto",
+        action="store_true",
+        help="Disable automatic backups and delete all backup data",
+    )
+
+    backup_parser.add_argument(
+        "--confirm",
+        action="store_true",
+        help="Confirm destructive actions (required for --disable-auto)",
+    )
+
+    backup_parser.set_defaults(
+        func=lambda args: handle_backup(args)
+    )
+    
+    # Restore Backup
+    restore_parser = subparsers.add_parser(
+        "restore",
+        help="Restore a backup",
+    )
+    restore_parser.add_argument("backup", help="Backup name")
+    restore_parser.add_argument("--target", help="Restore destination")
+    restore_parser.add_argument("--decrypt", help="Decryption password")
+    restore_parser.set_defaults(func=handle_restore)
 
     # Migrate
     migrate_parser = subparsers.add_parser(
