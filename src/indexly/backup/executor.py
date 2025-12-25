@@ -20,6 +20,12 @@ from .extract import extract_archive
 from .rotation import apply_rotation
 
 # ------------------------------
+# Policy
+# ------------------------------
+FULL_BACKUP_INTERVAL_DAYS = 7
+SECONDS_IN_DAY = 86400
+
+# ------------------------------
 # Logger setup
 # ------------------------------
 def setup_logger(log_dir: Path, ts: str) -> logging.Logger:
@@ -28,173 +34,172 @@ def setup_logger(log_dir: Path, ts: str) -> logging.Logger:
     logger = logging.getLogger(f"indexly_backup_{ts}")
     logger.setLevel(logging.INFO)
     fh = logging.FileHandler(log_file, encoding="utf-8")
-    fh.setLevel(logging.INFO)
-    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-    fh.setFormatter(formatter)
+    fh.setFormatter(logging.Formatter(
+        "%(asctime)s - %(levelname)s - %(message)s"
+    ))
     logger.addHandler(fh)
     return logger
 
 # ------------------------------
 # Backup executor
 # ------------------------------
-def run_backup(source: Path, incremental: bool = False, password: str | None = None, automatic: bool = False):
-    """
-    Run a full or incremental backup of `source`.
-    Tracks added, modified, and deleted files, with optional encryption.
-    Maintains logs in the backup root/logs folder.
-    """
+def run_backup(
+    source: Path,
+    incremental: bool = False,
+    password: str | None = None,
+    automatic: bool = False,
+):
     dirs = ensure_backup_dirs()
     ts = time.strftime("%Y-%m-%d_%H%M%S")
-    kind = "incremental" if incremental else "full"
-
-    logger = setup_logger(dirs["logs"], ts)
-    logger.info(f"Starting {kind} backup for {source}")
-    print(f"📦 Preparing {kind} backup...")
-
     registry_path = dirs["root"] / "index.json"
     registry = load_registry(registry_path)
+    last_full = get_last_full_backup(registry)
+    logger = setup_logger(dirs["logs"], ts)
+
+    # ------------------------------
+    # Decide FULL vs INCREMENTAL
+    # ------------------------------
+    if automatic:
+        # Auto mode ignores passed incremental flag
+        if not last_full:
+            kind = "full"
+            print("📦 No full backup found. Creating full backup...")
+            logger.info("Auto mode: no full backup exists → creating full backup")
+        else:
+            age_days = (time.time() - last_full["registered_at"]) / SECONDS_IN_DAY
+            if age_days >= FULL_BACKUP_INTERVAL_DAYS:
+                kind = "full"
+                print(f"📦 Last full backup is {age_days:.1f} days old. Creating new full backup...")
+                logger.info(f"Auto mode: last full backup is {age_days:.1f} days old → creating new full backup")
+            else:
+                kind = "incremental"
+                print(f"📦 Last full backup is {age_days:.1f} days old. Running incremental backup...")
+                logger.info(f"Auto mode: last full backup is {age_days:.1f} days old → running incremental backup")
+    else:
+        # Manual mode → respect flags
+        kind = "full" if not incremental else "incremental"
+
+    incremental = (kind == "incremental")
+    print(f"📦 Preparing {kind} backup...")
+    logger.info(f"Starting {kind} backup for {source}")
 
     previous_manifest: dict = {}
     chain: list[dict] = []
 
     # ------------------------------
-    # Handle incremental backup logic
+    # Incremental base resolution
     # ------------------------------
     if incremental:
-        last_full = get_last_full_backup(registry)
         if not last_full:
-            logger.warning("No previous full backup, creating full backup first.")
-            print("⚠️ No previous full backup found. Creating full backup first.")
-            run_backup(source, incremental=False, password=password, automatic=automatic)
-            registry = load_registry(registry_path)
-            last_full = get_last_full_backup(registry)
+            print("❌ No full backup found.")
+            print("ℹ️ Incremental backups require an existing full backup.")
+            print(f'➡️ Run this first:\n   indexly backup "{source}"')
+            return
 
-        last_inc = next((b for b in reversed(registry.get("backups", [])) if b["type"] == "incremental"), None)
-        last_to_load = last_inc or last_full
-        last_archive = Path(last_to_load["archive"])
+        last_inc = next(
+            (b for b in reversed(registry.get("backups", [])) if b["type"] == "incremental"),
+            None,
+        )
+        base = last_inc or last_full
+        base_archive = Path(base["archive"])
 
-        if not last_archive.exists():
-            logger.warning(f"Previous incremental missing: {last_archive}, creating full backup instead.")
-            print(f"⚠️ Previous incremental missing. Creating full backup instead.")
-            run_backup(source, incremental=False, password=password, automatic=automatic)
-            registry = load_registry(registry_path)
-            last_full = get_last_full_backup(registry)
-            last_to_load = last_full
-            last_archive = Path(last_full["archive"])
-
-        # Load previous manifest
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
-            if last_to_load.get("encrypted"):
+            if base.get("encrypted"):
                 if not password:
-                    raise RuntimeError("Encrypted backup requires --decrypt password")
-                last_archive = decrypt_archive(last_archive, password, tmp)
-            extract_archive(last_archive, tmp)
+                    raise RuntimeError("Encrypted backup requires password")
+                base_archive = decrypt_archive(base_archive, password, tmp)
+
+            extract_archive(base_archive, tmp)
             previous_manifest = load_manifest(tmp / "manifest.json")
 
-        chain.append({"archive": str(last_archive), "manifest": "manifest.json"})
+        chain.append({"archive": str(base_archive), "manifest": "manifest.json"})
 
     # ------------------------------
-    # Full backup fallback
-    # ------------------------------
-    else:
-        previous_manifest = {}
-        chain = []
-
-    # ------------------------------
-    # Prepare work directories
+    # Prepare work dirs
     # ------------------------------
     work_dir = dirs[kind] / f"{kind}_{ts}"
     data_dir = work_dir / "data"
-    work_dir.mkdir(parents=True)
-    data_dir.mkdir()
-
-    # Build current manifest
+    data_dir.mkdir(parents=True)
     current_manifest = build_manifest(source)
 
     # ------------------------------
-    # Compute diff for incremental backups
+    # Diff (incremental)
     # ------------------------------
     if incremental:
-        diff, deleted_files = diff_manifests(previous_manifest, current_manifest, include_deletions=True)
-        if not diff and not deleted_files:
-            logger.info("No changes detected. Skipping incremental backup.")
-            print("ℹ️ No changes detected since last backup. Skipping incremental backup.")
+        diff, deleted = diff_manifests(previous_manifest, current_manifest, include_deletions=True)
+        if not diff and not deleted:
+            logger.info("No changes detected → skipping incremental")
+            print("ℹ️ No changes detected since last backup. Skipping.")
             shutil.rmtree(work_dir)
             return
     else:
         diff = current_manifest
-        deleted_files = []
+        deleted = []
 
     # ------------------------------
-    # Copy new/modified files
+    # Copy files
     # ------------------------------
-    for rel in diff:
+    for rel, meta in diff.items():
         src = source / rel
         dst = data_dir / rel
         dst.parent.mkdir(parents=True, exist_ok=True)
+
+        action = "Added" if rel not in previous_manifest else "Modified"
         shutil.copy2(src, dst)
-        logger.info(f"Copied {rel}")
-        print(f"   ⬆️  Copied {rel}")
+        print(f"   ⬆️  {action}: {rel}")
+        logger.info(f"{action} file copied: {rel}")
 
-    # Include deletions in manifest (Borg style)
-    merged_manifest = previous_manifest.copy()
-    merged_manifest.update(diff)
-    for rel in deleted_files:
-        merged_manifest[rel] = {"deleted": True}
-        logger.info(f"File deleted: {rel}")
-        print(f"   ⚠️  Deleted {rel}")
+    merged = previous_manifest.copy()
+    merged.update(diff)
 
-    # ------------------------------
-    # Save manifest & metadata
-    # ------------------------------
-    manifest_path = work_dir / "manifest.json"
-    metadata_path = work_dir / "metadata.json"
-    manifest_path.write_text(json.dumps(merged_manifest, indent=2))
-    metadata_path.write_text(json.dumps(serialize_metadata(source), indent=2))
-    logger.info("Manifest and metadata saved.")
+    for rel in deleted:
+        merged[rel] = {"deleted": True}
+        print(f"   ⚠️  Deleted: {rel}")
+        logger.info(f"Deleted file: {rel}")
+
 
     # ------------------------------
-    # Compress backup
+    # Save manifest + metadata
+    # ------------------------------
+    (work_dir / "manifest.json").write_text(json.dumps(merged, indent=2))
+    (work_dir / "metadata.json").write_text(json.dumps(serialize_metadata(source), indent=2))
+
+    # ------------------------------
+    # Compress
     # ------------------------------
     compression = detect_best_compression()
     archive = work_dir.with_suffix(f".tar.{compression}")
-    logger.info("Compressing backup")
     print("🗜 Compressing backup...")
+    logger.info("Compressing archive")
     if compression == "zst":
         create_tar_zst(work_dir, archive)
     else:
         create_tar_gz(work_dir, archive)
 
     # ------------------------------
-    # Encrypt if requested
+    # Encrypt
     # ------------------------------
     encrypted = False
     if password:
-        logger.info("Encrypting backup")
         print("🔐 Encrypting backup...")
+        logger.info("Encrypting archive")
         encrypt_file(archive, password)
         encrypted = True
 
     # ------------------------------
-    # Create checksum
+    # Checksum
     # ------------------------------
-    checksum_file = archive.with_suffix(".sha256")
     h = hashlib.sha256()
     with archive.open("rb") as f:
         for chunk in iter(lambda: f.read(8192), b""):
             h.update(chunk)
-    checksum_file.write_text(h.hexdigest())
-    logger.info(f"Checksum created: {checksum_file.name}")
-
-    # ------------------------------
-    # Clean work directory
-    # ------------------------------
+    checksum = archive.with_suffix(".sha256")
+    checksum.write_text(h.hexdigest())
     shutil.rmtree(work_dir)
-    chain.append({"archive": str(archive), "manifest": "manifest.json"})
 
     # ------------------------------
-    # Register backup
+    # Register
     # ------------------------------
     register_backup(
         registry_path,
@@ -207,13 +212,10 @@ def run_backup(source: Path, incremental: bool = False, password: str | None = N
         },
     )
 
-    # ------------------------------
-    # Automatic rotation
-    # ------------------------------
     if automatic:
-        logger.info("Applying rotation policy")
         apply_rotation(registry_path)
 
     logger.info(f"Backup completed: {archive}")
     print(f"✅ Backup completed: {archive}")
-    print(f"📝 Checksum created: {checksum_file}")
+    print(f"📝 Checksum created: {checksum}")
+

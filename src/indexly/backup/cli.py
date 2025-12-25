@@ -71,14 +71,14 @@ def handle_backup(args):
     # Automatic run safety (scheduler)
     # ------------------------------
     if automatic and not interactive:
-        # Never ask questions, ever
         run_backup(
             folder,
-            incremental=args.incremental,
+            incremental=False,  # AUTO decides internally
             password=args.encrypt,
             automatic=True,
         )
         return
+
 
     # ------------------------------
     # Fully manual execution
@@ -87,5 +87,5 @@ def handle_backup(args):
         folder,
         incremental=args.incremental,
         password=args.encrypt,
-        automatic=False,
+        automatic=automatic,
     )

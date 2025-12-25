@@ -1,3 +1,7 @@
+# ------------------------------
+# src/indexly/backup/auto.py
+# ------------------------------
+
 from pathlib import Path
 import shutil
 import json
@@ -38,7 +42,7 @@ def init_auto_backup(source: Path):
     print("✅ Automatic backup initialized")
     print(f"📁 Backup source: {source}")
     print("ℹ️ Use your OS scheduler to run:")
-    print(f"   indexly backup \"{source}\" --incremental")
+    print(f"   indexly backup \"{source}\"")
 
 
 def disable_auto_backup(source: Path | None = None, confirm: bool = False):

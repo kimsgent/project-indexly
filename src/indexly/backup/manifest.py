@@ -17,11 +17,12 @@ def build_manifest(root_path: Path) -> dict:
         if p.is_file():
             rel = p.relative_to(root_path).as_posix()
             manifest[rel] = {
-                "hash": _hash_file(p),
+                "checksum": _hash_file(p),
                 "size": p.stat().st_size,
                 "mtime": p.stat().st_mtime,
             }
     return manifest
+
 
 def load_manifest(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))

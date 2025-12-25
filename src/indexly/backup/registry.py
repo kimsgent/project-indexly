@@ -14,10 +14,11 @@ def register_backup(registry_path: Path, entry: dict):
     registry_path.write_text(json.dumps(reg, indent=2), encoding="utf-8")
 
 def get_last_full_backup(registry: dict) -> dict | None:
-    for b in reversed(registry.get("backups", [])):
-        if b["type"] == "full":
-            return b
-    return None
+    full_backups = [b for b in registry.get("backups", []) if b["type"] == "full"]
+    if not full_backups:
+        return None
+    return max(full_backups, key=lambda b: b.get("registered_at", 0))
+
 
 def save_registry(path: Path, registry: dict):
     path.write_text(
