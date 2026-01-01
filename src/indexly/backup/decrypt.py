@@ -1,3 +1,7 @@
+# ------------------------------
+# src/indexly/backup/decrypt.py
+# ------------------------------
+
 from pathlib import Path
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC

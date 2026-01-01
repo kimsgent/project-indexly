@@ -1,3 +1,7 @@
+# ------------------------------
+# src/indexly/backup/registry.py
+# ------------------------------
+
 from pathlib import Path
 import json
 import time

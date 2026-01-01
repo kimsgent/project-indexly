@@ -15,7 +15,7 @@ from .metadata import serialize_metadata
 from .compress import detect_best_compression, create_tar_zst, create_tar_gz
 from .registry import register_backup, load_registry, get_last_full_backup
 from .encrypt import encrypt_file
-from .decrypt import decrypt_archive
+from .decrypt import decrypt_archive, is_encrypted
 from .extract import extract_archive
 from .rotation import apply_rotation
 
@@ -105,10 +105,16 @@ def run_backup(
 
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
-            if base.get("encrypted"):
+            # Auto-detect encryption by suffix
+            if is_encrypted(base_archive):
                 if not password:
-                    raise RuntimeError("Encrypted backup requires password")
+                    from getpass import getpass
+                    password = getpass(f"🔐 Enter password for encrypted backup '{base_archive.name}': ")
+                print(f"🔓 Decrypting archive {base_archive.name}...")
+                logger.info(f"Decrypting archive {base_archive.name}")
                 base_archive = decrypt_archive(base_archive, password, tmp)
+                print(f"✅ Decryption successful → {base_archive.name}")
+                logger.info(f"Decrypted archive: {base_archive.name}")
 
             extract_archive(base_archive, tmp)
             previous_manifest = load_manifest(tmp / "manifest.json")
@@ -178,14 +184,21 @@ def run_backup(
         create_tar_gz(work_dir, archive)
 
     # ------------------------------
-    # Encrypt
+    # Encrypt (.enc)
     # ------------------------------
     encrypted = False
     if password:
         print("🔐 Encrypting backup...")
         logger.info("Encrypting archive")
+        # Encrypt in place
         encrypt_file(archive, password)
+        # Rename archive with .enc suffix
+        enc_archive = archive.with_suffix(archive.suffix + ".enc")
+        archive.rename(enc_archive)
+        archive = enc_archive
         encrypted = True
+        print(f"✅ Encryption completed → {archive.name}")
+        logger.info(f"Encrypted backup: {archive.name}")
 
     # ------------------------------
     # Checksum
