@@ -668,9 +668,20 @@ def handle_show_help(args):
     categories = {
         "Indexing & Watching": ["index", "watch"],
         "Searching": ["search", "regex"],
+        "Organizing & Listing": ["organize", "lister"],
         "Tagging & File Operations": ["tag", "rename-file"],
-        "Analysis & Extraction": ["analyze-csv", "extract-mtw"],
+        "Analysis & Data Inspection": [
+            "analyze-csv",
+            "analyze-json",
+            "analyze-file",
+            "analyze-db",
+            "clear-data",
+            "read-json",
+        ],
+        "Analysis & Extraction": ["extract-mtw"],
+        "Backup, Restore & Compare": ["backup", "restore", "compare"],
         "Database Maintenance": ["update-db", "migrate", "stats"],
+        "Logs & Maintenance": ["log-clean"],
         "Meta": ["show-help"],
     }
 
@@ -681,17 +692,23 @@ def handle_show_help(args):
             subparsers.update(action.choices)
 
     def extract_summary(subparser):
-        """Return the first meaningful line of help text."""
         help_lines = subparser.format_help().splitlines()
+
+        skip_prefixes = (
+            "usage:",
+            "positional arguments:",
+            "options:",
+            "optional arguments:",
+        )
+
         for line in help_lines:
             line = line.strip()
-            if (
-                not line
-                or line.lower().startswith("usage:")
-                or line.lower().startswith("options")
-            ):
+            if not line:
+                continue
+            if any(line.lower().startswith(p) for p in skip_prefixes):
                 continue
             return line
+
         return "(no description)"
 
     # Markdown output
