@@ -29,6 +29,7 @@ from .read_indexly_json import read_indexly_json
 from indexly.organize.cli_wrapper import handle_organize, handle_lister
 from indexly.backup.cli import handle_backup
 from indexly.backup.cli_restore import handle_restore
+from indexly.compare.cli_compare import handle_compare
 
 
 # CLI display configurations here
@@ -694,9 +695,15 @@ def build_parser():
         help="List files from the organizer log AFTER organizing (uses generated JSON log)",
     )
 
-    organize_parser.add_argument("--lister-ext", help="Filter listed files by extension")
-    organize_parser.add_argument("--lister-category", help="Filter listed files by category")
-    organize_parser.add_argument("--lister-date", help="Filter listed files by used date")
+    organize_parser.add_argument(
+        "--lister-ext", help="Filter listed files by extension"
+    )
+    organize_parser.add_argument(
+        "--lister-category", help="Filter listed files by category"
+    )
+    organize_parser.add_argument(
+        "--lister-date", help="Filter listed files by used date"
+    )
     organize_parser.add_argument(
         "--lister-duplicates",
         action="store_true",
@@ -859,7 +866,7 @@ def build_parser():
     backup_parser.add_argument(
         "--manual",
         action="store_true",
-        help="Force interactive/manual mode even if auto-backup is enabled"
+        help="Force interactive/manual mode even if auto-backup is enabled",
     )
 
     backup_parser.add_argument(
@@ -887,10 +894,8 @@ def build_parser():
         help="Confirm destructive actions (required for --disable-auto)",
     )
 
-    backup_parser.set_defaults(
-        func=lambda args: handle_backup(args)
-    )
-    
+    backup_parser.set_defaults(func=lambda args: handle_backup(args))
+
     # Restore Backup
     restore_parser = subparsers.add_parser(
         "restore",
@@ -900,6 +905,67 @@ def build_parser():
     restore_parser.add_argument("--target", help="Restore destination")
     restore_parser.add_argument("--decrypt", help="Decryption password")
     restore_parser.set_defaults(func=handle_restore)
+
+    # Compare
+    compare_parser = subparsers.add_parser(
+        "compare",
+        help="Compare files or folders",
+    )
+
+    compare_parser.add_argument(
+        "path_a",
+        help="First file or folder (or target for auto-compare)",
+    )
+
+    compare_parser.add_argument(
+        "path_b",
+        nargs="?",
+        help="Second file or folder (optional for auto-compare)",
+    )
+
+    compare_parser.add_argument(
+        "--threshold",
+        type=float,
+        help="Similarity tolerance (0.0 exact, 1.0 very loose)",
+    )
+
+    compare_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output result as JSON",
+    )
+
+    compare_parser.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress normal output (exit code only)",
+    )
+
+    compare_parser.add_argument(
+        "--extensions",
+        type=str,
+        help="Comma-separated list of file extensions to compare (e.g., .py,.md,.json)",
+    )
+    compare_parser.add_argument(
+        "--context",
+        type=int,
+        default=3,
+        help="Number of context lines to show around changes (default: 3)",
+    )
+
+    compare_parser.add_argument(
+        "--ignore",
+        type=str,
+        help="Comma-separated list of file/folder names to ignore (e.g., .git,__pycache__)",
+    )
+
+    compare_parser.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Show summary only (folders)",
+    )
+
+    compare_parser.set_defaults(func=lambda args: handle_compare(args))
 
     # Migrate
     migrate_parser = subparsers.add_parser(
