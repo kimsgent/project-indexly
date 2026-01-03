@@ -11,11 +11,24 @@ def load_registry(path: Path) -> dict:
         return {"backups": []}
     return json.loads(path.read_text(encoding="utf-8"))
 
+def _assert_persistent_path(path: str):
+    p = Path(path)
+    if any(part.lower().startswith("tmp") for part in p.parts):
+        raise ValueError(f"Refusing to register temporary path: {path}")
+
 def register_backup(registry_path: Path, entry: dict):
+    _assert_persistent_path(entry["archive"])
+
+    for link in entry.get("chain", []):
+        _assert_persistent_path(link["archive"])
+
     reg = load_registry(registry_path)
     entry["registered_at"] = time.time()
     reg["backups"].append(entry)
-    registry_path.write_text(json.dumps(reg, indent=2), encoding="utf-8")
+    registry_path.write_text(
+        json.dumps(reg, indent=2),
+        encoding="utf-8"
+    )
 
 def get_last_full_backup(registry: dict) -> dict | None:
     full_backups = [b for b in registry.get("backups", []) if b["type"] == "full"]

@@ -17,13 +17,14 @@ from .registry import register_backup, load_registry, get_last_full_backup
 from .encrypt import encrypt_file
 from .decrypt import decrypt_archive, is_encrypted
 from .extract import extract_archive
-from .rotation import apply_rotation
+from .rotation import apply_rotation, rotate_logs
 
 # ------------------------------
 # Policy
 # ------------------------------
 FULL_BACKUP_INTERVAL_DAYS = 7
 SECONDS_IN_DAY = 86400
+
 
 # ------------------------------
 # Logger setup
@@ -34,11 +35,10 @@ def setup_logger(log_dir: Path, ts: str) -> logging.Logger:
     logger = logging.getLogger(f"indexly_backup_{ts}")
     logger.setLevel(logging.INFO)
     fh = logging.FileHandler(log_file, encoding="utf-8")
-    fh.setFormatter(logging.Formatter(
-        "%(asctime)s - %(levelname)s - %(message)s"
-    ))
+    fh.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
     logger.addHandler(fh)
     return logger
+
 
 # ------------------------------
 # Backup executor
@@ -56,6 +56,7 @@ def run_backup(
     last_full = get_last_full_backup(registry)
     logger = setup_logger(dirs["logs"], ts)
 
+    rotate_logs(dirs["logs"], max_age_days=30)
     # ------------------------------
     # Decide FULL vs INCREMENTAL
     # ------------------------------
@@ -69,17 +70,25 @@ def run_backup(
             age_days = (time.time() - last_full["registered_at"]) / SECONDS_IN_DAY
             if age_days >= FULL_BACKUP_INTERVAL_DAYS:
                 kind = "full"
-                print(f"📦 Last full backup is {age_days:.1f} days old. Creating new full backup...")
-                logger.info(f"Auto mode: last full backup is {age_days:.1f} days old → creating new full backup")
+                print(
+                    f"📦 Last full backup is {age_days:.1f} days old. Creating new full backup..."
+                )
+                logger.info(
+                    f"Auto mode: last full backup is {age_days:.1f} days old → creating new full backup"
+                )
             else:
                 kind = "incremental"
-                print(f"📦 Last full backup is {age_days:.1f} days old. Running incremental backup...")
-                logger.info(f"Auto mode: last full backup is {age_days:.1f} days old → running incremental backup")
+                print(
+                    f"📦 Last full backup is {age_days:.1f} days old. Running incremental backup..."
+                )
+                logger.info(
+                    f"Auto mode: last full backup is {age_days:.1f} days old → running incremental backup"
+                )
     else:
         # Manual mode → respect flags
         kind = "full" if not incremental else "incremental"
 
-    incremental = (kind == "incremental")
+    incremental = kind == "incremental"
     print(f"📦 Preparing {kind} backup...")
     logger.info(f"Starting {kind} backup for {source}")
 
@@ -97,29 +106,44 @@ def run_backup(
             return
 
         last_inc = next(
-            (b for b in reversed(registry.get("backups", [])) if b["type"] == "incremental"),
+            (
+                b
+                for b in reversed(registry.get("backups", []))
+                if b["type"] == "incremental"
+            ),
             None,
         )
         base = last_inc or last_full
-        base_archive = Path(base["archive"])
+
+        # Canonical path from registry (MUST NEVER CHANGE)
+        registry_archive = Path(base["archive"])
+
+        # Working copy (may become temp path)
+        base_archive = registry_archive
 
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
-            # Auto-detect encryption by suffix
+
             if is_encrypted(base_archive):
                 if not password:
                     from getpass import getpass
-                    password = getpass(f"🔐 Enter password for encrypted backup '{base_archive.name}': ")
-                print(f"🔓 Decrypting archive {base_archive.name}...")
-                logger.info(f"Decrypting archive {base_archive.name}")
+
+                    password = getpass(
+                        f"🔐 Enter password for encrypted backup '{base_archive.name}': "
+                    )
+
                 base_archive = decrypt_archive(base_archive, password, tmp)
-                print(f"✅ Decryption successful → {base_archive.name}")
-                logger.info(f"Decrypted archive: {base_archive.name}")
 
             extract_archive(base_archive, tmp)
             previous_manifest = load_manifest(tmp / "manifest.json")
 
-        chain.append({"archive": str(base_archive), "manifest": "manifest.json"})
+        # ✅ ONLY persist canonical archive
+        chain.append(
+            {
+                "archive": str(registry_archive),
+                "manifest": "manifest.json",
+            }
+        )
 
     # ------------------------------
     # Prepare work dirs
@@ -133,7 +157,9 @@ def run_backup(
     # Diff (incremental)
     # ------------------------------
     if incremental:
-        diff, deleted = diff_manifests(previous_manifest, current_manifest, include_deletions=True)
+        diff, deleted = diff_manifests(
+            previous_manifest, current_manifest, include_deletions=True
+        )
         if not diff and not deleted:
             logger.info("No changes detected → skipping incremental")
             print("ℹ️ No changes detected since last backup. Skipping.")
@@ -156,11 +182,12 @@ def run_backup(
         print(f"   ⬆️  {action}: {rel}")
         logger.info(f"{action} file copied: {rel}")
 
-    merged = previous_manifest.copy()
-    merged.update(diff)
+    # ------------------------------
+    # Snapshot-style manifest
+    # ------------------------------
+    merged = current_manifest
 
     for rel in deleted:
-        merged[rel] = {"deleted": True}
         print(f"   ⚠️  Deleted: {rel}")
         logger.info(f"Deleted file: {rel}")
 
@@ -169,7 +196,9 @@ def run_backup(
     # Save manifest + metadata
     # ------------------------------
     (work_dir / "manifest.json").write_text(json.dumps(merged, indent=2))
-    (work_dir / "metadata.json").write_text(json.dumps(serialize_metadata(source), indent=2))
+    (work_dir / "metadata.json").write_text(
+        json.dumps(serialize_metadata(source), indent=2)
+    )
 
     # ------------------------------
     # Compress
@@ -231,4 +260,3 @@ def run_backup(
     logger.info(f"Backup completed: {archive}")
     print(f"✅ Backup completed: {archive}")
     print(f"📝 Checksum created: {checksum}")
-

@@ -3,6 +3,7 @@ import json
 from rich.console import Console
 from rich.table import Table
 from rich.text import Text
+from rich.panel import Panel
 
 console = Console()
 
@@ -36,7 +37,18 @@ def list_organizer_log(
     duplicates_only: bool = False,
 ):
     """List files from organizer JSON log"""
-    log_path = _discover_log(source)
+    try:
+        log_path = _discover_log(source)
+    except FileNotFoundError:
+        console.print(
+            Panel(
+                "No organizer logs found.\n\n"
+                "Run `indexly organize` first to generate logs.",
+                title="📂 Organizer",
+                style="yellow",
+            )
+        )
+        return 0
 
     with open(log_path, "r", encoding="utf-8") as f:
         data = json.load(f)
@@ -84,8 +96,6 @@ def list_organizer_log(
         count += 1
 
     console.print(table)
-    console.print(
-        f"\n📊 Listed {count} / {len(files)} files from {log_path.name}"
-    )
+    console.print(f"\n📊 Listed {count} / {len(files)} files from {log_path.name}")
 
     return count

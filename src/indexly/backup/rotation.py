@@ -1,4 +1,6 @@
 from pathlib import Path
+import time
+
 from .registry import load_registry, save_registry
 
 MAX_FULL_BACKUPS = 3
@@ -36,3 +38,23 @@ def apply_rotation(registry_path: Path):
 
     save_registry(registry_path, registry)
     print(f"♻️ Rotation applied (kept {MAX_FULL_BACKUPS} full backups)")
+
+
+# ------------------------------
+# Log rotation for backup & restore
+# ------------------------------
+def rotate_logs(log_dir: Path, max_age_days: int = 30):
+    """
+    Delete backup_*.log and restore_*.log older than `max_age_days`.
+    """
+    now = time.time()
+    max_age_sec = max_age_days * 86400  # days → seconds
+
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    for log_file in log_dir.glob("*.log"):
+        try:
+            if now - log_file.stat().st_mtime > max_age_sec:
+                log_file.unlink()
+        except Exception:
+            pass
