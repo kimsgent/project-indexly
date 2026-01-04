@@ -19,6 +19,7 @@ from .decrypt import decrypt_archive, is_encrypted
 from .extract import extract_archive
 from .rotation import apply_rotation, rotate_logs
 
+
 # ------------------------------
 # Policy
 # ------------------------------
@@ -27,16 +28,52 @@ SECONDS_IN_DAY = 86400
 
 
 # ------------------------------
+# Silence root logger TERMINAL output
+# ------------------------------
+_root_logger = logging.getLogger()
+_root_logger.handlers.clear()
+_root_logger.addHandler(logging.NullHandler())
+
+
+# ------------------------------
+# JSON formatter
+# ------------------------------
+class JSONFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        return json.dumps(
+            {
+                "ts": self.formatTime(record, "%Y-%m-%dT%H:%M:%S"),
+                "level": record.levelname,
+                "logger": record.name,
+                "message": record.getMessage(),
+                "module": record.module,
+                "func": record.funcName,
+                "line": record.lineno,
+            },
+            ensure_ascii=False,
+        )
+
+
+# ------------------------------
 # Logger setup
 # ------------------------------
 def setup_logger(log_dir: Path, ts: str) -> logging.Logger:
     log_dir.mkdir(parents=True, exist_ok=True)
-    log_file = log_dir / f"backup_{ts}.log"
+    log_file = log_dir / f"backup_{ts}.json"
+
     logger = logging.getLogger(f"indexly_backup_{ts}")
     logger.setLevel(logging.INFO)
+
+    if logger.hasHandlers():
+        logger.handlers.clear()
+
     fh = logging.FileHandler(log_file, encoding="utf-8")
-    fh.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
+    fh.setLevel(logging.INFO)
+    fh.setFormatter(JSONFormatter())
+
     logger.addHandler(fh)
+    logger.propagate = False
+
     return logger
 
 
@@ -57,11 +94,11 @@ def run_backup(
     logger = setup_logger(dirs["logs"], ts)
 
     rotate_logs(dirs["logs"], max_age_days=30)
+
     # ------------------------------
     # Decide FULL vs INCREMENTAL
     # ------------------------------
     if automatic:
-        # Auto mode ignores passed incremental flag
         if not last_full:
             kind = "full"
             print("📦 No full backup found. Creating full backup...")
@@ -85,7 +122,6 @@ def run_backup(
                     f"Auto mode: last full backup is {age_days:.1f} days old → running incremental backup"
                 )
     else:
-        # Manual mode → respect flags
         kind = "full" if not incremental else "incremental"
 
     incremental = kind == "incremental"
@@ -115,10 +151,7 @@ def run_backup(
         )
         base = last_inc or last_full
 
-        # Canonical path from registry (MUST NEVER CHANGE)
         registry_archive = Path(base["archive"])
-
-        # Working copy (may become temp path)
         base_archive = registry_archive
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -137,7 +170,6 @@ def run_backup(
             extract_archive(base_archive, tmp)
             previous_manifest = load_manifest(tmp / "manifest.json")
 
-        # ✅ ONLY persist canonical archive
         chain.append(
             {
                 "archive": str(registry_archive),
@@ -183,19 +215,16 @@ def run_backup(
         logger.info(f"{action} file copied: {rel}")
 
     # ------------------------------
-    # Snapshot-style manifest
+    # Deleted files
     # ------------------------------
-    merged = current_manifest
-
     for rel in deleted:
         print(f"   ⚠️  Deleted: {rel}")
         logger.info(f"Deleted file: {rel}")
 
-
     # ------------------------------
     # Save manifest + metadata
     # ------------------------------
-    (work_dir / "manifest.json").write_text(json.dumps(merged, indent=2))
+    (work_dir / "manifest.json").write_text(json.dumps(current_manifest, indent=2))
     (work_dir / "metadata.json").write_text(
         json.dumps(serialize_metadata(source), indent=2)
     )
@@ -207,21 +236,20 @@ def run_backup(
     archive = work_dir.with_suffix(f".tar.{compression}")
     print("🗜 Compressing backup...")
     logger.info("Compressing archive")
+
     if compression == "zst":
         create_tar_zst(work_dir, archive)
     else:
         create_tar_gz(work_dir, archive)
 
     # ------------------------------
-    # Encrypt (.enc)
+    # Encrypt
     # ------------------------------
     encrypted = False
     if password:
         print("🔐 Encrypting backup...")
         logger.info("Encrypting archive")
-        # Encrypt in place
         encrypt_file(archive, password)
-        # Rename archive with .enc suffix
         enc_archive = archive.with_suffix(archive.suffix + ".enc")
         archive.rename(enc_archive)
         archive = enc_archive
@@ -236,6 +264,7 @@ def run_backup(
     with archive.open("rb") as f:
         for chunk in iter(lambda: f.read(8192), b""):
             h.update(chunk)
+
     checksum = archive.with_suffix(".sha256")
     checksum.write_text(h.hexdigest())
     shutil.rmtree(work_dir)
