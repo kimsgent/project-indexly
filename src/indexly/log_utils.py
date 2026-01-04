@@ -622,7 +622,9 @@ def process_logs(
     src = Path(source)
     log_files = _collect_log_files(src)
     if not log_files:
-        raise FileNotFoundError("No index log files found in source.")
+        print(f"[indexly] ⚠️  No index log files found in source: {src}")
+        return {"written": [], "summary": None}
+
 
     per_log_meta = []
     all_entries: List[Dict[str, Any]] = []
