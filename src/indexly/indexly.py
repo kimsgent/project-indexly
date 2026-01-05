@@ -61,6 +61,7 @@ from .config import DB_FILE
 from .path_utils import normalize_path
 from .db_update import check_schema, apply_migrations
 from .log_utils import _unified_log_entry, _default_logger, shutdown_logger
+
 # Force UTF-8 output encoding (Recommended for Python 3.7+)
 sys.stdout.reconfigure(encoding="utf-8")
 
@@ -75,7 +76,13 @@ db_lock = asyncio.Lock()
 
 console = Console()
 
-async def async_index_file(full_path, mtw_extended=False):
+
+async def async_index_file(
+    full_path,
+    mtw_extended=False,
+    force_ocr=False,
+    disable_ocr=False,
+):
     from .fts_core import calculate_hash
     from .semantic_index import (
         semantic_filter_text,
@@ -103,7 +110,9 @@ async def async_index_file(full_path, mtw_extended=False):
             content = clean_content
 
             file_hash = calculate_hash(content)
-            last_modified = datetime.fromtimestamp(os.path.getmtime(full_path)).isoformat()
+            last_modified = datetime.fromtimestamp(
+                os.path.getmtime(full_path)
+            ).isoformat()
 
             async with db_lock:
                 conn = connect_db()
@@ -116,19 +125,28 @@ async def async_index_file(full_path, mtw_extended=False):
                     """,
                     (full_path, content, clean_content, last_modified, file_hash),
                 )
-                update_file_metadata(full_path, {}, conn=conn)  # empty metadata for MTW stub
+                update_file_metadata(
+                    full_path, {}, conn=conn
+                )  # empty metadata for MTW stub
                 conn.commit()
                 conn.close()
 
             await asyncio.gather(
-                *(async_index_file(f, mtw_extended=mtw_extended) for f in extracted_files)
+                *(
+                    async_index_file(f, mtw_extended=mtw_extended)
+                    for f in extracted_files
+                )
             )
             return
 
         # -------------------------
         # Extract raw content & metadata
         # -------------------------
-        raw_text, metadata = extract_text_from_file(full_path)
+        raw_text, metadata = extract_text_from_file(
+            full_path,
+            force_ocr=force_ocr,
+            disable_ocr=disable_ocr,
+        )
         if not raw_text and not metadata:
             print(f"⏭️ Skipped (no content or metadata): {full_path}")
             return
@@ -162,7 +180,9 @@ async def async_index_file(full_path, mtw_extended=False):
         # -------------------------
         content = f"{clean_content} {semantic_meta_text}".strip()
         if not content:
-            content = semantic_filter_text(f"File {os.path.basename(full_path)}", tier="human")
+            content = semantic_filter_text(
+                f"File {os.path.basename(full_path)}", tier="human"
+            )
 
         file_hash = calculate_hash(content)
         last_modified = datetime.fromtimestamp(os.path.getmtime(full_path)).isoformat()
@@ -193,11 +213,26 @@ async def async_index_file(full_path, mtw_extended=False):
             )
 
             # Merge structured + JSON metadata using same connection
-            full_metadata = {k: metadata.get(k) for k in [
-                "title", "author", "subject", "created", "last_modified",
-                "last_modified_by", "camera", "image_created", "dimensions",
-                "format", "gps"
-            ]} if metadata else {}
+            full_metadata = (
+                {
+                    k: metadata.get(k)
+                    for k in [
+                        "title",
+                        "author",
+                        "subject",
+                        "created",
+                        "last_modified",
+                        "last_modified_by",
+                        "camera",
+                        "image_created",
+                        "dimensions",
+                        "format",
+                        "gps",
+                    ]
+                }
+                if metadata
+                else {}
+            )
 
             # fallback from technical_meta_data
             for key, value in technical_meta_data.items():
@@ -212,13 +247,13 @@ async def async_index_file(full_path, mtw_extended=False):
 
         print(f"✅ Indexed: {full_path}")
 
-
     except Exception as e:
         print(f"⚠️ Failed to index {full_path}: {e}")
 
 
-
-async def scan_and_index_files(root_dir: str, mtw_extended=False):
+async def scan_and_index_files(
+    root_dir: str, mtw_extended=False, force_ocr=False, disable_ocr=False
+):
     from .cache_utils import clean_cache_duplicates
 
     root_dir = normalize_path(root_dir)
@@ -250,9 +285,15 @@ async def scan_and_index_files(root_dir: str, mtw_extended=False):
     # Index files asynchronously
     # -------------------------
     tasks = [
-        async_index_file(path, mtw_extended=mtw_extended)
+        async_index_file(
+            path,
+            mtw_extended=mtw_extended,
+            force_ocr=force_ocr,
+            disable_ocr=disable_ocr,
+        )
         for path in file_paths
     ]
+
     await asyncio.gather(*tasks)
 
     # -------------------------
@@ -280,7 +321,6 @@ async def scan_and_index_files(root_dir: str, mtw_extended=False):
     print(f"📝 Indexed {len(file_paths)} files and logged summary")
 
     return file_paths
-
 
 
 def run_stats(args):
@@ -343,6 +383,8 @@ def handle_index(args):
             return await scan_and_index_files(
                 root_dir=normalize_path(args.folder),
                 mtw_extended=args.mtw_extended,
+                force_ocr=args.ocr,
+                disable_ocr=args.no_ocr,
             )
 
         indexed_files = asyncio.run(_run())
@@ -812,8 +854,9 @@ def main():
         info = check_for_updates()
         console.print(f"Current: {info['current']}")
         console.print(f"Latest:  {info['latest'] or 'unknown'}")
-        console.print("Update available: " +
-                      ("yes" if info["update_available"] else "no"))
+        console.print(
+            "Update available: " + ("yes" if info["update_available"] else "no")
+        )
         sys.exit(0)
 
     # --------------------------
@@ -840,4 +883,3 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("\n🛑 Operation cancelled by user.")
         sys.exit(1)
-

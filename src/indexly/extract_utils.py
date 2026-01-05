@@ -205,6 +205,7 @@ def _extract_xlsx(path):
 def _extract_pdf(
     path: str,
     ocr_enabled: bool = True,
+    force_ocr: bool = False,
     lang: str = "deu+eng",
     max_ocr_pages: int = 3,
     max_pages_for_ocr: int = 10,
@@ -214,7 +215,7 @@ def _extract_pdf(
     Extract text and metadata from a PDF file.
     Uses PyMuPDF (fitz) for text, with OCR fallback for image-only pages.
     Stores extracted metadata into file_metadata table.
-    Smart OCR: skips OCR for large PDFs automatically or when --no-ocr is used.
+    Smart OCR: skips OCR for large PDFs automatically or when --no-ocr / --ocr is not used.
     """
     text_pages = []
     metadata = {
@@ -252,29 +253,46 @@ def _extract_pdf(
             )
 
             # --- Smart OCR decision ---
-            if ocr_enabled and (
+            if not ocr_enabled:
+                ocr_enabled = False
+
+            elif not force_ocr and (
                 num_pages > max_pages_for_ocr or file_size_mb > max_size_for_ocr_mb
             ):
                 ocr_enabled = False
                 print(
-                    f"⚡ Skipping OCR for large PDF ({num_pages} pages, {file_size_mb:.1f} MB): {path}"
+                    f"⚡ Skipping OCR for large PDF "
+                    f"({num_pages} pages, {file_size_mb:.1f} MB): {path}"
                 )
+
+            elif force_ocr:
+                print(f"🔍 OCR enabled (forced): {path}")
 
             # --- Page text + OCR fallback ---
             for page_num, page in enumerate(doc, start=1):
                 page_text = page.get_text("text")
+
                 if page_text.strip():
                     text_pages.append(page_text)
-                elif ocr_enabled and page_num <= max_ocr_pages:
-                    try:
-                        pix = page.get_pixmap(dpi=200)
-                        with Image.open(io.BytesIO(pix.tobytes("png"))) as img:
-                            ocr_text = pytesseract.image_to_string(img, lang=lang)
-                            if ocr_text.strip():
-                                text_pages.append(ocr_text)
-                    except Exception as e:
-                        print(f"⚠️ OCR failed on page {page_num} of {path}: {e}")
-                else:
+                    continue
+
+                if not ocr_enabled:
+                    text_pages.append("")
+                    continue
+
+                if not force_ocr and page_num > max_ocr_pages:
+                    text_pages.append("")
+                    continue
+
+                print(f"📄 OCR page {page_num}/{num_pages}: {path}")
+
+                try:
+                    pix = page.get_pixmap(dpi=200)
+                    with Image.open(io.BytesIO(pix.tobytes("png"))) as img:
+                        ocr_text = pytesseract.image_to_string(img, lang=lang)
+                        text_pages.append(ocr_text.strip() if ocr_text else "")
+                except Exception as e:
+                    print(f"⚠️ OCR failed page {page_num}: {e}")
                     text_pages.append("")
 
             # --- Fallback to filesystem timestamps ---

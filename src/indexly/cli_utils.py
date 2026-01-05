@@ -136,6 +136,19 @@ def build_parser():
         action="store_true",
         help="Enable extended MTW extraction (extra streams, extra metadata)",
     )
+
+    ocr_group = index_parser.add_mutually_exclusive_group()
+    ocr_group.add_argument(
+        "--ocr",
+        action="store_true",
+        help="Force OCR for all PDFs (ignore size and page limits)",
+    )
+    ocr_group.add_argument(
+        "--no-ocr",
+        action="store_true",
+        help="Disable OCR entirely for PDFs",
+    )
+
     index_parser.set_defaults(func=handle_index)
 
     # Search
