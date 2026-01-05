@@ -27,7 +27,7 @@ import pytesseract
 import openpyxl
 import pandas as pd
 
-
+from .config import DB_FILE, SEMANTIC_METADATA_KEYS, TECHNICAL_METADATA_KEYS
 from pptx import Presentation
 from ebooklib import epub
 from bs4 import BeautifulSoup
@@ -47,7 +47,11 @@ def _extract_docx(path):
 
     doc = docx.Document(path)
 
-    clean = lambda x: re.sub(r"\s+", " ", re.sub(r"[\u200b\u00a0\r\n\t]+", " ", x)).strip(" .:").strip()
+    clean = (
+        lambda x: re.sub(r"\s+", " ", re.sub(r"[\u200b\u00a0\r\n\t]+", " ", x))
+        .strip(" .:")
+        .strip()
+    )
 
     meta = {}
     for table in doc.tables:
@@ -66,7 +70,6 @@ def _extract_docx(path):
 
     extract_virtual_tags(path, text=full_text, meta=meta)
     return full_text
-
 
 
 # safe_get helper for .msg and.eml to clean stings
@@ -437,27 +440,25 @@ def extract_image_metadata(path: str) -> dict:
     return md
 
 
-def update_file_metadata(file_path, metadata):
+def update_file_metadata(file_path: str, metadata: dict, conn: sqlite3.Connection | None = None) -> str:
+    """
+    Update the file_metadata table with structured columns and a full JSON column.
+    Returns Tier-2-only semantic text (for FTS).
+    
+    If a SQLite connection is provided, it will be used (useful for async/locked operations).
+    """
     if not metadata:
-        return f"Image: {os.path.basename(file_path)}"
+        return f"File:{os.path.basename(file_path)}"
 
-    content = f"Image: {os.path.basename(file_path)}"
-    for key in [
-        "dimensions",
-        "format",
-        "created",
-        "last_modified",
-        "camera",
-        "image_created",
-        "title",
-        "author",
-        "subject",
-        "last_modified_by",
-        "gps",
-    ]:
-        if metadata.get(key):
-            content += f" {key}:{metadata[key]}"
+    # Build Tier-2 semantic text for FTS
+    semantic_parts = [
+        f"{k}:{v}"
+        for k, v in metadata.items()
+        if k in SEMANTIC_METADATA_KEYS and v not in (None, "", [])
+    ]
+    semantic_text = " ".join(semantic_parts) if semantic_parts else f"File:{os.path.basename(file_path)}"
 
+    # Prepare structured columns
     columns = [
         "title",
         "author",
@@ -473,19 +474,29 @@ def update_file_metadata(file_path, metadata):
     ]
     values = [metadata.get(col) for col in columns]
 
-    try:
+    # Use provided connection or create new one
+    close_conn = False
+    if conn is None:
         conn = sqlite3.connect(DB_FILE)
+        close_conn = True
+
+    try:
         cur = conn.cursor()
         cur.execute(
             f"""
-            INSERT OR REPLACE INTO file_metadata (path, {', '.join(columns)})
-            VALUES (?, {', '.join(['?']*len(columns))})
-        """,
-            [file_path] + values,
+            INSERT OR REPLACE INTO file_metadata
+            (path, {', '.join(columns)}, metadata)
+            VALUES (?, {', '.join(['?']*len(columns))}, ?)
+            """,
+            [file_path, *values, json.dumps(metadata)],
         )
-        conn.commit()
-        conn.close()
+        if close_conn:
+            conn.commit()
+            conn.close()
+    except sqlite3.OperationalError as e:
+        print(f"⚠️ Failed to update metadata for {file_path} (SQLite error): {e}")
     except Exception as e:
         print(f"⚠️ Failed to update metadata for {file_path}: {e}")
 
-    return content
+    return semantic_text
+

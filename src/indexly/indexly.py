@@ -77,74 +77,104 @@ console = Console()
 
 async def async_index_file(full_path, mtw_extended=False):
     from .fts_core import calculate_hash
+    from .semantic_index import (
+        semantic_filter_text,
+        build_semantic_fts_text,
+        split_metadata_tiers,
+        build_technical_filters,
+    )
+    import logging
 
-    """
-    Index a single file asynchronously without attempting to sync renames in the DB.
-    """
+    logger = logging.getLogger(__name__)
     full_path = normalize_path(full_path)
 
     try:
-        # --- Handle MTW archives ---
+        # -------------------------
+        # MTW archives (Tier 3 only)
+        # -------------------------
         if full_path.lower().endswith(".mtw"):
             extracted_files = _extract_mtw(full_path, extended=mtw_extended)
             if not extracted_files:
                 print(f"⚠️ No extractable content in: {full_path}")
                 return
 
-            stub_content = f"MTW Archive: {os.path.basename(full_path)}"
-            file_hash = calculate_hash(stub_content)
-            last_modified = datetime.fromtimestamp(
-                os.path.getmtime(full_path)
-            ).isoformat()
+            stub_content = f"MTW Archive {os.path.basename(full_path)}"
+            clean_content = semantic_filter_text(stub_content)
+            content = clean_content
+
+            file_hash = calculate_hash(content)
+            last_modified = datetime.fromtimestamp(os.path.getmtime(full_path)).isoformat()
 
             async with db_lock:
                 conn = connect_db()
                 cursor = conn.cursor()
                 cursor.execute("DELETE FROM file_index WHERE path = ?", (full_path,))
                 cursor.execute(
-                    "INSERT INTO file_index (path, content, modified, hash) VALUES (?, ?, ?, ?)",
-                    (full_path, stub_content, last_modified, file_hash),
+                    """
+                    INSERT INTO file_index (path, content, clean_content, modified, hash)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (full_path, content, clean_content, last_modified, file_hash),
                 )
+                update_file_metadata(full_path, {}, conn=conn)  # empty metadata for MTW stub
                 conn.commit()
                 conn.close()
 
-            # Index extracted files
-            tasks = [
-                async_index_file(f, mtw_extended=mtw_extended) for f in extracted_files
-            ]
-            await asyncio.gather(*tasks)
+            await asyncio.gather(
+                *(async_index_file(f, mtw_extended=mtw_extended) for f in extracted_files)
+            )
             return
 
-        # --- Extract content & metadata ---
-        content, metadata = extract_text_from_file(full_path)
-        if isinstance(content, dict):
-            content = " ".join(f"{k}:{v}" for k, v in content.items())
-        if not content and not metadata:
+        # -------------------------
+        # Extract raw content & metadata
+        # -------------------------
+        raw_text, metadata = extract_text_from_file(full_path)
+        if not raw_text and not metadata:
             print(f"⏭️ Skipped (no content or metadata): {full_path}")
             return
 
-        if metadata:
-            update_file_metadata(full_path, metadata)
-            extra_fields = [
-                str(metadata[k])
-                for k in ("source", "author", "subject", "title", "format", "camera")
-                if metadata.get(k)
-            ]
-            if extra_fields:
-                content = (content or "") + " ; " + " ; ".join(extra_fields)
+        # -------------------------
+        # Tier 1 – Human text
+        # -------------------------
+        clean_content = semantic_filter_text(raw_text or "", tier="human")
 
+        # -------------------------
+        # Tier 2 / Tier 3 split
+        # -------------------------
+        semantic_meta_text = ""
+        technical_meta_data = {}
+        if metadata:
+            semantic_meta, technical_meta = split_metadata_tiers(metadata)
+            unknown_keys = set(metadata) - set(semantic_meta) - set(technical_meta)
+            if unknown_keys:
+                logger.debug(
+                    "Unknown metadata keys ignored for %s: %s",
+                    full_path,
+                    sorted(unknown_keys),
+                )
+
+            # Tier-2 FTS text filtered & weighted
+            semantic_meta_text = build_semantic_fts_text(semantic_meta, weighted=True)
+            technical_meta_data = build_technical_filters(technical_meta)
+
+        # -------------------------
+        # Final FTS content
+        # -------------------------
+        content = f"{clean_content} {semantic_meta_text}".strip()
         if not content:
-            content = f"File: {os.path.basename(full_path)}"
+            content = semantic_filter_text(f"File {os.path.basename(full_path)}", tier="human")
 
         file_hash = calculate_hash(content)
         last_modified = datetime.fromtimestamp(os.path.getmtime(full_path)).isoformat()
 
-        # --- DB operations serialized ---
+        # -------------------------
+        # DB operations (serialized)
+        # -------------------------
         async with db_lock:
             conn = connect_db()
             cursor = conn.cursor()
 
-            # Skip unchanged file
+            # Skip if hash unchanged
             cursor.execute("SELECT hash FROM file_index WHERE path = ?", (full_path,))
             row = cursor.fetchone()
             if row and row["hash"] == file_hash:
@@ -152,32 +182,54 @@ async def async_index_file(full_path, mtw_extended=False):
                 print(f"⏭️ Skipped unchanged: {full_path}")
                 return
 
-            # Insert/update index and ensure metadata exists
+            # Update file_index
             cursor.execute("DELETE FROM file_index WHERE path = ?", (full_path,))
             cursor.execute(
-                "INSERT INTO file_index (path, content, modified, hash) VALUES (?, ?, ?, ?)",
-                (full_path, content, last_modified, file_hash),
+                """
+                INSERT INTO file_index (path, content, clean_content, modified, hash)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (full_path, content, clean_content, last_modified, file_hash),
             )
-            cursor.execute(
-                "INSERT OR REPLACE INTO file_metadata (path) VALUES (?)", (full_path,)
-            )
+
+            # Merge structured + JSON metadata using same connection
+            full_metadata = {k: metadata.get(k) for k in [
+                "title", "author", "subject", "created", "last_modified",
+                "last_modified_by", "camera", "image_created", "dimensions",
+                "format", "gps"
+            ]} if metadata else {}
+
+            # fallback from technical_meta_data
+            for key, value in technical_meta_data.items():
+                if key in full_metadata and not full_metadata[key]:
+                    full_metadata[key] = value
+
+            # Pass the active connection to avoid "database is locked"
+            update_file_metadata(full_path, full_metadata, conn=conn)
+
             conn.commit()
             conn.close()
 
         print(f"✅ Indexed: {full_path}")
 
+
     except Exception as e:
         print(f"⚠️ Failed to index {full_path}: {e}")
+
 
 
 async def scan_and_index_files(root_dir: str, mtw_extended=False):
     from .cache_utils import clean_cache_duplicates
 
     root_dir = normalize_path(root_dir)
+
+    # Ensure DB exists
     conn = connect_db()
     conn.close()
 
-    # Gather all supported files
+    # -------------------------
+    # Collect supported files
+    # -------------------------
     file_paths = [
         os.path.join(folder, f)
         for folder, _, files in os.walk(root_dir)
@@ -185,21 +237,36 @@ async def scan_and_index_files(root_dir: str, mtw_extended=False):
         if Path(f).suffix.lower() in SUPPORTED_EXTENSIONS
     ]
 
-    # Index files asynchronously
-    tasks = [async_index_file(path, mtw_extended=mtw_extended) for path in file_paths]
-    await asyncio.gather(*tasks)
+    if not file_paths:
+        print("⚠️ No supported files found.")
+        return []
 
-    clean_cache_duplicates()
-
-    # record start time before indexing
+    # -------------------------
+    # Record start time (FIXED)
+    # -------------------------
     start_time = datetime.now()
 
-    # Log each indexed file (using new unified logger)
+    # -------------------------
+    # Index files asynchronously
+    # -------------------------
+    tasks = [
+        async_index_file(path, mtw_extended=mtw_extended)
+        for path in file_paths
+    ]
+    await asyncio.gather(*tasks)
+
+    # -------------------------
+    # Cache hygiene
+    # -------------------------
+    clean_cache_duplicates()
+
+    # -------------------------
+    # Logging (post-index only)
+    # -------------------------
     for path in file_paths:
         entry = _unified_log_entry("FILE_INDEXED", path)
         _default_logger.log(entry)  # async-safe
 
-    # Log summary
     summary_entry = {
         "event": "INDEX_SUMMARY",
         "timestamp": datetime.now().isoformat(timespec="seconds"),
@@ -209,9 +276,9 @@ async def scan_and_index_files(root_dir: str, mtw_extended=False):
     }
 
     _default_logger.log(summary_entry)  # async-safe
-    
 
     print(f"📝 Indexed {len(file_paths)} files and logged summary")
+
     return file_paths
 
 
@@ -601,9 +668,20 @@ def handle_show_help(args):
     categories = {
         "Indexing & Watching": ["index", "watch"],
         "Searching": ["search", "regex"],
+        "Organizing & Listing": ["organize", "lister"],
         "Tagging & File Operations": ["tag", "rename-file"],
-        "Analysis & Extraction": ["analyze-csv", "extract-mtw"],
+        "Analysis & Data Inspection": [
+            "analyze-csv",
+            "analyze-json",
+            "analyze-file",
+            "analyze-db",
+            "clear-data",
+            "read-json",
+        ],
+        "Analysis & Extraction": ["extract-mtw"],
+        "Backup, Restore & Compare": ["backup", "restore", "compare"],
         "Database Maintenance": ["update-db", "migrate", "stats"],
+        "Logs & Maintenance": ["log-clean"],
         "Meta": ["show-help"],
     }
 
@@ -614,17 +692,23 @@ def handle_show_help(args):
             subparsers.update(action.choices)
 
     def extract_summary(subparser):
-        """Return the first meaningful line of help text."""
         help_lines = subparser.format_help().splitlines()
+
+        skip_prefixes = (
+            "usage:",
+            "positional arguments:",
+            "options:",
+            "optional arguments:",
+        )
+
         for line in help_lines:
             line = line.strip()
-            if (
-                not line
-                or line.lower().startswith("usage:")
-                or line.lower().startswith("options")
-            ):
+            if not line:
+                continue
+            if any(line.lower().startswith(p) for p in skip_prefixes):
                 continue
             return line
+
         return "(no description)"
 
     # Markdown output

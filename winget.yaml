@@ -29,6 +29,7 @@ Packages:
 
   # --- Productivity / Utilities ---
   - PackageIdentifier: 7zip.7zip
+  - PackageIdentifier: Meta.Zstandard
   - PackageIdentifier: ShareX.ShareX
   - PackageIdentifier: Ditto.Ditto
   - PackageIdentifier: MediaArea.MediaInfo
