@@ -88,6 +88,7 @@ def build_parser():
         handle_rename_file,
         handle_update_db,
         handle_show_help,
+        handle_ignore_init,
     )
 
     parser = argparse.ArgumentParser(
@@ -136,6 +137,11 @@ def build_parser():
         action="store_true",
         help="Enable extended MTW extraction (extra streams, extra metadata)",
     )
+    index_parser.add_argument(
+        "--ignore",
+        type=str,
+        help="Path to .indexlyignore file (overrides default root .indexlyignore)",
+    )
 
     ocr_group = index_parser.add_mutually_exclusive_group()
     ocr_group.add_argument(
@@ -150,6 +156,19 @@ def build_parser():
     )
 
     index_parser.set_defaults(func=handle_index)
+
+    # -------------------------
+    # Ignore init parser
+    # -------------------------
+    ignore_parser = subparsers.add_parser(
+        "ignore",
+        help="Create a default .indexlyignore template in the folder"
+    )
+    ignore_parser.add_argument(
+        "folder",
+        help="Target folder to initialize the .indexlyignore file"
+    )
+    ignore_parser.set_defaults(func=handle_ignore_init)
 
     # Search
     search_parser = subparsers.add_parser("search", help="Perform FTS search")

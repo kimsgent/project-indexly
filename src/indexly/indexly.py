@@ -40,7 +40,7 @@ from .mtw_extractor import _extract_mtw
 from .rename_utils import rename_file, rename_files_in_dir, SUPPORTED_DATE_FORMATS
 from .clean_csv import clear_cleaned_data
 from .update_utils import check_for_updates
-
+from .ignore_rules import load_ignore_rules
 from .profiles import (
     save_profile,
     apply_profile,
@@ -252,7 +252,11 @@ async def async_index_file(
 
 
 async def scan_and_index_files(
-    root_dir: str, mtw_extended=False, force_ocr=False, disable_ocr=False
+    root_dir: str,
+    mtw_extended=False,
+    force_ocr=False,
+    disable_ocr=False,
+    ignore_path: str | None = None,  # <-- new param
 ):
     from .cache_utils import clean_cache_duplicates
 
@@ -263,13 +267,19 @@ async def scan_and_index_files(
     conn.close()
 
     # -------------------------
-    # Collect supported files
+    # Load ignore rules
+    # -------------------------
+    ignore = load_ignore_rules(Path(root_dir), Path(ignore_path) if ignore_path else None)
+
+    # -------------------------
+    # Collect supported files with ignore filtering
     # -------------------------
     file_paths = [
         os.path.join(folder, f)
         for folder, _, files in os.walk(root_dir)
         for f in files
         if Path(f).suffix.lower() in SUPPORTED_EXTENSIONS
+        and not ignore.should_ignore(Path(folder) / f)
     ]
 
     if not file_paths:
@@ -277,7 +287,7 @@ async def scan_and_index_files(
         return []
 
     # -------------------------
-    # Record start time (FIXED)
+    # Record start time
     # -------------------------
     start_time = datetime.now()
 
@@ -385,6 +395,7 @@ def handle_index(args):
                 mtw_extended=args.mtw_extended,
                 force_ocr=args.ocr,
                 disable_ocr=args.no_ocr,
+                ignore_path=getattr(args, "ignore", None),
             )
 
         indexed_files = asyncio.run(_run())
@@ -393,6 +404,31 @@ def handle_index(args):
     finally:
         ripple.stop()
         shutdown_logger(timeout=2.0)
+
+
+def handle_ignore_init(args):
+    from pathlib import Path
+    from indexly.path_utils import normalize_path
+
+    target = Path(normalize_path(args.folder))
+    ignore_file = target / ".indexlyignore"
+
+    if ignore_file.exists():
+        print(f"⚠️ .indexlyignore already exists at {ignore_file}")
+        return
+
+    content = """# Indexly ignore rules
+# Paths
+.cache/
+__pycache__/
+node_modules/
+
+# File types
+*.tmp
+*.log
+"""
+    ignore_file.write_text(content, encoding="utf-8")
+    print(f"✅ Created default .indexlyignore at {ignore_file}")
 
 
 def handle_search(args):
