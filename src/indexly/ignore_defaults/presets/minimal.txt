@@ -1,0 +1,4 @@
+# Minimal Indexly ignore rules
+.indexly/
+.indexly-cache/
+fts_index.db*

@@ -40,7 +40,7 @@ from .mtw_extractor import _extract_mtw
 from .rename_utils import rename_file, rename_files_in_dir, SUPPORTED_DATE_FORMATS
 from .clean_csv import clear_cleaned_data
 from .update_utils import check_for_updates
-from .ignore_rules import load_ignore_rules
+
 from .profiles import (
     save_profile,
     apply_profile,
@@ -259,11 +259,15 @@ async def scan_and_index_files(
     mtw_extended=False,
     force_ocr=False,
     disable_ocr=False,
-    ignore_path: str | None = None,  # <-- new param
+    ignore_path: str | None = None,  # <-- path to custom .indexlyignore
+    preset: str = "standard",        # <-- default preset
 ):
     from .cache_utils import clean_cache_duplicates
+    from indexly.ignore import IgnoreRules
+    from indexly.ignore_defaults.loader import load_ignore_template
 
     root_dir = normalize_path(root_dir)
+    root_path = Path(root_dir).resolve()
 
     # Ensure DB exists
     conn = connect_db()
@@ -272,18 +276,35 @@ async def scan_and_index_files(
     # -------------------------
     # Load ignore rules
     # -------------------------
-    ignore = load_ignore_rules(Path(root_dir), Path(ignore_path) if ignore_path else None)
+    if ignore_path:
+        custom_ignore = Path(ignore_path)
+        if custom_ignore.exists():
+            content = custom_ignore.read_text(encoding="utf-8")
+            ignore = IgnoreRules(content.splitlines())
+        else:
+            print(f"⚠️ Custom ignore file not found: {ignore_path}")
+            ignore = IgnoreRules(load_ignore_template(preset).splitlines())
+    else:
+        local_ignore = root_path / ".indexlyignore"
+        if local_ignore.exists():
+            content = local_ignore.read_text(encoding="utf-8")
+            ignore = IgnoreRules(content.splitlines())
+        else:
+            ignore = IgnoreRules(load_ignore_template(preset).splitlines())
 
     # -------------------------
     # Collect supported files with ignore filtering
     # -------------------------
-    file_paths = [
-        os.path.join(folder, f)
-        for folder, _, files in os.walk(root_dir)
-        for f in files
-        if Path(f).suffix.lower() in SUPPORTED_EXTENSIONS
-        and not ignore.should_ignore(Path(folder) / f)
-    ]
+    file_paths = []
+    for folder, _, files in os.walk(root_path):
+        for f in files:
+            file_path = Path(folder) / f
+            if file_path.suffix.lower() not in SUPPORTED_EXTENSIONS:
+                continue
+            # Pass root_path so IgnoreRules can compute relative path
+            if ignore.should_ignore(file_path, root_path):
+                continue
+            file_paths.append(str(file_path))
 
     if not file_paths:
         print("⚠️ No supported files found.")
@@ -306,7 +327,6 @@ async def scan_and_index_files(
         )
         for path in file_paths
     ]
-
     await asyncio.gather(*tasks)
 
     # -------------------------
@@ -330,7 +350,6 @@ async def scan_and_index_files(
     }
 
     _default_logger.log(summary_entry)  # async-safe
-
     print(f"📝 Indexed {len(file_paths)} files and logged summary")
 
     return file_paths
@@ -410,22 +429,74 @@ def handle_index(args):
 
 
 def handle_ignore_init(args):
-    from importlib.resources import files
-    
+    """
+    Initialize or upgrade a .indexlyignore file in the target folder.
+    """
+
+    from indexly.ignore_defaults.loader import load_ignore_template
+    from indexly.ignore_defaults.validator import validate_template
+
     target = Path(normalize_path(args.folder))
     ignore_file = target / ".indexlyignore"
 
+    # -------------------------
+    # Load preset template
+    # -------------------------
+    template = load_ignore_template(args.preset)
+    valid, _ = validate_template(template)
+    if not valid:
+        print(f"⚠️ Preset '{args.preset}' invalid, using minimal fallback.")
+        template = (
+            "# Minimal fallback ignore template\n"
+            ".cache/\n"
+            "__pycache__/\n"
+            "*.tmp\n"
+            "*.log\n"
+        )
+
+    # -------------------------
+    # UPGRADE MODE
+    # -------------------------
+    if args.upgrade:
+        if not ignore_file.exists():
+            print("⚠️ No .indexlyignore found to upgrade.")
+            return
+
+        existing_lines = ignore_file.read_text(encoding="utf-8").splitlines()
+        existing_set = set(line.strip() for line in existing_lines if line.strip())
+
+        new_lines = [
+            line for line in template.splitlines()
+            if line.strip() and line.strip() not in existing_set
+        ]
+
+        if not new_lines:
+            print("✅ .indexlyignore already up to date.")
+            return
+
+        with ignore_file.open("a", encoding="utf-8") as f:
+            f.write("\n\n# --- Indexly upgrade additions ---\n")
+            f.write("\n".join(new_lines))
+
+        print(
+            f"🔁 Upgraded .indexlyignore at {ignore_file} "
+            f"(preset: {args.preset}, +{len(new_lines)} rules)"
+        )
+        return
+
+    # -------------------------
+    # INIT MODE
+    # -------------------------
     if ignore_file.exists():
         print(f"⚠️ .indexlyignore already exists at {ignore_file}")
         return
 
-    # Load the default template from packaged ignore_defaults
-    DEFAULT_IGNORE_TEMPLATE = files("indexly.ignore_defaults") \
-        .joinpath("indexly_default.txt") \
-        .read_text(encoding="utf-8")
+    ignore_file.write_text(template, encoding="utf-8")
+    print(
+        f"✅ Created .indexlyignore at {ignore_file} "
+        f"(preset: {args.preset})"
+    )
 
-    ignore_file.write_text(DEFAULT_IGNORE_TEMPLATE, encoding="utf-8")
-    print(f"✅ Created default .indexlyignore at {ignore_file}")
 
 
 def handle_search(args):

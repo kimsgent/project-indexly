@@ -1,0 +1,39 @@
+# Aggressive Indexly ignore rules
+
+# OS / system
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Caches
+.cache/
+__pycache__/
+.ipynb_checkpoints/
+.mypy_cache/
+.pytest_cache/
+
+# Frontend
+node_modules/
+dist/
+build/
+
+# Archives
+*.zip
+*.tar
+*.gz
+*.7z
+*.rar
+
+# Logs
+*.log
+*.tmp
+
+# VCS
+.git/
+.hg/
+.svn/
+
+# Indexly
+.indexly/
+.indexly-cache/
+fts_index.db*

@@ -160,14 +160,30 @@ def build_parser():
     # -------------------------
     # Ignore init parser
     # -------------------------
+
     ignore_parser = subparsers.add_parser(
         "ignore",
-        help="Create a default .indexlyignore template in the folder"
+        help="Create or upgrade a .indexlyignore template in the folder"
     )
+
     ignore_parser.add_argument(
         "folder",
-        help="Target folder to initialize the .indexlyignore file"
+        help="Target folder containing (or to receive) the .indexlyignore file"
     )
+
+    ignore_parser.add_argument(
+        "--preset",
+        choices=["minimal", "standard", "aggressive"],
+        default="standard",
+        help="Ignore rule preset to use"
+    )
+
+    ignore_parser.add_argument(
+        "--upgrade",
+        action="store_true",
+        help="Upgrade an existing .indexlyignore by appending missing rules"
+    )
+
     ignore_parser.set_defaults(func=handle_ignore_init)
 
     # Search
