@@ -6,7 +6,7 @@ from pathlib import Path
 import textwrap
 
 PROJECT = "indexly"
-HOMEPAGE = "https://github.com/your-org/indexly"
+HOMEPAGE = "https://github.com/kimsgent/project-indexly"
 LICENSE = "MIT"
 PYTHON_DEP = "python@3.11"
 

@@ -131,7 +131,8 @@ include = [
   "README.md",
   "src/indexly/docs/README.md",
   "src/indexly/assets/fonts/*.ttf",
-  "src/indexly/assets/csv/*.csv"
+  "src/indexly/assets/csv/*.csv",
+  "src/indexly/ignore_defaults/indexly_default.txt"
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -140,7 +141,8 @@ include = [
   "src/indexly/LICENSE.txt",
   "src/indexly/docs/README.md",
   "src/indexly/assets/fonts/*.ttf",
-  "src/indexly/assets/csv/*.csv"
+  "src/indexly/assets/csv/*.csv",
+  "src/indexly/ignore_defaults/indexly_default.txt",
 ]
 
 [project.scripts]

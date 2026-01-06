@@ -62,6 +62,9 @@ from .path_utils import normalize_path
 from .db_update import check_schema, apply_migrations
 from .log_utils import _unified_log_entry, _default_logger, shutdown_logger
 
+
+
+
 # Force UTF-8 output encoding (Recommended for Python 3.7+)
 sys.stdout.reconfigure(encoding="utf-8")
 
@@ -407,9 +410,8 @@ def handle_index(args):
 
 
 def handle_ignore_init(args):
-    from pathlib import Path
-    from indexly.path_utils import normalize_path
-
+    from importlib.resources import files
+    
     target = Path(normalize_path(args.folder))
     ignore_file = target / ".indexlyignore"
 
@@ -417,17 +419,12 @@ def handle_ignore_init(args):
         print(f"⚠️ .indexlyignore already exists at {ignore_file}")
         return
 
-    content = """# Indexly ignore rules
-# Paths
-.cache/
-__pycache__/
-node_modules/
+    # Load the default template from packaged ignore_defaults
+    DEFAULT_IGNORE_TEMPLATE = files("indexly.ignore_defaults") \
+        .joinpath("indexly_default.txt") \
+        .read_text(encoding="utf-8")
 
-# File types
-*.tmp
-*.log
-"""
-    ignore_file.write_text(content, encoding="utf-8")
+    ignore_file.write_text(DEFAULT_IGNORE_TEMPLATE, encoding="utf-8")
     print(f"✅ Created default .indexlyignore at {ignore_file}")
 
 

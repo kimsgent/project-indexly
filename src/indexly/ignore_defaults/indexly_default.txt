@@ -1,0 +1,62 @@
+# Indexly ignore rules
+
+# --- System & OS noise ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Caches ---
+.cache/
+__pycache__/
+.ipynb_checkpoints/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# --- Node / frontend ---
+node_modules/
+dist/
+build/
+.next/
+.nuxt/
+
+# --- Python build artifacts ---
+*.pyc
+*.pyo
+*.pyd
+.eggs/
+*.egg-info/
+
+# --- Logs & temp files ---
+*.log
+*.tmp
+*.temp
+*.swp
+*.swo
+*.bak
+*.old
+*.orig
+
+# --- Archives ---
+*.zip
+*.tar
+*.gz
+*.bz2
+*.7z
+*.rar
+
+# --- Version control ---
+.git/
+.hg/
+.svn/
+
+# --- Package managers ---
+vendor/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# --- Indexly internals ---
+.indexly/
+.indexly-cache/
+fts_index.db*
