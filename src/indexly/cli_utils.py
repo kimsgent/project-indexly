@@ -220,6 +220,18 @@ def build_parser():
     )
 
     ignore_show.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Show detailed ignore diagnostics (requires --source)"
+    )
+
+    ignore_show.add_argument(
+        "--raw",
+        action="store_true",
+        help="Show raw ignore file contents (requires --source)"
+    )
+
+    ignore_show.add_argument(
         "--effective",
         action="store_true",
         help="Show normalized rules exactly as used internally"

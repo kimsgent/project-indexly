@@ -1,39 +1,62 @@
-# Aggressive Indexly ignore rules
+# Indexly ignore rules (Aggressive)
 
-# OS / system
+# --- System & OS noise ---
 .DS_Store
 Thumbs.db
 desktop.ini
 
-# Caches
+# --- Caches ---
 .cache/
 __pycache__/
 .ipynb_checkpoints/
 .mypy_cache/
 .pytest_cache/
+.ruff_cache/
 
-# Frontend
+# --- Language & build artifacts ---
+*.pyc
+*.pyo
+*.pyd
+.eggs/
+*.egg-info/
+
+# --- Frontend / JS ---
 node_modules/
 dist/
 build/
+.next/
+.nuxt/
 
-# Archives
+# --- Logs & temp / backups ---
+*.log
+*.tmp
+*.temp
+*.swp
+*.swo
+*.bak
+*.old
+*.orig
+
+# --- Archives & binaries ---
 *.zip
 *.tar
 *.gz
+*.bz2
 *.7z
 *.rar
 
-# Logs
-*.log
-*.tmp
-
-# VCS
+# --- Version control ---
 .git/
 .hg/
 .svn/
 
-# Indexly
+# --- Package managers ---
+vendor/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# --- Indexly internals (required) ---
 .indexly/
 .indexly-cache/
 fts_index.db*

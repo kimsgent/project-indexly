@@ -1,4 +1,4 @@
-# Indexly ignore rules
+# Indexly ignore rules (Standard)
 
 # --- System & OS noise ---
 .DS_Store
@@ -13,19 +13,19 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 
-# --- Node / frontend ---
-node_modules/
-dist/
-build/
-.next/
-.nuxt/
-
-# --- Python build artifacts ---
+# --- Language & build artifacts ---
 *.pyc
 *.pyo
 *.pyd
 .eggs/
 *.egg-info/
+
+# --- Frontend / JS ---
+node_modules/
+dist/
+build/
+.next/
+.nuxt/
 
 # --- Logs & temp files ---
 *.log
@@ -56,7 +56,7 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# --- Indexly internals ---
+# --- Indexly internals (required) ---
 .indexly/
 .indexly-cache/
 fts_index.db*

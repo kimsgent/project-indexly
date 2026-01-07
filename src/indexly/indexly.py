@@ -502,38 +502,55 @@ def handle_ignore_show(args):
     Display active ignore rules for a folder.
     Read-only, no side effects.
     """
+    if (args.verbose or args.raw) and not args.source:
+        raise SystemExit("--verbose / --raw require --source")
 
     from indexly.ignore_defaults.loader import load_ignore_rules
-    from indexly.ignore.ignore_rules import IgnoreRules
 
     root = Path(normalize_path(args.folder))
 
-    # Load rules using the SAME logic as indexing
-    ignore = load_ignore_rules(
+    ignore, info = load_ignore_rules(
         root=root,
         custom_ignore=None,
         preset=args.preset,
+        with_info=True,
     )
 
-    local_ignore = root / ".indexlyignore"
-
-    # -------------------------
-    # Header
-    # -------------------------
     print(f"📂 Folder: {root}")
 
-    if local_ignore.exists():
-        print("📄 Ignore source: project-local .indexlyignore")
-        print(f"   Path: {local_ignore}")
-    else:
-        print("📄 Ignore source: preset")
-        print(f"   Preset: {args.preset}")
+    # -------------------------
+    # SOURCE HEADER
+    # -------------------------
+    if args.source:
+        print(f"📄 Ignore source: {info.source}")
+        if info.path:
+            print(f"   Path: {info.path}")
+        if info.preset:
+            print(f"   Preset: {info.preset}")
 
     # -------------------------
-    # Rules
+    # RAW OUTPUT
     # -------------------------
-    rules = ignore._rules  # intentional internal view
+    if args.raw:
+        print("\n--- RAW IGNORE CONTENT ---")
+        print(info.raw.rstrip())
+        return
 
+    # -------------------------
+    # VERBOSE DIAGNOSTICS
+    # -------------------------
+    if args.verbose:
+        print(f"   Lines total: {info.lines_total}")
+        print(f"   Active rules: {info.active_rules}")
+        print(f"   Comments: {info.comments}")
+        print(f"   Blank lines: {info.blank_lines}")
+        print(f"   Validation: {info.validation}")
+        print(f"   Loaded via: {info.loaded_via}")
+
+    # -------------------------
+    # RULES
+    # -------------------------
+    rules = ignore._rules
     if not rules:
         print("\n⚠️ No active ignore rules.")
         return
@@ -542,9 +559,6 @@ def handle_ignore_show(args):
     for r in rules:
         print(f"  - {r}")
 
-    # -------------------------
-    # Effective view
-    # -------------------------
     if args.effective:
         print("\nEffective (normalized) rules:")
         for r in sorted(set(rules)):
