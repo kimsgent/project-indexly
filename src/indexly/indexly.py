@@ -497,6 +497,58 @@ def handle_ignore_init(args):
         f"(preset: {args.preset})"
     )
 
+def handle_ignore_show(args):
+    """
+    Display active ignore rules for a folder.
+    Read-only, no side effects.
+    """
+
+    from indexly.ignore_defaults.loader import load_ignore_rules
+    from indexly.ignore.ignore_rules import IgnoreRules
+
+    root = Path(normalize_path(args.folder))
+
+    # Load rules using the SAME logic as indexing
+    ignore = load_ignore_rules(
+        root=root,
+        custom_ignore=None,
+        preset=args.preset,
+    )
+
+    local_ignore = root / ".indexlyignore"
+
+    # -------------------------
+    # Header
+    # -------------------------
+    print(f"📂 Folder: {root}")
+
+    if local_ignore.exists():
+        print("📄 Ignore source: project-local .indexlyignore")
+        print(f"   Path: {local_ignore}")
+    else:
+        print("📄 Ignore source: preset")
+        print(f"   Preset: {args.preset}")
+
+    # -------------------------
+    # Rules
+    # -------------------------
+    rules = ignore._rules  # intentional internal view
+
+    if not rules:
+        print("\n⚠️ No active ignore rules.")
+        return
+
+    print("\nActive ignore rules:")
+    for r in rules:
+        print(f"  - {r}")
+
+    # -------------------------
+    # Effective view
+    # -------------------------
+    if args.effective:
+        print("\nEffective (normalized) rules:")
+        for r in sorted(set(rules)):
+            print(f"  - {r}")
 
 
 def handle_search(args):

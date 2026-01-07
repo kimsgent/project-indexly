@@ -89,6 +89,7 @@ def build_parser():
         handle_update_db,
         handle_show_help,
         handle_ignore_init,
+        handle_ignore_show,
     )
 
     parser = argparse.ArgumentParser(
@@ -158,33 +159,74 @@ def build_parser():
     index_parser.set_defaults(func=handle_index)
 
     # -------------------------
-    # Ignore init parser
+    # Ignore parser
     # -------------------------
 
     ignore_parser = subparsers.add_parser(
         "ignore",
-        help="Create or upgrade a .indexlyignore template in the folder"
+        help="Create, upgrade, or inspect .indexlyignore rules"
     )
 
-    ignore_parser.add_argument(
+    ignore_sub = ignore_parser.add_subparsers(dest="ignore_cmd")
+
+    # ---- init / upgrade ----
+    ignore_init = ignore_sub.add_parser(
+        "init",
+        help="Create or upgrade a .indexlyignore file"
+    )
+
+    ignore_init.add_argument(
         "folder",
         help="Target folder containing (or to receive) the .indexlyignore file"
     )
 
-    ignore_parser.add_argument(
+    ignore_init.add_argument(
         "--preset",
         choices=["minimal", "standard", "aggressive"],
         default="standard",
         help="Ignore rule preset to use"
     )
 
-    ignore_parser.add_argument(
+    ignore_init.add_argument(
         "--upgrade",
         action="store_true",
         help="Upgrade an existing .indexlyignore by appending missing rules"
     )
 
-    ignore_parser.set_defaults(func=handle_ignore_init)
+    ignore_init.set_defaults(func=handle_ignore_init)
+
+    # ---- show ----
+    ignore_show = ignore_sub.add_parser(
+        "show",
+        help="Show active ignore rules for a folder"
+    )
+
+    ignore_show.add_argument(
+        "folder",
+        help="Target folder to inspect ignore rules"
+    )
+
+    ignore_show.add_argument(
+        "--preset",
+        choices=["minimal", "standard", "aggressive"],
+        default="standard",
+        help="Preset used if no local .indexlyignore exists"
+    )
+
+    ignore_show.add_argument(
+        "--source",
+        action="store_true",
+        help="Show where ignore rules are loaded from"
+    )
+
+    ignore_show.add_argument(
+        "--effective",
+        action="store_true",
+        help="Show normalized rules exactly as used internally"
+    )
+
+    ignore_show.set_defaults(func=handle_ignore_show)
+
 
     # Search
     search_parser = subparsers.add_parser("search", help="Perform FTS search")
