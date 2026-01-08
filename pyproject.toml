@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "indexly"
-version = "1.0.5"
+version = "1.0.6-rc.1"
 description = "A local file indexing and search tool with FTS5, regex, and CSV analysis support."
 readme = { file = "src/indexly/docs/README.md", content-type = "text/markdown" }
 
@@ -131,7 +131,8 @@ include = [
   "README.md",
   "src/indexly/docs/README.md",
   "src/indexly/assets/fonts/*.ttf",
-  "src/indexly/assets/csv/*.csv"
+  "src/indexly/assets/csv/*.csv",
+  "src/indexly/ignore_defaults/presets/**",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -140,7 +141,8 @@ include = [
   "src/indexly/LICENSE.txt",
   "src/indexly/docs/README.md",
   "src/indexly/assets/fonts/*.ttf",
-  "src/indexly/assets/csv/*.csv"
+  "src/indexly/assets/csv/*.csv",
+  "src/indexly/ignore_defaults/presets/**",
 ]
 
 [project.scripts]

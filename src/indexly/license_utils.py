@@ -66,7 +66,7 @@ def get_version_string_rich():
     license_excerpt = get_license_excerpt(lines=2)
 
     text = Text()
-    text.append(f"Indexly {__version__} (c) 2025 {__author__})\n", style="bold cyan")
+    text.append(f"Indexly {__version__} (c) 2026 {__author__})\n", style="bold cyan")
     text.append(f"{license_excerpt}\n", style="white")
     text.append("Project: github.com/kimsgent/project-indexly\n", style="bold green")
     text.append("Website: projectindexly.com\n", style="bold green")
