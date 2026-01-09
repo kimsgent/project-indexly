@@ -87,6 +87,7 @@ def build_parser():
         handle_extract_mtw,
         handle_rename_file,
         handle_update_db,
+        handle_doctor,
         handle_show_help,
         handle_ignore_init,
         handle_ignore_show,
@@ -1154,6 +1155,22 @@ def build_parser():
     )
 
     update_db.set_defaults(func=lambda args: handle_update_db(args))
+    
+    # -------------------------------------------------------------------
+    # doctor command
+    # -------------------------------------------------------------------
+    doctor = subparsers.add_parser(
+        "doctor",
+        help="Run a fast, read-only Indexly health check.",
+    )
+
+    doctor.add_argument(
+        "--json",
+        action="store_true",
+        help="Output health report as JSON.",
+    )
+
+    doctor.set_defaults(func=lambda args: handle_doctor(args))
 
     # ------------------------------------------------------------
     # LOG-CLEAN SUBCOMMAND

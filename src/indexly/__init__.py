@@ -1,3 +1,3 @@
-__version__ = "1.0.6-rc.2"
+__version__ = "1.0.6-rc.3"
 __author__ = "N. K. Franklin-Gent"
 __license__ = "MIT"

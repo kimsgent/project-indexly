@@ -770,6 +770,11 @@ def clear_cleaned_data_handler(args):
     else:
         print("⚠️ Please provide a file path or use --all to remove all entries.")
 
+def handle_doctor(args):
+    from indexly.doctor import run_doctor
+
+    run_doctor(json_output=args.json)
+
 
 def handle_extract_mtw(args):
     # Normalize inputs

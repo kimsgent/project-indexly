@@ -63,11 +63,25 @@ def check_and_install_packages(pkg_list):
         sys.exit(1)
 
 
-def check_external_tools():
-    if shutil.which("exiftool") is None:
+# ---------------------------------------------------------------------
+# External tool checks (boolean-returning for doctor / programmatic use)
+# ---------------------------------------------------------------------
+def check_exiftool_available() -> bool:
+    """Return True if ExifTool is in PATH, else False"""
+    return shutil.which("exiftool") is not None
+
+
+def check_tesseract_available() -> bool:
+    """Return True if Tesseract OCR is in PATH, else False"""
+    return shutil.which("tesseract") is not None
+
+
+def print_external_tools_info():
+    """Existing print-based behavior (optional, for CLI)"""
+    if not check_exiftool_available():
         print("⚠️ ExifTool not found. Install: https://exiftool.org/")
 
-    if shutil.which("tesseract") is None:
+    if not check_tesseract_available():
         os_name = platform.system().lower()
         print("⚠️ Tesseract OCR not found. Install:")
         if "windows" in os_name:
@@ -103,7 +117,7 @@ check_and_install_packages(
     ]
 )
 
-check_external_tools()
+print_external_tools_info()
 
 # --- third-party imports (safe now) ---
 import docx

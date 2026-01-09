@@ -2,7 +2,7 @@
   "project": "FTS5 File Search Tool",
   "versions": [
     {
-      "version": "1.0.6-rc.2",
+      "version": "1.0.6-rc.3",
       "date": "2026-01-08",
       "changes": [
         "fix(log): enforced LOG_MAX_BYTES to prevent uncontrolled incremental log growth",
