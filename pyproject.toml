@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "indexly"
-version = "1.0.6-rc.1"
+version = "1.0.6-rc.2"
 description = "A local file indexing and search tool with FTS5, regex, and CSV analysis support."
 readme = { file = "src/indexly/docs/README.md", content-type = "text/markdown" }
 
@@ -86,6 +86,7 @@ dependencies = [
     "pandas>=2.1.1",
     "PyYAML>=6.0.0",
     "xmltodict>=0.13.0",
+    "requests>=2.31.0",
 
     # --- Visualization & Analysis Support ---
     # Terminal-based ASCII plots

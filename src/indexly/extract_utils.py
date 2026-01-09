@@ -14,35 +14,119 @@ Usage:
     Called by `filetype_utils.py -> extract_text_from_file()` during indexing.
 """
 
+# --- stdlib (safe) ---
 import io
 import re
-import os, struct
+import os
+import sys
+import struct
+import json
 import sqlite3
+import subprocess
+import shutil
+import platform
+from datetime import datetime
+from contextlib import suppress
+
+# --- package check helpers (migrated from utils.py) ---
+def prompt_install(package_list):
+    install_all = False
+    try:
+        for module, package in package_list:
+            try:
+                __import__(module)
+            except ImportError:
+                if not install_all:
+                    response = (
+                        input(f"Install missing package '{package}'? [Y/n/A=all]: ")
+                        .strip()
+                        .lower()
+                    )
+                    if response in ("a", "all"):
+                        install_all = True
+                        response = "y"
+
+                if install_all or response in ("", "y", "yes"):
+                    subprocess.check_call(
+                        [sys.executable, "-m", "pip", "install", package]
+                    )
+    except KeyboardInterrupt:
+        print("\n⛔ Package installation cancelled by user.")
+        sys.exit(1)
+
+
+def check_and_install_packages(pkg_list):
+    try:
+        prompt_install(pkg_list)
+    except KeyboardInterrupt:
+        print("\n❌ Cancelled while checking packages.")
+        sys.exit(1)
+
+
+def check_external_tools():
+    if shutil.which("exiftool") is None:
+        print("⚠️ ExifTool not found. Install: https://exiftool.org/")
+
+    if shutil.which("tesseract") is None:
+        os_name = platform.system().lower()
+        print("⚠️ Tesseract OCR not found. Install:")
+        if "windows" in os_name:
+            print("  choco install tesseract OR winget install tesseract")
+        elif "darwin" in os_name:
+            print("  brew install tesseract")
+        elif "linux" in os_name:
+            print("  sudo apt install tesseract-ocr")
+
+
+# --- run checks BEFORE heavy imports ---
+check_and_install_packages(
+    [
+        ("nltk", "nltk"),
+        ("fitz", "pymupdf"),
+        ("pytesseract", "pytesseract"),
+        ("PIL", "pillow"),
+        ("docx", "python-docx"),
+        ("openpyxl", "openpyxl"),
+        ("rapidfuzz", "rapidfuzz"),
+        ("fpdf", "fpdf2"),
+        ("reportlab", "reportlab"),
+        ("bs4", "beautifulsoup4"),
+        ("extract_msg", "extract_msg"),
+        ("eml_parser", "eml-parser"),
+        ("PyPDF2", "PyPDF2"),
+        ("watchdog", "watchdog"),
+        ("colorama", "colorama"),
+        ("pptx", "python-pptx"),
+        ("ebooklib", "ebooklib"),
+        ("odf", "odfpy"),
+        ("pandas", "pandas"),
+    ]
+)
+
+check_external_tools()
+
+# --- third-party imports (safe now) ---
 import docx
 import extract_msg
 import eml_parser
-import json
 import fitz  # PyMuPDF
 import pytesseract
 import openpyxl
 import pandas as pd
 
-from .config import DB_FILE, SEMANTIC_METADATA_KEYS, TECHNICAL_METADATA_KEYS
 from pptx import Presentation
 from ebooklib import epub
 from bs4 import BeautifulSoup
 from odf.opendocument import load
 from odf.text import P
 from PIL import Image, ExifTags
-from datetime import datetime
+
+# --- internal imports (unchanged) ---
+from .config import DB_FILE, SEMANTIC_METADATA_KEYS
 from .path_utils import normalize_path
-from .config import DB_FILE
-from contextlib import suppress
 
 
 def _extract_docx(path):
-    import re
-    import docx
     from .fts_core import extract_virtual_tags
 
     doc = docx.Document(path)

@@ -2,8 +2,17 @@ import json
 import time
 from datetime import datetime
 from pathlib import Path
-import requests
+import sys
+
+try:
+    import requests
+except ImportError:
+    print("❌ Missing dependency: requests")
+    print("👉 Fix with: pip install requests")
+    sys.exit(1)
+
 from indexly import __version__
+
 
 UPDATE_CACHE = Path.home() / ".config/indexly/update_check.json"
 UPDATE_CACHE.parent.mkdir(parents=True, exist_ok=True)

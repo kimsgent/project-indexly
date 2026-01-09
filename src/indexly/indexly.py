@@ -56,7 +56,7 @@ from .cli_utils import (
 )
 from .output_utils import print_search_results, print_regex_results
 from pathlib import Path
-from indexly.license_utils import show_full_license, print_version, show_full_license
+from indexly.license_utils import show_full_license, print_version
 from .config import DB_FILE
 from .path_utils import normalize_path
 from .db_update import check_schema, apply_migrations
@@ -1004,7 +1004,7 @@ def main():
         sys.exit(0)
 
     # ----------------------------------
-    # 2) Automatic update check (FIXED)
+    # 2) Automatic update check
     # ----------------------------------
     if not getattr(args, "no_update_check", False):
         try:
