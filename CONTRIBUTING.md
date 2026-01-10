@@ -8,11 +8,13 @@ Thank you for considering contributing! Your help improves the tool for everyone
 
 1. **Fork the repository** on GitHub:  
    [https://github.com/kimsgent/project-indexly](https://github.com/kimsgent/project-indexly)
+
 2. **Clone your fork locally**:  
+
    ```bash
-   git clone https://github.com/<your-username>/project-indexly.git
+   git clone https://github.com/kimsgent/project-indexly.git
    cd project-indexly
-```
+    ```
 
 3. **Create a virtual environment** (Python 3.9+ recommended) and install dependencies:
 
@@ -75,4 +77,4 @@ By contributing, you agree to follow the [Contributor Covenant Code of Conduct](
 
 Thank you for helping make Project Indexly better! 🚀
 
-````
+

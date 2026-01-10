@@ -14,19 +14,119 @@ Usage:
     Called by `filetype_utils.py -> extract_text_from_file()` during indexing.
 """
 
+# --- stdlib (safe) ---
 import io
 import re
-import os, struct
+import os
+import sys
+import struct
+import json
 import sqlite3
+import subprocess
+import shutil
+import platform
+from datetime import datetime
+from contextlib import suppress
+
+# --- package check helpers (migrated from utils.py) ---
+def prompt_install(package_list):
+    install_all = False
+    try:
+        for module, package in package_list:
+            try:
+                __import__(module)
+            except ImportError:
+                if not install_all:
+                    response = (
+                        input(f"Install missing package '{package}'? [Y/n/A=all]: ")
+                        .strip()
+                        .lower()
+                    )
+                    if response in ("a", "all"):
+                        install_all = True
+                        response = "y"
+
+                if install_all or response in ("", "y", "yes"):
+                    subprocess.check_call(
+                        [sys.executable, "-m", "pip", "install", package]
+                    )
+    except KeyboardInterrupt:
+        print("\n⛔ Package installation cancelled by user.")
+        sys.exit(1)
+
+
+def check_and_install_packages(pkg_list):
+    try:
+        prompt_install(pkg_list)
+    except KeyboardInterrupt:
+        print("\n❌ Cancelled while checking packages.")
+        sys.exit(1)
+
+
+# ---------------------------------------------------------------------
+# External tool checks (boolean-returning for doctor / programmatic use)
+# ---------------------------------------------------------------------
+def check_exiftool_available() -> bool:
+    """Return True if ExifTool is in PATH, else False"""
+    return shutil.which("exiftool") is not None
+
+
+def check_tesseract_available() -> bool:
+    """Return True if Tesseract OCR is in PATH, else False"""
+    return shutil.which("tesseract") is not None
+
+
+def print_external_tools_info():
+    """Existing print-based behavior (optional, for CLI)"""
+    if not check_exiftool_available():
+        print("⚠️ ExifTool not found. Install: https://exiftool.org/")
+
+    if not check_tesseract_available():
+        os_name = platform.system().lower()
+        print("⚠️ Tesseract OCR not found. Install:")
+        if "windows" in os_name:
+            print("  choco install tesseract OR winget install tesseract")
+        elif "darwin" in os_name:
+            print("  brew install tesseract")
+        elif "linux" in os_name:
+            print("  sudo apt install tesseract-ocr")
+
+
+# --- run checks BEFORE heavy imports ---
+check_and_install_packages(
+    [
+        ("nltk", "nltk"),
+        ("fitz", "pymupdf"),
+        ("pytesseract", "pytesseract"),
+        ("PIL", "pillow"),
+        ("docx", "python-docx"),
+        ("openpyxl", "openpyxl"),
+        ("rapidfuzz", "rapidfuzz"),
+        ("fpdf", "fpdf2"),
+        ("reportlab", "reportlab"),
+        ("bs4", "beautifulsoup4"),
+        ("extract_msg", "extract_msg"),
+        ("eml_parser", "eml-parser"),
+        ("PyPDF2", "PyPDF2"),
+        ("watchdog", "watchdog"),
+        ("colorama", "colorama"),
+        ("pptx", "python-pptx"),
+        ("ebooklib", "ebooklib"),
+        ("odf", "odfpy"),
+        ("pandas", "pandas"),
+    ]
+)
+
+print_external_tools_info()
+
+# --- third-party imports (safe now) ---
 import docx
 import extract_msg
 import eml_parser
-import json
 import fitz  # PyMuPDF
 import pytesseract
 import openpyxl
 import pandas as pd
-
 
 from pptx import Presentation
 from ebooklib import epub
@@ -34,10 +134,10 @@ from bs4 import BeautifulSoup
 from odf.opendocument import load
 from odf.text import P
 from PIL import Image, ExifTags
-from datetime import datetime
+
+# --- internal imports (unchanged) ---
+from .config import DB_FILE, SEMANTIC_METADATA_KEYS
 from .path_utils import normalize_path
-from .config import DB_FILE
-from contextlib import suppress
 
 
 def _extract_docx(path):
@@ -45,29 +145,29 @@ def _extract_docx(path):
 
     doc = docx.Document(path)
 
-    # Extract paragraphs
-    raw_paragraphs = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
+    clean = (
+        lambda x: re.sub(r"\s+", " ", re.sub(r"[\u200b\u00a0\r\n\t]+", " ", x))
+        .strip(" .:")
+        .strip()
+    )
 
-    # Extract structured table info
-    table_lines = []
+    meta = {}
     for table in doc.tables:
         for row in table.rows:
-            cells = [cell.text.strip() for cell in row.cells if cell.text.strip()]
-            if len(cells) >= 2:
-                key = cells[0]
-                value = " ".join(cells[1:])
-                table_lines.append(f"{key}: {value}")
-            elif cells:
-                table_lines.append(" | ".join(cells))
+            if len(row.cells) < 2:
+                continue
 
-    # Combine all text (paragraphs + flattened tables)
-    full_text = "\n".join(raw_paragraphs + table_lines)
-    full_text = re.sub(r"\s+", " ", full_text)  # normalize all whitespace
-    full_text = re.sub(r"\b(\w+)( \1\b)+", r"\1", full_text)  # remove repeated words
+            key = clean(row.cells[0].text)
+            value = clean(row.cells[1].text)
 
-    extract_virtual_tags(path, text=full_text)
+            if key and value and len(value) > 1:
+                meta[key.lower()] = value
 
-    return full_text.strip()
+    paragraphs = [clean(p.text) for p in doc.paragraphs if p.text.strip()]
+    full_text = "\n".join(paragraphs)
+
+    extract_virtual_tags(path, text=full_text, meta=meta)
+    return full_text
 
 
 # safe_get helper for .msg and.eml to clean stings
@@ -203,6 +303,7 @@ def _extract_xlsx(path):
 def _extract_pdf(
     path: str,
     ocr_enabled: bool = True,
+    force_ocr: bool = False,
     lang: str = "deu+eng",
     max_ocr_pages: int = 3,
     max_pages_for_ocr: int = 10,
@@ -212,7 +313,7 @@ def _extract_pdf(
     Extract text and metadata from a PDF file.
     Uses PyMuPDF (fitz) for text, with OCR fallback for image-only pages.
     Stores extracted metadata into file_metadata table.
-    Smart OCR: skips OCR for large PDFs automatically or when --no-ocr is used.
+    Smart OCR: skips OCR for large PDFs automatically or when --no-ocr / --ocr is not used.
     """
     text_pages = []
     metadata = {
@@ -250,29 +351,46 @@ def _extract_pdf(
             )
 
             # --- Smart OCR decision ---
-            if ocr_enabled and (
+            if not ocr_enabled:
+                ocr_enabled = False
+
+            elif not force_ocr and (
                 num_pages > max_pages_for_ocr or file_size_mb > max_size_for_ocr_mb
             ):
                 ocr_enabled = False
                 print(
-                    f"⚡ Skipping OCR for large PDF ({num_pages} pages, {file_size_mb:.1f} MB): {path}"
+                    f"⚡ Skipping OCR for large PDF "
+                    f"({num_pages} pages, {file_size_mb:.1f} MB): {path}"
                 )
+
+            elif force_ocr:
+                print(f"🔍 OCR enabled (forced): {path}")
 
             # --- Page text + OCR fallback ---
             for page_num, page in enumerate(doc, start=1):
                 page_text = page.get_text("text")
+
                 if page_text.strip():
                     text_pages.append(page_text)
-                elif ocr_enabled and page_num <= max_ocr_pages:
-                    try:
-                        pix = page.get_pixmap(dpi=200)
-                        with Image.open(io.BytesIO(pix.tobytes("png"))) as img:
-                            ocr_text = pytesseract.image_to_string(img, lang=lang)
-                            if ocr_text.strip():
-                                text_pages.append(ocr_text)
-                    except Exception as e:
-                        print(f"⚠️ OCR failed on page {page_num} of {path}: {e}")
-                else:
+                    continue
+
+                if not ocr_enabled:
+                    text_pages.append("")
+                    continue
+
+                if not force_ocr and page_num > max_ocr_pages:
+                    text_pages.append("")
+                    continue
+
+                print(f"📄 OCR page {page_num}/{num_pages}: {path}")
+
+                try:
+                    pix = page.get_pixmap(dpi=200)
+                    with Image.open(io.BytesIO(pix.tobytes("png"))) as img:
+                        ocr_text = pytesseract.image_to_string(img, lang=lang)
+                        text_pages.append(ocr_text.strip() if ocr_text else "")
+                except Exception as e:
+                    print(f"⚠️ OCR failed page {page_num}: {e}")
                     text_pages.append("")
 
             # --- Fallback to filesystem timestamps ---
@@ -438,27 +556,25 @@ def extract_image_metadata(path: str) -> dict:
     return md
 
 
-def update_file_metadata(file_path, metadata):
+def update_file_metadata(file_path: str, metadata: dict, conn: sqlite3.Connection | None = None) -> str:
+    """
+    Update the file_metadata table with structured columns and a full JSON column.
+    Returns Tier-2-only semantic text (for FTS).
+    
+    If a SQLite connection is provided, it will be used (useful for async/locked operations).
+    """
     if not metadata:
-        return f"Image: {os.path.basename(file_path)}"
+        return f"File:{os.path.basename(file_path)}"
 
-    content = f"Image: {os.path.basename(file_path)}"
-    for key in [
-        "dimensions",
-        "format",
-        "created",
-        "last_modified",
-        "camera",
-        "image_created",
-        "title",
-        "author",
-        "subject",
-        "last_modified_by",
-        "gps",
-    ]:
-        if metadata.get(key):
-            content += f" {key}:{metadata[key]}"
+    # Build Tier-2 semantic text for FTS
+    semantic_parts = [
+        f"{k}:{v}"
+        for k, v in metadata.items()
+        if k in SEMANTIC_METADATA_KEYS and v not in (None, "", [])
+    ]
+    semantic_text = " ".join(semantic_parts) if semantic_parts else f"File:{os.path.basename(file_path)}"
 
+    # Prepare structured columns
     columns = [
         "title",
         "author",
@@ -474,19 +590,29 @@ def update_file_metadata(file_path, metadata):
     ]
     values = [metadata.get(col) for col in columns]
 
-    try:
+    # Use provided connection or create new one
+    close_conn = False
+    if conn is None:
         conn = sqlite3.connect(DB_FILE)
+        close_conn = True
+
+    try:
         cur = conn.cursor()
         cur.execute(
             f"""
-            INSERT OR REPLACE INTO file_metadata (path, {', '.join(columns)})
-            VALUES (?, {', '.join(['?']*len(columns))})
-        """,
-            [file_path] + values,
+            INSERT OR REPLACE INTO file_metadata
+            (path, {', '.join(columns)}, metadata)
+            VALUES (?, {', '.join(['?']*len(columns))}, ?)
+            """,
+            [file_path, *values, json.dumps(metadata)],
         )
-        conn.commit()
-        conn.close()
+        if close_conn:
+            conn.commit()
+            conn.close()
+    except sqlite3.OperationalError as e:
+        print(f"⚠️ Failed to update metadata for {file_path} (SQLite error): {e}")
     except Exception as e:
         print(f"⚠️ Failed to update metadata for {file_path}: {e}")
 
-    return content
+    return semantic_text
+

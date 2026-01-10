@@ -39,6 +39,7 @@ from .extract_utils import update_file_metadata
 from .mtw_extractor import _extract_mtw
 from .rename_utils import rename_file, rename_files_in_dir, SUPPORTED_DATE_FORMATS
 from .clean_csv import clear_cleaned_data
+from .update_utils import check_for_updates
 
 from .profiles import (
     save_profile,
@@ -55,10 +56,13 @@ from .cli_utils import (
 )
 from .output_utils import print_search_results, print_regex_results
 from pathlib import Path
-from indexly.license_utils import show_full_license, print_version, show_full_license
+from indexly.license_utils import show_full_license, print_version
 from .config import DB_FILE
 from .path_utils import normalize_path
 from .db_update import check_schema, apply_migrations
+from .log_utils import _unified_log_entry, _default_logger, shutdown_logger
+
+
 
 
 # Force UTF-8 output encoding (Recommended for Python 3.7+)
@@ -73,25 +77,42 @@ logging.getLogger("fontTools").setLevel(logging.ERROR)
 
 db_lock = asyncio.Lock()
 
+console = Console()
 
-async def async_index_file(full_path, mtw_extended=False):
+
+async def async_index_file(
+    full_path,
+    mtw_extended=False,
+    force_ocr=False,
+    disable_ocr=False,
+):
     from .fts_core import calculate_hash
+    from .semantic_index import (
+        semantic_filter_text,
+        build_semantic_fts_text,
+        split_metadata_tiers,
+        build_technical_filters,
+    )
+    import logging
 
-    """
-    Index a single file asynchronously without attempting to sync renames in the DB.
-    """
+    logger = logging.getLogger(__name__)
     full_path = normalize_path(full_path)
 
     try:
-        # --- Handle MTW archives ---
+        # -------------------------
+        # MTW archives (Tier 3 only)
+        # -------------------------
         if full_path.lower().endswith(".mtw"):
             extracted_files = _extract_mtw(full_path, extended=mtw_extended)
             if not extracted_files:
                 print(f"⚠️ No extractable content in: {full_path}")
                 return
 
-            stub_content = f"MTW Archive: {os.path.basename(full_path)}"
-            file_hash = calculate_hash(stub_content)
+            stub_content = f"MTW Archive {os.path.basename(full_path)}"
+            clean_content = semantic_filter_text(stub_content)
+            content = clean_content
+
+            file_hash = calculate_hash(content)
             last_modified = datetime.fromtimestamp(
                 os.path.getmtime(full_path)
             ).isoformat()
@@ -101,49 +122,82 @@ async def async_index_file(full_path, mtw_extended=False):
                 cursor = conn.cursor()
                 cursor.execute("DELETE FROM file_index WHERE path = ?", (full_path,))
                 cursor.execute(
-                    "INSERT INTO file_index (path, content, modified, hash) VALUES (?, ?, ?, ?)",
-                    (full_path, stub_content, last_modified, file_hash),
+                    """
+                    INSERT INTO file_index (path, content, clean_content, modified, hash)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (full_path, content, clean_content, last_modified, file_hash),
                 )
+                update_file_metadata(
+                    full_path, {}, conn=conn
+                )  # empty metadata for MTW stub
                 conn.commit()
                 conn.close()
 
-            # Index extracted files
-            tasks = [
-                async_index_file(f, mtw_extended=mtw_extended) for f in extracted_files
-            ]
-            await asyncio.gather(*tasks)
+            await asyncio.gather(
+                *(
+                    async_index_file(f, mtw_extended=mtw_extended)
+                    for f in extracted_files
+                )
+            )
             return
 
-        # --- Extract content & metadata ---
-        content, metadata = extract_text_from_file(full_path)
-        if isinstance(content, dict):
-            content = " ".join(f"{k}:{v}" for k, v in content.items())
-        if not content and not metadata:
+        # -------------------------
+        # Extract raw content & metadata
+        # -------------------------
+        raw_text, metadata = extract_text_from_file(
+            full_path,
+            force_ocr=force_ocr,
+            disable_ocr=disable_ocr,
+        )
+        if not raw_text and not metadata:
             print(f"⏭️ Skipped (no content or metadata): {full_path}")
             return
 
-        if metadata:
-            update_file_metadata(full_path, metadata)
-            extra_fields = [
-                str(metadata[k])
-                for k in ("source", "author", "subject", "title", "format", "camera")
-                if metadata.get(k)
-            ]
-            if extra_fields:
-                content = (content or "") + " ; " + " ; ".join(extra_fields)
+        # -------------------------
+        # Tier 1 – Human text
+        # -------------------------
+        clean_content = semantic_filter_text(raw_text or "", tier="human")
 
+        # -------------------------
+        # Tier 2 / Tier 3 split
+        # -------------------------
+        semantic_meta_text = ""
+        technical_meta_data = {}
+        if metadata:
+            semantic_meta, technical_meta = split_metadata_tiers(metadata)
+            unknown_keys = set(metadata) - set(semantic_meta) - set(technical_meta)
+            if unknown_keys:
+                logger.debug(
+                    "Unknown metadata keys ignored for %s: %s",
+                    full_path,
+                    sorted(unknown_keys),
+                )
+
+            # Tier-2 FTS text filtered & weighted
+            semantic_meta_text = build_semantic_fts_text(semantic_meta, weighted=True)
+            technical_meta_data = build_technical_filters(technical_meta)
+
+        # -------------------------
+        # Final FTS content
+        # -------------------------
+        content = f"{clean_content} {semantic_meta_text}".strip()
         if not content:
-            content = f"File: {os.path.basename(full_path)}"
+            content = semantic_filter_text(
+                f"File {os.path.basename(full_path)}", tier="human"
+            )
 
         file_hash = calculate_hash(content)
         last_modified = datetime.fromtimestamp(os.path.getmtime(full_path)).isoformat()
 
-        # --- DB operations serialized ---
+        # -------------------------
+        # DB operations (serialized)
+        # -------------------------
         async with db_lock:
             conn = connect_db()
             cursor = conn.cursor()
 
-            # Skip unchanged file
+            # Skip if hash unchanged
             cursor.execute("SELECT hash FROM file_index WHERE path = ?", (full_path,))
             row = cursor.fetchone()
             if row and row["hash"] == file_hash:
@@ -151,15 +205,46 @@ async def async_index_file(full_path, mtw_extended=False):
                 print(f"⏭️ Skipped unchanged: {full_path}")
                 return
 
-            # Insert/update index and ensure metadata exists
+            # Update file_index
             cursor.execute("DELETE FROM file_index WHERE path = ?", (full_path,))
             cursor.execute(
-                "INSERT INTO file_index (path, content, modified, hash) VALUES (?, ?, ?, ?)",
-                (full_path, content, last_modified, file_hash),
+                """
+                INSERT INTO file_index (path, content, clean_content, modified, hash)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (full_path, content, clean_content, last_modified, file_hash),
             )
-            cursor.execute(
-                "INSERT OR REPLACE INTO file_metadata (path) VALUES (?)", (full_path,)
+
+            # Merge structured + JSON metadata using same connection
+            full_metadata = (
+                {
+                    k: metadata.get(k)
+                    for k in [
+                        "title",
+                        "author",
+                        "subject",
+                        "created",
+                        "last_modified",
+                        "last_modified_by",
+                        "camera",
+                        "image_created",
+                        "dimensions",
+                        "format",
+                        "gps",
+                    ]
+                }
+                if metadata
+                else {}
             )
+
+            # fallback from technical_meta_data
+            for key, value in technical_meta_data.items():
+                if key in full_metadata and not full_metadata[key]:
+                    full_metadata[key] = value
+
+            # Pass the active connection to avoid "database is locked"
+            update_file_metadata(full_path, full_metadata, conn=conn)
+
             conn.commit()
             conn.close()
 
@@ -169,31 +254,104 @@ async def async_index_file(full_path, mtw_extended=False):
         print(f"⚠️ Failed to index {full_path}: {e}")
 
 
-async def scan_and_index_files(root_dir: str, mtw_extended=False):
-    root_dir = normalize_path(root_dir)
+async def scan_and_index_files(
+    root_dir: str,
+    mtw_extended=False,
+    force_ocr=False,
+    disable_ocr=False,
+    ignore_path: str | None = None,  # <-- path to custom .indexlyignore
+    preset: str = "standard",        # <-- default preset
+):
+    from .cache_utils import clean_cache_duplicates
+    from indexly.ignore import IgnoreRules
+    from indexly.ignore_defaults.loader import load_ignore_template
 
+    root_dir = normalize_path(root_dir)
+    root_path = Path(root_dir).resolve()
+
+    # Ensure DB exists
     conn = connect_db()
     conn.close()
 
-    from .cache_utils import clean_cache_duplicates
+    # -------------------------
+    # Load ignore rules
+    # -------------------------
+    if ignore_path:
+        custom_ignore = Path(ignore_path)
+        if custom_ignore.exists():
+            content = custom_ignore.read_text(encoding="utf-8")
+            ignore = IgnoreRules(content.splitlines())
+        else:
+            print(f"⚠️ Custom ignore file not found: {ignore_path}")
+            ignore = IgnoreRules(load_ignore_template(preset).splitlines())
+    else:
+        local_ignore = root_path / ".indexlyignore"
+        if local_ignore.exists():
+            content = local_ignore.read_text(encoding="utf-8")
+            ignore = IgnoreRules(content.splitlines())
+        else:
+            ignore = IgnoreRules(load_ignore_template(preset).splitlines())
 
-    file_paths = [
-        os.path.join(folder, f)
-        for folder, _, files in os.walk(root_dir)
-        for f in files
-        if Path(f).suffix.lower() in SUPPORTED_EXTENSIONS
+    # -------------------------
+    # Collect supported files with ignore filtering
+    # -------------------------
+    file_paths = []
+    for folder, _, files in os.walk(root_path):
+        for f in files:
+            file_path = Path(folder) / f
+            if file_path.suffix.lower() not in SUPPORTED_EXTENSIONS:
+                continue
+            # Pass root_path so IgnoreRules can compute relative path
+            if ignore.should_ignore(file_path, root_path):
+                continue
+            file_paths.append(str(file_path))
+
+    if not file_paths:
+        print("⚠️ No supported files found.")
+        return []
+
+    # -------------------------
+    # Record start time
+    # -------------------------
+    start_time = datetime.now()
+
+    # -------------------------
+    # Index files asynchronously
+    # -------------------------
+    tasks = [
+        async_index_file(
+            path,
+            mtw_extended=mtw_extended,
+            force_ocr=force_ocr,
+            disable_ocr=disable_ocr,
+        )
+        for path in file_paths
     ]
-    tasks = [async_index_file(path, mtw_extended=mtw_extended) for path in file_paths]
     await asyncio.gather(*tasks)
 
+    # -------------------------
+    # Cache hygiene
+    # -------------------------
     clean_cache_duplicates()
 
-    log_filename = datetime.now().strftime("%Y-%m-%d_index.log")
-    with open(log_filename, "w", encoding="utf-8") as log:
-        log.write(f"[INDEX LOG] Completed at {datetime.now().isoformat()}\n")
-        log.writelines(f"{path}\n" for path in file_paths)
+    # -------------------------
+    # Logging (post-index only)
+    # -------------------------
+    for path in file_paths:
+        entry = _unified_log_entry("FILE_INDEXED", path)
+        _default_logger.log(entry)  # async-safe
 
-    print(f"📝 Index log created: {log_filename}")
+    summary_entry = {
+        "event": "INDEX_SUMMARY",
+        "timestamp": datetime.now().isoformat(timespec="seconds"),
+        "root": str(root_dir),
+        "count": len(file_paths),
+        "duration_seconds": (datetime.now() - start_time).total_seconds(),
+    }
+
+    _default_logger.log(summary_entry)  # async-safe
+    print(f"📝 Indexed {len(file_paths)} files and logged summary")
+
     return file_paths
 
 
@@ -249,18 +407,162 @@ def run_stats(args):
 def handle_index(args):
     ripple = Ripple("Indexing", speed="fast", rainbow=True)
     ripple.start()
+
     try:
         logging.info("Indexing started.")
-        indexed_files = asyncio.run(
-            scan_and_index_files(
+
+        async def _run():
+            return await scan_and_index_files(
                 root_dir=normalize_path(args.folder),
                 mtw_extended=args.mtw_extended,
+                force_ocr=args.ocr,
+                disable_ocr=args.no_ocr,
+                ignore_path=getattr(args, "ignore", None),
             )
-        )
+
+        indexed_files = asyncio.run(_run())
         logging.info("Indexing completed.")
 
     finally:
         ripple.stop()
+        shutdown_logger(timeout=2.0)
+
+
+def handle_ignore_init(args):
+    """
+    Initialize or upgrade a .indexlyignore file in the target folder.
+    """
+
+    from indexly.ignore_defaults.loader import load_ignore_template
+    from indexly.ignore_defaults.validator import validate_template
+
+    target = Path(normalize_path(args.folder))
+    ignore_file = target / ".indexlyignore"
+
+    # -------------------------
+    # Load preset template
+    # -------------------------
+    template = load_ignore_template(args.preset)
+    valid, _ = validate_template(template)
+    if not valid:
+        print(f"⚠️ Preset '{args.preset}' invalid, using minimal fallback.")
+        template = (
+            "# Minimal fallback ignore template\n"
+            ".cache/\n"
+            "__pycache__/\n"
+            "*.tmp\n"
+            "*.log\n"
+        )
+
+    # -------------------------
+    # UPGRADE MODE
+    # -------------------------
+    if args.upgrade:
+        if not ignore_file.exists():
+            print("⚠️ No .indexlyignore found to upgrade.")
+            return
+
+        existing_lines = ignore_file.read_text(encoding="utf-8").splitlines()
+        existing_set = set(line.strip() for line in existing_lines if line.strip())
+
+        new_lines = [
+            line for line in template.splitlines()
+            if line.strip() and line.strip() not in existing_set
+        ]
+
+        if not new_lines:
+            print("✅ .indexlyignore already up to date.")
+            return
+
+        with ignore_file.open("a", encoding="utf-8") as f:
+            f.write("\n\n# --- Indexly upgrade additions ---\n")
+            f.write("\n".join(new_lines))
+
+        print(
+            f"🔁 Upgraded .indexlyignore at {ignore_file} "
+            f"(preset: {args.preset}, +{len(new_lines)} rules)"
+        )
+        return
+
+    # -------------------------
+    # INIT MODE
+    # -------------------------
+    if ignore_file.exists():
+        print(f"⚠️ .indexlyignore already exists at {ignore_file}")
+        return
+
+    ignore_file.write_text(template, encoding="utf-8")
+    print(
+        f"✅ Created .indexlyignore at {ignore_file} "
+        f"(preset: {args.preset})"
+    )
+
+def handle_ignore_show(args):
+    """
+    Display active ignore rules for a folder.
+    Read-only, no side effects.
+    """
+    if (args.verbose or args.raw) and not args.source:
+        raise SystemExit("--verbose / --raw require --source")
+
+    from indexly.ignore_defaults.loader import load_ignore_rules
+
+    root = Path(normalize_path(args.folder))
+
+    ignore, info = load_ignore_rules(
+        root=root,
+        custom_ignore=None,
+        preset=args.preset,
+        with_info=True,
+    )
+
+    print(f"📂 Folder: {root}")
+
+    # -------------------------
+    # SOURCE HEADER
+    # -------------------------
+    if args.source:
+        print(f"📄 Ignore source: {info.source}")
+        if info.path:
+            print(f"   Path: {info.path}")
+        if info.preset:
+            print(f"   Preset: {info.preset}")
+
+    # -------------------------
+    # RAW OUTPUT
+    # -------------------------
+    if args.raw:
+        print("\n--- RAW IGNORE CONTENT ---")
+        print(info.raw.rstrip())
+        return
+
+    # -------------------------
+    # VERBOSE DIAGNOSTICS
+    # -------------------------
+    if args.verbose:
+        print(f"   Lines total: {info.lines_total}")
+        print(f"   Active rules: {info.active_rules}")
+        print(f"   Comments: {info.comments}")
+        print(f"   Blank lines: {info.blank_lines}")
+        print(f"   Validation: {info.validation}")
+        print(f"   Loaded via: {info.loaded_via}")
+
+    # -------------------------
+    # RULES
+    # -------------------------
+    rules = ignore._rules
+    if not rules:
+        print("\n⚠️ No active ignore rules.")
+        return
+
+    print("\nActive ignore rules:")
+    for r in rules:
+        print(f"  - {r}")
+
+    if args.effective:
+        print("\nEffective (normalized) rules:")
+        for r in sorted(set(rules)):
+            print(f"  - {r}")
 
 
 def handle_search(args):
@@ -468,6 +770,11 @@ def clear_cleaned_data_handler(args):
     else:
         print("⚠️ Please provide a file path or use --all to remove all entries.")
 
+def handle_doctor(args):
+    from indexly.doctor import run_doctor
+
+    run_doctor(json_output=args.json)
+
 
 def handle_extract_mtw(args):
     # Normalize inputs
@@ -578,9 +885,20 @@ def handle_show_help(args):
     categories = {
         "Indexing & Watching": ["index", "watch"],
         "Searching": ["search", "regex"],
+        "Organizing & Listing": ["organize", "lister"],
         "Tagging & File Operations": ["tag", "rename-file"],
-        "Analysis & Extraction": ["analyze-csv", "extract-mtw"],
+        "Analysis & Data Inspection": [
+            "analyze-csv",
+            "analyze-json",
+            "analyze-file",
+            "analyze-db",
+            "clear-data",
+            "read-json",
+        ],
+        "Analysis & Extraction": ["extract-mtw"],
+        "Backup, Restore & Compare": ["backup", "restore", "compare"],
         "Database Maintenance": ["update-db", "migrate", "stats"],
+        "Logs & Maintenance": ["log-clean"],
         "Meta": ["show-help"],
     }
 
@@ -591,17 +909,23 @@ def handle_show_help(args):
             subparsers.update(action.choices)
 
     def extract_summary(subparser):
-        """Return the first meaningful line of help text."""
         help_lines = subparser.format_help().splitlines()
+
+        skip_prefixes = (
+            "usage:",
+            "positional arguments:",
+            "options:",
+            "optional arguments:",
+        )
+
         for line in help_lines:
             line = line.strip()
-            if (
-                not line
-                or line.lower().startswith("usage:")
-                or line.lower().startswith("options")
-            ):
+            if not line:
+                continue
+            if any(line.lower().startswith(p) for p in skip_prefixes):
                 continue
             return line
+
         return "(no description)"
 
     # Markdown output
@@ -670,27 +994,60 @@ def handle_show_help(args):
 def main():
     parser = build_parser()
 
-    # Step 1: parse known args to catch top-level flags
+    # -----------------------------
+    # 1) Parse top-level arguments
+    # -----------------------------
     args, remaining_args = parser.parse_known_args()
 
-    # Handle top-level flags immediately
+    # Handle top-level flags first
     if getattr(args, "show_license", False):
-        show_full_license()  # prints full license and exits
-
-    if getattr(args, "version", False):
-        print_version()      # prints colored multi-line version
+        show_full_license()
         sys.exit(0)
 
-    # Step 2: parse all args (including subcommands)
-    args = parser.parse_args()  # now subcommand is included in args
+    if getattr(args, "version", False):
+        print_version()
+        sys.exit(0)
 
-    # Optional: handle profile logic
+    # ----------------------------------
+    # 2) Automatic update check
+    # ----------------------------------
+    if not getattr(args, "no_update_check", False):
+        try:
+            info = check_for_updates()
+            if info["update_available"]:
+                console.print(
+                    f"\n[bold yellow]🔔 New indexly version available: "
+                    f"{info['latest']} (you run {info['current']})[/bold yellow]\n"
+                )
+        except Exception:
+            pass
+
+    # ----------------------------------
+    # 3) Manual "--check-updates" mode
+    # ----------------------------------
+    if getattr(args, "check_updates", False):
+        info = check_for_updates()
+        console.print(f"Current: {info['current']}")
+        console.print(f"Latest:  {info['latest'] or 'unknown'}")
+        console.print(
+            "Update available: " + ("yes" if info["update_available"] else "no")
+        )
+        sys.exit(0)
+
+    # --------------------------
+    # 4) Full argument parsing
+    # --------------------------
+    args = parser.parse_args()
+
+    # Optional: profile support
     if hasattr(args, "profile") and args.profile:
         profile_data = apply_profile(args.profile)
         if profile_data:
             args = apply_profile_to_args(args, profile_data)
 
-    # Step 3: dispatch subcommand
+    # --------------------------
+    # 5) Dispatch subcommand
+    # --------------------------
     if hasattr(args, "func"):
         args.func(args)
 

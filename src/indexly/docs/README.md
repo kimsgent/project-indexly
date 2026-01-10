@@ -137,4 +137,4 @@ indexly analyze-csv data/sales.csv --format md --export-path report.md
 
 ## License
 
-MIT License © 2025 N.K. Franklin-Gent
+MIT License © 2026 N.K. Franklin-Gent

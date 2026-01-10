@@ -1,10 +1,11 @@
 # New: CLI handlers for tagging, exporting, profiles
-
+from . import __version__, __author__, __license__
 import os
 import sys
 import json
 import time
 import argparse
+import getpass
 from pathlib import Path
 from importlib import resources
 from datetime import datetime
@@ -21,9 +22,14 @@ from .path_utils import normalize_path
 from .migration_manager import run_migrations
 from .rename_utils import SUPPORTED_DATE_FORMATS
 from .clean_csv import clear_cleaned_data
-from . import __version__, __author__, __license__
+from .analyze_db import analyze_db
 from .analysis_orchestrator import analyze_file
 from .log_utils import handle_log_clean
+from .read_indexly_json import read_indexly_json
+from indexly.organize.cli_wrapper import handle_organize, handle_lister
+from indexly.backup.cli import handle_backup
+from indexly.backup.cli_restore import handle_restore
+from indexly.compare.cli_compare import handle_compare
 
 
 # CLI display configurations here
@@ -51,9 +57,8 @@ def add_common_arguments(parser):
         "--path-contains", help="Only search files with paths containing this string"
     )
     parser.add_argument("--filter-tag", help="Filter by tag")
-    parser.add_argument(
-        "--context", type=int, default=150, help="Context characters around match"
-    )
+    parser.add_argument("--context", type=int, default=150, help="Context around match")
+
     parser.add_argument(
         "--no-cache",
         action="store_true",
@@ -61,15 +66,14 @@ def add_common_arguments(parser):
     )
 
     parser.add_argument(
-        "--export-format", choices=["txt", "md", "pdf", "json"], help="Export format"
+        "--no-refresh-write",
+        action="store_true",
+        help="Do not write refreshed cache back to disk",
     )
-    parser.add_argument(
-        "--pdf-lib",
-        choices=["fpdf", "reportlab"],
-        default="fpdf",
-        help="Choose PDF library for PDF export (default: fpdf)",
-    )
-    parser.add_argument("--output", help="Output file path")
+
+    parser.add_argument("--export-format", choices=["txt", "md", "pdf", "json"])
+    parser.add_argument("--pdf-lib", choices=["fpdf", "reportlab"], default="fpdf")
+    parser.add_argument("--output")
 
 
 def build_parser():
@@ -83,7 +87,10 @@ def build_parser():
         handle_extract_mtw,
         handle_rename_file,
         handle_update_db,
+        handle_doctor,
         handle_show_help,
+        handle_ignore_init,
+        handle_ignore_show,
     )
 
     parser = argparse.ArgumentParser(
@@ -99,6 +106,12 @@ def build_parser():
         action="store_true",  # <--- must be store_true to detect flag
         help="Show version, author, short license excerpt, and project links.",
     )
+    parser.add_argument(
+        "--check-updates",
+        action="store_true",
+        help="Check if a new Indexly version is available",
+    )
+    parser.add_argument("--no-update-check", action="store_true")
 
     # ----------------------------------------
     # 🪪 --show-license flag
@@ -126,7 +139,107 @@ def build_parser():
         action="store_true",
         help="Enable extended MTW extraction (extra streams, extra metadata)",
     )
+    index_parser.add_argument(
+        "--ignore",
+        type=str,
+        help="Path to .indexlyignore file (overrides default root .indexlyignore)",
+    )
+
+    ocr_group = index_parser.add_mutually_exclusive_group()
+    ocr_group.add_argument(
+        "--ocr",
+        action="store_true",
+        help="Force OCR for all PDFs (ignore size and page limits)",
+    )
+    ocr_group.add_argument(
+        "--no-ocr",
+        action="store_true",
+        help="Disable OCR entirely for PDFs",
+    )
+
     index_parser.set_defaults(func=handle_index)
+
+    # -------------------------
+    # Ignore parser
+    # -------------------------
+
+    ignore_parser = subparsers.add_parser(
+        "ignore",
+        help="Create, upgrade, or inspect .indexlyignore rules"
+    )
+
+    ignore_sub = ignore_parser.add_subparsers(dest="ignore_cmd")
+
+    # ---- init / upgrade ----
+    ignore_init = ignore_sub.add_parser(
+        "init",
+        help="Create or upgrade a .indexlyignore file"
+    )
+
+    ignore_init.add_argument(
+        "folder",
+        help="Target folder containing (or to receive) the .indexlyignore file"
+    )
+
+    ignore_init.add_argument(
+        "--preset",
+        choices=["minimal", "standard", "aggressive"],
+        default="standard",
+        help="Ignore rule preset to use"
+    )
+
+    ignore_init.add_argument(
+        "--upgrade",
+        action="store_true",
+        help="Upgrade an existing .indexlyignore by appending missing rules"
+    )
+
+    ignore_init.set_defaults(func=handle_ignore_init)
+
+    # ---- show ----
+    ignore_show = ignore_sub.add_parser(
+        "show",
+        help="Show active ignore rules for a folder"
+    )
+
+    ignore_show.add_argument(
+        "folder",
+        help="Target folder to inspect ignore rules"
+    )
+
+    ignore_show.add_argument(
+        "--preset",
+        choices=["minimal", "standard", "aggressive"],
+        default="standard",
+        help="Preset used if no local .indexlyignore exists"
+    )
+
+    ignore_show.add_argument(
+        "--source",
+        action="store_true",
+        help="Show where ignore rules are loaded from"
+    )
+
+    ignore_show.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Show detailed ignore diagnostics (requires --source)"
+    )
+
+    ignore_show.add_argument(
+        "--raw",
+        action="store_true",
+        help="Show raw ignore file contents (requires --source)"
+    )
+
+    ignore_show.add_argument(
+        "--effective",
+        action="store_true",
+        help="Show normalized rules exactly as used internally"
+    )
+
+    ignore_show.set_defaults(func=handle_ignore_show)
+
 
     # Search
     search_parser = subparsers.add_parser("search", help="Perform FTS search")
@@ -280,7 +393,7 @@ def build_parser():
         "--datetime-formats",
         nargs="+",
         metavar="FMT",
-        help="Optional list of datetime formats to apply (e.g. '%Y-%m-%d' '%d/%m/%Y %H:%M')",
+        help="Optional list of datetime formats to apply (e.g. '%%Y-%%m-%%d' '%%d/%%m/%%Y %%H:%%M')",
     )
     csv_parser.add_argument(
         "--derive-dates",
@@ -385,189 +498,362 @@ def build_parser():
 
     analyze_file_parser = subparsers.add_parser(
         "analyze-file",
-        help="Analyze any supported file (CSV, JSON, SQLite, XML, YAML, Parquet, etc.)"
+        help="Analyze any supported file (CSV, JSON, SQLite, XML, YAML, Parquet, Excel etc.)",
     )
 
     analyze_file_parser.add_argument("file", help="Path to the file to analyze")
 
-    # Export options
-    analyze_file_parser.add_argument(
-        "--export-path", help="Export analysis table to file (txt, md, xlsx, db, json, parquet)"
-    )
-    analyze_file_parser.add_argument(
+    # -------------------------------
+    # Common options (all file types)
+    # -------------------------------
+    common = analyze_file_parser.add_argument_group("Common options")
+
+    common.add_argument("--export-path", help="Export analysis table to file")
+    common.add_argument(
         "--format",
         choices=["txt", "md", "db", "csv", "json", "parquet", "excel"],
         default="txt",
         help="Output format for exported data",
     )
-    analyze_file_parser.add_argument(
-        "--compress-export",
+    common.add_argument(
+        "--no-persist", action="store_true", help="Disable database writes"
+    )
+    common.add_argument(
+        "--show-summary",
         action="store_true",
-        help="Compress JSON export output into .json.gz format",
+        help="Show extended summary of columns and derived fields",
+    )
+    common.add_argument(
+        "--wide-view",
+        action="store_true",
+        help="Display full column width for wide screens",
+    )
+    common.add_argument(
+        "--export-summary",
+        action="store_true",
+        help="Export dataset summary preview as Markdown (.md)",
+    )
+    common.add_argument(
+        "--use-saved",
+        action="store_true",
+        help="Use previously saved analysis data",
     )
 
-    # Visualization options
-    analyze_file_parser.add_argument(
-        "--show-chart",
-        choices=["ascii", "static", "interactive"],
-        help="Visualize CSV data in terminal, static image, or interactive HTML",
-    )
-    analyze_file_parser.add_argument(
-        "--chart-type",
-        choices=["bar", "line", "box", "hist", "scatter", "pie"],
-        default="None",
-        help="Chart type for visualizing numeric data",
-    )
-    analyze_file_parser.add_argument(
-        "--export-plot", help="Export chart to file (png, svg, html)"
-    )
-    analyze_file_parser.add_argument("--x-col", help="X-axis column for scatter plot")
-    analyze_file_parser.add_argument("--y-col", help="Y-axis column for scatter plot")
-    analyze_file_parser.add_argument(
-        "--transform",
-        choices=["none", "log", "sqrt", "softplus", "exp-log", "auto"],
-        default="none",
-        help="Apply data transformation before visualization",
-    )
-    analyze_file_parser.add_argument(
-        "--bar-scale",
-        choices=["sqrt", "log"],
-        default="sqrt",
-        help="Scaling method for ASCII histogram bars",
-    )
-    analyze_file_parser.add_argument(
-        "--timeseries", action="store_true", help="Plot timeseries if CSV"
-    )
-    analyze_file_parser.add_argument("--x", type=str, help="Datetime column for timeseries X-axis")
-    analyze_file_parser.add_argument("--y", type=str, help="Comma-separated numeric columns for Y-axis")
-    analyze_file_parser.add_argument("--freq", type=str, help="Resample frequency (D,W,M,Q,Y)")
-    analyze_file_parser.add_argument("--agg", type=str, default="mean", help="Aggregation for resampling")
-    analyze_file_parser.add_argument("--rolling", type=int, help="Rolling mean window size")
-    analyze_file_parser.add_argument(
-        "--mode",
-        type=str,
-        default="interactive",
-        choices=["interactive", "static"],
-        help="Plotting backend",
-    )
-    analyze_file_parser.add_argument("--output", type=str, help="Output filename for chart")
-    analyze_file_parser.add_argument("--title", type=str, help="Plot title override")
+    # -------------------------------
+    # CSV-specific options
+    # -------------------------------
+    csv_opts = analyze_file_parser.add_argument_group("CSV-specific options")
 
-    # Cleaning options
-    analyze_file_parser.add_argument(
-        "--auto-clean", action="store_true", help="Run robust cleaning pipeline"
+    csv_opts.add_argument(
+        "--auto-clean", action="store_true", help="Run robust CSV cleaning pipeline"
     )
-    analyze_file_parser.add_argument(
+    csv_opts.add_argument(
         "--fill-method",
         choices=["mean", "median"],
         default="mean",
-        help="Method to fill missing numeric values",
+        help="Fill missing numeric values",
     )
-    analyze_file_parser.add_argument(
+    csv_opts.add_argument(
         "--datetime-formats",
         nargs="+",
         metavar="FMT",
-        help="Optional list of datetime formats to apply (e.g. '%Y-%m-%d' '%d/%m/%Y %H:%M')",
+        help="Explicit datetime formats for CSV parsing",
     )
-    analyze_file_parser.add_argument(
+    csv_opts.add_argument(
         "--derive-dates",
         choices=["all", "minimal", "none"],
         default="all",
-        help="How many derived datetime features to generate",
+        help="Generate derived datetime features",
     )
-    analyze_file_parser.add_argument(
+    csv_opts.add_argument(
         "--date-threshold",
         type=float,
         default=0.3,
         help="Minimum valid ratio for date detection",
     )
-    analyze_file_parser.add_argument(
-        "--use-cleaned",
-        action="store_true",
-        help="Use previously saved cleaned dataset",
-    )
-    analyze_file_parser.add_argument(
-        "--no-persist",
-        action="store_true",
-        help="Disable saving cleaned or analyzed results to the database",
-    )
-    analyze_file_parser.add_argument(
+    csv_opts.add_argument(
         "--normalize",
         action="store_true",
-        help="Normalize numeric columns after cleaning",
+        help="Normalize numeric columns",
     )
-    analyze_file_parser.add_argument(
-        "--remove-outliers", action="store_true", help="Remove outliers after cleaning"
-    )
-    analyze_file_parser.add_argument(
-        "--show-summary",
+    csv_opts.add_argument(
+        "--remove-outliers",
         action="store_true",
-        help="Show extended summary of columns and derived fields",
+        help="Remove numeric outliers",
     )
-    analyze_file_parser.add_argument(
+    csv_opts.add_argument(
+        "--use-cleaned",
+        action="store_true",
+        help="Use previously cleaned CSV dataset",
+    )
+
+    # -------------------------------
+    # CSV visualization options
+    # -------------------------------
+    csv_viz = analyze_file_parser.add_argument_group("CSV visualization options")
+
+    csv_viz.add_argument(
+        "--show-chart",
+        choices=["ascii", "static", "interactive"],
+        help="Visualize CSV data",
+    )
+    csv_viz.add_argument(
+        "--chart-type",
+        choices=["bar", "line", "box", "hist", "scatter", "pie"],
+        default="None",
+        help="Chart type",
+    )
+    csv_viz.add_argument("--x-col", help="X-axis column")
+    csv_viz.add_argument("--y-col", help="Y-axis column")
+    csv_viz.add_argument("--export-plot", help="Export chart to file")
+    csv_viz.add_argument(
+        "--timeseries",
+        action="store_true",
+        help="Plot CSV timeseries data",
+    )
+    csv_viz.add_argument("--x", help="Datetime column for timeseries X-axis")
+    csv_viz.add_argument("--y", help="Comma-separated numeric Y columns")
+    csv_viz.add_argument("--freq", help="Resample frequency (D,W,M,Q,Y)")
+    csv_viz.add_argument("--agg", default="mean", help="Aggregation method")
+    csv_viz.add_argument("--rolling", type=int, help="Rolling window size")
+
+    # -------------------------------
+    # JSON-specific options
+    # -------------------------------
+    json_opts = analyze_file_parser.add_argument_group("JSON-specific options")
+
+    json_opts.add_argument(
         "--summarize-search",
         action="store_true",
-        help="Show normalized date/period summary for search-cache JSON files."
+        help="Summarize normalized search-cache JSON files",
     )
-
-    analyze_file_parser.add_argument(
+    json_opts.add_argument(
         "--sortdate-by",
         choices=["date", "year", "month", "week"],
-        help="Sort normalized search results by derived date or period."
-    )
-    
-    # Additional display/export (from original)
-    analyze_file_parser.add_argument(
-        "--wide-view",
-        action="store_true",
-        help="Display full column width for wide screens (show all columns)",
-    )
-    analyze_file_parser.add_argument(
-        "--export-summary",
-        action="store_true",
-        help="Export dataset summary preview as Markdown (.md) file",
+        help="Sort normalized JSON search results",
     )
 
-    # Database persistence
-    analyze_file_parser.add_argument(
-        "--use-saved",
-        action="store_true",
-        help="Use previously saved data (CSV or JSON)",
-    )
-    analyze_file_parser.add_argument(
-        "--db-mode",
-        choices=["replace", "append"],
-        default="replace",
-        help="Mode for writing to database when exporting to .db (default: replace)",
-    )
+    # -------------------------------
+    # XML options
+    # -------------------------------
+    xml_opts = analyze_file_parser.add_argument_group("XML-specific options")
 
-    # XML invoice options
-    analyze_file_parser.add_argument(
+    xml_opts.add_argument(
         "--invoice",
         action="store_true",
-        help="Treat XML file as e-invoice for detailed summary",
+        help="Treat XML file as e-invoice",
     )
-    analyze_file_parser.add_argument(
+    xml_opts.add_argument(
         "--invoice-export",
-        type=str,
-        help="Export e-invoice summary to Markdown file (active only with --invoice)",
+        help="Export e-invoice summary to Markdown",
     )
-    analyze_file_parser.add_argument(
+    xml_opts.add_argument(
         "--treeview",
         action="store_true",
-        help="Display XML tree view instead of invoice summary",
+        help="Display XML tree view",
     )
-    # EXCEL options
-    analyze_file_parser.add_argument(
+
+    # -------------------------------
+    # Excel options
+    # -------------------------------
+    excel_opts = analyze_file_parser.add_argument_group("Excel-specific options")
+
+    excel_opts.add_argument(
         "--sheet-name",
         nargs="+",
-        help="Specify one or more Excel sheet names to analyze (default: all sheets).",
+        help="Excel sheet names to analyze (default: all)",
     )
 
-
-    # Default binding
     analyze_file_parser.set_defaults(func=analyze_file)
 
+    # -----------------------------------------
+    # analyze-db subcommand
+    # -----------------------------------------
+
+    analyze_db_parser = subparsers.add_parser(
+        "analyze-db", help="Inspect a SQLite DB and generate analysis summary."
+    )
+
+    analyze_db_parser.add_argument("db_path", help="Path to the SQLite database file.")
+
+    analyze_db_parser.add_argument(
+        "--table",
+        help="Only analyze a specific table.",
+    )
+
+    analyze_db_parser.add_argument(
+        "--all-tables",
+        action="store_true",
+        help="Analyze all tables instead of auto-selecting one.",
+    )
+
+    # -------------------------
+    # Sampling controls
+    # -------------------------
+    analyze_db_parser.add_argument(
+        "--sample-size",
+        type=int,
+        default=None,
+        help="Maximum number of rows to sample per table. "
+        "If omitted, adaptive sampling is applied.",
+    )
+
+    analyze_db_parser.add_argument(
+        "--all-data",
+        action="store_true",
+        help="Disable sampling and use full table data.",
+    )
+
+    analyze_db_parser.add_argument(
+        "--fast",
+        action="store_true",
+        help="Fast mode: lighter profiling for huge tables.",
+    )
+
+    # -------------------------
+    # Output controls
+    # -------------------------
+    analyze_db_parser.add_argument(
+        "--show-summary",
+        action="store_true",
+        help="Print analysis overview to terminal.",
+    )
+
+    analyze_db_parser.add_argument(
+        "--no-persist",
+        action="store_true",
+        help="Do not write summary file to disk.",
+    )
+    analyze_db_parser.add_argument(
+        "--parallel",
+        action="store_true",
+        help="Profile multiple tables in parallel using multiple CPU cores",
+    )
+    analyze_db_parser.add_argument(
+        "--max-workers",
+        type=int,
+        default=os.cpu_count(),
+        help="Maximum number of parallel workers (default = CPU count)",
+    )
+    analyze_db_parser.add_argument(
+        "--fast-mode",
+        action="store_true",
+        help="Enable fast profiling mode (lighter metrics, faster)",
+    )
+    analyze_db_parser.add_argument(
+        "--timeout",
+        type=int,
+        default=None,
+        help="Per-table profiling timeout in seconds",
+    )
+    analyze_db_parser.add_argument(
+        "--persist-level",
+        choices=["minimal", "full", "none"],
+        default="full",
+    )
+
+    analyze_db_parser.add_argument(
+        "--export",
+        choices=["json", "md", "html"],
+        help="Export summary in the chosen format.",
+    )
+
+    analyze_db_parser.add_argument(
+        "--diagram",
+        choices=["mermaid"],
+        help="Include diagrams in MD/HTML export.",
+    )
+
+    analyze_db_parser.set_defaults(func=analyze_db)
+
+    # ------------------------
+    # Organizer CLI
+    # ------------------------
+    organize_parser = subparsers.add_parser(
+        "organize", help="Organize files in a folder by date or name"
+    )
+    organize_parser.add_argument("folder", help="Folder to organize")
+    organize_parser.add_argument(
+        "--sort-by",
+        choices=["date", "name", "extension"],
+        default="date",
+        help="Sort files by date, name or extension",
+    )
+    organize_parser.add_argument(
+        "--backup",
+        help="Optional backup folder to store copies of organized files",
+    )
+    organize_parser.add_argument(
+        "--log-dir",
+        help="Optional folder to store organizer logs (default: <folder>/log)",
+    )
+    organize_parser.add_argument(
+        "--executed-by",
+        default=getpass.getuser(),
+        help="Name of the user performing the organization (default: system user)",
+    )
+    organize_parser.add_argument(
+        "--lister",
+        action="store_true",
+        help="List files from the organizer log AFTER organizing (uses generated JSON log)",
+    )
+
+    organize_parser.add_argument(
+        "--lister-ext", help="Filter listed files by extension"
+    )
+    organize_parser.add_argument(
+        "--lister-category", help="Filter listed files by category"
+    )
+    organize_parser.add_argument(
+        "--lister-date", help="Filter listed files by used date"
+    )
+    organize_parser.add_argument(
+        "--lister-duplicates",
+        action="store_true",
+        help="Show only duplicate files",
+    )
+
+    organize_parser.set_defaults(
+        func=lambda args: handle_organize(
+            folder=args.folder,
+            sort_by=args.sort_by,
+            backup=args.backup,
+            log_dir=args.log_dir,
+            executed_by=args.executed_by,
+            lister=args.lister,
+            lister_ext=args.lister_ext,
+            lister_category=args.lister_category,
+            lister_date=args.lister_date,
+            lister_duplicates=args.lister_duplicates,
+        )
+    )
+
+    # Lister
+    lister_parser = subparsers.add_parser(
+        "lister",
+        help="List files from organizer log",
+    )
+    lister_parser.add_argument(
+        "source",
+        help="Organizer JSON log file or directory containing logs",
+    )
+    lister_parser.add_argument("--ext", help="Filter by extension (e.g. .json)")
+    lister_parser.add_argument("--category", help="Filter by category")
+    lister_parser.add_argument("--date", help="Filter by YYYY-MM")
+    lister_parser.add_argument(
+        "--duplicates",
+        action="store_true",
+        help="Show only duplicate files",
+    )
+    lister_parser.set_defaults(
+        func=lambda args: handle_lister(
+            args.source,
+            ext=args.ext,
+            category=args.category,
+            date=args.date,
+            duplicates=args.duplicates,
+        )
+    )
 
     # Stats
     stats_parser = subparsers.add_parser("stats", help="Show database statistics")
@@ -626,6 +912,163 @@ def build_parser():
     )
 
     rename_file_parser.set_defaults(func=handle_rename_file)
+
+    # ----------------------- read-json -----------------------
+    read_json_parser = subparsers.add_parser(
+        "read-json",
+        help="Read and display indexly JSON file",
+        description="Read and view Indexly JSON files.",
+    )
+
+    read_json_parser.add_argument("file", help="Path to Indexly JSON file")
+
+    read_json_parser.add_argument(
+        "--treeview", action="store_true", help="Display full Rich tree view"
+    )
+
+    read_json_parser.add_argument(
+        "--preview",
+        type=int,
+        default=3,
+        help="Number of top-level keys/items to preview in compact view",
+    )
+
+    read_json_parser.add_argument(
+        "--show-summary",
+        action="store_true",
+        help="Display database-aware summary of JSON content",
+    )
+
+    # IMPORTANT: always set func → otherwise argparse prints top-level help
+    read_json_parser.set_defaults(
+        func=lambda args: read_indexly_json(
+            file_path=args.file,
+            treeview=args.treeview,
+            preview=args.preview,
+            show_summary=args.show_summary,
+        )
+    )
+
+    # Backup
+    backup_parser = subparsers.add_parser(
+        "backup",
+        help="Create a full or incremental backup",
+    )
+
+    backup_parser.add_argument(
+        "folder",
+        nargs="?",
+        help="Folder to back up (required for manual backup or --init-auto)",
+    )
+
+    backup_parser.add_argument(
+        "--incremental",
+        action="store_true",
+        help="Create an incremental backup (default: full backup)",
+    )
+    backup_parser.add_argument(
+        "--manual",
+        action="store_true",
+        help="Force interactive/manual mode even if auto-backup is enabled",
+    )
+
+    backup_parser.add_argument(
+        "--encrypt",
+        metavar="PASSWORD",
+        help="Encrypt backup with password",
+    )
+
+    # 🔹 Automatic backup controls
+    backup_parser.add_argument(
+        "--init-auto",
+        action="store_true",
+        help="Initialize automatic backup structure (opt-in)",
+    )
+
+    backup_parser.add_argument(
+        "--disable-auto",
+        action="store_true",
+        help="Disable automatic backups and delete all backup data",
+    )
+
+    backup_parser.add_argument(
+        "--confirm",
+        action="store_true",
+        help="Confirm destructive actions (required for --disable-auto)",
+    )
+
+    backup_parser.set_defaults(func=lambda args: handle_backup(args))
+
+    # Restore Backup
+    restore_parser = subparsers.add_parser(
+        "restore",
+        help="Restore a backup",
+    )
+    restore_parser.add_argument("backup", help="Backup name")
+    restore_parser.add_argument("--target", help="Restore destination")
+    restore_parser.add_argument("--decrypt", help="Decryption password")
+    restore_parser.set_defaults(func=handle_restore)
+
+    # Compare
+    compare_parser = subparsers.add_parser(
+        "compare",
+        help="Compare files or folders",
+    )
+
+    compare_parser.add_argument(
+        "path_a",
+        help="First file or folder (or target for auto-compare)",
+    )
+
+    compare_parser.add_argument(
+        "path_b",
+        nargs="?",
+        help="Second file or folder (optional for auto-compare)",
+    )
+
+    compare_parser.add_argument(
+        "--threshold",
+        type=float,
+        help="Similarity tolerance (0.0 exact, 1.0 very loose)",
+    )
+
+    compare_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output result as JSON",
+    )
+
+    compare_parser.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress normal output (exit code only)",
+    )
+
+    compare_parser.add_argument(
+        "--extensions",
+        type=str,
+        help="Comma-separated list of file extensions to compare (e.g., .py,.md,.json)",
+    )
+    compare_parser.add_argument(
+        "--context",
+        type=int,
+        default=3,
+        help="Number of context lines to show around changes (default: 3)",
+    )
+
+    compare_parser.add_argument(
+        "--ignore",
+        type=str,
+        help="Comma-separated list of file/folder names to ignore (e.g., .git,__pycache__)",
+    )
+
+    compare_parser.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Show summary only (folders)",
+    )
+
+    compare_parser.set_defaults(func=lambda args: handle_compare(args))
 
     # Migrate
     migrate_parser = subparsers.add_parser(
@@ -713,6 +1156,22 @@ def build_parser():
 
     update_db.set_defaults(func=lambda args: handle_update_db(args))
     
+    # -------------------------------------------------------------------
+    # doctor command
+    # -------------------------------------------------------------------
+    doctor = subparsers.add_parser(
+        "doctor",
+        help="Run a fast, read-only Indexly health check.",
+    )
+
+    doctor.add_argument(
+        "--json",
+        action="store_true",
+        help="Output health report as JSON.",
+    )
+
+    doctor.set_defaults(func=lambda args: handle_doctor(args))
+
     # ------------------------------------------------------------
     # LOG-CLEAN SUBCOMMAND
     # ------------------------------------------------------------

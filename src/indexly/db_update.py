@@ -44,7 +44,8 @@ EXPECTED_SCHEMA = {
             image_created TEXT,
             dimensions TEXT,
             format TEXT,
-            gps TEXT
+            gps TEXT,
+            metadata TEXT
         );
     """,
     "file_tags": """

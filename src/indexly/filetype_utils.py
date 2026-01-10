@@ -65,7 +65,11 @@ SUPPORTED_EXTENSIONS = {
 }
 
 
-def extract_text_from_file(file_path):
+def extract_text_from_file(
+    file_path,
+    force_ocr: bool = False,
+    disable_ocr: bool = False,
+):
     """
     Extract text + metadata.
     Returns: (text_content, metadata) or (None, None)
@@ -82,8 +86,15 @@ def extract_text_from_file(file_path):
             raw_text = _extract_html(file_path)
 
         elif ext in [
-            ".txt", ".md", ".json", ".xml", ".py",
-            ".csv", ".log", ".js", ".css",
+            ".txt",
+            ".md",
+            ".json",
+            ".xml",
+            ".py",
+            ".csv",
+            ".log",
+            ".js",
+            ".css",
         ]:
             with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
                 raw_text = f.read()
@@ -93,7 +104,11 @@ def extract_text_from_file(file_path):
         elif ext == ".xlsx":
             raw_text = _extract_xlsx(file_path)
         elif ext == ".pdf":
-            result = _extract_pdf(file_path)
+            result = _extract_pdf(
+                file_path,
+                ocr_enabled=not disable_ocr,
+                force_ocr=force_ocr,
+            )
             raw_text = result.get("text")
             metadata = result.get("metadata")
         elif ext == ".pptx":
@@ -110,9 +125,9 @@ def extract_text_from_file(file_path):
             metadata = extract_image_metadata(file_path)
         elif ext in [".zip", ".exe", ".bin"]:
             return None, None  # skip binaries
-        
+
         elif ext == ".mtw":
-        # Special handling for MTW
+            # Special handling for MTW
             print(f"📂 Extracting .mtw file: {file_path} ...")
             extracted_files = _extract_mtw(file_path, os.path.dirname(file_path))
             print("✅ Extraction complete. Indexing extracted contents...")
@@ -126,7 +141,6 @@ def extract_text_from_file(file_path):
                     print(f"⚠️ Failed to read extracted file {f}: {e}")
 
             raw_text = "\n".join(combined_text) if combined_text else ""
-
 
         text_content = clean_text(raw_text) if raw_text else None
         return text_content, metadata

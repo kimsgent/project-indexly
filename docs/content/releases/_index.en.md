@@ -5,38 +5,46 @@ toc: true
 weight: 10
 ---
 
-
-## Latest Release: v1.0.5 (2025-11-29)
+## Latest Release: v1.0.6 (2026-01-10)
 
 ### Changes
-- fix(loader): correctly validate .ndjson files when extension is provided, resolving NDJSON fallback and allowing Indexly-exported concatenated logs to be analyzed directly
-- feat(log-clean): added multi-log cleaning with NDJSON/CSV export, path normalization and filename sanitization
-- fix(analyze-json): prevent fallback warnings for structured JSON inputs and improve structured detection
-- feat(json): added Socrata/OpenData JSON detection with safe streaming extractor for large datasets
-- fix(json): unified JSON analysis logic and ensured correct scalar statistics persistence
-- feat(json): enhanced JSON pipeline with deeper structure handling, array summarization, and improved metadata propagation
-- fix(json): corrected test-case handling, flattening logic, and numeric-like string normalization
-- feat(json): introduced json_cache_normalizer and integrated stable cache normalization into JSON pipeline
-- feat(xml): implemented full generic XML analysis, including XRechnung (all 3 formats), nested dictionaries, and invoice-compatible treeview summaries
-- fix(xml): resolved dataset summary preview by properly using db_dict/summary fallbacks
-- feat(excel): added multi-sheet Excel support and unified loader behavior for XLSX metadata and summaries
-- feat(parquet): improved parquet analysis pipeline, normalization, markdown summary, and treeview generation
-- feat(csv): unified CSV/Parquet/Excel export logic and improved CSV visualization & summary statistics
-- feat(timeseries): enhanced multi-series time-series pipeline with aggregation, resampling, and visualization integration
-- feat(visualization): improved visualization pipeline (Plotly + Matplotlib) and stabilized column type inference
-- fix(datetime): unified datetime parsing, preserved non-datetime fields, and ensured stable derived features (calendar week, date parts)
-- feat(cleaning): added advanced CSV auto-clean pipeline with robust chunking, fallback logic, summary persistence, and error handling
-- feat(loader): improved universal loader detection across CSV, JSON, XML, YAML, Excel, and Parquet, ensuring safer DataFrame assignment
-- feat(analysis): unified orchestration layer for analyze-file, analyze-json, and analyze-csv to guarantee predictable pipeline delegation
-- feat(search-cache): added JSON normalization and improved hierarchical summary handling for summarize-search
-- feat(cli): improved CLI version output, license excerpt, and project-links in --version
-- docs: updated documentation for JSON, XML, CSV pipelines and visualization; improved SEO metadata and Hugo structure
-- meta: prepared Indexly v1.0.5 release including NDJSON fix, enhanced loaders, unified pipelines, and improved stability across all formats
+- fix(log): enforced LOG_MAX_BYTES to prevent uncontrolled incremental log growth
+- fix(ignore): improved ignore preset loading, loader cache handling, path matching, and CLI inspection output
+- fix(backup): corrected auto-backup detection, incremental diff logic, and optimized backup chain restore flow
+- fix(analyze-db): ensured save_json receives Path objects during persistence
+- fix(db): corrected primary key handling in schema summaries for tables without explicit primary keys
+- fix(diagrams): fixed Mermaid ER diagram generation and export reliability
+- fix(cli): resolved argparse %% escape issue in datetime format help text
+- fix(json): prevented non-numeric summary crashes by safely decoding byte values
+- fix(tests): added pytest-asyncio dependency and registered asyncio marker for strict async test validation
+- feat(backup): implemented full and incremental backup system with encrypted (.enc) Zstandard restore support
+- feat(backup): added dynamic auto-backup script generation
+- feat(ignore): restructured ignore system with presets, enhanced folder ignores, and cross-platform .indexlyignore support
+- feat(ignore): added CLI ignore rule parsing and inspection output
+- feat(compare): implemented enhanced file and folder comparison with GitHub-style diff visualization
+- feat(cli): enhanced show-help output and integrated organizer lister execution
+- feat(organizer): integrated organizer lister feature into CLI execution flow
+- feat(semantic-filter): implemented Tier 1/2/3 semantic filtering with enriched metadata handling
+- feat(update): added automatic update checking utilities with human-readable timestamps
+- feat(watcher): stabilized file watcher with full path normalization, async-safe logging, and improved event handling
+- feat(analyze-db): introduced full analyze-db pipeline with schema inspection, profiling, relation detection, adjacency graphs, Mermaid ER diagrams, and export utilities
+- feat(analyze-db): added advanced DB profiling with parallel execution, per-table timeouts, row estimation, and largest-table detection
+- feat(json): added Indexly JSON reader with rich summaries, numeric and non-numeric metrics, schema previews, and treeview support
+- feat(packaging): added Homebrew formula generation and automated publish-homebrew workflow
+- chore(logging): upgraded logging_utils to enterprise-grade async-safe JSON logging and unified LogManager
+- chore(logging): switched backup, restore, and watcher logs to structured JSON output and reduced INFO noise
+- chore(deps): added requests dependency and improved log sorting by year/month
+- chore(legal): updated project license
+- refactor(logging): unified index logging via _unified_log_entry for consistent per-file metadata records
+- refactor(db): unified DB loader outputs and enhanced detection modules
+- docs(cli): clarified analyze-file help by file type and extended DB update documentation
+- meta: prepared Indexly v1.0.6 with major stability, backup, logging, ignore-system, database analysis, and distribution improvements
 
 ---
 
 ## Archive
 
+- [Release v1.0.5](/releases/v1.0.5/) (2025-11-29)
 - [Release v1.0.4](/releases/v1.0.4/) (2025-10-26)
 - [Release v1.0.3](/releases/v1.0.3/) (2025-10-12)
 - [Release v1.0.2](/releases/v1.0.2/) (2025-09-20)

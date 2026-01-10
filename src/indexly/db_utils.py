@@ -117,7 +117,8 @@ def connect_db(db_path: str | None = None):
             image_created TEXT,
             dimensions TEXT,
             format TEXT,
-            gps TEXT
+            gps TEXT,
+            metadata TEXT
         );
         """
     )

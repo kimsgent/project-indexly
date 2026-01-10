@@ -635,23 +635,71 @@ def _load_parquet(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
     return raw, df
 
 
-def _load_sqlite(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
+def _load_sqlite(path: Path) -> tuple[dict, dict[str, pd.DataFrame]]:
+    """
+    Load an SQLite database and return:
+    - raw: dict with tables, schemas (as dicts), counts
+    - dfs: dict of DataFrames for each table (sampled, limited to 10_000 rows)
+    """
+    raw: dict = {"tables": [], "schemas": {}, "counts": {}}
+    dfs: dict[str, pd.DataFrame] = {}
+
     try:
         conn = sqlite3.connect(str(path))
         cur = conn.cursor()
+
+        # --- Tables
         cur.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';"
         )
         tables = [row[0] for row in cur.fetchall()]
-        raw = {"tables": tables}
-        if tables:
-            df = pd.read_sql_query(f"SELECT * FROM {tables[0]} LIMIT 10000;", conn)
-        else:
-            df = None
-        conn.close()
-        return raw, df
-    except Exception:
-        return None, None
+        raw["tables"] = tables
+
+        if not tables:
+            return raw, dfs
+
+        # --- Schemas + counts
+        for t in tables:
+            try:
+                cur.execute(f"PRAGMA table_info('{t}');")
+                # Convert tuple list to dict list
+                raw["schemas"][t] = [
+                    {
+                        "cid": col[0],
+                        "name": col[1],
+                        "type": col[2],
+                        "notnull": col[3],
+                        "default_value": col[4],
+                        "pk": col[5],
+                    }
+                    for col in cur.fetchall()
+                ]
+
+                cur.execute(f"SELECT COUNT(*) FROM '{t}';")
+                raw["counts"][t] = cur.fetchone()[0]
+
+                # Sample table into DataFrame
+                dfs[t] = pd.read_sql_query(f"SELECT * FROM '{t}' LIMIT 10000;", conn)
+
+            except Exception as e:
+                console.print(f"[yellow]⚠️ Failed to load table '{t}': {e}[/yellow]")
+                dfs[t] = pd.DataFrame()
+                raw["schemas"][t] = []
+                raw["counts"][t] = 0
+
+        return raw, dfs
+
+    except Exception as e:
+        console.print(f"[red]❌ Failed to load SQLite database {path}: {e}[/red]")
+        return raw, dfs
+
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
 
 
 # ---------------------------------------------------------------------
@@ -850,6 +898,42 @@ def detect_and_load(file_path: str | Path, args=None) -> Dict[str, Any]:
             "metadata": metadata,
             "loader_spec": f"loader:{loader_fn.__name__}" if loader_fn else None,
         }
+    elif file_type in {"sqlite", "db"}:
+        loader_fn = LOADER_REGISTRY.get(file_type)
+        if loader_fn:
+            # Correct unpack: _load_sqlite returns raw dict + dfs dict
+            raw, dfs = loader_fn(path)
+            if dfs is None:
+                dfs = {}
+
+            # Default df for orchestrator preview
+            default_df = next(iter(dfs.values()), None)
+
+        else:
+            raw = {}
+            dfs = {}
+            default_df = None
+
+        metadata = {
+            "source_path": str(path),
+            "validated": bool(dfs),
+            "loader_used": f"loader:{loader_fn.__name__}" if loader_fn else None,
+            "rows": sum(tdf.shape[0] for tdf in dfs.values()) if dfs else 0,
+            "cols": max(tdf.shape[1] for tdf in dfs.values()) if dfs else 0,
+            "loaded_at": datetime.utcnow().isoformat() + "Z",
+            "tables": list(dfs.keys()) if dfs else [],
+        }
+
+        return {
+            "file_type": file_type,
+            "df": default_df,
+            "df_preview": None,
+            "dfs": dfs,
+            "raw": raw,
+            "metadata": metadata,
+            "loader_spec": f"loader:{loader_fn.__name__}" if loader_fn else None,
+        }
+
 
     # ============================================================
     # --- Other loaders (XML, Excel, YAML, etc.)

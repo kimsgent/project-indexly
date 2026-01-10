@@ -7,11 +7,12 @@ import importlib.metadata
 from pathlib import Path
 from rich.console import Console
 from rich.text import Text
+from datetime import datetime
 
 console = Console()
 
-
-
+# Set the year Indexly first released
+START_YEAR = 2025
 
 def _find_license_file():
     # 1. Try inside package folder
@@ -46,8 +47,6 @@ def _find_license_file():
     return None
 
 
-
-
 def get_license_excerpt(lines=2):
     path = _find_license_file()
     if not path:
@@ -59,6 +58,14 @@ def get_license_excerpt(lines=2):
     except Exception:
         return "MIT License"
 
+
+def get_copyright_year():
+    current_year = datetime.now().year
+    if START_YEAR == current_year:
+        return f"{current_year}"
+    else:
+        return f"{START_YEAR}–{current_year}"
+
 def get_version_string_rich():
     """
     Return a rich-formatted multi-line version string.
@@ -66,7 +73,10 @@ def get_version_string_rich():
     license_excerpt = get_license_excerpt(lines=2)
 
     text = Text()
-    text.append(f"Indexly {__version__} (c) 2025 {__author__})\n", style="bold cyan")
+    text.append(
+        f"Indexly {__version__} (c) {get_copyright_year()} {__author__})\n",
+        style="bold cyan"
+    )
     text.append(f"{license_excerpt}\n", style="white")
     text.append("Project: github.com/kimsgent/project-indexly\n", style="bold green")
     text.append("Website: projectindexly.com\n", style="bold green")
