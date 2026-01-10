@@ -34,7 +34,7 @@ class Indexly < Formula
   end
 
   test do
-    system "#{bin}/indexly", "--help"
+    system "#{{bin}}/indexly", "--help"
   end
 end
 """
