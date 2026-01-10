@@ -2,8 +2,8 @@
   "project": "FTS5 File Search Tool",
   "versions": [
     {
-      "version": "1.0.6-rc.3",
-      "date": "2026-01-08",
+      "version": "1.0.6",
+      "date": "2026-01-10",
       "changes": [
         "fix(log): enforced LOG_MAX_BYTES to prevent uncontrolled incremental log growth",
         "fix(ignore): improved ignore preset loading, loader cache handling, path matching, and CLI inspection output",
