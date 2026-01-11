@@ -63,8 +63,6 @@ from .db_update import check_schema, apply_migrations
 from .log_utils import _unified_log_entry, _default_logger, shutdown_logger
 
 
-
-
 # Force UTF-8 output encoding (Recommended for Python 3.7+)
 sys.stdout.reconfigure(encoding="utf-8")
 
@@ -260,7 +258,7 @@ async def scan_and_index_files(
     force_ocr=False,
     disable_ocr=False,
     ignore_path: str | None = None,  # <-- path to custom .indexlyignore
-    preset: str = "standard",        # <-- default preset
+    preset: str = "standard",  # <-- default preset
 ):
     from .cache_utils import clean_cache_duplicates
     from indexly.ignore import IgnoreRules
@@ -466,7 +464,8 @@ def handle_ignore_init(args):
         existing_set = set(line.strip() for line in existing_lines if line.strip())
 
         new_lines = [
-            line for line in template.splitlines()
+            line
+            for line in template.splitlines()
             if line.strip() and line.strip() not in existing_set
         ]
 
@@ -492,10 +491,8 @@ def handle_ignore_init(args):
         return
 
     ignore_file.write_text(template, encoding="utf-8")
-    print(
-        f"✅ Created .indexlyignore at {ignore_file} "
-        f"(preset: {args.preset})"
-    )
+    print(f"✅ Created .indexlyignore at {ignore_file} " f"(preset: {args.preset})")
+
 
 def handle_ignore_show(args):
     """
@@ -770,10 +767,28 @@ def clear_cleaned_data_handler(args):
     else:
         print("⚠️ Please provide a file path or use --all to remove all entries.")
 
+
 def handle_doctor(args):
     from indexly.doctor import run_doctor
 
-    run_doctor(json_output=args.json)
+    # Only pass auto_fix if --profile-db is active
+    if getattr(args, "profile_db", False):
+        auto_fix = getattr(args, "auto_fix", False)
+    else:
+        if getattr(args, "auto_fix", False):
+            console.print(
+                "[yellow]Warning: --auto-fix only works with --profile-db. Ignoring.[/yellow]"
+            )
+        auto_fix = False
+
+    exit_code = run_doctor(
+        json_output=getattr(args, "json", False),
+        profile_db=getattr(args, "profile_db", False),
+        fix_db=getattr(args, "fix_db", False),
+        auto_fix=auto_fix,  # <-- now properly forwarded
+    )
+
+    sys.exit(exit_code)
 
 
 def handle_extract_mtw(args):

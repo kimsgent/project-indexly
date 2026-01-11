@@ -1169,6 +1169,21 @@ def build_parser():
         action="store_true",
         help="Output health report as JSON.",
     )
+    doctor.add_argument(
+        "--profile-db",
+        action="store_true",
+        help="Run read-only database profiling (Phase 3).",
+    )
+    doctor.add_argument(
+        "--fix-db",
+        action="store_true",
+        help="Attempt to fix database schema issues automatically.",
+    )
+    doctor.add_argument(
+        "--auto-fix",
+        action="store_true",
+        help="Automatically apply schema fixes without prompting",
+    )
 
     doctor.set_defaults(func=lambda args: handle_doctor(args))
 

@@ -148,11 +148,12 @@ def check_schema(conn, verbose=True):
 # Migration Apply
 # -------------------------------------------------------------------
 
-def apply_migrations(conn, dry_run=False):
+def apply_migrations(conn, dry_run=False, auto_fix=False):
     """
     Apply schema migrations automatically.
     - Creates backup before altering DB.
     - In dry-run mode, only prints actions.
+    - If auto_fix=True, from doctor.py bypass all interactive prompts.
     """
     diffs = check_schema(conn, verbose=False)
 
@@ -173,16 +174,17 @@ def apply_migrations(conn, dry_run=False):
     for table, msg, missing_cols in diffs:
         print(f"\n🔧 Updating {table}: {msg}")
 
-        # ⚠️ FTS5-specific warning before rebuild
+        # ---- FTS5-specific warning before rebuild ----
         if "FTS5" in msg:
-            print("\n⚠️ WARNING: Rebuilding FTS5 tables will overwrite all existing `path` values with `None`.")
-            print("   Searches will still function, but file paths will be lost until re-indexed.")
-            print("   This operation is irreversible without a backup.\n")
+            if not auto_fix:
+                print("\n⚠️ WARNING: Rebuilding FTS5 tables will overwrite all existing `path` values with `None`.")
+                print("   Searches will still function, but file paths will be lost until re-indexed.")
+                print("   This operation is irreversible without a backup.\n")
 
-            user_input = input("Proceed with FTS rebuild for this table? (y/N): ").strip().lower()
-            if user_input != "y":
-                print(f"🚫 Skipping rebuild of {table} by user choice.")
-                continue
+                user_input = input("Proceed with FTS rebuild for this table? (y/N): ").strip().lower()
+                if user_input != "y":
+                    print(f"🚫 Skipping rebuild of {table} by user choice.")
+                    continue
 
             db_path = None
             try:
@@ -193,6 +195,7 @@ def apply_migrations(conn, dry_run=False):
 
             _rebuild_fts5_table(conn, table, EXPECTED_SCHEMA[table], Path(db_path) if db_path else None)
 
+        # ---- ALTER table for missing columns ----
         elif "ALTER" in msg:
             for col in missing_cols:
                 try:
@@ -201,6 +204,7 @@ def apply_migrations(conn, dry_run=False):
                 except sqlite3.OperationalError as e:
                     print(f"  ⚠️ Could not add {col}: {e}")
 
+        # ---- Create missing tables ----
         elif "Missing table" in msg:
             conn.execute(EXPECTED_SCHEMA[table])
             print(f"  🆕 Created new table: {table}")

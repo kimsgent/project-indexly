@@ -117,7 +117,6 @@ check_and_install_packages(
     ]
 )
 
-print_external_tools_info()
 
 # --- third-party imports (safe now) ---
 import docx
