@@ -65,8 +65,7 @@ flowchart TD
 ## Table of Contents
 
 * [Features](/features)
-* [Installation](usage.md#installation)
-* [Basic Usage](usage.md#basic-usage)
+* [Installation & Basic Usage](usage.md#basic-usage)
 * [Search Profiles](config.md#search-profiles)
 * [Tagging](config.md#tagging-system)
 * [Exporting](usage.md#exporting)
@@ -74,9 +73,11 @@ flowchart TD
 * [Advanced Options](config.md#advanced-options)
 * [Renaming Files with Patterns →](rename-file.md)
 * [Extracting Minitab MTW files →](mtw-parser.md)
-* New in v1.0.5: [Data Analysis Overview →](data-analysis-overview.md)
-* New in v1.0.5: [Time-Series Visualization→](time-series-visualization.md)
-* [DB Update & Migration Utilities →](db-migration-utility.md)
+* [Data Analysis Overview →](data-analysis-overview.md)
+* [Time-Series Visualization→](time-series-visualization.md)
+* New in v1.0.6: [Indexly Doctor→](indexly-doctor.md)
+* New in v1.0.6: [Semantic Indexing→](semantic-indexing-overview.md)
+* New in v1.0.6: [Organizer, Lister & Backup/Restore→](organizer.md)
 * [Developer Notes](developer.md)
 * [License & Credits](#license-credits)
 
