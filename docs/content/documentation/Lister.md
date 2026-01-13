@@ -163,7 +163,7 @@ This allows you to:
 
 ## 🧩 Organizer Integration
 
-Lister is tightly integrated with [Organizer](organizer.md):
+Lister is tightly integrated with Organizer:
 
 ### Run Organizer → Then Lister
 
@@ -244,5 +244,5 @@ This makes it ideal for:
 
 ----
 
-➡️ Next: [Backup & Restore](backup-restore.md)
+## ➡️ Next: [Backup & Restore](backup-restore.md)
 
