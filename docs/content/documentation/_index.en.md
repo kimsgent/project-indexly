@@ -75,9 +75,11 @@ flowchart TD
 * [Extracting Minitab MTW files →](mtw-parser.md)
 * [Data Analysis Overview →](data-analysis-overview.md)
 * [Time-Series Visualization→](time-series-visualization.md)
+* New in v1.0.6: [The Story of Chinook→](story-of-chinook.md)
 * New in v1.0.6: [Indexly Doctor→](indexly-doctor.md)
 * New in v1.0.6: [Semantic Indexing→](semantic-indexing-overview.md)
 * New in v1.0.6: [Organizer, Lister & Backup/Restore→](organizer.md)
+* New in v1.0.6: [Indexly Logging System→](indexly-logging-system.md)
 * [Developer Notes](developer.md)
 * [License & Credits](#license-credits)
 
@@ -117,11 +119,8 @@ flowchart TD
 
 ## Workflow Overview
 
-```mermaid
-flowchart LR
-    A[Index files 📂] --> B[Search 🔍]
-    B --> C[Filter & tag 🏷️]
-    C --> D[Export results 🧾]
+```bash
+Organize 🗂️ → Validate/List 📋 → Backup 💾 → Index 📦 → Search 🔍 → Tag & Filter 🏷️ → Compare 📑 → Export 🧾
 ````
 
 

@@ -103,6 +103,7 @@ Use cases:
 - Audit PDFs only
 - Validate cleanup of specific file types
 
+
 ----
 
 ### 🔹 Filter by Category
@@ -244,5 +245,5 @@ This makes it ideal for:
 
 ----
 
-## ➡️ Next: [Backup & Restore](backup-restore.md)
+➡️ Next: [Backup & Restore](backup-restore.md)
 

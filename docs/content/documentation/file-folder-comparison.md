@@ -144,7 +144,7 @@ indexly compare "E:/project/folder_a" "E:/project/folder_b" --summary-only
 | Missing A  | 1         |
 | Missing B  | 2         |
 
-![scaled_compare.jpeg](/images/scaled_compare.jpeg)
+![scaled_compare.jpeg](/images/scaled_compare_folder.png)
 
 ### **Filtering Files**
 

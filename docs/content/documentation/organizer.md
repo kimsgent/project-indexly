@@ -111,7 +111,7 @@ This is stored in logs and useful for:
 
 ----
 
-## Integrated Lister Mode
+## Integrated [Lister](lister.md) Mode
 
 Organizer can immediately list results **after organizing** using the generated log:
 
@@ -134,6 +134,7 @@ Supported filters:
 
 This avoids manual log inspection and enables fast verification.
 
+>![filter with lister](/images/scaled_lister_filtered_by_csv.jpg)
 ----
 
 ## Duplicate Detection

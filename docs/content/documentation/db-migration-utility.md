@@ -15,7 +15,6 @@ draft: false
 
 ___
 
-# Database Update & Migration Utilities
 
 This guide explains how to **update, migrate, and manage** your Indexly database safely using three built-in utilities:
 
@@ -37,16 +36,16 @@ Together, these tools let you modify schema definitions, rebuild FTS5 indexes wh
 
 ----
 
-> ## 🌱 Key Features & Highlights
+## 🌱 Key Features & Highlights
 
-- > **Schema auto-alignment:** Adds missing columns automatically.
-- > **Dry-run mode:** Preview all changes without applying them.
-- > **Migration history tracking:** Each migration is recorded with a timestamp.
-- > **Automatic FTS5 rebuilds:** Detects prefix/tokenizer mismatches and recreates tables when necessary.
-- > **Safe backups:** Creates versioned `.bak_YYYYMMDD_HHMMSS` copies before modifying any DB.
-- > **Interactive confirmation:** Prompts you before irreversible operations.
-- > **Path normalization & data validation:** Ensures consistent entries across tables.
-- > **Cross-database merging:** Import or update specific tables without full re-indexing.
+- **Schema auto-alignment:** Adds missing columns automatically.
+- **Dry-run mode:** Preview all changes without applying them.
+- **Migration history tracking:** Each migration is recorded with a timestamp.
+- **Automatic FTS5 rebuilds:** Detects prefix/tokenizer mismatches and recreates tables when necessary.
+- **Safe backups:** Creates versioned `.bak_YYYYMMDD_HHMMSS` copies before modifying any DB.
+- **Interactive confirmation:** Prompts you before irreversible operations.
+- **Path normalization & data validation:** Ensures consistent entries across tables.
+- **Cross-database merging:** Import or update specific tables without full re-indexing.
 
 ----
 
