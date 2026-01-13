@@ -102,7 +102,7 @@ File Comparison
 | `+`        | Added line        |
 | ` `        | Unchanged context |
 
-![scaled_compare_files_01.jpeg](/images/scaled_compare_files_01.jpeg)
+![scaled_compare_files_01.jpeg](/images/scaled_compare_files_01.png)
 
 ## **Context Folding**
 
