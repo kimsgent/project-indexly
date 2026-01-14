@@ -1,13 +1,34 @@
-from pathlib import Path
-from datetime import datetime
 import shutil
 import hashlib
 import json
 import sys
 import time
+from pathlib import Path
+from datetime import datetime
+from rich.console import Console
+from rich.tree import Tree
+from rich.panel import Panel
+from rich.logging import RichHandler
+import logging
+import hashlib
+
+
+from .profiles import PROFILE_STRUCTURES, PROFILE_NEXT_STEPS
+from .utils import write_organizer_log
+
 
 from .organizer import organize_folder
 from .lister import list_organizer_log
+
+console = Console()
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(message)s",
+    handlers=[RichHandler(console=console)],
+)
+log = logging.getLogger("organizer")
+
 
 def _hash_file(path: Path, algo="sha256"):
     h = hashlib.new(algo)
@@ -15,6 +36,7 @@ def _hash_file(path: Path, algo="sha256"):
         for chunk in iter(lambda: f.read(8192), b""):
             h.update(chunk)
     return h.hexdigest()
+
 
 def _write_log_atomic(log: dict, log_dir: Path, root_name: str):
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -28,10 +50,11 @@ def _write_log_atomic(log: dict, log_dir: Path, root_name: str):
     tmp_path.replace(final_path)
     return final_path
 
+
 def execute_organizer(
     root: Path,
     sort_by: str = "date",
-    executed_by: str = "kims",
+    executed_by: str = "system",
     backup_root: Path | None = None,
     log_dir: Path | None = None,
     *,
@@ -114,3 +137,77 @@ def execute_organizer(
 
     return plan, backup_mapping
 
+
+def execute_profile_scaffold(
+    root: Path,
+    profile: str,
+    *,
+    apply: bool = False,
+    dry_run: bool = False,
+    executed_by: str = "system",
+):
+    root = Path(root).resolve()
+    profile = profile.lower()
+
+    if profile not in PROFILE_STRUCTURES:
+        raise ValueError(f"Unknown profile: {profile}")
+
+    console.rule(f"[bold cyan]Indexly Organize — Profile: {profile}")
+
+    tree = Tree(f"📁 {root}")
+    created = []
+    audit_log = {
+        "profile": profile,
+        "root": str(root),
+        "executed_by": executed_by,
+        "timestamp": datetime.utcnow().isoformat(),
+        "created": [],
+    }
+
+    for rel in PROFILE_STRUCTURES[profile]:
+        p = root / rel
+        tree.add(f"📂 {rel}")
+        if apply:
+            p.mkdir(parents=True, exist_ok=True)
+            created.append(str(p))
+            audit_log["created"].append(str(p))
+
+    console.print(tree)
+
+    if dry_run:
+        console.print(
+            Panel.fit(
+                "Dry-run only. No directories were created.",
+                title="Mode",
+                style="yellow",
+            )
+        )
+        return
+
+    if apply:
+        console.print(
+            Panel.fit(
+                f"{len(created)} directories created successfully.",
+                title="Status",
+                style="green",
+            )
+        )
+
+        if profile == "health":
+            audit_log["audit"] = {
+                "hashing": True,
+                "strict_logging": True,
+            }
+
+        write_organizer_log(
+            audit_log,
+            root / "log" / f"profile_{profile}_scaffold.json",
+        )
+
+    console.print(
+        Panel.fit(
+            PROFILE_NEXT_STEPS[profile],
+            title="Recommended Next Steps",
+            style="cyan",
+        )
+    )

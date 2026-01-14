@@ -2,6 +2,13 @@ from pathlib import Path
 from .organizer_exec import execute_organizer
 from indexly.organize.lister import list_organizer_log
 
+
+from indexly.organize.organizer_exec import (
+    execute_organizer,
+    execute_profile_scaffold,
+)
+
+
 def handle_organize(
     folder: str,
     sort_by: str = "date",
@@ -13,21 +20,39 @@ def handle_organize(
     lister_category: str | None = None,
     lister_date: str | None = None,
     lister_duplicates: bool = False,
+    *,
+    profile: str | None = None,
+    apply: bool = False,
+    dry_run: bool = False,
 ):
     """
     CLI wrapper for organizer.
 
-    Parameters:
-        folder: path to folder to organize
-        sort_by: "date" or "name"
-        executed_by: username performing the organization
-        backup: optional backup root folder
-        log_dir: optional log folder
+    If --profile is provided:
+      - Create profession-based directory scaffold only
+      - Respect --dry-run / --apply
+      - Do NOT move files yet
+
+    Otherwise:
+      - Run classic organizer logic
     """
+
     folder_path = Path(folder).resolve()
     backup_path = Path(backup).resolve() if backup else None
     log_path = Path(log_dir).resolve() if log_dir else None
 
+    # 🔹 PROFILE MODE (directory scaffolding only)
+    if profile:
+        execute_profile_scaffold(
+            root=folder_path,
+            profile=profile,
+            apply=apply,
+            dry_run=dry_run,
+            executed_by=executed_by,
+        )
+        return None, {}
+
+    # 🔹 CLASSIC ORGANIZER MODE (existing behavior)
     plan, backup_mapping = execute_organizer(
         root=folder_path,
         sort_by=sort_by,

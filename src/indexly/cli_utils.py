@@ -164,82 +164,73 @@ def build_parser():
     # -------------------------
 
     ignore_parser = subparsers.add_parser(
-        "ignore",
-        help="Create, upgrade, or inspect .indexlyignore rules"
+        "ignore", help="Create, upgrade, or inspect .indexlyignore rules"
     )
 
     ignore_sub = ignore_parser.add_subparsers(dest="ignore_cmd")
 
     # ---- init / upgrade ----
     ignore_init = ignore_sub.add_parser(
-        "init",
-        help="Create or upgrade a .indexlyignore file"
+        "init", help="Create or upgrade a .indexlyignore file"
     )
 
     ignore_init.add_argument(
         "folder",
-        help="Target folder containing (or to receive) the .indexlyignore file"
+        help="Target folder containing (or to receive) the .indexlyignore file",
     )
 
     ignore_init.add_argument(
         "--preset",
         choices=["minimal", "standard", "aggressive"],
         default="standard",
-        help="Ignore rule preset to use"
+        help="Ignore rule preset to use",
     )
 
     ignore_init.add_argument(
         "--upgrade",
         action="store_true",
-        help="Upgrade an existing .indexlyignore by appending missing rules"
+        help="Upgrade an existing .indexlyignore by appending missing rules",
     )
 
     ignore_init.set_defaults(func=handle_ignore_init)
 
     # ---- show ----
     ignore_show = ignore_sub.add_parser(
-        "show",
-        help="Show active ignore rules for a folder"
+        "show", help="Show active ignore rules for a folder"
     )
 
-    ignore_show.add_argument(
-        "folder",
-        help="Target folder to inspect ignore rules"
-    )
+    ignore_show.add_argument("folder", help="Target folder to inspect ignore rules")
 
     ignore_show.add_argument(
         "--preset",
         choices=["minimal", "standard", "aggressive"],
         default="standard",
-        help="Preset used if no local .indexlyignore exists"
+        help="Preset used if no local .indexlyignore exists",
     )
 
     ignore_show.add_argument(
-        "--source",
-        action="store_true",
-        help="Show where ignore rules are loaded from"
+        "--source", action="store_true", help="Show where ignore rules are loaded from"
     )
 
     ignore_show.add_argument(
         "--verbose",
         action="store_true",
-        help="Show detailed ignore diagnostics (requires --source)"
+        help="Show detailed ignore diagnostics (requires --source)",
     )
 
     ignore_show.add_argument(
         "--raw",
         action="store_true",
-        help="Show raw ignore file contents (requires --source)"
+        help="Show raw ignore file contents (requires --source)",
     )
 
     ignore_show.add_argument(
         "--effective",
         action="store_true",
-        help="Show normalized rules exactly as used internally"
+        help="Show normalized rules exactly as used internally",
     )
 
     ignore_show.set_defaults(func=handle_ignore_show)
-
 
     # Search
     search_parser = subparsers.add_parser("search", help="Perform FTS search")
@@ -813,6 +804,24 @@ def build_parser():
         help="Show only duplicate files",
     )
 
+    organize_parser.add_argument(
+        "--profile",
+        choices=["it", "researcher", "engineer", "health", "data", "media"],
+        help="Create a profession-based directory scaffold",
+    )
+
+    organize_parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="Apply directory creation",
+    )
+
+    organize_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show structure without creating directories",
+    )
+
     organize_parser.set_defaults(
         func=lambda args: handle_organize(
             folder=args.folder,
@@ -825,6 +834,9 @@ def build_parser():
             lister_category=args.lister_category,
             lister_date=args.lister_date,
             lister_duplicates=args.lister_duplicates,
+            profile=args.profile,
+            apply=args.apply,
+            dry_run=args.dry_run,
         )
     )
 
@@ -1155,7 +1167,7 @@ def build_parser():
     )
 
     update_db.set_defaults(func=lambda args: handle_update_db(args))
-    
+
     # -------------------------------------------------------------------
     # doctor command
     # -------------------------------------------------------------------

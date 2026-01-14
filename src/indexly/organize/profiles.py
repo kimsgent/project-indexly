@@ -1,0 +1,75 @@
+from pathlib import Path
+
+PROFILE_STRUCTURES = {
+    "it": [
+        "IT/Projects/Active",
+        "IT/Projects/Archived",
+        "IT/Projects/Templates",
+        "IT/Code/Scripts",
+        "IT/Code/Tools",
+        "IT/Code/Experiments",
+        "IT/Docs/Architecture",
+        "IT/Docs/Notes",
+        "IT/Docs/Manuals",
+        "IT/Configs",
+        "IT/Logs",
+        "IT/Resources",
+    ],
+    "researcher": [
+        "Research/Papers/Drafts",
+        "Research/Papers/Submitted",
+        "Research/Papers/Published",
+        "Research/Data/Raw",
+        "Research/Data/Cleaned",
+        "Research/Data/Results",
+        "Research/Notes",
+        "Research/References/PDFs",
+        "Research/Presentations",
+        "Research/Admin",
+    ],
+    "engineer": [
+        "Engineering/Projects/Design",
+        "Engineering/Projects/Simulation",
+        "Engineering/Projects/Calculations",
+        "Engineering/Projects/Reports",
+        "Engineering/CAD",
+        "Engineering/Standards",
+        "Engineering/Drawings",
+        "Engineering/Photos",
+        "Engineering/Archive",
+    ],
+    "health": [
+        "Health/Patients",
+        "Health/Reports",
+        "Health/Imaging",
+        "Health/Lab",
+        "Health/Admin",
+        "Health/Guidelines",
+        "Health/Archive",
+    ],
+    "data": [
+        "Data/Projects",
+        "Data/Datasets",
+        "Data/Experiments",
+        "Data/Visuals",
+        "Data/Archive",
+    ],
+    "media": [
+        "Media/Shoots",
+        "Media/Catalogs",
+        "Media/Presets",
+        "Media/Video",
+        "Media/Clients",
+        "Media/Archive",
+    ],
+}
+
+
+PROFILE_NEXT_STEPS = {
+    "it": "Place active projects under IT/Projects/Active and archive aggressively.",
+    "researcher": "Never modify Data/Raw. Keep results reproducible.",
+    "engineer": "Separate CAD, calculations, and reports strictly.",
+    "health": "Use patient IDs only. Enable hashing for audit trails.",
+    "data": "Raw data is immutable. Outputs must be reproducible.",
+    "media": "RAW files are never modified. Export separately.",
+}
