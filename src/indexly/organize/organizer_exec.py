@@ -3,24 +3,38 @@ import hashlib
 import json
 import sys
 import time
+import logging
 from pathlib import Path
 from datetime import datetime
+from typing import Iterable
+
 from rich.console import Console
 from rich.tree import Tree
 from rich.panel import Panel
 from rich.logging import RichHandler
-import logging
-import hashlib
 
-
-from .profiles import PROFILE_STRUCTURES, PROFILE_NEXT_STEPS
-from .utils import write_organizer_log
-
+from indexly.organize.placement_planner import build_placement_plan
+from indexly.organize.profiles import PROFILE_RULES
+from indexly.organize.utils import safe_move, write_organizer_log
 
 from .organizer import organize_folder
 from .lister import list_organizer_log
+from .profile_structures import (
+    PROFILE_STRUCTURES,
+    PROFILE_NEXT_STEPS,
+    build_data_project_structure,
+    build_media_shoot_structure,
+)
+from .log_schema import (
+    empty_meta,
+    empty_summary,
+    file_entry_template,
+    empty_organizer_log,
+)
+
 
 console = Console()
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -145,6 +159,8 @@ def execute_profile_scaffold(
     apply: bool = False,
     dry_run: bool = False,
     executed_by: str = "system",
+    project_name: str | None = None,
+    shoot_name: str | None = None,
 ):
     root = Path(root).resolve()
     profile = profile.lower()
@@ -155,7 +171,8 @@ def execute_profile_scaffold(
     console.rule(f"[bold cyan]Indexly Organize — Profile: {profile}")
 
     tree = Tree(f"📁 {root}")
-    created = []
+    created: list[str] = []
+
     audit_log = {
         "profile": profile,
         "root": str(root),
@@ -164,7 +181,17 @@ def execute_profile_scaffold(
         "created": [],
     }
 
-    for rel in PROFILE_STRUCTURES[profile]:
+    paths = list(PROFILE_STRUCTURES[profile])
+
+    # 🔹 DATA: project-aware expansion
+    if profile == "data" and project_name:
+        paths.extend(build_data_project_structure(project_name))
+
+    # 🔹 MEDIA: date-based shoot expansion (+ optional name)
+    if profile == "media":
+        paths.extend(build_media_shoot_structure(shoot_name))
+
+    for rel in paths:
         p = root / rel
         tree.add(f"📂 {rel}")
         if apply:
@@ -211,3 +238,124 @@ def execute_profile_scaffold(
             style="cyan",
         )
     )
+
+
+def execute_profile_placement(
+    *,
+    source_root: Path,
+    destination_root: Path,
+    profile: str,
+    executed_by: str,
+    project_name: str | None = None,
+    shoot_name: str | None = None,
+    apply: bool = False,
+    dry_run: bool = False,
+    log_path: Path | None = None,
+):
+    """
+    Safe profile-based file placement with:
+    - move-only policy
+    - dry-run logging (JSON)
+    - file hashing
+    """
+
+    source_root = Path(source_root).resolve()
+    destination_root = Path(destination_root).resolve()
+    profile = profile.lower()
+
+    if profile not in PROFILE_RULES:
+        raise ValueError(f"Unknown profile: {profile}")
+
+    if not source_root.exists() or not source_root.is_dir():
+        console.print(
+            Panel.fit(
+                f"❌ Source folder invalid: [bold red]{source_root}[/]",
+                title="Error",
+                style="red",
+            )
+        )
+        return []
+
+    files = [p for p in source_root.iterdir() if p.is_file()]
+
+    if not files:
+        console.print(
+            Panel.fit(
+                f"⚠️ No files found in source folder: [yellow]{source_root}[/]",
+                title="Info",
+                style="yellow",
+            )
+        )
+        return []
+
+    plan = build_placement_plan(
+        source_root=source_root,
+        destination_root=destination_root,
+        files=files,
+        profile=profile,
+        project_name=project_name,
+        shoot_name=shoot_name,
+    )
+
+    # Initialize organizer log
+    meta = empty_meta(
+        root=str(destination_root),
+        sorted_by="profile",
+        executed_at=datetime.utcnow().isoformat(),
+        executed_by=executed_by,
+    )
+    summary = empty_summary()
+    log_files = []
+
+    console.rule(f"[bold cyan]Indexly Organize — Placement Plan ({profile})")
+    for entry in plan:
+        src = Path(entry["source"])
+        dst = Path(entry["destination"])
+        file_hash = _hash_file(src)
+        console.print(f"[dim]{src}[/] → [green]{dst}[/] [blue]{file_hash[:8]}[/]")
+
+        # Prepare log entry
+        log_entry = file_entry_template(
+            original_path=str(src),
+            new_path=str(dst),
+            extension=src.suffix.lower(),
+            category=profile,
+            size=src.stat().st_size,
+            used_date=datetime.utcnow().isoformat(),
+            hash_value=file_hash,
+            created_at=src.stat().st_ctime,
+            modified_at=src.stat().st_mtime,
+        )
+        log_files.append(log_entry)
+
+        # Update summary counts
+        summary["total_files"] += 1
+
+        if apply:
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            safe_move(src, dst)
+
+    # Write JSON log
+    final_log = empty_organizer_log(meta, summary, log_files)
+    if not log_path:
+        log_path = destination_root / "log" / f"profile_{profile}_placement.json"
+    write_organizer_log(final_log, log_path)
+
+    if dry_run:
+        console.print(
+            Panel.fit(
+                f"Dry-run only. No files were moved.\nLog written to: {log_path}",
+                title="Mode",
+                style="yellow",
+            )
+        )
+    elif apply:
+        console.print(
+            Panel.fit(
+                f"{len(plan)} files placed successfully.\nLog written to: {log_path}",
+                title="Status",
+                style="green",
+            )
+        )
+
+    return plan

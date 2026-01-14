@@ -822,6 +822,23 @@ def build_parser():
         help="Show structure without creating directories",
     )
 
+    organize_parser.add_argument(
+        "--project-name",
+        help="Project name (used with --profile data)",
+    )
+
+    organize_parser.add_argument(
+        "--shoot-name",
+        help="Optional shoot name (used with --profile media)",
+    )
+
+    organize_parser.add_argument(
+        "--classify",
+        "--classify-files",
+        action="store_true",
+        help="Classify files into a profile-based structure (requires --profile)",
+    )
+
     organize_parser.set_defaults(
         func=lambda args: handle_organize(
             folder=args.folder,
@@ -837,6 +854,9 @@ def build_parser():
             profile=args.profile,
             apply=args.apply,
             dry_run=args.dry_run,
+            project_name=args.project_name,
+            shoot_name=args.shoot_name,
+            classify=args.classify,
         )
     )
 

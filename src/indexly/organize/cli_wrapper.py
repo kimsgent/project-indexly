@@ -6,13 +6,18 @@ from indexly.organize.lister import list_organizer_log
 from indexly.organize.organizer_exec import (
     execute_organizer,
     execute_profile_scaffold,
+    execute_profile_placement,
 )
+
+
+from pathlib import Path
+
 
 
 def handle_organize(
     folder: str,
     sort_by: str = "date",
-    executed_by: str = "kims",
+    executed_by: str = "system",
     backup: str | None = None,
     log_dir: str | None = None,
     lister: bool = False,
@@ -22,37 +27,44 @@ def handle_organize(
     lister_duplicates: bool = False,
     *,
     profile: str | None = None,
+    classify: bool = False,
     apply: bool = False,
     dry_run: bool = False,
+    project_name: str | None = None,
+    shoot_name: str | None = None,
 ):
-    """
-    CLI wrapper for organizer.
-
-    If --profile is provided:
-      - Create profession-based directory scaffold only
-      - Respect --dry-run / --apply
-      - Do NOT move files yet
-
-    Otherwise:
-      - Run classic organizer logic
-    """
-
     folder_path = Path(folder).resolve()
     backup_path = Path(backup).resolve() if backup else None
     log_path = Path(log_dir).resolve() if log_dir else None
 
-    # 🔹 PROFILE MODE (directory scaffolding only)
-    if profile:
+    # 1️⃣ PROFILE SCAFFOLD ONLY
+    if profile and not classify:
         execute_profile_scaffold(
             root=folder_path,
             profile=profile,
             apply=apply,
             dry_run=dry_run,
             executed_by=executed_by,
+            project_name=project_name,
+            shoot_name=shoot_name,
         )
         return None, {}
 
-    # 🔹 CLASSIC ORGANIZER MODE (existing behavior)
+    # 2️⃣ PROFILE CLASSIFICATION
+    if profile and classify:
+        execute_profile_placement(
+            source_root=folder_path,
+            destination_root=folder_path,
+            profile=profile,
+            project_name=project_name,
+            shoot_name=shoot_name,
+            apply=apply,
+            dry_run=dry_run,
+            executed_by=executed_by,
+        )
+        return None, {}
+
+    # 3️⃣ LEGACY ORGANIZER (unchanged)
     plan, backup_mapping = execute_organizer(
         root=folder_path,
         sort_by=sort_by,

@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 from datetime import date
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -38,3 +39,36 @@ def write_organizer_log(data: dict, path: Path) -> None:
         tmp_name = tmp.name
 
     os.replace(tmp_name, path)
+
+
+def safe_move(src: Path, dst: Path) -> Path:
+    """
+    Safely move a file to destination.
+
+    - Creates parent directories if missing
+    - Avoids overwriting existing files
+    - Appends numeric suffix on collision
+
+    Returns final destination path.
+    """
+
+    src = Path(src)
+    dst = Path(dst)
+
+    dst.parent.mkdir(parents=True, exist_ok=True)
+
+    if not dst.exists():
+        shutil.move(str(src), str(dst))
+        return dst
+
+    stem = dst.stem
+    suffix = dst.suffix
+    parent = dst.parent
+
+    i = 1
+    while True:
+        candidate = parent / f"{stem}_{i:02d}{suffix}"
+        if not candidate.exists():
+            shutil.move(str(src), str(candidate))
+            return candidate
+        i += 1

@@ -1,4 +1,4 @@
-from pathlib import Path
+from datetime import date
 
 PROFILE_STRUCTURES = {
     "it": [
@@ -67,9 +67,32 @@ PROFILE_STRUCTURES = {
 
 PROFILE_NEXT_STEPS = {
     "it": "Place active projects under IT/Projects/Active and archive aggressively.",
-    "researcher": "Never modify Data/Raw. Keep results reproducible.",
-    "engineer": "Separate CAD, calculations, and reports strictly.",
-    "health": "Use patient IDs only. Enable hashing for audit trails.",
-    "data": "Raw data is immutable. Outputs must be reproducible.",
-    "media": "RAW files are never modified. Export separately.",
+    "researcher": "Never modify raw research data. Keep work reproducible.",
+    "engineer": "Keep CAD, calculations, and reports strictly separated.",
+    "health": "Create patient folders manually. Maintain audit trails.",
+    "data": "Use --project-name to initialize a project. Raw data is immutable.",
+    "media": "Import RAW files only. Never overwrite originals.",
 }
+
+
+def build_data_project_structure(project_name: str) -> list[str]:
+    base = f"Data/Projects/{project_name}"
+    return [
+        f"{base}/Data/Raw",
+        f"{base}/Data/Processed",
+        f"{base}/Data/Output",
+        f"{base}/Notebooks",
+        f"{base}/Scripts",
+        f"{base}/Reports",
+    ]
+
+
+def build_media_shoot_structure(shoot_name: str | None = None) -> list[str]:
+    today = date.today().isoformat()[:7]  # YYYY-MM
+    shoot = f"{today}-{shoot_name}" if shoot_name else today
+    base = f"Media/Shoots/{shoot}"
+    return [
+        f"{base}/RAW",
+        f"{base}/Edited",
+        f"{base}/Export",
+    ]
