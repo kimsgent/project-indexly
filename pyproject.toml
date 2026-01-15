@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "indexly"
-version = "1.0.7-beta"
+version = "1.0.7-rc.1"
 description = "A local file indexing and search tool with FTS5, regex, and CSV analysis support."
 readme = { file = "src/indexly/docs/README.md", content-type = "text/markdown" }
 

@@ -32,6 +32,7 @@ def handle_organize(
     dry_run: bool = False,
     project_name: str | None = None,
     shoot_name: str | None = None,
+    patient_id: str | None = None,
 ):
     folder_path = Path(folder).resolve()
     backup_path = Path(backup).resolve() if backup else None
@@ -47,6 +48,7 @@ def handle_organize(
             executed_by=executed_by,
             project_name=project_name,
             shoot_name=shoot_name,
+            patient_id=patient_id,
         )
         return None, {}
 
@@ -58,6 +60,7 @@ def handle_organize(
             profile=profile,
             project_name=project_name,
             shoot_name=shoot_name,
+            patient_id=patient_id, 
             apply=apply,
             dry_run=dry_run,
             executed_by=executed_by,

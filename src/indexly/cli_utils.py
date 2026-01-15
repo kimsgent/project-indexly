@@ -833,6 +833,13 @@ def build_parser():
     )
 
     organize_parser.add_argument(
+        "--id",
+        "--patient-id",
+        dest="patient_id",
+        help="Patient ID / alias (used with --profile health)",
+    )
+
+    organize_parser.add_argument(
         "--classify",
         "--classify-files",
         action="store_true",
@@ -857,6 +864,7 @@ def build_parser():
             project_name=args.project_name,
             shoot_name=args.shoot_name,
             classify=args.classify,
+            patient_id=args.patient_id,
         )
     )
 
