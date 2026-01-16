@@ -3,7 +3,7 @@ title: "Indexly Organizer – Intelligent File Organization"
 description: "Automatically organize files by date, name, or extension with full logging, backups, duplicate detection and audit support using Indexly Organizer."
 slug: "organizer"
 date: 2026-01-02
-lastmod: 2026-01-02
+lastmod: 2026-01-16
 type: docs
 categories: ["Indexly", "File Management", "Automation"]
 tags: ["organizer", "file organization", "automation", "backup", "logging"]
@@ -18,9 +18,11 @@ weight: 10
 
 ## Overview
 
-The **Indexly Organizer** is a safe, auditable, and automation-friendly file organization engine. It reorganizes files while **preserving traceability**, optionally **creating backups**, and producing **structured JSON logs** that can be analyzed later using the **Lister** command.
+The **Indexly Organizer** is a modern, intelligent file organization engine built for users who prioritize **safety**, **transparency**, and **long-term traceability**. It reorganizes files using a controlled **plan** → **validate** → **apply** workflow, ensuring every action is explainable, auditable, and reversible.
 
-This makes it suitable not only for cleanup, but also for **compliance, auditing, and repeatable workflows**.
+Unlike traditional tools that immediately move files, Indexly preserves **full traceability**, supports optional **automatic backups**, and generates **structured JSON** logs that can later be analyzed with the Lister command. This makes it ideal not only for everyday cleanup, but also for **compliance-driven**, **regulated**, **and repeatable workflows**.
+
+At its core, the Organizer uses **[profile-based classification](organizer-profiler.md#profile-based-organization)** rules to place files into meaningful, real-world structures instead of arbitrary folders. This approach makes it suitable for professional environments such as ***healthcare**, **education**, **IT operations**, **research**, **and data projects**, where accountability and clarity matter.
 
 ----
 
@@ -190,7 +192,7 @@ Organizer follows three core principles:
 2. **Everything is logged**
 3. **Every action is reversible**
 
-This makes it suitable for both personal use and enterprise environments.
+This makes it suitable for both personal use and [enterprise environments](organizer-profiler.md#logging-auditing).
 
 ----
 
