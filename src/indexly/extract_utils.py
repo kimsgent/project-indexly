@@ -117,7 +117,6 @@ check_and_install_packages(
     ]
 )
 
-print_external_tools_info()
 
 # --- third-party imports (safe now) ---
 import docx
@@ -556,25 +555,44 @@ def extract_image_metadata(path: str) -> dict:
     return md
 
 
-def update_file_metadata(file_path: str, metadata: dict, conn: sqlite3.Connection | None = None) -> str:
+def update_file_metadata(
+    file_path: str,
+    metadata: dict,
+    conn: sqlite3.Connection | None = None,
+) -> str:
     """
     Update the file_metadata table with structured columns and a full JSON column.
     Returns Tier-2-only semantic text (for FTS).
-    
-    If a SQLite connection is provided, it will be used (useful for async/locked operations).
+
+    Internal flags (e.g. content_changed) are persisted but never indexed.
     """
     if not metadata:
         return f"File:{os.path.basename(file_path)}"
 
-    # Build Tier-2 semantic text for FTS
+    # -------------------------
+    # Exclude internal / control flags from FTS semantics
+    # -------------------------
+    INTERNAL_KEYS = {"content_changed"}
+
     semantic_parts = [
         f"{k}:{v}"
         for k, v in metadata.items()
-        if k in SEMANTIC_METADATA_KEYS and v not in (None, "", [])
+        if (
+            k in SEMANTIC_METADATA_KEYS
+            and k not in INTERNAL_KEYS
+            and v not in (None, "", [])
+        )
     ]
-    semantic_text = " ".join(semantic_parts) if semantic_parts else f"File:{os.path.basename(file_path)}"
 
-    # Prepare structured columns
+    semantic_text = (
+        " ".join(semantic_parts)
+        if semantic_parts
+        else f"File:{os.path.basename(file_path)}"
+    )
+
+    # -------------------------
+    # Structured columns (unchanged)
+    # -------------------------
     columns = [
         "title",
         "author",
@@ -590,7 +608,6 @@ def update_file_metadata(file_path: str, metadata: dict, conn: sqlite3.Connectio
     ]
     values = [metadata.get(col) for col in columns]
 
-    # Use provided connection or create new one
     close_conn = False
     if conn is None:
         conn = sqlite3.connect(DB_FILE)
@@ -602,13 +619,15 @@ def update_file_metadata(file_path: str, metadata: dict, conn: sqlite3.Connectio
             f"""
             INSERT OR REPLACE INTO file_metadata
             (path, {', '.join(columns)}, metadata)
-            VALUES (?, {', '.join(['?']*len(columns))}, ?)
+            VALUES (?, {', '.join(['?'] * len(columns))}, ?)
             """,
             [file_path, *values, json.dumps(metadata)],
         )
+
         if close_conn:
             conn.commit()
             conn.close()
+
     except sqlite3.OperationalError as e:
         print(f"⚠️ Failed to update metadata for {file_path} (SQLite error): {e}")
     except Exception as e:

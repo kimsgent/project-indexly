@@ -29,6 +29,8 @@ canonicalURL: "/en/documentation/data-analysis-pipeline/"
 ---
 
 ---
+# Introduction to analysis tools
+
 
 ## 1. Supported File Formats
 
@@ -38,8 +40,6 @@ Indexly provides unified analysis and summarization for the following formats:
 
 - Auto-detected delimiters (`,`, `;`, `\t`, etc.)
 - Summary statistics, validation, preview, and full analysis with `analyze-csv`
-* [Cleaning CSV Data →](/documentation/clean-csv-data.md)
-* [Analyze CSV →](/documentation/data-analysis.md)
 
 ### **JSON**
 
@@ -69,6 +69,16 @@ Indexly provides unified analysis and summarization for the following formats:
 - Auto-load with safe YAML loader
 - Converted internally to dict/list for analysis
 
+### **SQLite DB files**
+
+- Any `.db` or `.sqlite` file
+- Generic table analysis: row counts, column types, unique values
+- Numerical statistics: mean, median, min/max, std
+- Basic sample preview of tables
+- Summarizes tables, columns, numeric/non-numeric stats, relations, and provides Mermaid diagrams
+
+> Indexly can [analyze SQLite DB](analyze-sqlite-databases.md) files via `analyze-file `or `analyze-db`
+
 ----
 
 ## 2. CLI Commands for Analysis
@@ -77,7 +87,7 @@ Indexly offers two primary analysis commands:
 
 ### **`indexly analyze-json <file>`**
 
-- Optimized for JSON + NDJSON
+- Optimized for JSON + NDJSON (*only for generic ndjson extensions*)
 - Handles extremely large NDJSON files efficiently (stream-friendly)
 - Recommended when NDJSON uses a `.json` extension on very large files
 
@@ -89,8 +99,9 @@ Indexly offers two primary analysis commands:
 
 Use case comparison:
 
-- **Use `analyze-file`** → general file analysis, metadata extraction
+- **Use `analyze-file`** → general file analysis, metadata extraction, or [SQLite DB](analyze-sqlite-databases.md) summary
 - **Use `analyze-json`** → very large or complex NDJSON/JSON only
+- **Use `analyze-db`** → advanced SQLite DB analysis with full schema, relationships, FTS, and metadata awareness
 
 ----
 
@@ -98,7 +109,7 @@ Use case comparison:
 
 Indexly’s analysis engine is composed of three layers:
 
-```Bash
+```other
             +-------------------------+
             |      analyze-file       |
             +-------------------------+
@@ -143,10 +154,38 @@ Each pipeline contains:
 - Statistics builder
 - Summary generator
 - Preview generator
+- Optional DB profiling for SQLite files
 
 ----
 
-## 4. JSON & NDJSON Structure Handling
+## 4. Analyze a SQLite DB file via `analyze-file`
+
+```bash
+indexly analyze-file .\chinook.db --show-summary
+```
+
+**Sample Output:**
+
+📊 Dataset Summary Preview
+
+| **Table** | **Rows** | **Columns** | **Sample Columns**              |
+| --------- | -------- | ----------- | ------------------------------- |
+| albums    | 347      | 3           | AlbumId, Title, ArtistId        |
+| artists   | 275      | 2           | ArtistId, Name                  |
+| customers | 59       | 13          | CustomerId, FirstName, LastName |
+
+**Numeric Summary for `albums` table:**
+
+| **Column** | **Count** | **Mean** | **Min** | **Max** | **Std** |
+| ---------- | --------- | -------- | ------- | ------- | ------- |
+| AlbumId    | 347       | 174.0    | 1       | 347     | 100.3   |
+| ArtistId   | 347       | 121.9    | 1       | 275     | 77.8    |
+
+> ⚠️ Note: This summary is **generic**. For more advanced insights, including full schema, relationships, FTS tables, and Indexly-specific metadata, use `analyze-db`
+
+----
+
+## 5. JSON & NDJSON Structure Handling
 
 Indexly supports multiple JSON structures:
 
@@ -179,7 +218,7 @@ Standard row-like records.
 
 ----
 
-## 5. Search Cache Analysis
+## 6. Search Cache Analysis
 
 Indexly’s universal loader detects search-cache JSON automatically:
 
@@ -192,7 +231,7 @@ Indexly’s universal loader detects search-cache JSON automatically:
 
 ----
 
-## 6. Visualization Layer
+## 7. Visualization Layer
 
 - CSV timestamped data
 - Index logs
@@ -206,11 +245,9 @@ Plot types:
 
 These visualizations are generated programmatically using the data returned by pipelines.
 
-**See also:** [Time-Series Visualization→](time-series-visualization.md)
-
 ----
 
-## 7. Cleaning & Exporting Index Logs
+8. Cleaning & Exporting Index Logs
 
 `index.log` from the watcher can be:
 
@@ -228,3 +265,18 @@ All exported formats can be re-analyzed with Indexly.
 
 ----
 
+### ⚡ Summary of SQLite DB Analysis via `analyze-file`
+
+- Can profile DB tables generically
+- Displays table names, row counts, column types, unique values, numeric stats
+- Provides a small sample of rows
+- Does **not** detect Indexly-specific metadata, FTS tables, or table relationships
+- Recommended for quick inspection of unknown DB files
+- Use **`analyze-db`** for **full-featured DB inspection**
+
+```other
+Next Steps for Users:
+
+- For general files or SQLite DBs: `analyze-file`
+- For advanced DB insights (relationships, FTS, Indexly metadata): `analyze-db`
+```
