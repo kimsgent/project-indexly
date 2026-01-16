@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "indexly"
-version = "1.0.7-rc.1"
+version = "1.0.7-rc.2"
 description = "A local file indexing and search tool with FTS5, regex, and CSV analysis support."
 readme = { file = "src/indexly/docs/README.md", content-type = "text/markdown" }
 
@@ -90,27 +90,28 @@ dependencies = [
 
     # Visualization & Analysis
     "plotext>=5.2,<6.0",
-    "matplotlib>=3.8,<3.9",
     "plotly>=5.22,<6.0",
-
-    # Numeric stack (CRITICAL FIX)
-    "numpy>=2.0,<2.3",
-    "scipy>=1.12,<1.14",
-    "statsmodels>=0.14,<0.15",
 ]
+
+[project.optional-dependencies]
+analysis = [
+  "matplotlib>=3.8,<3.10 ; python_version < '3.13'",
+  "plotly>=5.22,<6.0",
+  "scipy>=1.12,<1.14 ; python_version < '3.13'",
+  "statsmodels>=0.14,<0.15",
+]
+
+exiftool = []
 
 [tool.hatch.envs.dev]
 dependencies = [
-    "pytest>=7.4.0",
-    "pytest-cov>=4.1.0",
-    "flake8>=6.1.0",
-    "black>=23.9.1",
-    "isort>=5.12.0",
-    "mypy>=1.6.0"
+  "pytest>=7.4.0",
+  "pytest-cov>=4.1.0",
+  "flake8>=6.1.0",
+  "black>=23.9.1",
+  "isort>=5.12.0",
+  "mypy>=1.6.0"
 ]
-
-[optional-dependencies]
-exiftool = []
 
 [project.urls]
 Homepage = "https://projectindexly.com"
