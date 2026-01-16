@@ -2,6 +2,21 @@
   "project": "FTS5 File Search Tool",
   "versions": [
     {
+      "version": "1.0.7",
+      "date": "2026-01-16",
+      "changes": [
+        "feat(organize): introduced profile-based directory scaffolding with modular rules and safe placement planning",
+        "feat(organize): added dry-run placement planner with detailed logging and hash-based safety checks",
+        "feat(doctor): finalized Health profile scaffold and improved profile placement validation",
+        "fix(doctor): restricted --auto-fix usage to --profile-db for safer database operations",
+        "fix(deps): guarded SciPy installation on Python 3.13 and pinned NumPy/SciPy for stable CI and local installs",
+        "fix(build): hardened pyproject.toml dependency constraints to prevent broken resolver states",
+        "docs: prepared and structured documentation for Hugo-based site publishing",
+        "docs: updated and aligned documentation in preparation for the v1.0.7 release"
+      ]
+    },
+
+    {
       "version": "1.0.6",
       "date": "2026-01-10",
       "changes": [
