@@ -135,6 +135,14 @@ jobs:
         run: |
           echo "VERSION=${GITHUB_REF_NAME}" >> $GITHUB_ENV
 
+      - name: Install Homebrew
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential curl git
+          NONINTERACTIVE=1 /bin/bash -c \
+            "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+          echo "/home/linuxbrew/.linuxbrew/bin" >> $GITHUB_PATH
+
       - name: Generate Homebrew formula
         run: python scripts/generate_brew_formula.py
 
@@ -150,28 +158,23 @@ jobs:
           mkdir -p homebrew-indexly/Formula
           cp Formula/indexly.rb homebrew-indexly/Formula/indexly.rb
 
-      - name: Install Homebrew
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential curl git
-          NONINTERACTIVE=1 /bin/bash -c \
-            "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-          echo "/home/linuxbrew/.linuxbrew/bin" >> $GITHUB_PATH
-
       - name: Brew audit & style
         run: |
           cd homebrew-indexly
+          # Tap the local repository so brew knows about it
           brew tap kimsgent/homebrew-indexly ./homebrew-indexly
           brew audit --strict indexly
           brew style Formula/indexly.rb
 
       - name: Commit and push formula
+        if: github.event_name != 'workflow_dispatch'
         run: |
           cd homebrew-indexly
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add Formula/indexly.rb
-          git commit -m "indexly ${VERSION}" || echo "No changes"
+          git commit -m "chore: update Homebrew formula for ${VERSION}" || echo "No changes to commit"
           git pull --rebase
           git push
+
 
