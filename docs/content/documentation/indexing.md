@@ -11,6 +11,7 @@ keywords:
   - document management cli
 slug: "index-files-and-folders"
 weight: 10
+type: docs
 images:
   - "images/indexly_indexing.png"
 categories:
@@ -23,6 +24,8 @@ tags:
   - file-management
 ---
 
+
+---
 
 ## 📂 Getting Started with Indexing
 

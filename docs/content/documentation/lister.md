@@ -65,6 +65,7 @@ indexly lister organizer_log.json
 indexly lister ./logs
 ```
 
+>![indexly listings](/images/indexly-lister.png)
 ----
 
 ## 🎛️ CLI Options

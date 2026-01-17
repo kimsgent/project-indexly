@@ -44,7 +44,7 @@ The [Chinook sample database](https://github.com/lerocha/chinook-database) is a 
 
 ### Mermaid ER Diagram
 
-```other
+```mermaid
 erDiagram
     albums ||--o{ artists : "ArtistId → ArtistId"
     customers ||--o{ employees : "SupportRepId → EmployeeId"

@@ -91,6 +91,8 @@ Sales Forecast/
 
 ### Phase 2 – Classify Files (Move)
 
+>![classifying files](/images/classify-files.png)
+
 Preview first:
 
 ```bash

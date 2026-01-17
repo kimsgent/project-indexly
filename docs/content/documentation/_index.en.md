@@ -66,11 +66,6 @@ flowchart TD
 
 * [Features](/features)
 * [Installation & Basic Usage](usage.md#basic-usage)
-* [Search Profiles](config.md#search-profiles)
-* [Tagging](config.md#tagging-system)
-* [Exporting](usage.md#exporting)
-* [Watchdog](config.md#watchdog-real-time-indexing)
-* [Advanced Options](config.md#advanced-options)
 * [Renaming Files with Patterns →](rename-file.md)
 * [Extracting Minitab MTW files →](mtw-parser.md)
 * [Data Analysis Overview →](data-analysis-overview.md)
