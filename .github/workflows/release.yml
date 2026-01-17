@@ -161,8 +161,6 @@ jobs:
       - name: Brew audit & style
         run: |
           cd homebrew-indexly
-          # Tap the local repository so brew knows about it
-          brew tap kimsgent/homebrew-indexly ./homebrew-indexly
           brew audit --strict indexly
           brew style Formula/indexly.rb
 
