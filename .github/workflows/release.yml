@@ -165,7 +165,7 @@ jobs:
         run: |
           eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
           cd homebrew-indexly
-          brew audit --strict Formula/indexly.rb
+          brew audit --strict indexly || brew audit --strict Formula/indexly.rb
           brew style Formula/indexly.rb
 
       - name: Commit and push formula
