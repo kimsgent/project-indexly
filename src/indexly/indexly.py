@@ -63,8 +63,6 @@ from .db_update import check_schema, apply_migrations
 from .log_utils import _unified_log_entry, _default_logger, shutdown_logger
 
 
-
-
 # Force UTF-8 output encoding (Recommended for Python 3.7+)
 sys.stdout.reconfigure(encoding="utf-8")
 
@@ -80,6 +78,9 @@ db_lock = asyncio.Lock()
 console = Console()
 
 
+# -------------------------
+# async_index_file()
+# -------------------------
 async def async_index_file(
     full_path,
     mtw_extended=False,
@@ -94,6 +95,9 @@ async def async_index_file(
         build_technical_filters,
     )
     import logging
+    import os
+    import asyncio
+    from datetime import datetime
 
     logger = logging.getLogger(__name__)
     full_path = normalize_path(full_path)
@@ -106,12 +110,11 @@ async def async_index_file(
             extracted_files = _extract_mtw(full_path, extended=mtw_extended)
             if not extracted_files:
                 print(f"⚠️ No extractable content in: {full_path}")
-                return
+                return full_path, False
 
             stub_content = f"MTW Archive {os.path.basename(full_path)}"
             clean_content = semantic_filter_text(stub_content)
             content = clean_content
-
             file_hash = calculate_hash(content)
             last_modified = datetime.fromtimestamp(
                 os.path.getmtime(full_path)
@@ -120,6 +123,12 @@ async def async_index_file(
             async with db_lock:
                 conn = connect_db()
                 cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT hash FROM file_index WHERE path = ?", (full_path,)
+                )
+                row = cursor.fetchone()
+                content_changed = not (row and row["hash"] == file_hash)
+
                 cursor.execute("DELETE FROM file_index WHERE path = ?", (full_path,))
                 cursor.execute(
                     """
@@ -129,83 +138,59 @@ async def async_index_file(
                     (full_path, content, clean_content, last_modified, file_hash),
                 )
                 update_file_metadata(
-                    full_path, {}, conn=conn
-                )  # empty metadata for MTW stub
+                    full_path, {"content_changed": content_changed}, conn=conn
+                )
                 conn.commit()
                 conn.close()
 
-            await asyncio.gather(
-                *(
-                    async_index_file(f, mtw_extended=mtw_extended)
-                    for f in extracted_files
-                )
-            )
-            return
+            # Recursively index extracted files
+            tasks = [
+                async_index_file(f, mtw_extended=mtw_extended) for f in extracted_files
+            ]
+            child_results = await asyncio.gather(*tasks)
+            # Always return a flat list of tuples
+            results = [(full_path, content_changed)]
+            for r in child_results:
+                if isinstance(r, list):
+                    results.extend(r)
+                elif isinstance(r, tuple) and len(r) == 2:
+                    results.append(r)
+            return results
 
         # -------------------------
         # Extract raw content & metadata
         # -------------------------
         raw_text, metadata = extract_text_from_file(
-            full_path,
-            force_ocr=force_ocr,
-            disable_ocr=disable_ocr,
+            full_path, force_ocr=force_ocr, disable_ocr=disable_ocr
         )
         if not raw_text and not metadata:
             print(f"⏭️ Skipped (no content or metadata): {full_path}")
-            return
+            return full_path, False
 
-        # -------------------------
-        # Tier 1 – Human text
-        # -------------------------
         clean_content = semantic_filter_text(raw_text or "", tier="human")
 
-        # -------------------------
-        # Tier 2 / Tier 3 split
-        # -------------------------
         semantic_meta_text = ""
         technical_meta_data = {}
         if metadata:
             semantic_meta, technical_meta = split_metadata_tiers(metadata)
-            unknown_keys = set(metadata) - set(semantic_meta) - set(technical_meta)
-            if unknown_keys:
-                logger.debug(
-                    "Unknown metadata keys ignored for %s: %s",
-                    full_path,
-                    sorted(unknown_keys),
-                )
-
-            # Tier-2 FTS text filtered & weighted
             semantic_meta_text = build_semantic_fts_text(semantic_meta, weighted=True)
             technical_meta_data = build_technical_filters(technical_meta)
 
-        # -------------------------
-        # Final FTS content
-        # -------------------------
-        content = f"{clean_content} {semantic_meta_text}".strip()
-        if not content:
-            content = semantic_filter_text(
-                f"File {os.path.basename(full_path)}", tier="human"
-            )
-
+        content = (
+            f"{clean_content} {semantic_meta_text}".strip()
+            or semantic_filter_text(f"File {os.path.basename(full_path)}", tier="human")
+        )
         file_hash = calculate_hash(content)
         last_modified = datetime.fromtimestamp(os.path.getmtime(full_path)).isoformat()
 
-        # -------------------------
-        # DB operations (serialized)
-        # -------------------------
         async with db_lock:
             conn = connect_db()
             cursor = conn.cursor()
-
-            # Skip if hash unchanged
             cursor.execute("SELECT hash FROM file_index WHERE path = ?", (full_path,))
             row = cursor.fetchone()
-            if row and row["hash"] == file_hash:
-                conn.close()
-                print(f"⏭️ Skipped unchanged: {full_path}")
-                return
+            content_changed = not (row and row["hash"] == file_hash)
 
-            # Update file_index
+            # Update DB
             cursor.execute("DELETE FROM file_index WHERE path = ?", (full_path,))
             cursor.execute(
                 """
@@ -215,7 +200,6 @@ async def async_index_file(
                 (full_path, content, clean_content, last_modified, file_hash),
             )
 
-            # Merge structured + JSON metadata using same connection
             full_metadata = (
                 {
                     k: metadata.get(k)
@@ -237,30 +221,38 @@ async def async_index_file(
                 else {}
             )
 
-            # fallback from technical_meta_data
-            for key, value in technical_meta_data.items():
-                if key in full_metadata and not full_metadata[key]:
-                    full_metadata[key] = value
+            for k, v in technical_meta_data.items():
+                if k in full_metadata and not full_metadata[k]:
+                    full_metadata[k] = v
 
-            # Pass the active connection to avoid "database is locked"
+            full_metadata["content_changed"] = content_changed
             update_file_metadata(full_path, full_metadata, conn=conn)
 
             conn.commit()
             conn.close()
 
-        print(f"✅ Indexed: {full_path}")
+        if content_changed:
+            print(f"✅ Indexed: {full_path}")
+        else:
+            print(f"⏭️ Skipped unchanged: {full_path}")
+
+        return full_path, content_changed
 
     except Exception as e:
         print(f"⚠️ Failed to index {full_path}: {e}")
+        return full_path, False
 
 
+# -------------------------
+# scan_and_index_files()
+# -------------------------
 async def scan_and_index_files(
     root_dir: str,
     mtw_extended=False,
     force_ocr=False,
     disable_ocr=False,
-    ignore_path: str | None = None,  # <-- path to custom .indexlyignore
-    preset: str = "standard",        # <-- default preset
+    ignore_path: str | None = None,
+    preset: str = "standard",
 ):
     from .cache_utils import clean_cache_duplicates
     from indexly.ignore import IgnoreRules
@@ -273,17 +265,10 @@ async def scan_and_index_files(
     conn = connect_db()
     conn.close()
 
-    # -------------------------
     # Load ignore rules
-    # -------------------------
-    if ignore_path:
-        custom_ignore = Path(ignore_path)
-        if custom_ignore.exists():
-            content = custom_ignore.read_text(encoding="utf-8")
-            ignore = IgnoreRules(content.splitlines())
-        else:
-            print(f"⚠️ Custom ignore file not found: {ignore_path}")
-            ignore = IgnoreRules(load_ignore_template(preset).splitlines())
+    if ignore_path and Path(ignore_path).exists():
+        content = Path(ignore_path).read_text(encoding="utf-8")
+        ignore = IgnoreRules(content.splitlines())
     else:
         local_ignore = root_path / ".indexlyignore"
         if local_ignore.exists():
@@ -292,67 +277,67 @@ async def scan_and_index_files(
         else:
             ignore = IgnoreRules(load_ignore_template(preset).splitlines())
 
-    # -------------------------
-    # Collect supported files with ignore filtering
-    # -------------------------
-    file_paths = []
-    for folder, _, files in os.walk(root_path):
-        for f in files:
-            file_path = Path(folder) / f
-            if file_path.suffix.lower() not in SUPPORTED_EXTENSIONS:
-                continue
-            # Pass root_path so IgnoreRules can compute relative path
-            if ignore.should_ignore(file_path, root_path):
-                continue
-            file_paths.append(str(file_path))
+    # Collect files
+    file_paths = [
+        str(Path(folder) / f)
+        for folder, _, files in os.walk(root_path)
+        for f in files
+        if Path(folder, f).suffix.lower() in SUPPORTED_EXTENSIONS
+        and not ignore.should_ignore(Path(folder) / f, root_path)
+    ]
 
     if not file_paths:
         print("⚠️ No supported files found.")
         return []
 
-    # -------------------------
-    # Record start time
-    # -------------------------
     start_time = datetime.now()
 
-    # -------------------------
-    # Index files asynchronously
-    # -------------------------
+    # Index files
     tasks = [
-        async_index_file(
-            path,
-            mtw_extended=mtw_extended,
-            force_ocr=force_ocr,
-            disable_ocr=disable_ocr,
-        )
+        async_index_file(path, mtw_extended, force_ocr, disable_ocr)
         for path in file_paths
     ]
-    await asyncio.gather(*tasks)
+    results = await asyncio.gather(*tasks)
 
-    # -------------------------
+    # Flatten results (for MTW recursion)
+    flattened = []
+    for r in results:
+        if isinstance(r, list):
+            flattened.extend(r)
+        elif isinstance(r, tuple) and len(r) == 2:
+            flattened.append(r)
+
+    # Logging
+    for path, changed in flattened:
+        entry = _unified_log_entry("FILE_INDEXED", path, content_changed=changed)
+        _default_logger.log(entry)
+
+    # Force flush to ensure logs are written immediately
+    if hasattr(_default_logger, "flush"):
+        try:
+            _default_logger.flush(timeout=1.5)
+        except Exception as e:
+            logging.warning(f"Failed to flush logs: {e}")
+
     # Cache hygiene
-    # -------------------------
     clean_cache_duplicates()
-
-    # -------------------------
-    # Logging (post-index only)
-    # -------------------------
-    for path in file_paths:
-        entry = _unified_log_entry("FILE_INDEXED", path)
-        _default_logger.log(entry)  # async-safe
 
     summary_entry = {
         "event": "INDEX_SUMMARY",
         "timestamp": datetime.now().isoformat(timespec="seconds"),
         "root": str(root_dir),
-        "count": len(file_paths),
+        "count": len(flattened),
         "duration_seconds": (datetime.now() - start_time).total_seconds(),
     }
+    _default_logger.log(summary_entry)
+    if hasattr(_default_logger, "flush"):
+        try:
+            _default_logger.flush(timeout=1.5)
+        except Exception as e:
+            logging.warning(f"Failed to flush summary log: {e}")
 
-    _default_logger.log(summary_entry)  # async-safe
-    print(f"📝 Indexed {len(file_paths)} files and logged summary")
-
-    return file_paths
+    print(f"📝 Indexed {len(flattened)} files and logged summary")
+    return [p for p, _ in flattened]
 
 
 def run_stats(args):
@@ -425,7 +410,8 @@ def handle_index(args):
 
     finally:
         ripple.stop()
-        shutdown_logger(timeout=2.0)
+        # Increase timeout to give logger more time to flush
+        shutdown_logger(timeout=4.0)
 
 
 def handle_ignore_init(args):
@@ -466,7 +452,8 @@ def handle_ignore_init(args):
         existing_set = set(line.strip() for line in existing_lines if line.strip())
 
         new_lines = [
-            line for line in template.splitlines()
+            line
+            for line in template.splitlines()
             if line.strip() and line.strip() not in existing_set
         ]
 
@@ -492,10 +479,8 @@ def handle_ignore_init(args):
         return
 
     ignore_file.write_text(template, encoding="utf-8")
-    print(
-        f"✅ Created .indexlyignore at {ignore_file} "
-        f"(preset: {args.preset})"
-    )
+    print(f"✅ Created .indexlyignore at {ignore_file} " f"(preset: {args.preset})")
+
 
 def handle_ignore_show(args):
     """
@@ -770,10 +755,28 @@ def clear_cleaned_data_handler(args):
     else:
         print("⚠️ Please provide a file path or use --all to remove all entries.")
 
+
 def handle_doctor(args):
     from indexly.doctor import run_doctor
 
-    run_doctor(json_output=args.json)
+    # Only pass auto_fix if --profile-db is active
+    if getattr(args, "profile_db", False):
+        auto_fix = getattr(args, "auto_fix", False)
+    else:
+        if getattr(args, "auto_fix", False):
+            console.print(
+                "[yellow]Warning: --auto-fix only works with --profile-db. Ignoring.[/yellow]"
+            )
+        auto_fix = False
+
+    exit_code = run_doctor(
+        json_output=getattr(args, "json", False),
+        profile_db=getattr(args, "profile_db", False),
+        fix_db=getattr(args, "fix_db", False),
+        auto_fix=auto_fix,  # <-- now properly forwarded
+    )
+
+    sys.exit(exit_code)
 
 
 def handle_extract_mtw(args):

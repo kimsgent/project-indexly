@@ -20,6 +20,7 @@ import json
 import os
 import re
 import glob
+import time
 import threading
 from datetime import datetime, date, timedelta
 from pathlib import Path
@@ -69,7 +70,12 @@ def _choose_today_ndjson_filename():
 
 # ---------------- UNIFIED LOG ENTRY ----------------
 
-def _unified_log_entry(event_type: str, raw_path: str) -> dict:
+def _unified_log_entry(
+    event_type: str,
+    raw_path: str,
+    *,
+    content_changed: bool | None = None,
+) -> dict:
     cleaned = normalize_path(raw_path)
     parts = cleaned.split("/")
     filename = parts[-1] if parts else ""
@@ -84,7 +90,8 @@ def _unified_log_entry(event_type: str, raw_path: str) -> dict:
         maybe_customer = parts[-2]
 
         if (
-            maybe_year.isdigit() and len(maybe_year) == 4
+            maybe_year.isdigit()
+            and len(maybe_year) == 4
             and maybe_month.isdigit()
         ):
             year = maybe_year
@@ -93,9 +100,13 @@ def _unified_log_entry(event_type: str, raw_path: str) -> dict:
 
     # cleaned filename + cleaned path
     cleaned_filename = filename.replace(" ", "_")
-    cleaned_path = "/".join(parts[:-1] + [cleaned_filename]) if parts else cleaned_filename
+    cleaned_path = (
+        "/".join(parts[:-1] + [cleaned_filename])
+        if parts
+        else cleaned_filename
+    )
 
-    # --- 2) Filename-based fallback (YYYY / YYYYMM / YYYY-MM / YYYYMMDD)
+    # --- 2) Filename-based fallback
     if year is None or month is None:
         import re
         m = re.search(r"(19|20)\d{2}[^\d]?\d{2}?", cleaned_filename)
@@ -114,7 +125,7 @@ def _unified_log_entry(event_type: str, raw_path: str) -> dict:
         year = year or ts.strftime("%Y")
         month = month or ts.strftime("%m")
 
-    return {
+    entry = {
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "event": event_type,
         "path": cleaned_path,
@@ -125,6 +136,11 @@ def _unified_log_entry(event_type: str, raw_path: str) -> dict:
         "month": month,
     }
 
+    # --- 4) Integrity signal (explicit, optional, non-semantic)
+    if content_changed is not None:
+        entry["content_changed"] = content_changed
+
+    return entry
 
 
 # ---------------- LOG MANAGER ----------------
@@ -169,6 +185,15 @@ class LogManager:
         if self.async_mode:
             self._queue = asyncio.Queue()
             self._start_background_worker()
+            
+    def flush(self, timeout: float = 1.0):
+        """Ensure all queued log entries are written without stopping the worker."""
+        if not self.async_mode or not self._queue or not self._thread:
+            return
+
+        start = time.time()
+        while not self._queue.empty() and (time.time() - start) < timeout:
+            time.sleep(0.05)
 
     # ---------------- PATH HELPERS ----------------
     def _partition_base(self, now: datetime) -> str:

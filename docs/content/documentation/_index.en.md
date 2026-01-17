@@ -65,18 +65,16 @@ flowchart TD
 ## Table of Contents
 
 * [Features](/features)
-* [Installation](usage.md#installation)
-* [Basic Usage](usage.md#basic-usage)
-* [Search Profiles](config.md#search-profiles)
-* [Tagging](config.md#tagging-system)
-* [Exporting](usage.md#exporting)
-* [Watchdog](config.md#watchdog-real-time-indexing)
-* [Advanced Options](config.md#advanced-options)
+* [Installation & Basic Usage](usage.md#basic-usage)
 * [Renaming Files with Patterns →](rename-file.md)
 * [Extracting Minitab MTW files →](mtw-parser.md)
-* New in v1.0.5: [Data Analysis Overview →](data-analysis-overview.md)
-* New in v1.0.5: [Time-Series Visualization→](time-series-visualization.md)
-* [DB Update & Migration Utilities →](db-migration-utility.md)
+* [Data Analysis Overview →](data-analysis-overview.md)
+* [Time-Series Visualization→](time-series-visualization.md)
+* New in v1.0.6: [The Story of Chinook→](story-of-chinook.md)
+* New in v1.0.6: [Indexly Doctor→](indexly-doctor.md)
+* New in v1.0.6: [Semantic Indexing→](semantic-indexing-overview.md)
+* New in v1.0.6: [Organizer, Lister & Backup/Restore→](organizer.md)
+* New in v1.0.6: [Indexly Logging System→](indexly-logging-system.md)
 * [Developer Notes](developer.md)
 * [License & Credits](#license-credits)
 
@@ -116,11 +114,8 @@ flowchart TD
 
 ## Workflow Overview
 
-```mermaid
-flowchart LR
-    A[Index files 📂] --> B[Search 🔍]
-    B --> C[Filter & tag 🏷️]
-    C --> D[Export results 🧾]
+```bash
+Organize 🗂️ → Validate/List 📋 → Backup 💾 → Index 📦 → Search 🔍 → Tag & Filter 🏷️ → Compare 📑 → Export 🧾
 ````
 
 

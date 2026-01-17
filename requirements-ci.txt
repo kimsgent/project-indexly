@@ -8,7 +8,7 @@
 # --- Runtime Essentials ---
 nltk>=3.8.0
 pymupdf>=1.23.0
-Pillow>=11.3.0
+Pillow>=10.3.0,<12.0
 python-docx>=1.2.0
 openpyxl>=3.1.5
 pyarrow>=16.0.0
@@ -27,22 +27,13 @@ pandas>=2.2.0
 PyYAML>=6.0.0
 requests>=2.32.3
 
-# --- JSON / XML / YAML Analysis ---
+# --- JSON / XML / YAML ---
 xmltodict>=0.13.0
 
-# --- File-Type / Format Specific ---
-# (Tesseract-based OCR is disabled in CI)
-# extract_msg, eml-parser excluded (heavy/unstable)
-# JSON/XML/YAML handled via builtin + bs4 + PyYAML
-
-# --- Visualization (lightweight only) ---
-numpy>=1.26.0
-matplotlib>=3.8.0       # headless safe
-plotext>=5.2.8          # ASCII terminal plots (no GUI)
-
-# NOTE:
-# Plotly intentionally excluded to reduce CI time.
-# Use full requirements.txt locally or for wheel builds.
+# --- Visualization (CI-safe) ---
+numpy>=2.0,<2.3
+matplotlib>=3.8.0
+plotext>=5.2.8
 
 # --- Dev / Test Tools ---
 pytest>=8.4.2
@@ -52,6 +43,3 @@ flake8>=6.1.0
 black>=23.9.1
 isort>=5.12.0
 mypy>=1.6.0
-
-# --- Optional: Speed up Pandas / PyArrow in CI ---
-# pyarrow>=16.0.0 already included above.
