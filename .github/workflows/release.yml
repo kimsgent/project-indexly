@@ -3,7 +3,7 @@ name: Publish Release
 on:
   push:
     tags:
-      - v*         # triggers on version tags like v1.0.0
+      - v* # triggers on version tags like v1.0.0
   workflow_dispatch:
     inputs:
       version:
@@ -160,7 +160,9 @@ jobs:
 
       - name: Brew audit & style
         run: |
+          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
           cd homebrew-indexly
+          brew tap kimsgent/indexly "$(pwd)"
           brew audit --strict indexly
           brew style Formula/indexly.rb
 
@@ -174,5 +176,3 @@ jobs:
           git commit -m "chore: update Homebrew formula for ${VERSION}" || echo "No changes to commit"
           git pull --rebase
           git push
-
-
