@@ -1,17 +1,20 @@
 {
   "project": "FTS5 File Search Tool",
   "latest": {
-    "version": "1.1.0",
+    "version": "1.1.1",
     "date": "2026-01-17",
     "changes": [
-      "Fixed Homebrew formula generation pipeline",
-      "Resolved Formula/indexly.rb creation failures due to GitHub tarball delays",
-      "Corrected brew audit --strict indexly usage (formula name instead of file path)",
-      "Added proper tap registration for local formula discovery",
-      "Clean workflow: no dummy SHA256 hacks, real validation for production tags"
+      "Fix(ci): use --formular flag for Homebrew audit after audit behavior change"
     ]
   },
   "archive": [
+    {
+      "version": "1.1.0",
+      "date": "2026-01-17",
+      "link": "/en/releases/v1.1.0/",
+      "summary": "Fixed Homebrew formula generation pipeline | Resolved Formula/indexly.rb creation failures due to GitHub tarball delays",
+      "prerelease": false
+    },
     {
       "version": "1.0.9",
       "date": "2026-01-17",

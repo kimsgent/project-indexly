@@ -5,19 +5,16 @@ toc: true
 weight: 10
 ---
 
-## Latest Release: v1.1.0 (2026-01-17)
+## Latest Release: v1.1.1 (2026-01-17)
 
 ### Changes
-- Fixed Homebrew formula generation pipeline
-- Resolved Formula/indexly.rb creation failures due to GitHub tarball delays
-- Corrected brew audit --strict indexly usage (formula name instead of file path)
-- Added proper tap registration for local formula discovery
-- Clean workflow: no dummy SHA256 hacks, real validation for production tags
+- Fix(ci): use --formular flag for Homebrew audit after audit behavior change
 
 ---
 
 ## Archive
 
+- [Release v1.1.0](/releases/v1.1.0/) (2026-01-17)
 - [Release v1.0.9](/releases/v1.0.9/) (2026-01-17)
 - [Release v1.0.8](/releases/v1.0.8/) (2026-01-17)
 - [Release v1.0.7](/releases/v1.0.7/) (2026-01-16)
