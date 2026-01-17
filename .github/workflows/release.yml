@@ -143,11 +143,14 @@ jobs:
             "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
           echo "/home/linuxbrew/.linuxbrew/bin" >> $GITHUB_PATH
 
-      - name: Generate Homebrew formula
+      - name: Generate Homebrew formula  
         run: |
-          # Override SHA256 for test tags (no real tarball)
-          sed -i 's/sha256 "{sha256}"/sha256 "0000000000000000000000000000000000000000000000000000000000000000"/' scripts/generate_brew_formula.py
-          python scripts/generate_brew_formula.py
+          for i in 1 2 3; do
+            python scripts/generate_brew_formula.py && break
+            echo "Attempt $i failed, retrying in 30s..."
+            sleep 30
+          done || echo "Formula generation failed"
+          ls -la Formula/
 
       - name: Checkout Homebrew tap
         uses: actions/checkout@v4
@@ -165,7 +168,8 @@ jobs:
         run: |
           eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
           cd homebrew-indexly
-          brew audit --strict indexly || brew audit --strict Formula/indexly.rb
+          brew tap kimsgent/indexly "$(pwd)"  # Registers tap
+          brew audit --strict indexly
           brew style Formula/indexly.rb
 
       - name: Commit and push formula
