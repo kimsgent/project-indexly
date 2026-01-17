@@ -1,13 +1,24 @@
 {
   "project": "FTS5 File Search Tool",
   "latest": {
-    "version": "1.1.1",
+    "version": "1.1.2",
     "date": "2026-01-17",
     "changes": [
-      "Fix(ci): use --formular flag for Homebrew audit after audit behavior change"
+      "fix(brew): use bin/indexly in formula test block for Homebrew audit",
+      "chore(brew): update generate_brew_formula.py template for correct formula output",
+      "fix(ci): adjust brew audit & style steps to use formula name, not path",
+      "chore(release): prepare for automated Homebrew release workflow v1.1.2",
+      "clean: remove exposed private key from repo"
     ]
   },
   "archive": [
+    {
+      "version": "1.1.1",
+      "date": "2026-01-17",
+      "link": "/en/releases/v1.1.1/",
+      "summary": "Fix(ci): use --formular flag for Homebrew audit after audit behavior change",
+      "prerelease": false
+    },
     {
       "version": "1.1.0",
       "date": "2026-01-17",
