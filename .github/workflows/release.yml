@@ -169,7 +169,7 @@ jobs:
           eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
           cd homebrew-indexly
           brew tap kimsgent/indexly "$(pwd)"  # Registers tap
-          brew audit --strict indexly
+          brew audit --strict --formula Formula/indexly.rb
           brew style Formula/indexly.rb
 
       - name: Commit and push formula
