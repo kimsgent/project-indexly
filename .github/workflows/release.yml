@@ -160,6 +160,7 @@ jobs:
       - name: Brew audit & style
         run: |
           cd homebrew-indexly
+          brew tap --force-auto-update kimsgent/homebrew-indexly ./homebrew-indexly
           brew audit --strict indexly
           brew style Formula/indexly.rb
 
