@@ -5,15 +5,20 @@ toc: true
 weight: 10
 ---
 
-## Latest Release: v1.1.1 (2026-01-17)
+## Latest Release: v1.1.2 (2026-01-17)
 
 ### Changes
-- Fix(ci): use --formular flag for Homebrew audit after audit behavior change
+- fix(brew): use bin/indexly in formula test block for Homebrew audit
+- chore(brew): update generate_brew_formula.py template for correct formula output
+- fix(ci): adjust brew audit & style steps to use formula name, not path
+- chore(release): prepare for automated Homebrew release workflow v1.1.2
+- clean: remove exposed private key from repo
 
 ---
 
 ## Archive
 
+- [Release v1.1.1](/releases/v1.1.1/) (2026-01-17)
 - [Release v1.1.0](/releases/v1.1.0/) (2026-01-17)
 - [Release v1.0.9](/releases/v1.0.9/) (2026-01-17)
 - [Release v1.0.8](/releases/v1.0.8/) (2026-01-17)
