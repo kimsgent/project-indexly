@@ -5,15 +5,16 @@ toc: true
 weight: 10
 ---
 
-## Latest Release: v1.0.8 (2026-01-17)
+## Latest Release: v1.0.9 (2026-01-17)
 
 ### Changes
-- fix(github actions): GitHub Actions: added missing Homebrew tap authentication token to enable automated `brew` releases.
+- fix(github actions): Updated Homebrew workflow to audit formula by name instead of file path.
 
 ---
 
 ## Archive
 
+- [Release v1.0.8](/releases/v1.0.8/) (2026-01-17)
 - [Release v1.0.7](/releases/v1.0.7/) (2026-01-16)
 - [Release v1.0.6](/releases/v1.0.6/) (2026-01-10)
 - [Release v1.0.5](/releases/v1.0.5/) (2025-11-29)

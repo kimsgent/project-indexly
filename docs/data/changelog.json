@@ -2,6 +2,14 @@
   "project": "FTS5 File Search Tool",
   "versions": [
     {
+      "version": "1.0.9",
+      "date": "2026-01-17",
+      "changes": [
+        "fix(github actions): Updated Homebrew workflow to audit formula by name instead of file path."
+      ]
+    },
+
+    {
       "version": "1.0.8",
       "date": "2026-01-17",
       "changes": [
