@@ -2,6 +2,18 @@
   "project": "FTS5 File Search Tool",
   "versions": [
     {
+      "version": "1.1.3",
+      "date": "2026-01-18",
+      "changes": [
+        "fix(brew): vendor Python runtime dependencies to produce a fully functional Homebrew install",
+        "feat(brew): extend generate_brew_formula.py with PyPI resource resolution and sha256 verification",
+        "fix(brew): delegate heavy numeric stack (numpy, pandas, scipy, matplotlib) to Homebrew dependencies",
+        "fix(brew): ensure indexly runs out-of-the-box after brew install without missing imports",
+        "chore(release): stabilize Homebrew publishing pipeline for future releases"
+      ]
+    },
+
+    {
       "version": "1.1.2",
       "date": "2026-01-17",
       "changes": [

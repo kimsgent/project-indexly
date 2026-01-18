@@ -5,19 +5,20 @@ toc: true
 weight: 10
 ---
 
-## Latest Release: v1.1.2 (2026-01-17)
+## Latest Release: v1.1.3 (2026-01-18)
 
 ### Changes
-- fix(brew): use bin/indexly in formula test block for Homebrew audit
-- chore(brew): update generate_brew_formula.py template for correct formula output
-- fix(ci): adjust brew audit & style steps to use formula name, not path
-- chore(release): prepare for automated Homebrew release workflow v1.1.2
-- clean: remove exposed private key from repo
+- fix(brew): vendor Python runtime dependencies to produce a fully functional Homebrew install
+- feat(brew): extend generate_brew_formula.py with PyPI resource resolution and sha256 verification
+- fix(brew): delegate heavy numeric stack (numpy, pandas, scipy, matplotlib) to Homebrew dependencies
+- fix(brew): ensure indexly runs out-of-the-box after brew install without missing imports
+- chore(release): stabilize Homebrew publishing pipeline for future releases
 
 ---
 
 ## Archive
 
+- [Release v1.1.2](/releases/v1.1.2/) (2026-01-17)
 - [Release v1.1.1](/releases/v1.1.1/) (2026-01-17)
 - [Release v1.1.0](/releases/v1.1.0/) (2026-01-17)
 - [Release v1.0.9](/releases/v1.0.9/) (2026-01-17)
