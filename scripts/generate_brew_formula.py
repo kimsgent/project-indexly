@@ -30,6 +30,7 @@ HOMEBREW_DEPS = [
     "tesseract",
     "openblas",      # ← ADDED: Automated OpenBLAS
     "pkgconf",       # ← ADDED: pkg-config for OpenBLAS
+    "llvm",
 ]
 
 # Vendored Python deps (runtime) - wheels preferred for heavy deps
