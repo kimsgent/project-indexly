@@ -28,9 +28,11 @@ TARBALL_URL = f"{HOMEPAGE}/archive/refs/tags/v{TAG}.tar.gz"
 HOMEBREW_DEPS = [
     "python@3.11",
     "tesseract",
+    "openblas",      # ← ADDED: Automated OpenBLAS
+    "pkgconf",       # ← ADDED: pkg-config for OpenBLAS
 ]
 
-# Vendored Python deps (runtime)
+# Vendored Python deps (runtime) - wheels preferred for heavy deps
 PYTHON_RESOURCES = [
     "numpy",
     "pandas",
@@ -64,16 +66,30 @@ PYTHON_RESOURCES = [
 
 PYPI_JSON = "https://pypi.org/pypi/{}/json"
 
-
 # -------------------------
 # Helpers
 # -------------------------
-
 
 def sha256_of_url(url: str) -> str:
     with urllib.request.urlopen(url) as r:
         return hashlib.sha256(r.read()).hexdigest()
 
+def pypi_wheel(pkg: str, python_tag: str = "cp311") -> tuple[str, str]:
+    """Prefer Linux x86_64 wheel over sdist for heavy packages"""
+    with urllib.request.urlopen(PYPI_JSON.format(pkg)) as r:
+        data = json.load(r)
+
+    # Prefer manylinux/musllinux wheels for Linux compatibility
+    for f in data["urls"]:
+        if (f["packagetype"] == "wheel" and 
+            python_tag in f["filename"] and 
+            ("manylinux" in f["filename"] or "musllinux" in f["filename"] or "linux" in f["filename"])):
+            print(f"✔ Using wheel for {pkg}: {f['filename']}")
+            return f["url"], f["digests"]["sha256"]
+    
+    # Fallback to sdist
+    print(f"⚠️  {pkg}: no compatible wheel, using sdist")
+    return pypi_sdist(pkg)
 
 def pypi_sdist(pkg: str) -> tuple[str, str]:
     with urllib.request.urlopen(PYPI_JSON.format(pkg)) as r:
@@ -82,14 +98,19 @@ def pypi_sdist(pkg: str) -> tuple[str, str]:
     for f in data["urls"]:
         if f["packagetype"] == "sdist":
             return f["url"], f["digests"]["sha256"]
-
+    
     raise RuntimeError(f"No sdist found for {pkg}")
 
+def get_package_url(pkg: str) -> tuple[str, str]:
+    """Wheel preference for heavy deps, sdist fallback"""
+    wheel_priority = {"numpy", "scipy", "pandas", "matplotlib"}
+    if pkg.lower() in wheel_priority:
+        return pypi_wheel(pkg)
+    return pypi_sdist(pkg)
 
 # -------------------------
 # Formula generation
 # -------------------------
-
 
 def main():
     print("Generating Homebrew formula…")
@@ -98,8 +119,8 @@ def main():
 
     resource_blocks = []
     for pkg in PYTHON_RESOURCES:
-        url, digest = pypi_sdist(pkg)
-        resource_name = pkg.replace("_", "-")  # <-- FIX applied
+        url, digest = get_package_url(pkg)
+        resource_name = pkg.replace("_", "-")
         resource_blocks.append(
             f"""
     resource "{resource_name}" do
@@ -109,8 +130,7 @@ def main():
     """
         )
 
-    formula = f"""
-class {FORMULA_CLASS} < Formula
+    formula = f"""class {FORMULA_CLASS} < Formula
   include Language::Python::Virtualenv
 
   desc "Local semantic file indexing and search tool"
@@ -119,7 +139,6 @@ class {FORMULA_CLASS} < Formula
   sha256 "{sha256}"
   license "{LICENSE}"
 
-  depends_on "{PYTHON_DEP}"
 """
 
     for dep in HOMEBREW_DEPS:
@@ -129,6 +148,17 @@ class {FORMULA_CLASS} < Formula
 
     formula += """
   def install
+    # OpenBLAS setup FIRST (fixes SciPy/numpy Linuxbrew builds)
+    openblas = Formula["openblas"]
+    ENV.prepend_path "PKG_CONFIG_PATH", "#{openblas.opt_lib}/pkgconfig"
+    ENV.prepend "LDFLAGS", "-L#{openblas.opt_lib}/lib"
+    ENV.prepend "CPPFLAGS", "-I#{openblas.opt_lib}/include"
+    ENV["BLAS"] = "openblas"
+    ENV["LAPACK"] = "openblas"
+
+    # Verify OpenBLAS detection
+    system "pkg-config", "--exists", "openblas" || (raise "OpenBLAS pkg-config failed!")
+
     virtualenv_install_with_resources
   end
 
@@ -144,8 +174,8 @@ end
     out.write_text(textwrap.dedent(formula).strip() + "\n", encoding="utf-8")
 
     print(f"✔ Formula written to {out}")
-    print("✔ Dependency vendoring complete")
-
+    print("✔ Wheel preference + OpenBLAS automation complete")
+    print("✔ Ready for production Linuxbrew/macOS installs")
 
 if __name__ == "__main__":
     main()
