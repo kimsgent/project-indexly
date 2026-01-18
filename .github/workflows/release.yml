@@ -110,83 +110,95 @@ jobs:
           TWINE_USERNAME: ${{ secrets.PYPI_USERNAME }}
           TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
   publish-homebrew:
-    name: Publish Homebrew Formula
-    needs: build-and-release
-    runs-on: ubuntu-latest
+  name: Publish Homebrew Formula
+  needs: build-and-release
+  runs-on: ubuntu-latest
 
-    if: |
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name != 'workflow_dispatch' &&
-      !contains(github.ref_name, 'alpha') &&
-      !contains(github.ref_name, 'beta') &&
-      !contains(github.ref_name, 'rc') &&
-      !contains(github.ref_name, 'test'))
+  if: |
+    github.event_name == 'workflow_dispatch' ||
+    (github.event_name != 'workflow_dispatch' &&
+    !contains(github.ref_name, 'alpha') &&
+    !contains(github.ref_name, 'beta') &&
+    !contains(github.ref_name, 'rc') &&
+    !contains(github.ref_name, 'test'))
 
-    steps:
-      - name: Checkout main repo
-        uses: actions/checkout@v4
+  steps:
+    - name: Checkout main repo
+      uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
 
-      - name: Export VERSION (tag only)
-        run: |
-          if [[ "$GITHUB_REF_TYPE" != "tag" ]]; then
-            echo "ERROR: Homebrew publish must run from a tag" >&2
-            exit 1
-          fi
-          echo "VERSION=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
+    - name: Export VERSION (tag only)
+      run: |
+        if [[ "$GITHUB_REF_TYPE" != "tag" ]]; then
+          echo "ERROR: Homebrew publish must run from a tag" >&2
+          exit 1
+        fi
+        echo "VERSION=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
 
-      - name: Install Homebrew
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential curl git
-          NONINTERACTIVE=1 /bin/bash -c \
-            "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-          echo "/home/linuxbrew/.linuxbrew/bin" >> "$GITHUB_PATH"
+    - name: Install Homebrew
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential curl git
+        NONINTERACTIVE=1 /bin/bash -c \
+          "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+        echo "/home/linuxbrew/.linuxbrew/bin" >> "$GITHUB_PATH"
 
-      - name: Generate Homebrew formula
-        run: |
-          set -e
-          for i in 1 2 3; do
-            python scripts/generate_brew_formula.py && break
-            echo "Attempt $i failed, retrying in 30s..."
-            sleep 30
-          done
-          test -f Formula/indexly.rb
-          ruby -c Formula/indexly.rb
-          ls -la Formula/
+    - name: Ensure Formula directory
+      run: |
+        mkdir -p Formula
 
-      - name: Checkout Homebrew tap
-        uses: actions/checkout@v4
-        with:
-          repository: kimsgent/homebrew-indexly
-          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-          path: homebrew-indexly
+    - name: Generate Homebrew formula
+      run: |
+        set -e
+        # Retry generation up to 3 times
+        for i in 1 2 3; do
+          python scripts/generate_brew_formula.py && break
+          echo "Attempt $i failed, retrying in 30s..."
+          sleep 30
+        done
 
-      - name: Update formula
-        run: |
-          mkdir -p homebrew-indexly/Formula
-          cp Formula/indexly.rb homebrew-indexly/Formula/indexly.rb
+        # Validate that the formula was generated
+        if [ ! -f Formula/indexly.rb ]; then
+          echo "ERROR: Formula/indexly.rb was not generated!" >&2
+          exit 1
+        fi
 
-      - name: Brew audit & style
-        run: |
-          set -e
-          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
-          brew tap kimsgent/indexly
-          brew audit --strict indexly
-          brew style indexly
+        ruby -c Formula/indexly.rb
+        ls -la Formula/
 
-      - name: Commit and push formula
-        if: github.event_name != 'workflow_dispatch'
-        run: |
-          set -e
-          cd homebrew-indexly
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add Formula/indexly.rb
-          git commit -m "chore: update Homebrew formula for ${VERSION}" || exit 0
-          git pull --rebase
-          git push
+    - name: Checkout Homebrew tap
+      uses: actions/checkout@v4
+      with:
+        repository: kimsgent/homebrew-indexly
+        token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        path: homebrew-indexly
+
+    - name: Update formula in tap
+      run: |
+        mkdir -p homebrew-indexly/Formula
+        cp Formula/indexly.rb homebrew-indexly/Formula/indexly.rb
+        echo "✔ Copied freshly generated formula to Homebrew tap"
+
+    - name: Brew audit & style
+      run: |
+        set -e
+        eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+        brew tap kimsgent/indexly
+        brew audit --strict indexly
+        brew style indexly
+
+    - name: Commit and push formula
+      if: github.event_name != 'workflow_dispatch'
+      run: |
+        set -e
+        cd homebrew-indexly
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git add Formula/indexly.rb
+        git commit -m "chore: update Homebrew formula for ${VERSION}" || exit 0
+        git pull --rebase
+        git push

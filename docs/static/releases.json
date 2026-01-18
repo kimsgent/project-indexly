@@ -1,17 +1,24 @@
 {
   "project": "FTS5 File Search Tool",
   "latest": {
-    "version": "1.1.3",
+    "version": "1.1.4",
     "date": "2026-01-18",
     "changes": [
-      "fix(brew): vendor Python runtime dependencies to produce a fully functional Homebrew install",
-      "feat(brew): extend generate_brew_formula.py with PyPI resource resolution and sha256 verification",
-      "fix(brew): delegate heavy numeric stack (numpy, pandas, scipy, matplotlib) to Homebrew dependencies",
-      "fix(brew): ensure indexly runs out-of-the-box after brew install without missing imports",
-      "chore(release): stabilize Homebrew publishing pipeline for future releases"
+      "fix(brew): correct Homebrew formula dependencies order and remove vendored numeric stack",
+      "fix(brew): rename Python resources to match PyPI package names (e.g., extract-msg)",
+      "feat(brew): fully automate generate_brew_formula.py to produce Formula/indexly.rb from tag",
+      "fix(brew): ensure workflow generates formula fresh and copies to homebrew-indexly tap",
+      "chore(release): improve GitHub Actions publish-homebrew workflow reliability and audit steps"
     ]
   },
   "archive": [
+    {
+      "version": "1.1.3",
+      "date": "2026-01-18",
+      "link": "/en/releases/v1.1.3/",
+      "summary": "fix(brew): vendor Python runtime dependencies to produce a fully functional Homebrew install | feat(brew): extend generate_brew_formula.py with PyPI resource resolution and sha256 verification",
+      "prerelease": false
+    },
     {
       "version": "1.1.2",
       "date": "2026-01-17",

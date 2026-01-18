@@ -26,15 +26,16 @@ TARBALL_URL = f"{HOMEPAGE}/archive/refs/tags/v{TAG}.tar.gz"
 
 # Heavy native stack → Homebrew-managed
 HOMEBREW_DEPS = [
-    "numpy",
-    "pandas",
-    "scipy",
-    "matplotlib",
+    "python@3.11",
     "tesseract",
 ]
 
 # Vendored Python deps (runtime)
 PYTHON_RESOURCES = [
+    "numpy",
+    "pandas",
+    "scipy",
+    "matplotlib",
     "nltk",
     "pymupdf",
     "pytesseract",
@@ -98,13 +99,14 @@ def main():
     resource_blocks = []
     for pkg in PYTHON_RESOURCES:
         url, digest = pypi_sdist(pkg)
+        resource_name = pkg.replace("_", "-")  # <-- FIX applied
         resource_blocks.append(
             f"""
-  resource "{pkg}" do
-    url "{url}"
-    sha256 "{digest}"
-  end
-"""
+    resource "{resource_name}" do
+        url "{url}"
+        sha256 "{digest}"
+    end
+    """
         )
 
     formula = f"""
