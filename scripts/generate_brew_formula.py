@@ -75,35 +75,25 @@ def sha256_of_url(url: str) -> str:
         return hashlib.sha256(r.read()).hexdigest()
 
 def pypi_wheel(pkg: str, python_tag: str = "cp311") -> tuple[str, str]:
-    """Broader Linux wheel compatibility for Ubuntu 24.04"""
+    """Match ACTUAL PyPI wheel tags for Ubuntu 24.04"""
     with urllib.request.urlopen(PYPI_JSON.format(pkg)) as r:
         data = json.load(r)
 
-    # 1. manylinux/musllinux FIRST priority
+    # 1. manylinux_2_17_x86_64, manylinux2014_x86_64 (Ubuntu 24.04 perfect)
     for f in data["urls"]:
         if (f["packagetype"] == "wheel" and 
             python_tag in f["filename"] and 
-            ("manylinux" in f["filename"] or "musllinux" in f["filename"])):
+            any(tag in f["filename"] for tag in ["manylinux_2_17_x86_64", "manylinux2014_x86_64", "manylinux1_x86_64"])):
             print(f"✔ Using manylinux wheel: {f['filename']}")
             return f["url"], f["digests"]["sha256"]
     
-    # 2. ANY linux_x86_64 wheel (Ubuntu 24.04 compatible)
+    # 2. musllinux (Alpine, but works)
     for f in data["urls"]:
-        if (f["packagetype"] == "wheel" and 
-            python_tag in f["filename"] and 
-            "linux_x86_64" in f["filename"]):
-            print(f"✔ Using linux_x86_64 wheel: {f['filename']}")
+        if (f["packagetype"] == "wheel" and python_tag in f["filename"] and "musllinux" in f["filename"]):
+            print(f"✔ Using musllinux wheel: {f['filename']}")
             return f["url"], f["digests"]["sha256"]
     
-    # 3. Any Linux wheel containing "linux"
-    for f in data["urls"]:
-        if (f["packagetype"] == "wheel" and 
-            python_tag in f["filename"] and 
-            "linux" in f["filename"]):
-            print(f"✔ Using linux wheel: {f['filename']}")
-            return f["url"], f["digests"]["sha256"]
-    
-    print(f"⚠️  {pkg}: no Linux wheel, using sdist")
+    print(f"⚠️  {pkg}: no compatible wheel, using sdist")
     return pypi_sdist(pkg)
 
 def pypi_sdist(pkg: str) -> tuple[str, str]:
