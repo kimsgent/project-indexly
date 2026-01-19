@@ -53,8 +53,7 @@ class {FORMULA_CLASS} < Formula
     system bin/"{PROJECT}", "--version"
     system bin/"{PROJECT}", "--help"
   end
-end
-"""
+end"""
 
     out = Path("Formula/indexly.rb")
     out.parent.mkdir(parents=True, exist_ok=True)
