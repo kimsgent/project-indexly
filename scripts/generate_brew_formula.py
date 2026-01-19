@@ -25,7 +25,7 @@ def sha256_of_url(url: str) -> str:
 
 
 def main():
-    print("Generating Homebrew formula (runtime pip + caveats wrapper)…")
+    print("Generating clean Homebrew formula (no caveats)…")
 
     sha256 = sha256_of_url(TARBALL_URL)
 
@@ -47,38 +47,6 @@ class {FORMULA_CLASS} < Formula
                    "--no-cache-dir",
                    "-r", "requirements.txt", "."
     bin.install_symlink libexec/"bin/{PROJECT}"
-  end
-
-  def caveats
-    <<~EOS
-      Indexly is installed successfully.
-
-      If you encounter runtime issues, add the following to your shell config.
-
-      ---- Bash (.bashrc) ----
-      echo 'export PATH="$(brew --prefix)/opt/python@3.11/bin:$PATH"' >> ~/.bashrc
-      echo 'export PYTHONPATH="$(brew --prefix)/Cellar/indexly/#{{version}}/libexec:$PYTHONPATH"' >> ~/.bashrc
-      echo '
-      indexly() {{
-        PYTHONPATH="$(brew --prefix)/Cellar/indexly/#{{version}}/libexec/lib/python3.11/site-packages:$PYTHONPATH" \\
-        "$(brew --prefix)/opt/python@3.11/bin/python3.11" \\
-        "$(brew --prefix)/Cellar/indexly/#{{version}}/libexec/bin/indexly" "$@"
-      }}
-      ' >> ~/.bashrc
-
-      ---- Zsh (.zshrc) ----
-      echo 'export PATH="$(brew --prefix)/opt/python@3.11/bin:$PATH"' >> ~/.zshrc
-      echo 'export PYTHONPATH="$(brew --prefix)/Cellar/indexly/#{{version}}/libexec:$PYTHONPATH"' >> ~/.zshrc
-      echo '
-      indexly() {{
-        PYTHONPATH="$(brew --prefix)/Cellar/indexly/#{{version}}/libexec/lib/python3.11/site-packages:$PYTHONPATH" \\
-        "$(brew --prefix)/opt/python@3.11/bin/python3.11" \\
-        "$(brew --prefix)/Cellar/indexly/#{{version}}/libexec/bin/indexly" "$@"
-      }}
-      ' >> ~/.zshrc
-
-      Reload your shell after applying.
-    EOS
   end
 
   test do
