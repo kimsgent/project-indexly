@@ -43,7 +43,7 @@ class {FORMULA_CLASS} < Formula
   def install
     python = Formula["{PYTHON_DEP}"].opt_bin/"python3.11"
     system python, "-m", "pip", "install",
-                   "--prefix=#{{libexec}}",
+                   "--prefix=#{libexec}",
                    "--no-cache-dir",
                    "-r", "requirements.txt", "."
     bin.install_symlink libexec/"bin/{PROJECT}"
@@ -54,9 +54,10 @@ class {FORMULA_CLASS} < Formula
     system bin/"{PROJECT}", "--help"
   end
 end"""
+
     out = Path("Formula/indexly.rb")
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(textwrap.dedent(formula), encoding="utf-8")
+    out.write_text(textwrap.dedent(formula).rstrip("\n"), encoding="utf-8")
 
     print(f"✔ Formula written to {out}")
     print("✔ Audit-compatible")
