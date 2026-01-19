@@ -100,6 +100,9 @@ pip install -r requirements.txt
 pip install -r requirements-dev.txt
 
 ```
+
+---
+
 Quick test run:
 
 ```bash
@@ -148,6 +151,7 @@ hatch build
 hatch install
 ```
 
+> 📌 See [Full Installation Guide](indexly-installation.md) for Windows tips.
 ---
 
 ## Tips for Extension
