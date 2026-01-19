@@ -5,19 +5,19 @@ toc: true
 weight: 10
 ---
 
-## Latest Release: v1.1.4 (2026-01-18)
+## Latest Release: v1.1.5 (2026-01-19)
 
 ### Changes
-- fix(brew): correct Homebrew formula dependencies order and remove vendored numeric stack
-- fix(brew): rename Python resources to match PyPI package names (e.g., extract-msg)
-- feat(brew): fully automate generate_brew_formula.py to produce Formula/indexly.rb from tag
-- fix(brew): ensure workflow generates formula fresh and copies to homebrew-indexly tap
-- chore(release): improve GitHub Actions publish-homebrew workflow reliability and audit steps
+- docs(install): rewrite installation guide with full pip and Homebrew workflows for users and developers
+- docs(install): document Homebrew shell setup and indexly() wrapper for reliable CLI execution
+- chore(brew): integrate verified Homebrew formula with caveats into generate_brew_formula.py
+- chore(release): prepare Homebrew tap and documentation for v1.1.5 without code changes
 
 ---
 
 ## Archive
 
+- [Release v1.1.4](/releases/v1.1.4/) (2026-01-18)
 - [Release v1.1.3](/releases/v1.1.3/) (2026-01-18)
 - [Release v1.1.2](/releases/v1.1.2/) (2026-01-17)
 - [Release v1.1.1](/releases/v1.1.1/) (2026-01-17)
