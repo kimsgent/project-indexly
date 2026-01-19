@@ -25,7 +25,7 @@ def sha256_of_url(url: str) -> str:
 
 
 def main():
-    print("Generating Homebrew formula (runtime pip + caveats wrapper)…")
+    print("Generating clean Homebrew formula (no caveats)…")
 
     sha256 = sha256_of_url(TARBALL_URL)
 
@@ -43,54 +43,21 @@ class {FORMULA_CLASS} < Formula
   def install
     python = Formula["{PYTHON_DEP}"].opt_bin/"python3.11"
     system python, "-m", "pip", "install",
-                   "--prefix=#{{libexec}}",
+                   "--prefix=#{libexec}",
                    "--no-cache-dir",
                    "-r", "requirements.txt", "."
     bin.install_symlink libexec/"bin/{PROJECT}"
-  end
-
-  def caveats
-    <<~EOS
-      Indexly is installed successfully.
-
-      If you encounter runtime issues, add the following to your shell config.
-
-      ---- Bash (.bashrc) ----
-      echo 'export PATH="$(brew --prefix)/opt/python@3.11/bin:$PATH"' >> ~/.bashrc
-      echo 'export PYTHONPATH="$(brew --prefix)/Cellar/indexly/#{{version}}/libexec:$PYTHONPATH"' >> ~/.bashrc
-      echo '
-      indexly() {{
-        PYTHONPATH="$(brew --prefix)/Cellar/indexly/#{{version}}/libexec/lib/python3.11/site-packages:$PYTHONPATH" \\
-        "$(brew --prefix)/opt/python@3.11/bin/python3.11" \\
-        "$(brew --prefix)/Cellar/indexly/#{{version}}/libexec/bin/indexly" "$@"
-      }}
-      ' >> ~/.bashrc
-
-      ---- Zsh (.zshrc) ----
-      echo 'export PATH="$(brew --prefix)/opt/python@3.11/bin:$PATH"' >> ~/.zshrc
-      echo 'export PYTHONPATH="$(brew --prefix)/Cellar/indexly/#{{version}}/libexec:$PYTHONPATH"' >> ~/.zshrc
-      echo '
-      indexly() {{
-        PYTHONPATH="$(brew --prefix)/Cellar/indexly/#{{version}}/libexec/lib/python3.11/site-packages:$PYTHONPATH" \\
-        "$(brew --prefix)/opt/python@3.11/bin/python3.11" \\
-        "$(brew --prefix)/Cellar/indexly/#{{version}}/libexec/bin/indexly" "$@"
-      }}
-      ' >> ~/.zshrc
-
-      Reload your shell after applying.
-    EOS
   end
 
   test do
     system bin/"{PROJECT}", "--version"
     system bin/"{PROJECT}", "--help"
   end
-end
-"""
+end"""
 
     out = Path("Formula/indexly.rb")
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(textwrap.dedent(formula), encoding="utf-8")
+    out.write_text(textwrap.dedent(formula).rstrip("\n"), encoding="utf-8")
 
     print(f"✔ Formula written to {out}")
     print("✔ Audit-compatible")
