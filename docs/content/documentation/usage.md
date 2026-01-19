@@ -56,6 +56,8 @@ pip install nltk pymupdf pytesseract pillow python-docx openpyxl rapidfuzz fpdf2
 beautifulsoup4 extract_msg eml-parser PyPDF2 watchdog colorama
 ```
 
+>📌 See [Full Installation Guide](indexly-installation.md#installation) for Windows tips.
+
 
 ## **2. 🗂️ Organizer – Automatic File Organization**
 

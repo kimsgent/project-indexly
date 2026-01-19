@@ -2,6 +2,17 @@
   "project": "FTS5 File Search Tool",
   "versions": [
     {
+      "version": "1.1.5",
+      "date": "2026-01-19",
+      "changes": [
+      "docs(install): rewrite installation guide with full pip and Homebrew workflows for users and developers",
+      "docs(install): document Homebrew shell setup and indexly() wrapper for reliable CLI execution",
+      "chore(brew): integrate verified Homebrew formula with caveats into generate_brew_formula.py",
+      "chore(release): prepare Homebrew tap and documentation for v1.1.5 without code changes"
+      ]
+    },
+
+    {
       "version": "1.1.4",
       "date": "2026-01-18",
       "changes": [

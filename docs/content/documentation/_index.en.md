@@ -108,7 +108,7 @@ flowchart TD
 > beautifulsoup4 extract_msg eml-parser PyPDF2 watchdog colorama
 > ```
 
-📌 See [Installation Guide](usage.md#installation) for Windows tips.
+📌 See [Installation Guide](indexly-installation.md) for Windows tips.
 
 ---
 
