@@ -2,6 +2,15 @@
   "project": "FTS5 File Search Tool",
   "versions": [
     {
+      "version": "1.1.7",
+      "date": "2026-01-19",
+      "changes": [
+        "fix(brew): escape Ruby #{libexec} interpolation in generate_brew_formula.py to prevent CI NameError",
+        "chore(release): prepare documentation and Homebrew metadata for v1.1.7"
+      ]
+    },
+
+    {
       "version": "1.1.6",
       "date": "2026-01-19",
       "changes": [

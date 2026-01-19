@@ -1,16 +1,21 @@
 {
   "project": "FTS5 File Search Tool",
   "latest": {
-    "version": "1.1.6",
+    "version": "1.1.7",
     "date": "2026-01-19",
     "changes": [
-      "chore(brew): remove caveats from formula to pass audit --strict",
-      "chore(brew): update generate_brew_formula.py to produce audit-compatible formula without trailing blank lines",
-      "fix(brew): ensure Formula/indexly.rb has no trailing blank lines after final 'end'",
-      "chore(release): prepare v1.1.6 for tagging and Homebrew tap release"
+      "fix(brew): escape Ruby #{libexec} interpolation in generate_brew_formula.py to prevent CI NameError",
+      "chore(release): prepare documentation and Homebrew metadata for v1.1.7"
     ]
   },
   "archive": [
+    {
+      "version": "1.1.6",
+      "date": "2026-01-19",
+      "link": "/en/releases/v1.1.6/",
+      "summary": "chore(brew): remove caveats from formula to pass audit --strict | chore(brew): update generate_brew_formula.py to produce audit-compatible formula without trailing blank lines",
+      "prerelease": false
+    },
     {
       "version": "1.1.5",
       "date": "2026-01-19",

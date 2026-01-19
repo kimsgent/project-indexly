@@ -43,7 +43,7 @@ class {FORMULA_CLASS} < Formula
   def install
     python = Formula["{PYTHON_DEP}"].opt_bin/"python3.11"
     system python, "-m", "pip", "install",
-                   "--prefix=#{libexec}",
+                   "--prefix=#{{libexec}}",
                    "--no-cache-dir",
                    "-r", "requirements.txt", "."
     bin.install_symlink libexec/"bin/{PROJECT}"

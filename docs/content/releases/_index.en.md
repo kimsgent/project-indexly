@@ -5,18 +5,17 @@ toc: true
 weight: 10
 ---
 
-## Latest Release: v1.1.6 (2026-01-19)
+## Latest Release: v1.1.7 (2026-01-19)
 
 ### Changes
-- chore(brew): remove caveats from formula to pass audit --strict
-- chore(brew): update generate_brew_formula.py to produce audit-compatible formula without trailing blank lines
-- fix(brew): ensure Formula/indexly.rb has no trailing blank lines after final 'end'
-- chore(release): prepare v1.1.6 for tagging and Homebrew tap release
+- fix(brew): escape Ruby #{libexec} interpolation in generate_brew_formula.py to prevent CI NameError
+- chore(release): prepare documentation and Homebrew metadata for v1.1.7
 
 ---
 
 ## Archive
 
+- [Release v1.1.6](/releases/v1.1.6/) (2026-01-19)
 - [Release v1.1.5](/releases/v1.1.5/) (2026-01-19)
 - [Release v1.1.4](/releases/v1.1.4/) (2026-01-18)
 - [Release v1.1.3](/releases/v1.1.3/) (2026-01-18)
