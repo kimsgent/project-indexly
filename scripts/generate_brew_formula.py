@@ -54,7 +54,6 @@ class {FORMULA_CLASS} < Formula
     system bin/"{PROJECT}", "--help"
   end
 end"""
-
     out = Path("Formula/indexly.rb")
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(textwrap.dedent(formula), encoding="utf-8")
