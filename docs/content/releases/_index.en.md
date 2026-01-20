@@ -5,16 +5,18 @@ toc: true
 weight: 10
 ---
 
-## Latest Release: v1.1.9 (2026-01-20)
+## Latest Release: v1.2.0 (2026-01-20)
 
 ### Changes
-- fix(brew): prevent extra trailing blank line when writing formula in generate_brew_formula.py, ensuring Homebrew audit passes
-- chore(release): prepare v1.1.9 documentation and Homebrew tap release
+- fix(brew): move Homebrew formula template outside Python to avoid accidental trailing blank lines and pass audit
+- chore(release): update generate_brew_formula.py for v1.2.0 formula generation
+- chore(docs): prepare v1.2.0 release notes and Homebrew tap documentation
 
 ---
 
 ## Archive
 
+- [Release v1.1.9](/releases/v1.1.9/) (2026-01-20)
 - [Release v1.1.8](/releases/v1.1.8/) (2026-01-20)
 - [Release v1.1.7](/releases/v1.1.7/) (2026-01-19)
 - [Release v1.1.6](/releases/v1.1.6/) (2026-01-19)
