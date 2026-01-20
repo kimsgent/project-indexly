@@ -131,13 +131,15 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Export VERSION (tag only)
+      - name: Export VERSION (tag or test tag)
         run: |
-          if [[ "$GITHUB_REF_TYPE" != "tag" ]]; then
-            echo "ERROR: Homebrew publish must run from a tag" >&2
-            exit 1
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            echo "VERSION=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
+            echo "Tag detected: ${GITHUB_REF_NAME}"
+          else
+            echo "Non-tag run detected (test / manual). Using ref name as VERSION."
+            echo "VERSION=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
           fi
-          echo "VERSION=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
 
       - name: Install Homebrew
         run: |

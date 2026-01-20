@@ -57,7 +57,8 @@ end"""
 
     out = Path("Formula/indexly.rb")
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(textwrap.dedent(formula).rstrip("\n"), encoding="utf-8")
+    content = textwrap.dedent(formula).rstrip()
+    out.write_text(content + "\n", encoding="utf-8")
 
     print(f"✔ Formula written to {out}")
     print("✔ Audit-compatible")
