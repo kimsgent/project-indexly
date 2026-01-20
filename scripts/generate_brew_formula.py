@@ -43,7 +43,6 @@ class {formula_class} < Formula
                    "-r", "requirements.txt", "."
     bin.install_symlink libexec/"bin/{project}"
   end
-
   test do
     system bin/"{project}", "--version"
     system bin/"{project}", "--help"
