@@ -15,7 +15,7 @@ categories:
 
 Get the latest version of Project Indexly:
 
-- [Download v1.1.8 ZIP](https://github.com/kimsgent/project-indexly/archive/refs/tags/v1.1.8.zip)
+- [Download v1.1.9 ZIP](https://github.com/kimsgent/project-indexly/archive/refs/tags/v1.1.9.zip)
 - [View Release Notes](/releases/_index.en.md)
 
 ## Tools

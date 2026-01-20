@@ -65,16 +65,14 @@ class {FORMULA_CLASS} < Formula
     system bin/"{PROJECT}", "--help"
   end
 end"""
-
     out = Path("Formula/indexly.rb")
     out.parent.mkdir(parents=True, exist_ok=True)
     content = textwrap.dedent(formula).rstrip()
-    out.write_text(content + "\n", encoding="utf-8")
+    out.write_text(content, encoding="utf-8")
 
     print(f"✔ Formula written to {out}")
     print("✔ Audit-compatible")
     print("✔ Matches verified install behavior")
-
 
 if __name__ == "__main__":
     main()

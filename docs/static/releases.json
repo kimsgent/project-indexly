@@ -1,15 +1,21 @@
 {
   "project": "FTS5 File Search Tool",
   "latest": {
-    "version": "1.1.8",
+    "version": "1.1.9",
     "date": "2026-01-20",
     "changes": [
-      "fix(brew): update generate_brew_formula.py to properly trim trailing blank lines in the formula",
-      "chore(brew): cleanly close triple-quoted formula block before writing to disk to ensure Homebrew audit passes",
-      "chore(release): prepare v1.1.8 documentation and Homebrew tap release"
+      "fix(brew): prevent extra trailing blank line when writing formula in generate_brew_formula.py, ensuring Homebrew audit passes",
+      "chore(release): prepare v1.1.9 documentation and Homebrew tap release"
     ]
   },
   "archive": [
+    {
+      "version": "1.1.8",
+      "date": "2026-01-20",
+      "link": "/en/releases/v1.1.8/",
+      "summary": "fix(brew): update generate_brew_formula.py to properly trim trailing blank lines in the formula | chore(brew): cleanly close triple-quoted formula block before writing to disk to ensure Homebrew audit passes",
+      "prerelease": false
+    },
     {
       "version": "1.1.7",
       "date": "2026-01-19",
