@@ -5,16 +5,18 @@ toc: true
 weight: 10
 ---
 
-## Latest Release: v1.1.7 (2026-01-19)
+## Latest Release: v1.1.8 (2026-01-20)
 
 ### Changes
-- fix(brew): escape Ruby #{libexec} interpolation in generate_brew_formula.py to prevent CI NameError
-- chore(release): prepare documentation and Homebrew metadata for v1.1.7
+- fix(brew): update generate_brew_formula.py to properly trim trailing blank lines in the formula
+- chore(brew): cleanly close triple-quoted formula block before writing to disk to ensure Homebrew audit passes
+- chore(release): prepare v1.1.8 documentation and Homebrew tap release
 
 ---
 
 ## Archive
 
+- [Release v1.1.7](/releases/v1.1.7/) (2026-01-19)
 - [Release v1.1.6](/releases/v1.1.6/) (2026-01-19)
 - [Release v1.1.5](/releases/v1.1.5/) (2026-01-19)
 - [Release v1.1.4](/releases/v1.1.4/) (2026-01-18)

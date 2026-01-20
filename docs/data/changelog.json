@@ -2,6 +2,16 @@
   "project": "FTS5 File Search Tool",
   "versions": [
     {
+      "version": "1.1.8",
+      "date": "2026-01-20",
+      "changes": [
+        "fix(brew): update generate_brew_formula.py to properly trim trailing blank lines in the formula",
+        "chore(brew): cleanly close triple-quoted formula block before writing to disk to ensure Homebrew audit passes",
+        "chore(release): prepare v1.1.8 documentation and Homebrew tap release"
+      ]
+    },
+    
+    {
       "version": "1.1.7",
       "date": "2026-01-19",
       "changes": [
@@ -60,7 +70,7 @@
       "version": "1.1.2",
       "date": "2026-01-17",
       "changes": [
-	      "fix(brew): use bin/indexly in formula test block for Homebrew audit", 
+	      "fix(brew): use bin/indexly in formula test block for Homebrew audit",
 	      "chore(brew): update generate_brew_formula.py template for correct formula output",
 	      "fix(ci): adjust brew audit & style steps to use formula name, not path",
 	      "chore(release): prepare for automated Homebrew release workflow v1.1.2",
@@ -156,7 +166,7 @@
 
         "refactor(logging): unified index logging via _unified_log_entry for consistent per-file metadata records",
         "refactor(db): unified DB loader outputs and enhanced detection modules",
-        
+
         "docs(cli): clarified analyze-file help by file type and extended DB update documentation",
 
         "meta: prepared Indexly v1.0.6 with major stability, backup, logging, ignore-system, database analysis, and distribution improvements"
@@ -192,7 +202,7 @@
         "meta: prepared Indexly v1.0.5 release including NDJSON fix, enhanced loaders, unified pipelines, and improved stability across all formats"
       ]
     },
-    
+
     {
       "version": "1.0.4",
       "date": "2025-10-26",
@@ -374,4 +384,3 @@
     }
   ]
 }
-
