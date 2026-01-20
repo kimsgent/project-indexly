@@ -12,8 +12,19 @@ LICENSE = "MIT"
 PYTHON_DEP = "python@3.11"
 
 VERSION = os.environ.get("VERSION")
-if not VERSION or not VERSION.startswith("v"):
-    sys.exit("ERROR: VERSION must be a tag like v1.1.5")
+
+# Allow test / non-release runs without aborting
+if not VERSION:
+    sys.exit("ERROR: VERSION is not set")
+
+IS_RELEASE = VERSION.startswith("v")
+
+if not IS_RELEASE:
+    print(
+        f"WARNING: Non-release VERSION detected ({VERSION}); generating formula for test run",
+        file=sys.stderr,
+    )
+
 
 TAG = VERSION.lstrip("v")
 TARBALL_URL = f"{HOMEPAGE}/archive/refs/tags/{VERSION}.tar.gz"
@@ -57,7 +68,8 @@ end"""
 
     out = Path("Formula/indexly.rb")
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(textwrap.dedent(formula).rstrip("\n"), encoding="utf-8")
+    content = textwrap.dedent(formula).rstrip()
+    out.write_text(content + "\n", encoding="utf-8")
 
     print(f"✔ Formula written to {out}")
     print("✔ Audit-compatible")
