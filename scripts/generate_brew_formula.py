@@ -20,7 +20,10 @@ if not VERSION:
 IS_RELEASE = VERSION.startswith("v")
 
 if not IS_RELEASE:
-    print(f"WARNING: Non-release VERSION detected ({VERSION}); generating formula for test run", file=sys.stderr)
+    print(
+        f"WARNING: Non-release VERSION detected ({VERSION}); generating formula for test run",
+        file=sys.stderr,
+    )
 
 
 TAG = VERSION.lstrip("v")
