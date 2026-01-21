@@ -1,0 +1,44 @@
+# .github/workflows/verify.yml
+name: Verify (Preflight)
+
+on:
+  push:
+    branches: [ "**" ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install build twine
+
+      - name: Build sdist + wheel
+        run: python -m build
+
+      - name: Twine check
+        run: twine check dist/*
+
+      - name: Generate brew formula (dry-run)
+        env:
+          DRY_RUN: "1"
+        run: |
+          python scripts/generate_brew_formula.py \
+            --source dist/*.tar.gz \
+            --dry-run \
+            --out Formula/indexly.rb
+
+      - name: Homebrew audit (local syntax)
+        run: |
+          brew update
+          brew audit --strict indexly || true
