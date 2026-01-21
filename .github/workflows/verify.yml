@@ -39,7 +39,8 @@ jobs:
             --dry-run \
             --out Formula/indexly.rb
 
-      - name: Homebrew audit (local syntax)
+      - name: Homebrew audit (macOS only)
+        if: runner.os == 'macOS'
         run: |
           brew update
           brew audit --strict indexly || true
