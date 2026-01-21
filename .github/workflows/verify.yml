@@ -31,6 +31,7 @@ jobs:
 
       - name: Generate brew formula (dry-run)
         env:
+          VERSION: v0.0.0-test
           DRY_RUN: "1"
         run: |
           python scripts/generate_brew_formula.py \
