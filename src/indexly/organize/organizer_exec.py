@@ -44,12 +44,17 @@ logging.basicConfig(
 log = logging.getLogger("organizer")
 
 
-def _hash_file(path: Path, algo="sha256"):
+def _hash_file(path: Path, algo="sha256") -> str | None:
+    """Return file hash or None if file cannot be read."""
     h = hashlib.new(algo)
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(8192), b""):
-            h.update(chunk)
-    return h.hexdigest()
+    try:
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(8192), b""):
+                h.update(chunk)
+        return h.hexdigest()
+    except (OSError, FileNotFoundError) as e:
+        log.warning(f"⚠️ Cannot hash file (skipped): {path} — {e}")
+        return None
 
 
 def _write_log_atomic(log: dict, log_dir: Path, root_name: str):
@@ -101,19 +106,30 @@ def execute_organizer(
         dst.parent.mkdir(parents=True, exist_ok=True)
 
         src_hash = _hash_file(src)
+        if src_hash is None:
+            # File missing or unreadable — skip, log already handled in _hash_file
+            continue
+
         if dst.exists():
             dst_hash = _hash_file(dst)
             f["unchanged"] = src_hash == dst_hash
         else:
             f["unchanged"] = False
 
-        shutil.move(src, dst)
+        try:
+            safe_move(src, dst)
+        except (OSError, shutil.Error) as e:
+            log.warning(f"⚠️ Cannot move file (skipped): {src} → {dst} — {e}")
+            continue
 
         if backup_root and not f.get("unchanged"):
             bkp_path = backup_root / dst.relative_to(root)
             bkp_path.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(dst, bkp_path)
-            backup_mapping[str(dst)] = str(bkp_path)
+            try:
+                shutil.copy2(dst, bkp_path)
+                backup_mapping[str(dst)] = str(bkp_path)
+            except (OSError, shutil.Error) as e:
+                log.warning(f"⚠️ Cannot backup file (skipped): {dst} → {bkp_path} — {e}")
 
         sys.stdout.write(
             f"\rProcessing file {idx}/{total_files}: "
@@ -318,6 +334,7 @@ def execute_profile_placement(
     dry_run: bool = False,
     log_path: Path | None = None,
     patient_id: str | None = None,
+    recursive: bool = False,
 ):
     from indexly.organize.profiles.health_rules import (
         get_destination as health_destination,
@@ -330,7 +347,11 @@ def execute_profile_placement(
     if profile not in PROFILE_RULES:
         raise ValueError(f"Unknown profile: {profile}")
 
-    files = [p for p in source_root.iterdir() if p.is_file()]
+    files = (
+        [p for p in source_root.rglob("*") if p.is_file()]
+        if recursive
+        else [p for p in source_root.iterdir() if p.is_file()]
+    )
     if not files:
         console.print(
             Panel.fit(
@@ -385,7 +406,19 @@ def execute_profile_placement(
             dst = Path(entry["destination"])
 
         file_hash = _hash_file(src)
+        if file_hash is None:
+            # File missing or unreadable — skip and log already done in _hash_file
+            continue
+
         console.print(f"[dim]{src}[/] → [green]{dst}[/] [blue]{file_hash[:8]}[/]")
+
+        try:
+            size = src.stat().st_size
+            created_at = src.stat().st_ctime
+            modified_at = src.stat().st_mtime
+        except OSError as e:
+            log.warning(f"⚠️ Cannot access file stats (skipped): {src} — {e}")
+            continue
 
         log_files.append(
             file_entry_template(
@@ -393,18 +426,22 @@ def execute_profile_placement(
                 new_path=str(dst),
                 extension=src.suffix.lower(),
                 category=profile,
-                size=src.stat().st_size,
+                size=size,
                 used_date=datetime.utcnow().isoformat(),
                 hash_value=file_hash,
-                created_at=src.stat().st_ctime,
-                modified_at=src.stat().st_mtime,
+                created_at=created_at,
+                modified_at=modified_at,
             )
         )
         summary["total_files"] += 1
 
         if apply:
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            safe_move(src, dst)
+            try:
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                safe_move(src, dst)
+            except (OSError, shutil.Error) as e:
+                log.warning(f"⚠️ Cannot move file (skipped): {src} → {dst} — {e}")
+                continue
 
     final_log = empty_organizer_log(meta, summary, log_files)
     if not log_path:

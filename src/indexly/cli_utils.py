@@ -846,6 +846,14 @@ def build_parser():
         help="Classify files into a profile-based structure (requires --profile)",
     )
 
+    organize_parser.add_argument(
+        "--recursive",
+        "--deep",
+        action="store_true",
+        help="Recursively classify files in all subfolders (default: root only)",
+    )
+
+
     organize_parser.set_defaults(
         func=lambda args: handle_organize(
             folder=args.folder,
@@ -865,6 +873,7 @@ def build_parser():
             shoot_name=args.shoot_name,
             classify=args.classify,
             patient_id=args.patient_id,
+            recursive=args.recursive,
         )
     )
 
