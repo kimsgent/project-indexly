@@ -10,10 +10,6 @@ from indexly.organize.organizer_exec import (
 )
 
 
-from pathlib import Path
-
-
-
 def handle_organize(
     folder: str,
     sort_by: str = "date",
@@ -81,6 +77,7 @@ def handle_organize(
         lister_category=lister_category,
         lister_date=lister_date,
         lister_duplicates=lister_duplicates,
+        dry_run=dry_run,
     )
 
     return plan, backup_mapping

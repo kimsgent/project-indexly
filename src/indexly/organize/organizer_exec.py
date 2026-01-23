@@ -82,6 +82,7 @@ def execute_organizer(
     lister_category: str | None = None,
     lister_date: str | None = None,
     lister_duplicates: bool = False,
+    dry_run: bool = False,  # ✅ new parameter
 ):
     """Execute organizer: move/copy files, detect duplicates, write log with feedback"""
 
@@ -90,12 +91,12 @@ def execute_organizer(
     root_name = root.name
 
     print(f"📂 Building organization plan for {root}...")
-    plan = organize_folder(root, sort_by=sort_by, executed_by=executed_by)
+    plan = organize_folder(root, sort_by=sort_by, executed_by=executed_by, dry_run=dry_run)
     total_files = len(plan["files"])
     print(f"✅ Plan ready: {total_files} files to organize.\n")
 
     backup_mapping = {}
-    if backup_root:
+    if backup_root and not dry_run:
         backup_root.mkdir(parents=True, exist_ok=True)
 
     max_name_len = max(len(Path(f["new_path"]).name) for f in plan["files"])
@@ -103,46 +104,50 @@ def execute_organizer(
     for idx, f in enumerate(plan["files"], 1):
         src = Path(f["original_path"])
         dst = Path(f["new_path"])
-        dst.parent.mkdir(parents=True, exist_ok=True)
 
-        src_hash = _hash_file(src)
-        if src_hash is None:
-            # File missing or unreadable — skip, log already handled in _hash_file
-            continue
+        if not dry_run:
+            dst.parent.mkdir(parents=True, exist_ok=True)
 
-        if dst.exists():
-            dst_hash = _hash_file(dst)
-            f["unchanged"] = src_hash == dst_hash
-        else:
-            f["unchanged"] = False
+            src_hash = _hash_file(src)
+            if src_hash is None:
+                continue
 
-        try:
-            safe_move(src, dst)
-        except (OSError, shutil.Error) as e:
-            log.warning(f"⚠️ Cannot move file (skipped): {src} → {dst} — {e}")
-            continue
+            if dst.exists():
+                dst_hash = _hash_file(dst)
+                f["unchanged"] = src_hash == dst_hash
+            else:
+                f["unchanged"] = False
 
-        if backup_root and not f.get("unchanged"):
-            bkp_path = backup_root / dst.relative_to(root)
-            bkp_path.parent.mkdir(parents=True, exist_ok=True)
             try:
-                shutil.copy2(dst, bkp_path)
-                backup_mapping[str(dst)] = str(bkp_path)
+                safe_move(src, dst)
             except (OSError, shutil.Error) as e:
-                log.warning(f"⚠️ Cannot backup file (skipped): {dst} → {bkp_path} — {e}")
+                log.warning(f"⚠️ Cannot move file (skipped): {src} → {dst} — {e}")
+                continue
 
+            if backup_root and not f.get("unchanged"):
+                bkp_path = backup_root / dst.relative_to(root)
+                bkp_path.parent.mkdir(parents=True, exist_ok=True)
+                try:
+                    shutil.copy2(dst, bkp_path)
+                    backup_mapping[str(dst)] = str(bkp_path)
+                except (OSError, shutil.Error) as e:
+                    log.warning(f"⚠️ Cannot backup file (skipped): {dst} → {bkp_path} — {e}")
+
+        # Dry-run feedback
         sys.stdout.write(
             f"\rProcessing file {idx}/{total_files}: "
             f"{Path(f['new_path']).name.ljust(max_name_len)}"
         )
         sys.stdout.flush()
-
         time.sleep(0.01)
+
+    if dry_run:
+        print(f"\n📄 Dry-run only: {total_files} files would be organized.")
+        return plan, {}
 
     print("\n📄 Writing log...")
     log_path = _write_log_atomic(plan, log_dir, root_name)
 
-    # ✅ KEEP summary exactly as-is
     summary = plan.get("summary", {})
     print("\n📊 Summary of organization:")
     print(f"  Total files processed: {summary.get('total_files', total_files)}")
@@ -154,7 +159,6 @@ def execute_organizer(
     if backup_root:
         print(f"📦 Backup saved at {backup_root}")
 
-    # ✅ OPTIONAL lister hook (no side effects)
     if lister:
         print("\n📂 Listing organizer results:\n")
         list_organizer_log(
@@ -167,12 +171,6 @@ def execute_organizer(
 
     return plan, backup_mapping
 
-
-from pathlib import Path
-from datetime import datetime
-import json
-from rich.tree import Tree
-from rich.panel import Panel
 
 # --------------------------------------------------
 # SCAFFOLD (FIXED — patient-scoped health only)
