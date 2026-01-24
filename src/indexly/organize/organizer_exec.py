@@ -91,7 +91,9 @@ def execute_organizer(
     root_name = root.name
 
     print(f"📂 Building organization plan for {root}...")
-    plan = organize_folder(root, sort_by=sort_by, executed_by=executed_by, dry_run=dry_run)
+    plan = organize_folder(
+        root, sort_by=sort_by, executed_by=executed_by, dry_run=dry_run
+    )
     total_files = len(plan["files"])
     print(f"✅ Plan ready: {total_files} files to organize.\n")
 
@@ -131,7 +133,9 @@ def execute_organizer(
                     shutil.copy2(dst, bkp_path)
                     backup_mapping[str(dst)] = str(bkp_path)
                 except (OSError, shutil.Error) as e:
-                    log.warning(f"⚠️ Cannot backup file (skipped): {dst} → {bkp_path} — {e}")
+                    log.warning(
+                        f"⚠️ Cannot backup file (skipped): {dst} → {bkp_path} — {e}"
+                    )
 
         # Dry-run feedback
         sys.stdout.write(
@@ -181,6 +185,7 @@ def execute_profile_scaffold(
     root: Path,
     profile: str,
     *,
+    category: str | None = None,
     apply: bool = False,
     dry_run: bool = False,
     executed_by: str = "system",
@@ -200,6 +205,7 @@ def execute_profile_scaffold(
 
     audit_log = {
         "profile": profile,
+        "category": category,
         "root": str(root),
         "executed_by": executed_by,
         "timestamp": datetime.utcnow().isoformat(),
@@ -225,7 +231,6 @@ def execute_profile_scaffold(
             created.append(str(patient_root))
             audit_log["created"].append(str(patient_root))
 
-            # patient subfolders (must match placement)
             for folder in [
                 "Reports",
                 "Imaging",
@@ -239,7 +244,6 @@ def execute_profile_scaffold(
                 created.append(str(p))
                 audit_log["created"].append(str(p))
 
-            # ✅ ALWAYS create metadata at scaffold time
             meta_path = patient_root / ".patient.json"
             if not meta_path.exists():
                 meta = {
@@ -258,7 +262,20 @@ def execute_profile_scaffold(
     # NON-HEALTH or GLOBAL PROFILES
     # --------------------------------------------------
     elif profile != "health":
-        paths = list(PROFILE_STRUCTURES[profile])
+        struct = PROFILE_STRUCTURES[profile]
+
+        if isinstance(struct, dict):
+            resolved_category = category or "default"
+
+            if resolved_category not in struct:
+                raise ValueError(
+                    f"Invalid category '{resolved_category}' for profile '{profile}'. "
+                    f"Available: {', '.join(struct.keys())}"
+                )
+
+            paths = list(struct[resolved_category])
+        else:
+            paths = list(struct)
 
         if profile == "data" and project_name:
             paths.extend(build_data_project_structure(project_name))

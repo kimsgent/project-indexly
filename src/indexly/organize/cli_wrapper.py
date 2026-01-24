@@ -23,6 +23,7 @@ def handle_organize(
     lister_duplicates: bool = False,
     *,
     profile: str | None = None,
+    category: str | None = None,
     classify: bool = False,
     apply: bool = False,
     dry_run: bool = False,
@@ -36,10 +37,15 @@ def handle_organize(
     log_path = Path(log_dir).resolve() if log_dir else None
 
     # 1️⃣ PROFILE SCAFFOLD ONLY
+    if profile and category:
+        profile_category = category.lower()
+    else:
+        profile_category = None
     if profile and not classify:
         execute_profile_scaffold(
             root=folder_path,
             profile=profile,
+            category=profile_category,
             apply=apply,
             dry_run=dry_run,
             executed_by=executed_by,

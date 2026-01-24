@@ -806,8 +806,14 @@ def build_parser():
 
     organize_parser.add_argument(
         "--profile",
-        choices=["it", "researcher", "engineer", "health", "data", "media"],
+        choices=["it", "education", "researcher", "engineer", "health", "data", "media"],
         help="Create a profession-based directory scaffold",
+    )
+
+    organize_parser.add_argument(
+        "--category",
+        choices=["default", "student", "teacher", "support"],
+        help="Optional sub-category for profile (e.g. education, it). Default is 'default'.",
     )
 
     organize_parser.add_argument(
@@ -853,7 +859,6 @@ def build_parser():
         help="Recursively classify files in all subfolders (default: root only)",
     )
 
-
     organize_parser.set_defaults(
         func=lambda args: handle_organize(
             folder=args.folder,
@@ -867,6 +872,7 @@ def build_parser():
             lister_date=args.lister_date,
             lister_duplicates=args.lister_duplicates,
             profile=args.profile,
+            category=args.category,
             apply=args.apply,
             dry_run=args.dry_run,
             project_name=args.project_name,
