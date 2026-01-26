@@ -31,7 +31,9 @@ from .log_schema import (
     file_entry_template,
     empty_organizer_log,
 )
-
+from indexly.organize.profiles.media_rules import (
+        get_destination as media_destination,
+    )
 
 console = Console()
 
@@ -281,7 +283,7 @@ def execute_profile_scaffold(
             paths.extend(build_data_project_structure(project_name))
 
         if profile == "media":
-            paths.extend(build_media_shoot_structure(shoot_name))
+            paths.extend(build_media_shoot_structure(media_root=root, shoot_name=shoot_name))
 
         for rel in paths:
             p = root / rel
@@ -344,12 +346,14 @@ def execute_profile_placement(
     profile: str,
     executed_by: str,
     project_name: str | None = None,
+    category: str | None = None,
     shoot_name: str | None = None,
     apply: bool = False,
     dry_run: bool = False,
     log_path: Path | None = None,
     patient_id: str | None = None,
     recursive: bool = False,
+    classify_raw: str | None = None,
 ):
     from indexly.organize.profiles.health_rules import (
         get_destination as health_destination,
@@ -394,6 +398,7 @@ def execute_profile_placement(
         project_name=project_name,
         shoot_name=shoot_name,
         patient_id=resolved_patient_id,
+        classify_raw=classify_raw,
     )
 
     meta = empty_meta(
@@ -416,6 +421,15 @@ def execute_profile_placement(
                 file_path=src,
                 patient_id=resolved_patient_id,
                 ensure_patient_folder_exists=True,
+            )
+        elif profile == "media" and category == "photographer" and classify_raw:
+            dst = media_destination(
+                root=destination_root,
+                file_path=src,
+                profile=profile,
+                category=category,
+                shoot_name=shoot_name,
+                classify_raw=classify_raw,
             )
         else:
             dst = Path(entry["destination"])

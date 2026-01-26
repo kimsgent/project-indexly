@@ -25,6 +25,7 @@ def handle_organize(
     profile: str | None = None,
     category: str | None = None,
     classify: bool = False,
+    classify_raw: str | None = None,
     apply: bool = False,
     dry_run: bool = False,
     project_name: str | None = None,
@@ -56,11 +57,12 @@ def handle_organize(
         return None, {}
 
     # 2️⃣ PROFILE CLASSIFICATION
-    if profile and classify:
+    if profile and (classify or classify_raw):
         execute_profile_placement(
             source_root=folder_path,
             destination_root=folder_path,
             profile=profile,
+            category=profile_category,
             project_name=project_name,
             shoot_name=shoot_name,
             patient_id=patient_id,
@@ -68,6 +70,7 @@ def handle_organize(
             dry_run=dry_run,
             executed_by=executed_by,
             recursive=recursive,
+            classify_raw=classify_raw,
         )
         return None, {}
 

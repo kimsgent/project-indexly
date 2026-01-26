@@ -806,13 +806,21 @@ def build_parser():
 
     organize_parser.add_argument(
         "--profile",
-        choices=["it", "education", "researcher", "engineer", "health", "data", "media"],
+        choices=[
+            "it",
+            "education",
+            "researcher",
+            "engineer",
+            "health",
+            "data",
+            "media",
+        ],
         help="Create a profession-based directory scaffold",
     )
 
     organize_parser.add_argument(
         "--category",
-        choices=["default", "student", "teacher", "support"],
+        choices=["default", "student", "teacher", "support", "photographer"],
         help="Optional sub-category for profile (e.g. education, it). Default is 'default'.",
     )
 
@@ -853,6 +861,17 @@ def build_parser():
     )
 
     organize_parser.add_argument(
+        "--classify-raw",
+        metavar="KEY",
+        choices=["camera", "gps", "date", "title", "author"],
+        help=(
+            "Classify RAW images by metadata (photographer only). "
+            "Applies only to images in 00_RAW when --profile media "
+            "and --category photographer are set."
+        ),
+    )
+
+    organize_parser.add_argument(
         "--recursive",
         "--deep",
         action="store_true",
@@ -880,6 +899,7 @@ def build_parser():
             classify=args.classify,
             patient_id=args.patient_id,
             recursive=args.recursive,
+            classify_raw=args.classify_raw,
         )
     )
 

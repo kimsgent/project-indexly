@@ -1,4 +1,7 @@
+from pathlib import Path
 from datetime import date
+from typing import List
+
 
 PROFILE_STRUCTURES = {
     "it": {
@@ -133,11 +136,26 @@ PROFILE_STRUCTURES = {
         "Data/Archive",
     ],
     "media": [
+        # Shoots base (each shoot gets dynamic YYYY-MM-ShootName subfolders)
         "Media/Shoots",
-        "Media/Catalogs",
-        "Media/Presets",
-        "Media/Video",
+        # Clients folder with optional subfolders
         "Media/Clients",
+        # Catalogs
+        "Media/Catalogs/Lightroom",
+        "Media/Catalogs/CaptureOne",
+        # Presets
+        "Media/Presets/Lightroom",
+        "Media/Presets/CaptureOne",
+        "Media/Presets/LUTs",
+        # Video
+        "Media/Video/Projects",
+        "Media/Video/Footage",
+        "Media/Video/Exports",
+        # Assets
+        "Media/Assets/Logos",
+        "Media/Assets/Watermarks",
+        "Media/Assets/Overlays",
+        # Top-level archive
         "Media/Archive",
     ],
 }
@@ -168,12 +186,102 @@ def build_data_project_structure(project_name: str) -> list[str]:
     ]
 
 
-def build_media_shoot_structure(shoot_name: str | None = None) -> list[str]:
+FALLBACK_FOLDER = "_Unknown"
+
+
+def build_media_shoot_structure(
+    media_root: str | Path, shoot_name: str | None = None
+) -> List[Path]:
+    """
+    Build full Media hierarchy for professional photographers.
+
+    Creates:
+      - Top-level folders: Shoots, Clients, Catalogs, Presets, Video, Assets, Archive
+      - Shoot scaffold (if shoot_name provided):
+          00_RAW, 01_Cull, 02_Edits, 03_Exports/Web|Print|Social, 99_Archive
+    """
+    media_root = Path(media_root).resolve()
     today = date.today().isoformat()[:7]  # YYYY-MM
-    shoot = f"{today}-{shoot_name}" if shoot_name else today
-    base = f"Media/Shoots/{shoot}"
-    return [
-        f"{base}/RAW",
-        f"{base}/Edited",
-        f"{base}/Export",
+    shoot_folder = f"{today}-{shoot_name}" if shoot_name else None
+
+    # 1️⃣ Top-level folders
+    top_level = [
+        media_root / "Shoots",
+        media_root / "Clients",
+        media_root / "Catalogs",
+        media_root / "Presets",
+        media_root / "Video",
+        media_root / "Assets",
+        media_root / "Archive",
     ]
+
+    # 2️⃣ Client subfolders example (optional, can be extended dynamically)
+    client_example = top_level[1] / "ClientA"
+    client_subfolders = [
+        client_example / "Contracts",
+        client_example / "Invoices",
+        client_example / "Briefs",
+        client_example / "Deliverables",
+    ]
+
+    # 3️⃣ Catalogs / Presets subfolders
+    catalog_subfolders = [
+        top_level[2] / "Lightroom",
+        top_level[2] / "CaptureOne",
+    ]
+    preset_subfolders = [
+        top_level[3] / "Lightroom",
+        top_level[3] / "CaptureOne",
+        top_level[3] / "LUTs",
+    ]
+
+    # 4️⃣ Video subfolders
+    video_subfolders = [
+        top_level[4] / "Projects",
+        top_level[4] / "Footage",
+        top_level[4] / "Exports",
+    ]
+
+    # 5️⃣ Assets subfolders
+    assets_subfolders = [
+        top_level[5] / "Logos",
+        top_level[5] / "Watermarks",
+        top_level[5] / "Overlays",
+    ]
+
+    # 6️⃣ Dynamic shoot scaffold
+    shoot_subfolders: List[Path] = []
+    if shoot_folder:
+        base = top_level[0] / shoot_folder
+        shoot_subfolders = [
+            base / "00_RAW",  # RAW images (lazy subfolders can be added later)
+            base / "01_Cull",
+            base / "02_Edits",
+            base / "03_Exports" / "Web",
+            base / "03_Exports" / "Print",
+            base / "03_Exports" / "Social",
+            base / "99_Archive",
+        ]
+
+    # Combine everything
+    all_folders = (
+        top_level
+        + client_subfolders
+        + catalog_subfolders
+        + preset_subfolders
+        + video_subfolders
+        + assets_subfolders
+        + shoot_subfolders
+    )
+
+    # Create folders on disk
+    for folder in all_folders:
+        folder.mkdir(parents=True, exist_ok=True)
+
+    return all_folders
+
+
+# Example usage:
+if __name__ == "__main__":
+    created = build_media_shoot_structure("/path/to/Media", shoot_name="Wedding-Julia")
+    print(f"Created {len(created)} folders under Media/")

@@ -31,7 +31,12 @@ def build_placement_plan(
         dest = resolver(
             root=destination_root,
             file_path=path,
-            **profile_args,
+            shoot_name=profile_args.get("shoot_name"),
+            profile=profile_args.get("profile"),
+            category=profile_args.get("category"),
+            classify_raw=profile_args.get("classify_raw"),
+            project_name=profile_args.get("project_name"),
+            patient_id=profile_args.get("patient_id"),
         )
 
         plan.append(
