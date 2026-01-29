@@ -36,7 +36,6 @@ from colorama import Fore, Style
 from .config import DB_FILE, PROFILE_FILE
 
 
-
 user_interrupted = False
 
 
@@ -116,8 +115,11 @@ def fuzzy_fallback(term, threshold=80, topn=5, context_chars=150, max_snippets=3
     - Builds refined snippets around approximate matches.
     - Deduplicates results and enriches with tags.
     """
-    term_words = [w.lower() for w in re.findall(r"\w+", term)
-                  if w.upper() not in ("AND", "OR", "NOT") and len(w) > 1]
+    term_words = [
+        w.lower()
+        for w in re.findall(r"\w+", term)
+        if w.upper() not in ("AND", "OR", "NOT") and len(w) > 1
+    ]
     if not term_words:
         return []
 
@@ -169,12 +171,14 @@ def fuzzy_fallback(term, threshold=80, topn=5, context_chars=150, max_snippets=3
             max_snippets=max_snippets,
         )
 
-        results.append({
-            "path": path,
-            "snippet": snippet_text,
-            "tags": get_tags_for_file(path),
-            "source": "fuzzy",
-        })
+        results.append(
+            {
+                "path": path,
+                "snippet": snippet_text,
+                "tags": get_tags_for_file(path),
+                "source": "fuzzy",
+            }
+        )
 
     # Deduplicate by normalized path
     dedup = {r["path"]: r for r in results}
@@ -186,8 +190,8 @@ def fuzzy_fallback(term, threshold=80, topn=5, context_chars=150, max_snippets=3
 # ---------------------------------------------------------------------
 
 # --- Precompiled regex patterns for performance ---
-_RE_NEAR = re.compile(r'\bNEAR\s*\(?\s*(\d+)?\s*\)?\b', re.IGNORECASE)
-_RE_LOGICAL = re.compile(r'\b(and|or|not)\b', re.IGNORECASE)
+_RE_NEAR = re.compile(r"\bNEAR\s*\(?\s*(\d+)?\s*\)?\b", re.IGNORECASE)
+_RE_LOGICAL = re.compile(r"\b(and|or|not)\b", re.IGNORECASE)
 _RE_TOKENIZER = re.compile(
     r'"[^"]*"|\(|\)|\bNEAR/\d+\b|\bAND\b|\bOR\b|\bNOT\b|[^"\s()]+',
     flags=re.IGNORECASE,
@@ -226,6 +230,7 @@ def normalize_near_term(expr: str, near_distance: int = 5) -> str:
     # --- Runtime check for NEAR/x support ---
     try:
         import sqlite3
+
         conn = sqlite3.connect(":memory:")
         conn.execute("CREATE VIRTUAL TABLE t USING fts5(c)")
         # If this fails, NEAR/x is not supported
@@ -258,7 +263,7 @@ def normalize_logical_expression(query: str, near_distance: int = 5) -> str:
     if not re.match(r'^[\w\s"\'().,+\-:;!?/~<>]+$', query):
         raise ValueError(f"Unsafe FTS term: {query}")
 
-    q = re.sub(r'\s+', ' ', query.strip())
+    q = re.sub(r"\s+", " ", query.strip())
 
     # Try to detect if NEAR/N is supported in this SQLite build
     supports_near_n = False
@@ -274,13 +279,20 @@ def normalize_logical_expression(query: str, near_distance: int = 5) -> str:
         conn.close()
 
     if supports_near_n:
-        q = re.sub(r'\bNEAR\b(?!/\d+)', f'NEAR/{near_distance}', q, flags=re.IGNORECASE)
+        q = re.sub(r"\bNEAR\b(?!/\d+)", f"NEAR/{near_distance}", q, flags=re.IGNORECASE)
     else:
-        q = re.sub(r'\bNEAR\b(?!/\d+)', 'NEAR', q, flags=re.IGNORECASE)
+        q = re.sub(r"\bNEAR\b(?!/\d+)", "NEAR", q, flags=re.IGNORECASE)
 
-    q = re.sub(r'\b(and|or|not|near(?:/\d+)?)\b', lambda m: m.group(1).upper(), q, flags=re.IGNORECASE)
+    q = re.sub(
+        r"\b(and|or|not|near(?:/\d+)?)\b",
+        lambda m: m.group(1).upper(),
+        q,
+        flags=re.IGNORECASE,
+    )
 
-    if not any(op in q.upper() for op in ("AND", "OR", "NOT", "NEAR")) and not re.search(r'["()]', q):
+    if not any(
+        op in q.upper() for op in ("AND", "OR", "NOT", "NEAR")
+    ) and not re.search(r'["()]', q):
         q = f'"{q}"'
 
     return q
@@ -289,6 +301,7 @@ def normalize_logical_expression(query: str, near_distance: int = 5) -> str:
 # ---------------------------------------------------------------------
 # --- Main FTS5 search
 # ---------------------------------------------------------------------
+
 
 def search_fts5(
     term,
@@ -311,8 +324,8 @@ def search_fts5(
 ):
     import re, sqlite3, time
     from rich.console import Console
-    console = Console()
 
+    console = Console()
 
     # --- Load or skip cache ---
     cache = load_cache() if not no_cache else {}
@@ -338,7 +351,11 @@ def search_fts5(
     console.print(f"[bold green]Cache key:[/bold green] {key}")
 
     if key in cache:
-        cached = cache[key].get("results", []) if isinstance(cache[key], dict) else cache[key]
+        cached = (
+            cache[key].get("results", [])
+            if isinstance(cache[key], dict)
+            else cache[key]
+        )
         console.print("[green]✅ Returning cached results (no refresh)[/green]")
         return cached
 
@@ -349,7 +366,9 @@ def search_fts5(
     # --- Normalize FTS5 expression ---
     fts_expr = normalize_logical_expression(query or term or "", near_distance)
     if not fts_expr.strip():
-        console.print("[red]⚠️ Empty or invalid FTS expression, falling back to quoted term[/red]")
+        console.print(
+            "[red]⚠️ Empty or invalid FTS expression, falling back to quoted term[/red]"
+        )
         fts_expr = f'"{term.strip()}"'
     console.print(f"[cyan]Normalized FTS expression:[/cyan] [white]{fts_expr}[/white]")
 
@@ -412,16 +431,19 @@ def search_fts5(
     query_parts.append("ORDER BY rank")
     query_str = "\n".join(query_parts)
 
-
     # --- Execute query safely ---
     try:
         cursor.execute(query_str, params)
         rows = cursor.fetchall()
-        console.print(f"[green]✅ Query executed successfully ({len(rows)} rows)[/green]")
+        console.print(
+            f"[green]✅ Query executed successfully ({len(rows)} rows)[/green]"
+        )
     except sqlite3.OperationalError as e:
         console.print(f"[red]⚠️ OperationalError:[/red] {e}")
-        literal_query = " ".join(re.findall(r'\w+', term))
-        console.print(f"[yellow]Retrying with fallback literal query:[/yellow] {literal_query}")
+        literal_query = " ".join(re.findall(r"\w+", term))
+        console.print(
+            f"[yellow]Retrying with fallback literal query:[/yellow] {literal_query}"
+        )
         fallback_query = "SELECT fi.path, fi.content FROM file_index fi WHERE fi.content MATCH ? ORDER BY rank"
         try:
             cursor.execute(fallback_query, [literal_query])
@@ -436,20 +458,30 @@ def search_fts5(
     # --- Handle no results / fuzzy fallback ---
     if not rows:
         if use_fuzzy:
-            console.print("[yellow]🔁 No results, attempting fuzzy fallback...[/yellow]")
-            return fuzzy_fallback(term, threshold=fuzzy_threshold, context_chars=context_chars)
+            console.print(
+                "[yellow]🔁 No results, attempting fuzzy fallback...[/yellow]"
+            )
+            return fuzzy_fallback(
+                term, threshold=fuzzy_threshold, context_chars=context_chars
+            )
         console.print("[red]❌ No results found, nothing cached.[/red]")
         return []
 
     # --- Extract search tokens ---
-    all_tokens = [t[0] or t[1] for t in re.findall(r'"([^"]+)"|\b([\w-]+)\b', term) if t[0] or t[1]]
+    all_tokens = [
+        t[0] or t[1]
+        for t in re.findall(r'"([^"]+)"|\b([\w-]+)\b', term)
+        if t[0] or t[1]
+    ]
     search_terms = [t for t in all_tokens if t.upper() not in ("AND", "OR", "NOT")]
 
     # --- Build results ---
     serializable_results = [
         {
             "path": normalize_path(row["path"]),
-            "snippet": build_snippet(row["content"], search_terms, context_chars=context_chars),
+            "snippet": build_snippet(
+                row["content"], search_terms, context_chars=context_chars
+            ),
             "tags": get_tags_for_file(row["path"]),
         }
         for row in rows
@@ -476,7 +508,6 @@ def search_regex(
     no_cache=False,
 ):
 
-
     cache = load_cache() if not no_cache else {}
 
     args_dict = {
@@ -489,16 +520,20 @@ def search_regex(
         "tag_filter": tag_filter,
     }
     key = cache_key(args_dict)
-    print(f"🔑 Regex Cache key: {key}")
 
     if key in cache:
-        cached = cache[key].get("results", []) if isinstance(cache[key], dict) else cache[key]
+        cached = (
+            cache[key].get("results", [])
+            if isinstance(cache[key], dict)
+            else cache[key]
+        )
         refreshed = refresh_cache_if_stale(key, cached, no_write=no_cache)
         if refreshed:
-            print("✅ Using cached result")
+            print("✅ Returning cached results (no refresh)")
             return refreshed
         else:
-            print("⚠️ Cached result was empty. Falling back to DB...")
+            print("🔄 Cached results stale or empty, querying database…")
+    print("🔍 No cached results found, querying database…")
 
     conn = connect_db(db_path)
     cursor = conn.cursor()
@@ -554,13 +589,17 @@ def search_regex(
         if isinstance(content_raw, tuple):
             content_raw = content_raw[0] or ""
         if m := regex.search(content_raw):
-            snippet = content_raw[max(0, m.start() - context_chars): m.end() + context_chars]
-            results.append({
-                "path": path,
-                "snippet": snippet,
-                "content": content_raw,
-                "tags": get_tags_for_file(path),
-            })
+            snippet = content_raw[
+                max(0, m.start() - context_chars) : m.end() + context_chars
+            ]
+            results.append(
+                {
+                    "path": path,
+                    "snippet": snippet,
+                    "content": content_raw,
+                    "tags": get_tags_for_file(path),
+                }
+            )
 
     results = enrich_results_with_tags(results)
 
