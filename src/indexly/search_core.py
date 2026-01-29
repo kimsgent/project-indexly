@@ -466,7 +466,6 @@ def search_fts5(
 
 def search_regex(
     pattern,
-    query,
     db_path,
     context_chars=150,
     filetypes=None,
@@ -476,7 +475,7 @@ def search_regex(
     tag_filter=None,
     no_cache=False,
 ):
-    
+
 
     cache = load_cache() if not no_cache else {}
 
@@ -570,4 +569,3 @@ def search_regex(
         save_cache(cache)
 
     return results
-

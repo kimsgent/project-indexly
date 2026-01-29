@@ -656,7 +656,6 @@ def handle_regex(args):
 
         results = search_regex(
             pattern=pattern,
-            query=None,
             db_path=getattr(args, "db", DB_FILE),
             context_chars=getattr(args, "context", 150),
             filetypes=getattr(args, "filetype", None),
