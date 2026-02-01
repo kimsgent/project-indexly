@@ -35,6 +35,12 @@ RESTORE_COMPLETE = "restore.complete"
 RESTORE_ABORT = "restore.abort"
 
 # ==============================
+# Observer
+# ==============================
+OBSERVER_EVENT = "observer.event"
+OBSERVER_ERROR = "observer.error"
+
+# ==============================
 # JSON Log Formatter
 # ==============================
 class JSONLogFormatter(logging.Formatter):
@@ -118,4 +124,3 @@ def get_logger(
     logger.addHandler(handler)
 
     return logger
-

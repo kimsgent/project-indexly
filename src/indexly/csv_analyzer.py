@@ -45,10 +45,6 @@ from datetime import datetime, date
 import datetime as dt
 from rich.progress import Progress
 
-from indexly.observers.registry import get_observers
-from indexly.observers.csv.csv_observer import CSVObserver
-from indexly.compare.hash_utils import sha256
-from indexly.observers.runner import run_observers
 
 try:
     from scipy.stats import iqr
@@ -234,12 +230,6 @@ def analyze_csv(file_or_df, from_df=False):
     ]
     df_stats = pd.DataFrame(stats, columns=headers)
 
-    metadata = {
-        "profile": "csv",
-        "hash": sha256(file_path) if file_path else None
-    }
-    if file_path:
-        run_observers(file_path, metadata=metadata)
     # ---------------------------
     # 🧠 Smart number formatting
     # ---------------------------

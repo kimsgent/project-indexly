@@ -30,6 +30,7 @@ from indexly.organize.cli_wrapper import handle_organize, handle_lister
 from indexly.backup.cli import handle_backup
 from indexly.backup.cli_restore import handle_restore
 from indexly.compare.cli_compare import handle_compare
+from indexly.observers.runner import handle_observe_run, handle_observe_audit
 
 
 # CLI display configurations here
@@ -901,6 +902,55 @@ def build_parser():
             recursive=args.recursive,
             classify_raw=args.classify_raw,
         )
+    )
+    # ------------------------
+    # Observer CLI
+    # ------------------------
+    observe_parser = subparsers.add_parser(
+        "observe", help="Run semantic observers on files"
+    )
+
+    observe_sub = observe_parser.add_subparsers(dest="observe_cmd")
+
+    # observe run
+    observe_run = observe_sub.add_parser(
+        "run", help="Run observers on a file or folder"
+    )
+    observe_run.add_argument("path", help="File or folder to observe")
+    observe_run.add_argument(
+        "--recursive",
+        action="store_true",
+        help="Recursively observe files in subfolders",
+    )
+    observe_run.add_argument(
+        "--log-dir",
+        help="Optional directory for observer logs",
+    )
+    observe_run.add_argument(
+        "--snapshot-ts",
+        help="Optional ISO timestamp to compare against historical snapshot"
+    )
+    observe_run.set_defaults(
+        func=lambda args: handle_observe_run(
+            path=args.path,
+            recursive=args.recursive,
+            log_dir=args.log_dir,
+            snapshot_ts=args.snapshot_ts,
+        )
+    )
+
+    # observe audit
+    observe_audit = observe_sub.add_parser(
+        "audit", help="Audit semantic history (health, csv, etc.)"
+    )
+    observe_audit.add_argument(
+        "--id",
+        "--patient-id",
+        dest="patient_id",
+        help="Patient ID (health domain)",
+    )
+    observe_audit.set_defaults(
+        func=lambda args: handle_observe_audit(patient_id=args.patient_id)
     )
 
     # Lister

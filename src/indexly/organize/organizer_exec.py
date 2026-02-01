@@ -32,8 +32,8 @@ from .log_schema import (
     empty_organizer_log,
 )
 from indexly.organize.profiles.media_rules import (
-        get_destination as media_destination,
-    )
+    get_destination as media_destination,
+)
 
 console = Console()
 
@@ -283,7 +283,9 @@ def execute_profile_scaffold(
             paths.extend(build_data_project_structure(project_name))
 
         if profile == "media":
-            paths.extend(build_media_shoot_structure(media_root=root, shoot_name=shoot_name))
+            paths.extend(
+                build_media_shoot_structure(media_root=root, shoot_name=shoot_name)
+            )
 
         for rel in paths:
             p = root / rel
@@ -358,6 +360,7 @@ def execute_profile_placement(
     from indexly.organize.profiles.health_rules import (
         get_destination as health_destination,
     )
+    from indexly.observers.runner import run_observers
 
     source_root = Path(source_root).resolve()
     destination_root = Path(destination_root).resolve()
@@ -371,6 +374,7 @@ def execute_profile_placement(
         if recursive
         else [p for p in source_root.iterdir() if p.is_file()]
     )
+
     if not files:
         console.print(
             Panel.fit(
@@ -382,7 +386,6 @@ def execute_profile_placement(
         return []
 
     resolved_patient_id = None
-
     if profile == "health" and patient_id is not None:
         resolved_patient_id = (
             _next_health_patient_id(destination_root)
@@ -436,7 +439,6 @@ def execute_profile_placement(
 
         file_hash = _hash_file(src)
         if file_hash is None:
-            # File missing or unreadable — skip and log already done in _hash_file
             continue
 
         console.print(f"[dim]{src}[/] → [green]{dst}[/] [blue]{file_hash[:8]}[/]")
@@ -464,10 +466,22 @@ def execute_profile_placement(
         )
         summary["total_files"] += 1
 
-        if apply:
+        if apply and not dry_run:
             try:
                 dst.parent.mkdir(parents=True, exist_ok=True)
                 safe_move(src, dst)
+
+                # ✅ OBSERVER INTEGRATION (semantic commit)
+                observer_metadata = {
+                    "hash": file_hash,
+                    "profile": profile,
+                    "executed_by": executed_by,
+                }
+                if profile == "health" and resolved_patient_id:
+                    observer_metadata["patient_id"] = resolved_patient_id
+
+                run_observers(dst, observer_metadata)
+
             except (OSError, shutil.Error) as e:
                 log.warning(f"⚠️ Cannot move file (skipped): {src} → {dst} — {e}")
                 continue

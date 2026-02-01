@@ -75,10 +75,15 @@ class FieldObserver(BaseObserver):
         return extracted
 
     def compare(self, old: dict | None, new: dict) -> list[dict]:
-        if not old:
-            return []
-
         events: list[dict] = []
+
+        if not old:
+            # emit all fields as “created” on first run
+            for key, val in new.items():
+                events.append(
+                    {"type": "FIELD_CHANGED", "field": key, "old": None, "new": val}
+                )
+            return events
 
         for key, new_val in new.items():
             old_val = old.get(key)
@@ -91,5 +96,4 @@ class FieldObserver(BaseObserver):
                         "new": new_val,
                     }
                 )
-
         return events

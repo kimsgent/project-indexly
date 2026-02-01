@@ -5,6 +5,7 @@ Purpose:
   This module handles reading the JSON configuration and providing observer rules.
 
 """
+
 import json
 import os
 from pathlib import Path
@@ -28,11 +29,14 @@ def default_config() -> dict:
                 "identity": "patient_id",
                 "fields": {
                     "address": {"type": "regex", "pattern": "Address:\\s*(.*)"},
-                    "version": {"type": "multi", "patterns": [
-                        {"type": "toml", "key": "project.version"},
-                        {"type": "markdown", "pattern": "Version:\\s*(.*)"},
-                        {"type": "text", "pattern": "Version:\\s*(.*)"}
-                    ]}
+                    "version": {
+                        "type": "multi",
+                        "patterns": [
+                            {"type": "toml", "key": "project.version"},
+                            {"type": "markdown", "pattern": "Version:\\s*(.*)"},
+                            {"type": "text", "pattern": "Version:\\s*(.*)"},
+                        ],
+                    },
                 },
             },
             {
@@ -41,9 +45,9 @@ def default_config() -> dict:
                 "identity": None,
                 "fields": {
                     "row_count": {"type": "metadata", "key": "row_count"},
-                    "col_count": {"type": "metadata", "key": "col_count"}
+                    "col_count": {"type": "metadata", "key": "col_count"},
                 },
-            }
+            },
         ]
     }
 

@@ -3,62 +3,65 @@
 from pathlib import Path
 from typing import Any
 from datetime import datetime
+import json
 
 from indexly.observers.base import BaseObserver
-from .csv_snapshot_store import load_snapshot, save_snapshot
+from .csv_snapshot_store import save_snapshot, load_snapshot
 from .csv_diff import diff_snapshots
+from indexly.db_utils import _get_db_connection
 
-from indexly.db_utils import connect_db
-import json
 
 class CSVObserver(BaseObserver):
     name = "csv"
 
     def applies_to(self, file_path: Path, metadata: dict[str, Any]) -> bool:
-        # Only CSV cleaned data
         return metadata.get("profile") == "csv"
 
     def extract(self, file_path: Path, metadata: dict[str, Any]) -> dict[str, Any]:
-        """Load CSV cleaned data for comparison."""
-        conn = connect_db()
-        p = Path(file_path)
+        """
+        Build CURRENT CSV state from cleaned_data.
+        """
+        conn = _get_db_connection()
         cur = conn.execute(
-            "SELECT * FROM cleaned_data WHERE file_name=?",
-            (p.name,),
+            "SELECT * FROM cleaned_data WHERE source_path = ?",
+            (str(file_path),),
         )
         row = cur.fetchone()
         conn.close()
+
         if not row:
             return {}
 
-        cleaned_at = row.get("cleaned_at") or datetime.now().isoformat()
-        columns = json.loads(row.get("data_json", "{}")).keys() if row.get("data_json") else []
-        row_count = row.get("row_count") or 0
-        col_count = row.get("col_count") or len(columns)
-        summary = json.loads(row.get("summary_json", "{}")) if row.get("summary_json") else {}
-
-        hash_value = metadata.get("hash") or "unknown"
+        columns = json.loads(row["data_json"]).keys() if row["data_json"] else []
 
         return {
-            "hash": hash_value,
+            "hash": metadata.get("hash", "unknown"),
             "columns": list(columns),
-            "row_count": row_count,
-            "col_count": col_count,
-            "summary": summary,
-            "cleaned_at": cleaned_at,
+            "row_count": row["row_count"] or 0,
+            "col_count": row["col_count"] or len(columns),
+            "summary": json.loads(row["summary_json"] or "{}"),
+            "cleaned_at": row["cleaned_at"] or datetime.now().isoformat(),
         }
 
+    def load_previous_snapshot(self, file_path: str, snapshot_ts: str | None = None) -> dict | None:
+        """
+        Load a historical snapshot from csv_snapshots table.
+        - snapshot_ts provided → loads snapshot at or before given timestamp
+        - None → loads latest snapshot
+        """
+        return load_snapshot(Path(file_path).name, latest=(snapshot_ts is None), at_time=snapshot_ts)
+
     def compare(self, old: dict | None, new: dict) -> list[dict]:
-        events = diff_snapshots(old, new)
-        return events
+        return diff_snapshots(old, new)
 
     def save(self, file_path: Path, state: dict) -> None:
         save_snapshot(
             str(file_path),
-            hash_value=state.get("hash", ""),
-            columns=state.get("columns", []),
-            row_count=state.get("row_count", 0),
-            col_count=state.get("col_count", 0),
-            summary=state.get("summary", {}),
-            cleaned_at=state.get("cleaned_at", datetime.now().isoformat()),
+            hash_value=state["hash"],
+            columns=state["columns"],
+            row_count=state["row_count"],
+            col_count=state["col_count"],
+            summary=state["summary"],
+            cleaned_at=state["cleaned_at"],
+            snapshot_ts=datetime.utcnow().isoformat(),  # ensures each save is historical
         )
