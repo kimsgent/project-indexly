@@ -98,6 +98,9 @@ def handle_lister(
     category: str | None = None,
     date: str | None = None,
     duplicates: bool = False,
+    sort_by: str = "date",
+    no_generate: bool = False,
+    detect_duplicates: bool = False,
 ):
     return list_organizer_log(
         Path(source),
@@ -105,4 +108,7 @@ def handle_lister(
         category=category,
         date=date,
         duplicates_only=duplicates,
+        no_generate=no_generate,
+        sort_by=sort_by,
+        detect_duplicates=detect_duplicates,
     )
