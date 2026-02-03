@@ -44,11 +44,14 @@ def list_organizer_log(
     detect_duplicates: bool = False,
     no_cache: bool = False,
 ) -> int:
-    """List files from organizer JSON log with cache, sorting, and optional hash-based duplicates."""
+    """List files from organizer JSON log with cache, sorting, optional duplicates, and summary."""
+
     data = None
     log_path = None
     generated_log = False
+    skipped_hash_files = 0
 
+    # 1️⃣ Load cache or discover log
     if not no_cache:
         data = read_cache(source)
 
@@ -74,17 +77,19 @@ def list_organizer_log(
                     style="red",
                 )
                 return 0
+            # generate temporary log
             data = generate_log_from_tree(source)
             source_label = f"generated log ({source.name})"
             generated_log = True
 
+            # try write cache safely
             if not no_cache:
-                write_cache(source, data)
+                write_cache(source, data, skip_invalid_root=True)
 
     files = data.get("files", [])
     meta = data.get("meta", {})
 
-    # Optional hash-based duplicate detection only for real logs
+    # 2️⃣ Optional hash-based duplicate detection
     if detect_duplicates:
         if generated_log:
             console.print(
@@ -97,15 +102,18 @@ def list_organizer_log(
                 path = Path(f["new_path"])
                 h = hash_file(path)
                 f["hash"] = h
-                if h and h in seen_hashes:
+                if h is None:
+                    skipped_hash_files += 1
+                    continue
+                if h in seen_hashes:
                     f["duplicate"] = True
                     for orig_f in files:
                         if orig_f.get("hash") == h:
                             orig_f["duplicate"] = True
-                elif h:
+                else:
                     seen_hashes[h] = str(path)
 
-    # Sorting
+    # 3️⃣ Sorting
     if sort_by == "date":
         files.sort(key=lambda f: f["used_date"])
     elif sort_by == "name":
@@ -118,7 +126,7 @@ def list_organizer_log(
         )
         files.sort(key=lambda f: f["used_date"])
 
-    # Display
+    # 4️⃣ Display table
     table = Table(
         title=f"📂 Organizer log — {Path(meta.get('root', '')).name}", show_lines=False
     )
@@ -151,6 +159,26 @@ def list_organizer_log(
         count += 1
 
     console.print(table)
-    if log_path is not None:
-        console.print(f"\n📊 Listed {count} / {len(files)} files from {log_path.name}")
+
+    # 5️⃣ User-friendly summary
+    summary_lines = [
+        f"🗂 Total files in log: {len(files)}",
+        f"✅ Files listed: {count}",
+    ]
+
+    if detect_duplicates and not generated_log:
+        duplicates = sum(1 for f in files if f.get("duplicate"))
+        if duplicates > 0:
+            summary_lines.append(f"⚠️ Duplicates detected: {duplicates}")
+
+    if skipped_hash_files:
+        summary_lines.append(
+            f"⚠️ Files skipped during hash detection: {skipped_hash_files}"
+        )
+
+    if generated_log:
+        summary_lines.append("ℹ️ Paths are simulated; no filesystem changes were made.")
+
+    console.print("\n" + "\n".join(summary_lines))
+
     return count

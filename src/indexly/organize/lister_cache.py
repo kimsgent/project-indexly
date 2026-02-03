@@ -11,7 +11,8 @@ CACHE_SCHEMA = 1
 
 
 def _stat_root(root: Path) -> dict:
-    st = root.stat()
+    """Return mtime and inode of root folder, or raise FileNotFoundError."""
+    st = root.stat()  # may raise FileNotFoundError
     return {
         "mtime_ns": st.st_mtime_ns,
         "inode": getattr(st, "st_ino", None),
@@ -80,15 +81,30 @@ def read_cache(root: Path) -> dict | None:
         return None
 
 
-def write_cache(root: Path, data: dict) -> Path:
+def write_cache(
+    root: Path, data: dict, *, skip_invalid_root: bool = True
+) -> Path | None:
+    """
+    Write cache for organizer log.
+    If root.stat() fails and skip_invalid_root=True, skip writing with a warning.
+    """
     root = root.resolve()
+
+    try:
+        root_stat = _stat_root(root)
+    except FileNotFoundError:
+        if skip_invalid_root:
+            print(f"⚠️ Skipping cache write: root path '{root}' does not exist.")
+            return None
+        else:
+            raise
 
     meta = data.setdefault("meta", {})
     meta.update(
         {
             "schema": CACHE_SCHEMA,
             "root": str(root),
-            "root_stat": _stat_root(root),
+            "root_stat": root_stat,
             "file_count": len(data.get("files", [])),
             "created_at": time.time(),
         }
