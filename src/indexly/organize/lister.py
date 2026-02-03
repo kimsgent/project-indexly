@@ -42,11 +42,15 @@ def list_organizer_log(
     no_generate: bool = False,
     sort_by: str = "date",
     detect_duplicates: bool = False,
+    no_cache: bool = False,
 ) -> int:
     """List files from organizer JSON log with cache, sorting, and optional hash-based duplicates."""
-    data = read_cache(source)
+    data = None
     log_path = None
     generated_log = False
+
+    if not no_cache:
+        data = read_cache(source)
 
     if data:
         source_label = f"cached log ({source.name})"
@@ -73,7 +77,9 @@ def list_organizer_log(
             data = generate_log_from_tree(source)
             source_label = f"generated log ({source.name})"
             generated_log = True
-            write_cache(source, data)
+
+            if not no_cache:
+                write_cache(source, data)
 
     files = data.get("files", [])
     meta = data.get("meta", {})

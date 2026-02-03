@@ -101,6 +101,7 @@ def handle_lister(
     sort_by: str = "date",
     no_generate: bool = False,
     detect_duplicates: bool = False,
+    no_cache: bool = False,
 ):
     return list_organizer_log(
         Path(source),
@@ -111,4 +112,5 @@ def handle_lister(
         no_generate=no_generate,
         sort_by=sort_by,
         detect_duplicates=detect_duplicates,
+        no_cache=no_cache,
     )

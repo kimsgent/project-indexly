@@ -1,43 +1,99 @@
+# lister_cache.py
+
 from pathlib import Path
 import json
+import os
+import time
+
 
 CACHE_FILENAME = "lister_cache.json"
+CACHE_SCHEMA = 1
+
+
+def _stat_root(root: Path) -> dict:
+    st = root.stat()
+    return {
+        "mtime_ns": st.st_mtime_ns,
+        "inode": getattr(st, "st_ino", None),
+    }
+
+
+def count_files(root: Path) -> int:
+    count = 0
+    for _, _, files in os.walk(root):
+        count += len(files)
+    return count
+
+
+def _validate_meta(root: Path, meta: dict) -> bool:
+    try:
+        root = root.resolve()
+
+        if meta.get("schema") != CACHE_SCHEMA:
+            return False
+
+        if Path(meta["root"]) != root:
+            return False
+
+        st = _stat_root(root)
+        cached_stat = meta.get("root_stat", {})
+
+        if cached_stat.get("mtime_ns") != st["mtime_ns"]:
+            return False
+
+        inode = cached_stat.get("inode")
+        if inode is not None and inode != st.get("inode"):
+            return False
+
+        live_count = count_files(root)
+        if meta.get("file_count") != live_count:
+            return False
+
+        return True
+    except Exception:
+        return False
 
 
 def get_cache_path(root: Path) -> Path:
-    """
-    Return the full path to the lister cache file.
-    Creates the .indexly directory if it doesn't exist.
-    """
     cache_dir = root / ".indexly"
     cache_dir.mkdir(parents=True, exist_ok=True)
     return cache_dir / CACHE_FILENAME
 
 
 def read_cache(root: Path) -> dict | None:
-    """
-    Read the cached organizer log for a given root path.
-    Returns None if cache does not exist or is invalid.
-    """
     cache_path = get_cache_path(root)
     if not cache_path.exists():
         return None
     try:
         with open(cache_path, "r", encoding="utf-8") as f:
             data = json.load(f)
-        # Validate minimal structure
-        if isinstance(data, dict) and "meta" in data and "files" in data:
-            return data
+
+        if not isinstance(data, dict):
+            return None
+        if "meta" not in data or "files" not in data:
+            return None
+        if not _validate_meta(root, data["meta"]):
+            return None
+
+        return data
     except (OSError, json.JSONDecodeError):
         return None
-    return None
 
 
 def write_cache(root: Path, data: dict) -> Path:
-    """
-    Atomically write the cache to disk.
-    Returns the path to the written cache file.
-    """
+    root = root.resolve()
+
+    meta = data.setdefault("meta", {})
+    meta.update(
+        {
+            "schema": CACHE_SCHEMA,
+            "root": str(root),
+            "root_stat": _stat_root(root),
+            "file_count": len(data.get("files", [])),
+            "created_at": time.time(),
+        }
+    )
+
     cache_path = get_cache_path(root)
     tmp_path = cache_path.with_name(f".tmp_{CACHE_FILENAME}")
     with open(tmp_path, "w", encoding="utf-8") as f:

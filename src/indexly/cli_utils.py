@@ -986,6 +986,12 @@ def build_parser():
         default="date",
         help="Sort listed files by this field",
     )
+    lister_parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Do not use cached lister results; read filesystem or logs directly",
+    )
+
     lister_parser.set_defaults(
         func=lambda args: handle_lister(
             args.source,
@@ -996,6 +1002,7 @@ def build_parser():
             sort_by=args.sort_by,
             no_generate=getattr(args, "no_generate", False),
             detect_duplicates=getattr(args, "detect_duplicates", False),
+            no_cache=getattr(args, "no_cache", False),
         )
     )
 
