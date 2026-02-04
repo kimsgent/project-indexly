@@ -5,6 +5,7 @@ from rich.table import Table
 from rich.text import Text
 from rich.panel import Panel
 
+from indexly.ignore_defaults.loader import load_ignore_rules
 from indexly.organize.lister_fallback import generate_log_from_tree
 from indexly.organize.lister_cache import read_cache, write_cache
 from indexly.organize.lister_hash import hash_file
@@ -77,17 +78,25 @@ def list_organizer_log(
                     style="red",
                 )
                 return 0
-            # generate temporary log
             data = generate_log_from_tree(source)
             source_label = f"generated log ({source.name})"
             generated_log = True
 
-            # try write cache safely
             if not no_cache:
                 write_cache(source, data, skip_invalid_root=True)
 
     files = data.get("files", [])
     meta = data.get("meta", {})
+
+    # ── Apply .indexlyignore rules (Option A) ──
+    root_path = Path(meta.get("root") or source).resolve()
+    ignore_rules = load_ignore_rules(root_path)
+    files = [
+        f
+        for f in files
+        if not ignore_rules.should_ignore(Path(f["new_path"]), root=root_path)
+    ]
+    data["files"] = files  # ensure cache writes stay clean
 
     # 2️⃣ Optional hash-based duplicate detection
     if detect_duplicates:
@@ -160,7 +169,7 @@ def list_organizer_log(
 
     console.print(table)
 
-    # 5️⃣ User-friendly summary
+    # 5️⃣ Summary
     summary_lines = [
         f"🗂 Total files in log: {len(files)}",
         f"✅ Files listed: {count}",
@@ -180,5 +189,4 @@ def list_organizer_log(
         summary_lines.append("ℹ️ Paths are simulated; no filesystem changes were made.")
 
     console.print("\n" + "\n".join(summary_lines))
-
     return count
