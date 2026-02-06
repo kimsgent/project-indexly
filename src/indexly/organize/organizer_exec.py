@@ -270,9 +270,20 @@ def execute_profile_scaffold(
             resolved_category = category or "default"
 
             if resolved_category not in struct:
+                available = ", ".join(struct.keys())
+                hint = ""
+
+                if resolved_category in {"solo", "employer"} and profile != "business":
+                    hint = (
+                        "\n💡 Hint: 'solo' and 'employer' are only valid for the "
+                        "'business' profile.\n"
+                        "Try: --profile business --category solo"
+                    )
+
                 raise ValueError(
-                    f"Invalid category '{resolved_category}' for profile '{profile}'. "
-                    f"Available: {', '.join(struct.keys())}"
+                    f"Invalid category '{resolved_category}' for profile '{profile}'.\n"
+                    f"Available categories for '{profile}': {available}"
+                    f"{hint}"
                 )
 
             paths = list(struct[resolved_category])

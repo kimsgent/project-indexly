@@ -815,13 +815,14 @@ def build_parser():
             "health",
             "data",
             "media",
+            "business",
         ],
         help="Create a profession-based directory scaffold",
     )
 
     organize_parser.add_argument(
         "--category",
-        choices=["default", "student", "teacher", "support", "photographer"],
+        choices=["default", "student", "teacher", "support", "photographer", "solo", "employer"],
         help="Optional sub-category for profile (e.g. education, it). Default is 'default'.",
     )
 
