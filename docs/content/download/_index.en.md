@@ -15,16 +15,15 @@ categories:
 
 Get the latest version of Project Indexly:
 
-- [Download v1.2.0 ZIP](https://github.com/kimsgent/project-indexly/archive/refs/tags/v1.2.0.zip)
+- [Download v1.2.1 ZIP](https://github.com/kimsgent/project-indexly/archive/refs/tags/v1.2.1.zip)
 - [View Release Notes](/releases/_index.en.md)
 
 ## Tools
 
 
-📚 Check [Documentation](/en/documentation/)  
+📚 Check [Documentation](/en/documentation/)
 
 
 ## FAQ
 
 {{< faq >}}
-
