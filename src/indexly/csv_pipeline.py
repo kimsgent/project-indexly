@@ -31,6 +31,10 @@ from .clean_csv import (
     _normalize_numeric,
 )
 
+from indexly.observers.registry import get_observers
+from indexly.observers.csv.csv_observer import CSVObserver
+from indexly.compare.hash_utils import sha256
+from indexly.observers.runner import run_observers
 
 from scipy.stats import entropy as shannon_entropy
 
@@ -39,6 +43,7 @@ console = Console()
 # -------------------------------
 # CSV Pipeline modular stages
 # -------------------------------
+
 
 # -------------------------------------------------------
 # 🧩 Step 1: Load CSV with automatic delimiter detection
@@ -113,7 +118,6 @@ def clean_csv(df: pd.DataFrame, args):
 
     # ✅ Return DataFrame and summary_records (keep derived_map inside df for reference)
     return df, summary_records
-
 
 
 # -------------------------------------------------------
@@ -262,6 +266,20 @@ def run_csv_pipeline(file_path: Path, args, df: pd.DataFrame = None):
     # --- Step 2: Analyze CSV ---
     try:
         df_stats, table_output = analyze_csv_pipeline(df, args)
+        # ---------------------------
+        # 📝 Prepare observer metadata
+        # ---------------------------
+        metadata = {
+            "profile": "csv",
+            "hash": sha256(file_path) if file_path else None,
+            "row_count": len(df) if df is not None else None,
+            "col_count": len(df.columns) if df is not None else None,
+        }
+
+        # Trigger observers for CSV
+        if file_path:
+            run_observers(file_path, metadata=metadata)
+
         if df_stats is None:
             console.print(
                 "[yellow]⚠️ No numeric columns detected; summary statistics skipped.[/yellow]"
@@ -276,7 +294,7 @@ def run_csv_pipeline(file_path: Path, args, df: pd.DataFrame = None):
             _handle_timeseries_visualization(df, args)
         except Exception as e:
             console.print(f"[red]❌ Time series visualization failed: {e}[/red]")
-            
+
     # --- Step 3: Visualization ---
     visualize_csv(df, df_stats, args)
 
@@ -294,6 +312,7 @@ def run_csv_pipeline(file_path: Path, args, df: pd.DataFrame = None):
 
     # --- Step 5: Return results (no export here) ---
     return df, df_stats, table_output
+
 
 # --------------------------------------------------------
 # 🔧 Helper printing utilities
@@ -315,7 +334,6 @@ def _print_sample_table(df: pd.DataFrame):
     for _, row in df.head(10).iterrows():
         table.add_row(*(str(x) for x in row.values))
     console.print(table)
-
 
 
 def _summarize_pipeline_cleaning(
@@ -381,14 +399,16 @@ def _summarize_pipeline_cleaning(
         # === Numeric columns ===
         if pd.api.types.is_numeric_dtype(series):
             desc = series.describe()
-            record.update({
-                "mean": _safe_float(desc.get("mean")),
-                "std": _safe_float(desc.get("std")),
-                "min": _safe_float(desc.get("min")),
-                "max": _safe_float(desc.get("max")),
-                "skewness": _safe_float(series.skew(skipna=True)),
-                "kurtosis": _safe_float(series.kurtosis(skipna=True)),
-            })
+            record.update(
+                {
+                    "mean": _safe_float(desc.get("mean")),
+                    "std": _safe_float(desc.get("std")),
+                    "min": _safe_float(desc.get("min")),
+                    "max": _safe_float(desc.get("max")),
+                    "skewness": _safe_float(series.skew(skipna=True)),
+                    "kurtosis": _safe_float(series.kurtosis(skipna=True)),
+                }
+            )
 
         # === Datetime columns ===
         elif pd.api.types.is_datetime64_any_dtype(series):
@@ -398,30 +418,40 @@ def _summarize_pipeline_cleaning(
                 if pd.notna(dt_min) and pd.notna(dt_max)
                 else None
             )
-            record.update({
-                "datetime_first": str(dt_min) if pd.notna(dt_min) else None,
-                "datetime_last": str(dt_max) if pd.notna(dt_max) else None,
-                "datetime_coverage_days": coverage_days,
-            })
+            record.update(
+                {
+                    "datetime_first": str(dt_min) if pd.notna(dt_min) else None,
+                    "datetime_last": str(dt_max) if pd.notna(dt_max) else None,
+                    "datetime_coverage_days": coverage_days,
+                }
+            )
 
         # === Categorical / Object columns ===
         else:
             value_counts = series.value_counts(dropna=True)
             if len(value_counts) > 0:
                 probs = value_counts / value_counts.sum()
-                record.update({
-                    "unique_values": int(series.nunique(dropna=True)),
-                    "category_top": str(value_counts.index[0]),
-                    "category_ratio": round(float(value_counts.iloc[0] / n_total), 3),
-                    "entropy_estimate": round(float(shannon_entropy(probs, base=2)), 3),
-                })
+                record.update(
+                    {
+                        "unique_values": int(series.nunique(dropna=True)),
+                        "category_top": str(value_counts.index[0]),
+                        "category_ratio": round(
+                            float(value_counts.iloc[0] / n_total), 3
+                        ),
+                        "entropy_estimate": round(
+                            float(shannon_entropy(probs, base=2)), 3
+                        ),
+                    }
+                )
             else:
-                record.update({
-                    "unique_values": 0,
-                    "category_top": "-",
-                    "category_ratio": 0.0,
-                    "entropy_estimate": 0.0,
-                })
+                record.update(
+                    {
+                        "unique_values": 0,
+                        "category_top": "-",
+                        "category_ratio": 0.0,
+                        "entropy_estimate": 0.0,
+                    }
+                )
 
         summary_records.append(record)
 
@@ -452,18 +482,18 @@ def render_cleaning_summary_table(summary_records):
             rec["column"],
             rec["dtype"],
             rec["action"],
-            f"{rec['valid_ratio']:.1f}",   # ✅ Removed *100
+            f"{rec['valid_ratio']:.1f}",  # ✅ Removed *100
             str(rec["n_filled"]),
             str(rec.get("unique_values", "")),
             f"{rec.get('mean', ''):.3f}" if rec.get("mean") is not None else "-",
             f"{rec.get('std', ''):.3f}" if rec.get("std") is not None else "-",
-            f"{rec.get('entropy_estimate', ''):.2f}" if rec.get("entropy_estimate") is not None else "-",
+            (
+                f"{rec.get('entropy_estimate', ''):.2f}"
+                if rec.get("entropy_estimate") is not None
+                else "-"
+            ),
             rec.get("category_top", "-"),
             rec.get("notes", ""),
         )
 
     return table
-
-
-
-

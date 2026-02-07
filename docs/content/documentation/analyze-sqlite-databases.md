@@ -31,12 +31,12 @@ Indexly provides a powerful pipeline for inspecting SQLite databases, allowing y
 
 ## Key Features
 
-- > Analyze SQLite databases (single or multi-table)
-- > Summarize table structure, numeric/non-numeric stats, nulls, and top values
-- > Detect explicit foreign keys and infer relationships heuristically
-- > Build Mermaid ER diagrams and adjacency graphs
-- > Export results in JSON, Markdown, HTML, or diagram formats
-- > Persist analysis at multiple levels: `none`, `summary`, `detailed`, `raw`
+-  Analyze SQLite databases (single or multi-table)
+-  Summarize table structure, numeric/non-numeric stats, nulls, and top values
+-  Detect explicit foreign keys and infer relationships heuristically
+-  Build Mermaid ER diagrams and adjacency graphs
+-  Export results in JSON, Markdown, HTML, or diagram formats
+-  Persist analysis at multiple levels: `none`, `summary`, `detailed`, `raw`
 
 ## Using `indexly analyze-db`
 

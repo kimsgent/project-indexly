@@ -31,7 +31,9 @@ from .log_schema import (
     file_entry_template,
     empty_organizer_log,
 )
-
+from indexly.organize.profiles.media_rules import (
+    get_destination as media_destination,
+)
 
 console = Console()
 
@@ -44,12 +46,17 @@ logging.basicConfig(
 log = logging.getLogger("organizer")
 
 
-def _hash_file(path: Path, algo="sha256"):
+def _hash_file(path: Path, algo="sha256") -> str | None:
+    """Return file hash or None if file cannot be read."""
     h = hashlib.new(algo)
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(8192), b""):
-            h.update(chunk)
-    return h.hexdigest()
+    try:
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(8192), b""):
+                h.update(chunk)
+        return h.hexdigest()
+    except (OSError, FileNotFoundError) as e:
+        log.warning(f"⚠️ Cannot hash file (skipped): {path} — {e}")
+        return None
 
 
 def _write_log_atomic(log: dict, log_dir: Path, root_name: str):
@@ -77,6 +84,7 @@ def execute_organizer(
     lister_category: str | None = None,
     lister_date: str | None = None,
     lister_duplicates: bool = False,
+    dry_run: bool = False,  # ✅ new parameter
 ):
     """Execute organizer: move/copy files, detect duplicates, write log with feedback"""
 
@@ -85,12 +93,14 @@ def execute_organizer(
     root_name = root.name
 
     print(f"📂 Building organization plan for {root}...")
-    plan = organize_folder(root, sort_by=sort_by, executed_by=executed_by)
+    plan = organize_folder(
+        root, sort_by=sort_by, executed_by=executed_by, dry_run=dry_run
+    )
     total_files = len(plan["files"])
     print(f"✅ Plan ready: {total_files} files to organize.\n")
 
     backup_mapping = {}
-    if backup_root:
+    if backup_root and not dry_run:
         backup_root.mkdir(parents=True, exist_ok=True)
 
     max_name_len = max(len(Path(f["new_path"]).name) for f in plan["files"])
@@ -98,35 +108,52 @@ def execute_organizer(
     for idx, f in enumerate(plan["files"], 1):
         src = Path(f["original_path"])
         dst = Path(f["new_path"])
-        dst.parent.mkdir(parents=True, exist_ok=True)
 
-        src_hash = _hash_file(src)
-        if dst.exists():
-            dst_hash = _hash_file(dst)
-            f["unchanged"] = src_hash == dst_hash
-        else:
-            f["unchanged"] = False
+        if not dry_run:
+            dst.parent.mkdir(parents=True, exist_ok=True)
 
-        shutil.move(src, dst)
+            src_hash = _hash_file(src)
+            if src_hash is None:
+                continue
 
-        if backup_root and not f.get("unchanged"):
-            bkp_path = backup_root / dst.relative_to(root)
-            bkp_path.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(dst, bkp_path)
-            backup_mapping[str(dst)] = str(bkp_path)
+            if dst.exists():
+                dst_hash = _hash_file(dst)
+                f["unchanged"] = src_hash == dst_hash
+            else:
+                f["unchanged"] = False
 
+            try:
+                safe_move(src, dst)
+            except (OSError, shutil.Error) as e:
+                log.warning(f"⚠️ Cannot move file (skipped): {src} → {dst} — {e}")
+                continue
+
+            if backup_root and not f.get("unchanged"):
+                bkp_path = backup_root / dst.relative_to(root)
+                bkp_path.parent.mkdir(parents=True, exist_ok=True)
+                try:
+                    shutil.copy2(dst, bkp_path)
+                    backup_mapping[str(dst)] = str(bkp_path)
+                except (OSError, shutil.Error) as e:
+                    log.warning(
+                        f"⚠️ Cannot backup file (skipped): {dst} → {bkp_path} — {e}"
+                    )
+
+        # Dry-run feedback
         sys.stdout.write(
             f"\rProcessing file {idx}/{total_files}: "
             f"{Path(f['new_path']).name.ljust(max_name_len)}"
         )
         sys.stdout.flush()
-
         time.sleep(0.01)
+
+    if dry_run:
+        print(f"\n📄 Dry-run only: {total_files} files would be organized.")
+        return plan, {}
 
     print("\n📄 Writing log...")
     log_path = _write_log_atomic(plan, log_dir, root_name)
 
-    # ✅ KEEP summary exactly as-is
     summary = plan.get("summary", {})
     print("\n📊 Summary of organization:")
     print(f"  Total files processed: {summary.get('total_files', total_files)}")
@@ -138,7 +165,6 @@ def execute_organizer(
     if backup_root:
         print(f"📦 Backup saved at {backup_root}")
 
-    # ✅ OPTIONAL lister hook (no side effects)
     if lister:
         print("\n📂 Listing organizer results:\n")
         list_organizer_log(
@@ -152,12 +178,6 @@ def execute_organizer(
     return plan, backup_mapping
 
 
-from pathlib import Path
-from datetime import datetime
-import json
-from rich.tree import Tree
-from rich.panel import Panel
-
 # --------------------------------------------------
 # SCAFFOLD (FIXED — patient-scoped health only)
 # --------------------------------------------------
@@ -167,6 +187,7 @@ def execute_profile_scaffold(
     root: Path,
     profile: str,
     *,
+    category: str | None = None,
     apply: bool = False,
     dry_run: bool = False,
     executed_by: str = "system",
@@ -186,6 +207,7 @@ def execute_profile_scaffold(
 
     audit_log = {
         "profile": profile,
+        "category": category,
         "root": str(root),
         "executed_by": executed_by,
         "timestamp": datetime.utcnow().isoformat(),
@@ -211,7 +233,6 @@ def execute_profile_scaffold(
             created.append(str(patient_root))
             audit_log["created"].append(str(patient_root))
 
-            # patient subfolders (must match placement)
             for folder in [
                 "Reports",
                 "Imaging",
@@ -225,7 +246,6 @@ def execute_profile_scaffold(
                 created.append(str(p))
                 audit_log["created"].append(str(p))
 
-            # ✅ ALWAYS create metadata at scaffold time
             meta_path = patient_root / ".patient.json"
             if not meta_path.exists():
                 meta = {
@@ -244,13 +264,39 @@ def execute_profile_scaffold(
     # NON-HEALTH or GLOBAL PROFILES
     # --------------------------------------------------
     elif profile != "health":
-        paths = list(PROFILE_STRUCTURES[profile])
+        struct = PROFILE_STRUCTURES[profile]
+
+        if isinstance(struct, dict):
+            resolved_category = category or "default"
+
+            if resolved_category not in struct:
+                available = ", ".join(struct.keys())
+                hint = ""
+
+                if resolved_category in {"solo", "employer"} and profile != "business":
+                    hint = (
+                        "\n💡 Hint: 'solo' and 'employer' are only valid for the "
+                        "'business' profile.\n"
+                        "Try: --profile business --category solo"
+                    )
+
+                raise ValueError(
+                    f"Invalid category '{resolved_category}' for profile '{profile}'.\n"
+                    f"Available categories for '{profile}': {available}"
+                    f"{hint}"
+                )
+
+            paths = list(struct[resolved_category])
+        else:
+            paths = list(struct)
 
         if profile == "data" and project_name:
             paths.extend(build_data_project_structure(project_name))
 
         if profile == "media":
-            paths.extend(build_media_shoot_structure(shoot_name))
+            paths.extend(
+                build_media_shoot_structure(media_root=root, shoot_name=shoot_name)
+            )
 
         for rel in paths:
             p = root / rel
@@ -313,15 +359,19 @@ def execute_profile_placement(
     profile: str,
     executed_by: str,
     project_name: str | None = None,
+    category: str | None = None,
     shoot_name: str | None = None,
     apply: bool = False,
     dry_run: bool = False,
     log_path: Path | None = None,
     patient_id: str | None = None,
+    recursive: bool = False,
+    classify_raw: str | None = None,
 ):
     from indexly.organize.profiles.health_rules import (
         get_destination as health_destination,
     )
+    from indexly.observers.runner import run_observers
 
     source_root = Path(source_root).resolve()
     destination_root = Path(destination_root).resolve()
@@ -330,7 +380,12 @@ def execute_profile_placement(
     if profile not in PROFILE_RULES:
         raise ValueError(f"Unknown profile: {profile}")
 
-    files = [p for p in source_root.iterdir() if p.is_file()]
+    files = (
+        [p for p in source_root.rglob("*") if p.is_file()]
+        if recursive
+        else [p for p in source_root.iterdir() if p.is_file()]
+    )
+
     if not files:
         console.print(
             Panel.fit(
@@ -342,7 +397,6 @@ def execute_profile_placement(
         return []
 
     resolved_patient_id = None
-
     if profile == "health" and patient_id is not None:
         resolved_patient_id = (
             _next_health_patient_id(destination_root)
@@ -358,6 +412,7 @@ def execute_profile_placement(
         project_name=project_name,
         shoot_name=shoot_name,
         patient_id=resolved_patient_id,
+        classify_raw=classify_raw,
     )
 
     meta = empty_meta(
@@ -381,11 +436,31 @@ def execute_profile_placement(
                 patient_id=resolved_patient_id,
                 ensure_patient_folder_exists=True,
             )
+        elif profile == "media" and category == "photographer" and classify_raw:
+            dst = media_destination(
+                root=destination_root,
+                file_path=src,
+                profile=profile,
+                category=category,
+                shoot_name=shoot_name,
+                classify_raw=classify_raw,
+            )
         else:
             dst = Path(entry["destination"])
 
         file_hash = _hash_file(src)
+        if file_hash is None:
+            continue
+
         console.print(f"[dim]{src}[/] → [green]{dst}[/] [blue]{file_hash[:8]}[/]")
+
+        try:
+            size = src.stat().st_size
+            created_at = src.stat().st_ctime
+            modified_at = src.stat().st_mtime
+        except OSError as e:
+            log.warning(f"⚠️ Cannot access file stats (skipped): {src} — {e}")
+            continue
 
         log_files.append(
             file_entry_template(
@@ -393,18 +468,34 @@ def execute_profile_placement(
                 new_path=str(dst),
                 extension=src.suffix.lower(),
                 category=profile,
-                size=src.stat().st_size,
+                size=size,
                 used_date=datetime.utcnow().isoformat(),
                 hash_value=file_hash,
-                created_at=src.stat().st_ctime,
-                modified_at=src.stat().st_mtime,
+                created_at=created_at,
+                modified_at=modified_at,
             )
         )
         summary["total_files"] += 1
 
-        if apply:
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            safe_move(src, dst)
+        if apply and not dry_run:
+            try:
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                safe_move(src, dst)
+
+                # ✅ OBSERVER INTEGRATION (semantic commit)
+                observer_metadata = {
+                    "hash": file_hash,
+                    "profile": profile,
+                    "executed_by": executed_by,
+                }
+                if profile == "health" and resolved_patient_id:
+                    observer_metadata["patient_id"] = resolved_patient_id
+
+                run_observers(dst, observer_metadata)
+
+            except (OSError, shutil.Error) as e:
+                log.warning(f"⚠️ Cannot move file (skipped): {src} → {dst} — {e}")
+                continue
 
     final_log = empty_organizer_log(meta, summary, log_files)
     if not log_path:

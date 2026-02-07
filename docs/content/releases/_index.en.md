@@ -5,17 +5,26 @@ toc: true
 weight: 10
 ---
 
-## Latest Release: v1.2.0 (2026-01-20)
+## Latest Release: v1.2.1 (2026-02-07)
 
 ### Changes
-- fix(brew): move Homebrew formula template outside Python to avoid accidental trailing blank lines and pass audit
-- chore(release): update generate_brew_formula.py for v1.2.0 formula generation
-- chore(docs): prepare v1.2.0 release notes and Homebrew tap documentation
+- feat(observers): implement core observer framework with user-friendly logging, CSV & health observers, and organizer_exec integration
+- feat(organize): integrate lister caching with fallback log generation and optional hash-based duplicate detection
+- feat(organize): add category-aware scaffolding and validate profile/category combinations with clear user-facing errors
+- docs: update documentation and add Searching section with observers support
+- fix(organize): apply .indexlyignore filtering before listing and caching
+- fix(organize): improve cache robustness, stabilize lister cache validation, and clean up lister summaries
+- fix(organizer): handle missing or unreadable files gracefully during hashing and move operations
+- fix(organizer): correct profile placement resolution and honor --dry-run in legacy organizer
+- refactor(regex): remove unused query parameter and enhance regex console output
+- refactor(media): streamline RAW classification and shooting scaffold structure
+- chore: bump release candidate versions and harden cache handling
 
 ---
 
 ## Archive
 
+- [Release v1.2.0](/releases/v1.2.0/) (2026-01-20)
 - [Release v1.1.9](/releases/v1.1.9/) (2026-01-20)
 - [Release v1.1.8](/releases/v1.1.8/) (2026-01-20)
 - [Release v1.1.7](/releases/v1.1.7/) (2026-01-19)

@@ -49,7 +49,7 @@ To learn how the *current* logging system works,
 
 Before the ndjson upgrade, Indexly saved indexing activity in daily files such as:
 
-```other
+```shell
 2024-11-03_index.log
 2024-11-04_index.log
 ```
@@ -67,7 +67,7 @@ Indexly uses the following logic:
 
 Files must match the pattern:
 
-```other
+```shell
 YYYY-MM-DD_index.log
 ```
 
@@ -83,7 +83,7 @@ Each line is scanned for:
 
 Example:
 
-```other
+```shell
 2024-11-04T10:32:22Z /projects/2024/05/acme/report.docx
 ```
 
@@ -121,13 +121,13 @@ Legacy logs can be exported to **JSON**, **NDJSON**, or **CSV**.
 
 ### **Single Log Example**
 
-```other
+```bash
 indexly log-clean ./2024-11-03_index.log --export json
 ```
 
 ### **Batch / Directory Example**
 
-```other
+```bash
 indexly log-clean ./logs/ --export ndjson --combine-log
 ```
 
@@ -145,7 +145,7 @@ indexly log-clean ./logs/ --export ndjson --combine-log
 
 Each `.log` file becomes its own cleaned output:
 
-```other
+```shell
 2024-11-03_cleaned.json
 2024-11-04_cleaned.json
 ```
@@ -154,7 +154,7 @@ Each `.log` file becomes its own cleaned output:
 
 All logs → one merged output:
 
-```other
+```shell
 index-cleaned-all.ndjson
 ```
 

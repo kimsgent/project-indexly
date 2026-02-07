@@ -175,7 +175,7 @@ python -m indexly.migrate_db --source-db old.db --target-db main.db --table file
 
 Before proceeding, you’ll see:
 
-```other
+```shell
 You are about to modify the target DB. Continue? [y/N]:
 ```
 

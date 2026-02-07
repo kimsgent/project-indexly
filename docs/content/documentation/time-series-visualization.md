@@ -81,7 +81,7 @@ These are applied **per resample bucket**, e.g. “daily mean CPU usage”.
 
 If `rolling=N` is used, Indexly applies:
 
-```other
+```shell
 df[y_cols] = df[y_cols].rolling(N).mean()
 ```
 
@@ -209,3 +209,12 @@ Use it whenever your CSV contains:
 - finance series
 - server response times
 - aggregated log events
+
+---
+
+## Next Steps
+
+Continue exploring Indexly’s analytical capabilities:
+
+* [Cleaning CSV Data](clean-csv-data.md) 
+* [Analyze and Visualize CSV Data](data-analysis.md)

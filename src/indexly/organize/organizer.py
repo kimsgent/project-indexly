@@ -85,6 +85,7 @@ def organize_folder(
     *,
     sort_by: str,
     executed_by: str,
+    dry_run: bool = False,  # ✅ new parameter
 ):
     now = datetime.utcnow().isoformat() + "Z"
 
@@ -116,12 +117,15 @@ def organize_folder(
         else:
             target_dir = root / category / year / month  # fallback
 
-        target_dir.mkdir(parents=True, exist_ok=True)
+        # ✅ Only create directories if not dry_run
+        if not dry_run:
+            target_dir.mkdir(parents=True, exist_ok=True)
 
         target_path = target_dir / path.name
         alias = None
         duplicate = False
 
+        # Check for duplicates
         if target_path.exists():
             duplicate = True
             stem = target_path.stem
@@ -155,5 +159,11 @@ def organize_folder(
         summary[category + "s"] = summary.get(category + "s", 0) + 1
         if duplicate:
             summary["duplicates"] += 1
+
+    # Optional: display dry-run footer
+    if dry_run:
+        print(
+            f"\n📄 Dry-run only: {summary['total_files']} files would be organized."
+        )
 
     return empty_organizer_log(meta, summary, files)

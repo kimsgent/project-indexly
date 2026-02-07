@@ -35,6 +35,20 @@ tags:
 ---
 
 ---
+
+## Overview
+
+This guide explains **how to use Indexly’s CLI tools** to organize, index, search, analyze, and inspect local data.
+
+It assumes:
+- Indexly is installed
+- Files are local and accessible
+- You want repeatable, auditable workflows
+
+For a high-level view of what Indexly can do and why, see:
+→ [Features Overview](/features/)
+
+---
 ## Installation
 
 You can install **Indexly** directly from [PyPI](https://pypi.org/project/indexly/):
@@ -162,7 +176,7 @@ indexly index /path/to/folder --tag projectX
 
 ----
 
-## **6. 🔍 Search & Regex**
+## **6. 🔍 [Search & Regex](/searching/)**
 
 ```bash
 # Full-text search
@@ -270,7 +284,7 @@ indexly compare blog-post.json "E:/text/test/data/titanic_01.json"
 
 **Output (with context folding example):**
 
-```other
+```bash
 -           "item": "Batteries",
 -           "quantity": 1,
 -           "unit": "pack"

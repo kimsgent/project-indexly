@@ -109,7 +109,7 @@ Use case comparison:
 
 Indexly’s analysis engine is composed of three layers:
 
-```other
+```bash
             +-------------------------+
             |      analyze-file       |
             +-------------------------+
@@ -243,7 +243,7 @@ Plot types:
 - Frequency over time
 - Trend lines
 
-These visualizations are generated programmatically using the data returned by pipelines.
+These [visualizations](data-analysis.md#visual-exploration) are generated programmatically using the data returned by pipelines.
 
 ----
 
@@ -274,9 +274,8 @@ All exported formats can be re-analyzed with Indexly.
 - Recommended for quick inspection of unknown DB files
 - Use **`analyze-db`** for **full-featured DB inspection**
 
-```other
-Next Steps for Users:
+---
+**Next Steps for Users:**
 
 - For general files or SQLite DBs: `analyze-file`
-- For advanced DB insights (relationships, FTS, Indexly metadata): `analyze-db`
-```
+- For advanced DB insights (relationships, FTS, Indexly metadata): [analyze-db](analyze-sqlite-databases.md)

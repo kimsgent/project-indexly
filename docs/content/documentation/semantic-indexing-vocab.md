@@ -47,7 +47,7 @@ FTS cannot distinguish meaning — it only indexes what it receives.
 
 Indexly now classifies all text into **three semantic tiers**:
 
-```other
+```shell
 Tier 1 — Human text
   paragraphs, sentences, documents
 
@@ -67,7 +67,7 @@ Tier 3 is stored, queryable, but **never indexed as text**.
 
 Semantic filtering is applied **once**, immediately after extraction:
 
-```other
+```shell
 extract_text_from_file()
         ↓
 semantic pre-filter

@@ -643,11 +643,11 @@ def handle_search(args):
 def handle_regex(args):
     from .profiles import save_profile  # ensure import
 
-    ripple = Ripple("Regex Search", speed="fast", rainbow=True)
-    ripple.start()
-
-    results = []  # ✅ always defined
+    results = []  # always defined
     pattern = getattr(args, "pattern", None) or getattr(args, "folder_or_term", None)
+
+    ripple = Ripple(f"Searching with regex: '{pattern}'", speed="fast", rainbow=True)
+    ripple.start()
 
     try:
         if not pattern:
@@ -656,7 +656,6 @@ def handle_regex(args):
 
         results = search_regex(
             pattern=pattern,
-            query=None,
             db_path=getattr(args, "db", DB_FILE),
             context_chars=getattr(args, "context", 150),
             filetypes=getattr(args, "filetype", None),
@@ -670,7 +669,11 @@ def handle_regex(args):
     finally:
         ripple.stop()
 
-    print(f"\n[bold underline]Regex Search:[/bold underline] '{pattern}'\n")
+    # --- Result summary (user-facing) ---
+    if results:
+        print(f"\nFound {len(results)} matches:\n")
+    else:
+        print("\n🔍 No regex matches found.")
 
     if results:
         print_regex_results(results, pattern, args.context)
@@ -678,7 +681,6 @@ def handle_regex(args):
             output_file = args.output or f"regex_results.{args.export_format}"
             export_results_to_format(results, output_file, args.export_format, pattern)
 
-        # ✅ Save profile if requested
         if getattr(args, "save_profile", None):
             save_profile(args.save_profile, args, results)
     else:

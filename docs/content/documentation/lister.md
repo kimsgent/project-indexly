@@ -43,6 +43,89 @@ It is designed for:
 2. Results are printed to the terminal
 
 ----
+### 🧩 Log Discovery & Read-Only Fallback
+
+Lister is log-first — but it is no longer log-blocked.
+
+When you run `indexly lister`, Indexly follows a smart, safe resolution strategy to ensure listing **always works**, even when no Organizer log exists.
+
+#### Resolution order
+
+1. **Cached organizer log** (if available and valid)
+2. **Organizer JSON log on disk**
+3. **Generated in-memory log (read-only fallback)**
+
+If no organizer log is found, Lister automatically switches to a **read-only directory scan** and synthesizes an organizer-compatible log in memory.
+
+You’ll see a clear notice:
+
+> *Organizer log not found — generating temporary organizer log (read-only scan)*
+
+No files are moved.
+No directories are created.
+Nothing is written to the filesystem.
+
+---
+
+### 🛡️ Read-Only Fallback Mode
+
+Fallback mode allows Lister to operate safely on:
+
+• Pre-organized directory trees
+• Legacy folders with deleted logs
+• Read-only or restricted locations
+• Deep inspection paths without Organizer access
+
+Under the hood, Lister:
+
+• Recursively scans the directory
+• Reuses Organizer’s classification logic
+• Reuses Organizer’s date resolution rules
+• Produces an **organizer-compatible log structure**
+• Feeds it into the same filtering and rendering pipeline
+
+The result is **identical output**, regardless of whether the log was loaded or generated.
+
+> ℹ️ Generated logs exist in memory only unless caching is enabled.
+
+---
+
+### ⚡ Cached Re-Runs (Fast by Design)
+
+When enabled, Lister can cache generated logs locally to avoid repeated scans on subsequent runs.
+
+This means:
+
+• First run: filesystem scan (read-only)
+• Next run: instant listing from cache
+• Automatic invalidation if the directory changes
+
+Caching is:
+
+• Safe
+• Local to the inspected root
+• Fully optional (`--no-cache` disables it)
+
+---
+
+### 🧠 Why this matters
+
+This design makes Lister a **first-class inspection tool**, not just an Organizer companion.
+
+You can now:
+
+✔ Inspect already-organized trees
+✔ Audit folders without prior logs
+✔ Run Lister independently of Organizer
+✔ Perform fast, repeatable read-only analysis
+
+All while preserving Lister’s core guarantees:
+
+* No file writes
+* No filesystem mutation
+* Deterministic, auditable output
+
+---
 
 ## 🚀 Basic Usage
 
@@ -74,7 +157,7 @@ indexly lister ./logs
 indexly lister --help
 ```
 
-```other
+```shell
 usage: indexly lister [-h] [--ext EXT] [--category CATEGORY]
                       [--date DATE] [--duplicates] source
 
