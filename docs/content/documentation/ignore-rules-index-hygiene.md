@@ -97,7 +97,7 @@ Typical use cases:
 
 ## Example `.indexlyignore`
 
-```other
+```shell
 # Python caches
 __pycache__/
 *.pyc
@@ -130,7 +130,7 @@ indexly ignore show /path/to/project
 
 Output:
 
-```other
+```shell
 📂 Folder: /path/to/project
 📄 Ignore source: project-local .indexlyignore
 
@@ -155,14 +155,14 @@ indexly ignore show /path/to/project --source
 
 Example output:
 
-```other
+```shell
 📄 Ignore source: project-local .indexlyignore
    Path: /path/to/project/.indexlyignore
 ```
 
 Or, if no local file exists:
 
-```other
+```shell
 📄 Ignore source: preset
    Preset: standard
 ```
@@ -179,7 +179,7 @@ indexly ignore show /path/to/project --source --verbose
 
 Example output:
 
-```other
+```shell
 📄 Ignore source: project-local .indexlyignore
    Path: /path/to/project/.indexlyignore
    Lines total: 42
@@ -208,7 +208,7 @@ indexly ignore show /path/to/project --source --raw
 
 Shows the **exact raw content** as read:
 
-```other
+```shell
 --- RAW IGNORE FILE ---
 # Company rules
 .cache/
@@ -236,7 +236,7 @@ indexly ignore show /path/to/project --effective
 
 Displays the **normalized rule set** exactly as Indexly applies it:
 
-```other
+```shell
 Effective (normalized) rules:
   - *.log
   - *.tmp
@@ -254,7 +254,7 @@ Ignore rules act **before** semantic filtering.
 
 ### Pipeline overview
 
-```other
+```shell
 filesystem
    ↓
 ignore rules (exclude files)
@@ -293,7 +293,7 @@ They are **safe**, **reversible**, and **non-destructive**.
 
 Indexly presets are **additive by design**:
 
-```other
+```shell
 minimal ⟶ standard ⟶ aggressive
 ```
 
@@ -334,7 +334,7 @@ This guarantees that `ignore init --upgrade` is **safe and predictable**.
 
 **Only what Indexly itself creates**
 
-```other
+```shell
 .indexly/
 .indexly-cache/
 fts_index.db*

@@ -37,7 +37,7 @@ This decision is enforced **before** data reaches SQLite — not patched later v
 
 ### Without semantic filtering
 
-```other
+```shell
 Most common terms:
 0, 00, 000, 0000, 00000 …
 ```
@@ -54,7 +54,7 @@ Users experience this as:
 
 ### With semantic filtering
 
-```other
+```shell
 Index focuses on:
 titles, subjects, authors, formats
 ```

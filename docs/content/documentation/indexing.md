@@ -68,3 +68,9 @@ In addition to basic indexing, you can view database statistics to get a quick o
 ```bash
 indexly stats
 ```
+---
+## Next Steps
+
+* [Search](/searching/) and [tag](tagging.md) with indexly.
+
+👉 For a deeper dive into how this process works, check out [Semantic Indexing](semantic-indexing-vocab.md).

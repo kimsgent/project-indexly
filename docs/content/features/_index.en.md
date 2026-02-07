@@ -1,105 +1,133 @@
 ---
 title: "✨ Features Overview"
-subtitle: "Your local file indexing and search tool"
-description: "Indexly helps researchers and power users search Word, PDF, and text documents locally. Fast, offline, with tagging and FTS5."
-keywords: ["Word document search", "offline file search", "FTS5 search tool", "research document indexing"]
+subtitle: "A local-first intelligence layer for your files"
+description: "Indexly is a modular, offline-first indexing and search system for structured and unstructured data."
 weight: 6
 toc: true
 type: docs
-categories:
-    - Features
-    - Usage
-tags:
-    - feature
-    - search
-    - indexing 
-    - tagging
-    - configuration
 ---
 
-Indexly is a lightweight, modular document indexing + search engine. Here’s the latest overview:
+Indexly is a **local-first file intelligence engine**.  
+It indexes, organizes, analyzes, and inspects data — entirely offline, fully auditable, and designed for power users.
+
+This page describes **what Indexly can do**.  
+For step-by-step usage, see the [Usage Guide](/documentation/usage.md/).
 
 ---
 
-## Search
+## 🔍 Search Engine (Core Capability)
 
-* Full-text search (FTS5) across content and metadata
-* Boolean operators: `AND`, `OR`, `NOT`, `NEAR`
-* Phrase search with quotes `search "term"`
-* Fuzzy search support via SQLite extensions
-* Smart ranking and scoring
+Indexly provides **multiple complementary search engines** over your local files:
 
-> ![Search demo placeholder](/images/search-demo-placeholder.png)
+- Full-text search (SQLite FTS5) over content and metadata
+- Boolean logic: `AND`, `OR`, `NOT`, `NEAR`
+- Phrase and proximity search
+- Regex search for structural and pattern-based queries
+- Fuzzy matching for imperfect input
+- Ranking and scoring based on relevance
 
----
+Search operates over **indexed content**, not raw files — enabling instant queries across large datasets.
 
-## Tag Detection
-
-* Extracts custom tags from document content
-* Regex-based virtual tag matcher (`fts_core.py`)
-* Works with `.pdf`, `.docx`, `.eml`, `.msg`, `.txt`, `.md`, `.xlsx`
-* CLI previews via `tag list` command
-
-> ![Tags placeholder](/images/tagging.png)
+→ See: [Search Documentation](/searching/)
 
 ---
 
-## Caching System
+## 🗂 Semantic Indexing
 
-* Smart result caching for repeat searches
-* Auto refresh if documents change
-* Control via `--no-cache`
+Indexly builds a **semantic index**, not just a filename cache:
 
+- Extracts text from PDFs, Office files, emails, code, and logs
+- Indexes metadata (author, title, dates, EXIF, document info)
+- Applies ignore rules via `.indexlyignore`
+- Supports incremental updates and cache refresh
 
----
+Indexing is the foundation for fast, repeatable analysis.
 
-## CSV Analyzer
-
-* Auto-detects delimiters
-* Computes mean, median, stddev, IQR
-* Value counts for categorical data
-* Outputs in Markdown or TXT
-* [Cleaning CSV Data and Analyze CSV](/documentation/data-analysis-overview.md#CSV)
-
-> ![CSV analysis placeholder](/images/csv-analysis-placeholder.png)
+→ See: [Indexing Files](/documentation/indexing/)
 
 ---
 
-## Supported Formats
+## 🏷 Tag Intelligence
 
-`.pdf, .docx, .xlsx, .csv, .msg, .eml, .md, .txt, .json, .xml, .epub, .pptx, .odt, HTML, JS, CSS, Python, Logs, images (.jpg, .png, .tiff, .bmp)`
+Indexly supports **two tagging layers**:
 
----
+- Manual tags (user-defined, persistent)
+- Virtual tags (regex-based, derived from content)
 
-## CLI & Extensibility
+Tags integrate directly into search and filtering without modifying files.
 
-* Modular CLI in `cli_utils.py`
-* Scriptable, clear logging system
-* Fully open-source
-
----
-
-## Metadata Indexing
-
-* Extracts title, author, subject, dates
-* PDF and Office metadata
-* Image EXIF metadata
-
-
-> ![metadata-indexing](/images/metadata-indexing.png)
+→ See: [Tagging](/documentation/tagging/)
 
 ---
 
-## Developer Focus
+## 📋 Lister & Auditing
 
-* Extend `tag_fields` in `fts_core.py`
-* Modify `filetype_utils.py` to support new formats
+Lister is Indexly’s **read-only inspection layer**:
+
+- Reads organizer logs or synthesized logs
+- Filters by category, extension, date, duplicates
+- No filesystem mutation
+- Ideal for audits, compliance, and verification
+
+→ See: [Lister](/documentation/lister/)
 
 ---
 
-## Docs
+## 🔁 Organizer & Observability
 
-* [Usage Guide](/documentation/usage.md)
-* [Developer Notes](/documentation/developer.md)
-* [Virtual Tag Examples](/documentation/virtual-tags-examples.md)
-* [Configuration Guide](/documentation/config.md)
+Organizer classifies files into structured layouts and emits **machine-readable JSON logs**.
+
+These logs power:
+- Lister
+- Audits
+- Re-runs
+- External automation
+
+Organizer is optional — but when used, it turns Indexly into a fully observable system.
+
+→ See: [Organizer](/documentation/organizer/)
+
+---
+
+## 📊 Data Analysis
+
+Indexly includes built-in analyzers for structured data:
+
+- CSV, JSON/NDJSON, XLSX, XML
+- SQLite and Parquet inspection
+- Statistical summaries and schema insights
+
+→ See: [Data Analysis](/documentation/data-analysis-overview/)
+
+---
+
+## 📦 Comparison & Diffing
+
+Indexly can compare:
+- Files
+- Folders
+- Structured data
+
+With similarity scoring, context folding, and scriptable exit codes.
+
+→ See: [Compare](/documentation/file-folder-comparison/)
+
+---
+
+## 🛡 Architecture Principles
+
+- Local-only execution
+- No background services
+- No network calls
+- Fully inspectable outputs
+- Deterministic behavior
+
+Indexly is designed for **trust, traceability, and control**.
+
+---
+
+## 🔗 Next Steps
+
+- [Usage Guide](/documentation/usage.md)
+- [Search](/searching/)
+- [Configuration](/documentation/config/)

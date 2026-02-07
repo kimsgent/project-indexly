@@ -79,7 +79,7 @@ indexly backup "E:\data" --encrypt mypassword
 
 Example:
 
-```other
+```shell
 full_2026-01-01_191528.tar.zst.enc
 ```
 
@@ -91,7 +91,7 @@ The original archive is replaced by its encrypted form (`.enc`).
 
 Indexly generates a SHA-256 checksum for every backup:
 
-```other
+```shell
 full_2026-01-01_191528.tar.zst.sha256
 ```
 
@@ -130,7 +130,7 @@ indexly restore full_2026-01-01_191528.tar.zst.enc --target "E:\restore"
 - No extra flags required
 - Password prompt allows **3 attempts**
 
-```other
+```shell
 🔐 Enter password (attempt 1/3)
 ```
 
@@ -176,7 +176,7 @@ What happens next, step by step:
 
 1. Indexly creates the backup directory structure in:
 
-```other
+```shell
 ~/Documents/indexly-backups/
 ```
 
@@ -199,7 +199,7 @@ Indexly intentionally generates a **plain, readable script** so you always know 
 
 #### Example: Windows `indexly_backup.bat`
 
-```other
+```bash
 +--------------------------------------------------+
 | indexly_backup.bat                               |
 +--------------------------------------------------+
@@ -265,7 +265,7 @@ Automatic backups use **enterprise-grade structured JSON logs**.
 
 All auto-backup logs are written to:
 
-```other
+```shell
 ~/Documents/indexly-backups/logs/
 ```
 
@@ -307,13 +307,13 @@ cat backup_2026-01-04_020000.log | jq
 
 #### Windows (PowerShell)
 
-```other
+```shell
 type backup_2026-01-04_020000.log | jq
 ```
 
 To install `jq` on Windows:
 
-```other
+```shell
 choco install jq
 ```
 

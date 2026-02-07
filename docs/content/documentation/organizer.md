@@ -18,11 +18,11 @@ weight: 10
 
 ## Overview
 
-The **Indexly Organizer** is a modern, intelligent file organization engine built for users who prioritize **safety**, **transparency**, and **long-term traceability**. It reorganizes files using a controlled **plan** → **validate** → **apply** workflow, ensuring every action is explainable, auditable, and reversible.
+The **Indexly Organizer** is a modern, intelligent file organization engine built for users who prioritize **safety**, **transparency**, and **long-term traceability**. It reorganizes files using a controlled **plan** → **validate** → **apply** workflow, allowing files to be observed as they are being organized through configurable [file observers](observers.md), ensuring every action is explainable, auditable, and reversible.
 
 Unlike traditional tools that immediately move files, Indexly preserves **full traceability**, supports optional **automatic backups**, and generates **structured JSON** logs that can later be analyzed with the Lister command. This makes it ideal not only for everyday cleanup, but also for **compliance-driven**, **regulated**, **and repeatable workflows**.
 
-At its core, the Organizer uses **[profile-based classification](organizer-profiler.md#profile-based-organization)** rules to place files into meaningful, real-world structures instead of arbitrary folders. This approach makes it suitable for professional environments such as ***healthcare**, **education**, **IT operations**, **research**, **and data projects**, where accountability and clarity matter.
+At its core, the Organizer uses **[profile-based classification](organizer-profiler.md#profile-based-organization)** rules to place files into meaningful, real-world structures instead of arbitrary folders. This approach makes it suitable for professional environments such as **business**, **healthcare**, **education**, **IT operations**, **research**, **and data projects**, where accountability and clarity matter.
 
 ----
 
@@ -85,7 +85,7 @@ Each organizer run generates a **structured JSON log** containing:
 
 Default log location:
 
-```other
+```shell
 <organized-folder>/log/
 ```
 

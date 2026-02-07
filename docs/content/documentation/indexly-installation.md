@@ -26,14 +26,14 @@ aliases:
 
 ### **Windows (User Install)**
 
-```other
+```bash
 python -m pip install --upgrade pip
 pip install indexly
 ```
 
 Verify:
 
-```other
+```shell
 indexly --version
 ```
 

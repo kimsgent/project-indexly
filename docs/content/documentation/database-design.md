@@ -46,7 +46,7 @@ Metadata is stored in two forms:
 
 Only semantic metadata (Tier 2) is ever converted into FTS tokens.
 
-```other
+```shell
 file_metadata
 ├─ structured columns
 │  ├─ title

@@ -112,7 +112,7 @@ Metadata is extracted from:
 1. **Folder structure**
 Pattern:
 
-```other
+```shell
 path/to/document/<year>/<month>/<customer>/<file>
 ```
 
@@ -129,7 +129,7 @@ Last modified timestamp → year/month
 
 ## **NDJSON Log Workflow Diagram**
 
-```other
+```shell
          ┌──────────────────────────┐
          │   scan_and_index_files   │
          └──────────────┬───────────┘
@@ -158,13 +158,13 @@ Last modified timestamp → year/month
 
 Saved under:
 
-```other
+```shell
 /log/current_year/current_month/indexly-YYYY-MM-DD_index_events.ndjson
 ```
 
 For example:
 
-```other
+```shell
 /log/current_year/current_month/2025-12-08_index_events.ndjson
 /log/current_year/current_month/2025-12-08_index_events_1.ndjson
 /log/current_year/current_month/2025-12-09_index_events.ndjson
@@ -176,7 +176,7 @@ For example:
 
 NDJSON is fully compatible with:
 
-```other
+```shell
 indexly analyze-file file.ndjson
 ```
 
@@ -227,7 +227,7 @@ Once restored, the system automatically detects `.log` mode via `log_utils.py` a
 
 ### Convert a single `.log` file
 
-```other
+```bash
 indexly log-clean file.log --to csv
 indexly log-clean file.log --to json
 indexly log-clean file.log --to ndjson
@@ -235,7 +235,7 @@ indexly log-clean file.log --to ndjson
 
 ### Combine multiple `.log` files
 
-```other
+```shell
 indexly log-clean --combine-log *.log --to ndjson
 ```
 

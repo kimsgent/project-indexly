@@ -57,7 +57,7 @@ With a single command, you can:
 - Export results as Markdown or HTML for reporting
 
 This feature bridges quick terminal exploration with statistical understanding — all without leaving your CLI.
-
+> ![csv-preview](/images/analyze-csv-preview.png)
 ---
 
 ## Key Highlights
