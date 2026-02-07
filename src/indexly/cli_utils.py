@@ -30,6 +30,7 @@ from indexly.organize.cli_wrapper import handle_organize, handle_lister
 from indexly.backup.cli import handle_backup
 from indexly.backup.cli_restore import handle_restore
 from indexly.compare.cli_compare import handle_compare
+from indexly.observers.runner import handle_observe_run, handle_observe_audit
 
 
 # CLI display configurations here
@@ -814,13 +815,14 @@ def build_parser():
             "health",
             "data",
             "media",
+            "business",
         ],
         help="Create a profession-based directory scaffold",
     )
 
     organize_parser.add_argument(
         "--category",
-        choices=["default", "student", "teacher", "support", "photographer"],
+        choices=["default", "student", "teacher", "support", "photographer", "solo", "employer"],
         help="Optional sub-category for profile (e.g. education, it). Default is 'default'.",
     )
 
@@ -902,6 +904,55 @@ def build_parser():
             classify_raw=args.classify_raw,
         )
     )
+    # ------------------------
+    # Observer CLI
+    # ------------------------
+    observe_parser = subparsers.add_parser(
+        "observe", help="Run semantic observers on files"
+    )
+
+    observe_sub = observe_parser.add_subparsers(dest="observe_cmd")
+
+    # observe run
+    observe_run = observe_sub.add_parser(
+        "run", help="Run observers on a file or folder"
+    )
+    observe_run.add_argument("path", help="File or folder to observe")
+    observe_run.add_argument(
+        "--recursive",
+        action="store_true",
+        help="Recursively observe files in subfolders",
+    )
+    observe_run.add_argument(
+        "--log-dir",
+        help="Optional directory for observer logs",
+    )
+    observe_run.add_argument(
+        "--snapshot-ts",
+        help="Optional ISO timestamp to compare against historical snapshot",
+    )
+    observe_run.set_defaults(
+        func=lambda args: handle_observe_run(
+            path=args.path,
+            recursive=args.recursive,
+            log_dir=args.log_dir,
+            snapshot_ts=args.snapshot_ts,
+        )
+    )
+
+    # observe audit
+    observe_audit = observe_sub.add_parser(
+        "audit", help="Audit semantic history (health, csv, etc.)"
+    )
+    observe_audit.add_argument(
+        "--id",
+        "--patient-id",
+        dest="patient_id",
+        help="Patient ID (health domain)",
+    )
+    observe_audit.set_defaults(
+        func=lambda args: handle_observe_audit(patient_id=args.patient_id)
+    )
 
     # Lister
     lister_parser = subparsers.add_parser(
@@ -920,6 +971,28 @@ def build_parser():
         action="store_true",
         help="Show only duplicate files",
     )
+    lister_parser.add_argument(
+        "--detect-duplicates",
+        action="store_true",
+        help="Perform hash-based duplicate detection on listed files",
+    )
+    lister_parser.add_argument(
+        "--no-generate",
+        action="store_true",
+        help="Do not generate a temporary log if no organizer log is found",
+    )
+    lister_parser.add_argument(
+        "--sort-by",
+        choices=["date", "name", "extension"],
+        default="date",
+        help="Sort listed files by this field",
+    )
+    lister_parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Do not use cached lister results; read filesystem or logs directly",
+    )
+
     lister_parser.set_defaults(
         func=lambda args: handle_lister(
             args.source,
@@ -927,6 +1000,10 @@ def build_parser():
             category=args.category,
             date=args.date,
             duplicates=args.duplicates,
+            sort_by=args.sort_by,
+            no_generate=getattr(args, "no_generate", False),
+            detect_duplicates=getattr(args, "detect_duplicates", False),
+            no_cache=getattr(args, "no_cache", False),
         )
     )
 

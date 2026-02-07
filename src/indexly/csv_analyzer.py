@@ -631,7 +631,7 @@ def export_results(
             # --- Write table ---
             pq.write_table(table, export_path, compression="snappy" if compress else None)
             console.print(f"[green]✅ Parquet export complete: {export_path} ({total_rows} rows)[/green]")
-        
+
         # --- SQLite Database Export ---
         elif export_format == "db":
             import sqlite3
@@ -697,10 +697,3 @@ def export_results(
 
     else:
         raise ValueError(f"Unsupported export format: {export_format}")
-
-
-
-
-
-
-

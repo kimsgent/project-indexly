@@ -1,6 +1,9 @@
+import sys
 from pathlib import Path
 from .organizer_exec import execute_organizer
 from indexly.organize.lister import list_organizer_log
+from rich.console import Console
+from rich.panel import Panel
 
 
 from indexly.organize.organizer_exec import (
@@ -8,6 +11,9 @@ from indexly.organize.organizer_exec import (
     execute_profile_scaffold,
     execute_profile_placement,
 )
+
+
+console = Console()
 
 
 def handle_organize(
@@ -33,63 +39,75 @@ def handle_organize(
     patient_id: str | None = None,
     recursive: bool = False,
 ):
-    folder_path = Path(folder).resolve()
-    backup_path = Path(backup).resolve() if backup else None
-    log_path = Path(log_dir).resolve() if log_dir else None
+    try:
+        folder_path = Path(folder).resolve()
+        backup_path = Path(backup).resolve() if backup else None
+        log_path = Path(log_dir).resolve() if log_dir else None
 
-    # 1️⃣ PROFILE SCAFFOLD ONLY
-    if profile and category:
-        profile_category = category.lower()
-    else:
-        profile_category = None
-    if profile and not classify:
-        execute_profile_scaffold(
+        # 1️⃣ PROFILE SCAFFOLD ONLY
+        if profile and category:
+            profile_category = category.lower()
+        else:
+            profile_category = None
+
+        if profile and not classify:
+            execute_profile_scaffold(
+                root=folder_path,
+                profile=profile,
+                category=profile_category,
+                apply=apply,
+                dry_run=dry_run,
+                executed_by=executed_by,
+                project_name=project_name,
+                shoot_name=shoot_name,
+                patient_id=patient_id,
+            )
+            return None, {}
+
+        # 2️⃣ PROFILE CLASSIFICATION
+        if profile and (classify or classify_raw):
+            execute_profile_placement(
+                source_root=folder_path,
+                destination_root=folder_path,
+                profile=profile,
+                category=profile_category,
+                project_name=project_name,
+                shoot_name=shoot_name,
+                patient_id=patient_id,
+                apply=apply,
+                dry_run=dry_run,
+                executed_by=executed_by,
+                recursive=recursive,
+                classify_raw=classify_raw,
+            )
+            return None, {}
+
+        # 3️⃣ LEGACY ORGANIZER
+        plan, backup_mapping = execute_organizer(
             root=folder_path,
-            profile=profile,
-            category=profile_category,
-            apply=apply,
-            dry_run=dry_run,
+            sort_by=sort_by,
             executed_by=executed_by,
-            project_name=project_name,
-            shoot_name=shoot_name,
-            patient_id=patient_id,
-        )
-        return None, {}
-
-    # 2️⃣ PROFILE CLASSIFICATION
-    if profile and (classify or classify_raw):
-        execute_profile_placement(
-            source_root=folder_path,
-            destination_root=folder_path,
-            profile=profile,
-            category=profile_category,
-            project_name=project_name,
-            shoot_name=shoot_name,
-            patient_id=patient_id,
-            apply=apply,
+            backup_root=backup_path,
+            log_dir=log_path,
+            lister=lister,
+            lister_ext=lister_ext,
+            lister_category=lister_category,
+            lister_date=lister_date,
+            lister_duplicates=lister_duplicates,
             dry_run=dry_run,
-            executed_by=executed_by,
-            recursive=recursive,
-            classify_raw=classify_raw,
         )
-        return None, {}
 
-    # 3️⃣ LEGACY ORGANIZER (unchanged)
-    plan, backup_mapping = execute_organizer(
-        root=folder_path,
-        sort_by=sort_by,
-        executed_by=executed_by,
-        backup_root=backup_path,
-        log_dir=log_path,
-        lister=lister,
-        lister_ext=lister_ext,
-        lister_category=lister_category,
-        lister_date=lister_date,
-        lister_duplicates=lister_duplicates,
-        dry_run=dry_run,
-    )
+        return plan, backup_mapping
 
-    return plan, backup_mapping
+    except ValueError as e:
+        console.print(
+            Panel.fit(
+                f"[bold red]❌ {e}[/]",
+                title="Invalid command usage",
+                border_style="red",
+            )
+        )
+        sys.exit(2)
 
 
 def handle_lister(
@@ -98,6 +116,10 @@ def handle_lister(
     category: str | None = None,
     date: str | None = None,
     duplicates: bool = False,
+    sort_by: str = "date",
+    no_generate: bool = False,
+    detect_duplicates: bool = False,
+    no_cache: bool = False,
 ):
     return list_organizer_log(
         Path(source),
@@ -105,4 +127,8 @@ def handle_lister(
         category=category,
         date=date,
         duplicates_only=duplicates,
+        no_generate=no_generate,
+        sort_by=sort_by,
+        detect_duplicates=detect_duplicates,
+        no_cache=no_cache,
     )
