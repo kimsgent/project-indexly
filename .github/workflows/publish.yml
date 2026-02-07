@@ -32,6 +32,8 @@ jobs:
         run: twine check dist/*
 
       - name: Generate brew formula (publish)
+        env:
+          VERSION: ${{ github.ref_name }}
         run: |
           python scripts/generate_brew_formula.py \
             --source dist/*.tar.gz \
