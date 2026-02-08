@@ -72,8 +72,8 @@ class {formula_class} < Formula
   depends_on "tesseract"
 
   def install
-    python = Formula["python@3.11"].opt_bin/"python3.11"
-    site_packages = libexec/"lib/python3.11/site-packages"
+    python = {python_bin}
+    site_packages = {site_packages}
     ENV.prepend_create_path "PYTHONPATH", site_packages
     system python, "-m", "pip", "install", "--no-cache-dir",
                    "--target=#{site_packages}",
@@ -84,17 +84,20 @@ class {formula_class} < Formula
       exec "#{python}" -m indexly "$@"
     SH
   end
+
   test do
     system bin/"indexly", "--version"
     system bin/"indexly", "--help"
   end
-end"""
+end
+"""
 
 def main():
     print("Generating Homebrew formula…")
     sha256 = sha256_of_url(TARBALL_URL)
-    site_packages = "libexec/lib/python3.11/site-packages"
-    python = 'Formula["python@3.11"].opt_bin/"python3.11"'
+
+    site_packages = 'libexec/"lib/python3.11/site-packages"'
+    python_bin = 'Formula["python@3.11"].opt_bin/"python3.11"'
 
     formula = FORMULA_TEMPLATE.format(
         formula_class=FORMULA_CLASS,
@@ -105,7 +108,7 @@ def main():
         python_dep=PYTHON_DEP,
         project=PROJECT,
         site_packages=site_packages,
-        python=python,
+        python_bin=python_bin,
     )
 
     out = Path(args.out)
