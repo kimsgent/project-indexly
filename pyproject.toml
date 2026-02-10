@@ -123,8 +123,9 @@ Issues = "https://github.com/kimsgent/project-indexly/issues"
 [tool.hatch.build]
 packages = ["src/indexly"]
 
-
 [tool.hatch.build.targets.sdist]
+force-include = { "requirements.txt" = "requirements.txt" }
+
 include = [
   "LICENSE.txt",
   "README.md",
