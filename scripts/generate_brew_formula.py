@@ -74,7 +74,12 @@ class {formula_class} < Formula
   depends_on "tesseract"
 
   def install
-    virtualenv_install_with_resources
+    python = Formula["{python_dep}"].opt_bin/"python3.11"
+    system python, "-m", "pip", "install",
+                   "--prefix=#{{libexec}}",
+                   "--no-cache-dir",
+                   "-r", "requirements.txt", "."
+    bin.install_symlink libexec/"bin/{project}"
   end
 
   test do
