@@ -32,7 +32,7 @@ def build_placement_plan(
             root=destination_root,
             file_path=path,
             shoot_name=profile_args.get("shoot_name"),
-            profile=profile_args.get("profile"),
+            profile=profile,
             category=profile_args.get("category"),
             classify_raw=profile_args.get("classify_raw"),
             project_name=profile_args.get("project_name"),

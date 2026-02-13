@@ -6,6 +6,8 @@ from pathlib import Path
 from datetime import datetime
 from .path_utils import normalize_path
 from .db_utils import _sync_path_in_db
+from rich.prompt import Prompt
+from indexly.organize.profiles import business_rules
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +20,8 @@ SUPPORTED_DATE_FORMATS = [
 ]
 
 DEFAULT_PATTERN = "{date}-{title}"
+
+BUSINESS_CATEGORIES = ["invoice", "tax", "receipt", "payroll", "contract"]
 
 
 def _check_alias_column_in_metadata():
@@ -85,12 +89,60 @@ def _clean_filename_component(s: str) -> str:
     return s.strip("-")
 
 
+
+def determine_business_prefix(file_path: Path) -> str | None:
+    fname = file_path.name.lower()
+
+    # Automatic keyword match
+    for category, hints in {
+        "invoice": business_rules.INVOICE_HINTS,
+        "tax": business_rules.TAX_HINTS,
+        "receipt": business_rules.RECEIPT_HINTS,
+        "payroll": business_rules.PAYROLL_HINTS,
+        "contract": business_rules.CONTRACT_HINTS,
+    }.items():
+        if any(h in fname for h in hints):
+            return category
+
+    # Interactive fallback
+    print(f"⚠️ No business keyword found in {fname}. Please pick a category:")
+    prefix = Prompt.ask(
+        "Select category", choices=BUSINESS_CATEGORIES, default="invoice"
+    )
+    return prefix
+
+
+def generate_business_filename(
+    file_path: Path,
+    pattern: str = None,
+    counter: int = 0,
+    date_format: str = "%Y%m%d",
+    counter_format: str = "d",
+    business_prefix: str | None = None,
+) -> str:
+    base_name = generate_new_filename(
+        file_path,
+        pattern=pattern,
+        counter=counter,
+        date_format=date_format,
+        counter_format=counter_format,
+    )
+
+    if business_prefix:
+        name_only = Path(base_name).stem
+        ext = Path(base_name).suffix
+        new_name = f"{business_prefix}-{name_only}{ext}"
+        return new_name
+    return base_name
+
+
 def generate_new_filename(
     file_path: Path,
     pattern: str = None,
     counter: int = 0,
     date_format: str = "%Y%m%d",
     counter_format: str = "d",
+    prefix: str | None = None,
 ) -> str:
     if not file_path.exists() or file_path.stat().st_size == 0:
         logger.warning(f"⚠️ Skipping empty or missing file: {file_path}")
@@ -134,6 +186,11 @@ def generate_new_filename(
         .replace("{counter}", counter_str)
     )
 
+    # Inject prefix if pattern contains it
+    if "{prefix}" in pattern:
+        prefix_value = slugify(prefix) if prefix else ""
+        new_name = new_name.replace("{prefix}", prefix_value)
+
     # Only add counter at end if not already in pattern
     if "{counter}" not in pattern and counter > 0:
         new_name = f"{new_name}-{counter_str}"
@@ -160,6 +217,7 @@ def rename_file(
     update_db: bool = False,
     date_format: str = "%Y%m%d",
     counter_format: str = "d",
+    business_naming: bool = False,
 ) -> Path | None:
 
     file_path = Path(normalize_path(path))
@@ -169,6 +227,7 @@ def rename_file(
 
     parent_dir = file_path.parent
     counter = 0
+    business_prefix = determine_business_prefix(file_path) if business_naming else None
 
     while True:
         new_name = generate_new_filename(
@@ -177,6 +236,7 @@ def rename_file(
             counter,
             date_format=date_format,
             counter_format=counter_format,
+            business_prefix=business_prefix,
         )
         new_path = parent_dir / new_name
         if new_name == file_path.name:
@@ -215,6 +275,7 @@ def rename_files_in_dir(
     update_db: bool = False,
     date_format: str = "%Y%m%d",
     counter_format: str = "d",
+    business_naming: bool = False,
 ):
     """
     Rename all files in a directory:
@@ -228,6 +289,12 @@ def rename_files_in_dir(
         return
 
     files = sorted(dir_path.rglob("*") if recursive else dir_path.glob("*"))
+
+    # Determine business prefix once per folder
+    business_prefix = None
+    if business_naming and files:
+        business_prefix = determine_business_prefix(files[0])
+        print(f"⚠️ Business prefix '{business_prefix}' will be applied to all files in this folder.")
 
     last_date = None
     counter = 0
@@ -266,6 +333,7 @@ def rename_files_in_dir(
                     counter,
                     date_format=date_format,
                     counter_format=counter_format,
+                    business_prefix=business_prefix,
                 )
                 new_path = f.parent / new_name
                 if new_path.exists() and new_path != f:

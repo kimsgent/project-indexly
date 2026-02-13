@@ -1033,7 +1033,12 @@ def build_parser():
         "path", help="Path to a file or directory to rename"
     )
     rename_file_parser.add_argument(
-        "--pattern", help="Renaming pattern (supports {date}, {title}, {counter})"
+        "--pattern", help="Renaming pattern (supports {date}, {title}, {counter}, {prefix})"
+    )
+    rename_file_parser.add_argument(
+        "--business-naming",
+        action="store_true",
+        help="Use business rules to add category-based prefix to filenames (interactive if needed)"
     )
     rename_file_parser.add_argument(
         "--dry-run",

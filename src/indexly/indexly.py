@@ -37,7 +37,12 @@ from .db_utils import connect_db, get_tags_for_file, _sync_path_in_db
 from .search_core import search_fts5, search_regex, normalize_near_term
 from .extract_utils import update_file_metadata
 from .mtw_extractor import _extract_mtw
-from .rename_utils import rename_file, rename_files_in_dir, SUPPORTED_DATE_FORMATS
+from .rename_utils import (
+    rename_file,
+    rename_files_in_dir,
+    determine_business_prefix,
+    SUPPORTED_DATE_FORMATS,
+)
 from .clean_csv import clear_cleaned_data
 from .update_utils import check_for_updates
 
@@ -826,6 +831,26 @@ def handle_rename_file(args):
     # Determine counter format (default = plain integer)
     counter_format = args.counter_format if hasattr(args, "counter_format") else "d"
 
+    # --- Business prefix handling ---
+    business_prefix = None
+
+    if getattr(args, "business_naming", False):
+
+        if path.is_dir():
+            files = sorted([f for f in path.iterdir() if f.is_file()])
+            if not files:
+                print("⚠️ No files found in directory.")
+                return
+
+            business_prefix = determine_business_prefix(files[0])
+
+            print(
+                f"⚠️ Business prefix '{business_prefix}' "
+                f"will be applied to ALL files in this folder."
+            )
+        else:
+            business_prefix = determine_business_prefix(path)
+
     # --- Directory handling ---
     if path.is_dir():
         rename_files_in_dir(
@@ -836,6 +861,7 @@ def handle_rename_file(args):
             update_db=args.update_db,
             date_format=date_format,
             counter_format=counter_format,
+            business_prefix=business_prefix,
         )
         return
 
@@ -847,6 +873,7 @@ def handle_rename_file(args):
         update_db=args.update_db,
         date_format=date_format,
         counter_format=counter_format,
+        business_prefix=business_prefix,
     )
 
     # --- Sync rename in DB immediately ---
