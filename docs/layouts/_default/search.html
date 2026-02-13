@@ -1,0 +1,20 @@
+{{ define "main" }}
+<div class="container py-5">
+  <h1 class="mb-4">Search Documentation</h1>
+  <div id="search"></div>
+</div>
+
+<link href="/pagefind/pagefind-ui.css" rel="stylesheet">
+<script src="/pagefind/pagefind-ui.js"></script>
+
+<script>
+  window.addEventListener('DOMContentLoaded', () => {
+    new PagefindUI({
+      element: "#search",
+      showSubResults: true,
+      showImages: false,
+      resetStyles: false
+    });
+  });
+</script>
+{{ end }}
