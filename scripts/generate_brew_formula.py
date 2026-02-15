@@ -59,9 +59,11 @@ else:
         with urllib.request.urlopen(url) as r:
             return hashlib.sha256(r.read()).hexdigest()
 
-# Formula template
+# Formula template - REWRITTEN FOR virtualenv_install_with_resources
 FORMULA_TEMPLATE = """\
 class {formula_class} < Formula
+  include Language::Python::Virtualenv
+
   desc "Local semantic file indexing and search tool"
   homepage "{homepage}"
   url "{url}"
@@ -79,11 +81,13 @@ class {formula_class} < Formula
                    "-r", "requirements.txt", "."
     bin.install_symlink libexec/"bin/{project}"
   end
+
   test do
-    system bin/"{project}", "--version"
-    system bin/"{project}", "--help"
+    system bin/"indexly", "--version"
+    system bin/"indexly", "--help"
   end
-end"""
+end
+"""
 
 def main():
     print("Generating Homebrew formula…")
@@ -99,9 +103,15 @@ def main():
         project=PROJECT,
     )
 
+    # Ensure trailing newline for brew audit
+    if not formula.endswith("\n"):
+        formula += "\n"
+
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(formula, encoding="utf-8")
+    # Normalize newlines and guarantee a final \n
+    formula = formula.replace("\r\n", "\n").replace("\r", "\n").rstrip("\n") + "\n"
+    out.write_text(formula, encoding="utf-8", newline="\n")
 
     print(f"✔ Formula written to {out}")
     print("✔ Audit-compatible")

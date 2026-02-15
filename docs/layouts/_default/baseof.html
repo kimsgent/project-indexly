@@ -2,10 +2,13 @@
 <html lang="en">
   <head>
     {{ partial "head.html" . }}
+
+    <!-- Load custom modal styles -->
+    <link rel="stylesheet" href="{{ "/css/custom.css" | relURL }}">
   </head>
+
   <body class="d-flex flex-column min-vh-100">
-    
-    {{ partial "navbar.html" . }} <!-- optional, if you have one -->
+    {{ partial "navbar.html" . }}
 
     <main id="content" class="flex-fill">
       {{ block "main" . }}{{ end }}

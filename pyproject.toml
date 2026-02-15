@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "indexly"
-version = "1.2.1"
+version = "1.2.2"
 description = "A local file indexing and search tool with FTS5, regex, and CSV analysis support."
 readme = { file = "README.md", content-type = "text/markdown" }
 
@@ -123,8 +123,9 @@ Issues = "https://github.com/kimsgent/project-indexly/issues"
 [tool.hatch.build]
 packages = ["src/indexly"]
 
-
 [tool.hatch.build.targets.sdist]
+force-include = { "requirements.txt" = "requirements.txt" }
+
 include = [
   "LICENSE.txt",
   "README.md",

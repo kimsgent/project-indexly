@@ -2,6 +2,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+export VERSION="${VERSION:-v0.0.0-test}"
+
 python -m build
 twine check dist/*
 

@@ -25,7 +25,6 @@ keywords:
 weight: 11
 ---
 
-
 ---
 
 ## Key Capabilities at a Glance
@@ -36,6 +35,7 @@ weight: 11
 * Structured, indexable JSON logs
 * Hash-based integrity tracking
 * Audit-ready history of changes
+* ✅ Business-rule aware classification (via `rename-file --business-naming`)
 
 ---
 
@@ -44,179 +44,184 @@ weight: 11
 Profiles represent **real-world domains**, each with its own logic and structure:
 
 ```text
---profile {it,researcher,engineer,health,data,media}
+--profile {it,researcher,engineer,health,data,media,business}
 ```
 
 Each profile defines *rules*, not hardcoded paths.
 This allows the Organizer to adapt naturally to different workflows.
 
-### Profiles with Extended Parameters
+---
 
-Some profiles accept **extra CLI parameters** to automatically complete their structure:
+## 🏢 Business Profile (Extended)
 
-| Profile  | Extended Parameter | Purpose                                             |
-| -------- | ------------------ | --------------------------------------------------- |
-| `health` | `--patient-id`     | Create and classify under a patient-specific folder |
-| `media`  | `--shoot-name`     | Group media files by shoot or session               |
-| `data`   | `--project-name`   | Create a full data project scaffold                 |
+The **business profile** now supports structured financial and administrative organization.
+
+It includes predefined logical structures such as:
+
+```bash
+Business/
+├─ Admin/
+├─ Finance/
+│  ├─ Accounting/
+│  ├─ Taxes/
+│  ├─ Banking/
+│  ├─ Reports/
+│  └─ Archive/
+├─ Invoices/
+│  ├─ Outgoing/
+│  │  ├─ Paid/
+│  │  ├─ Unpaid/
+│  │  └─ Overdue/
+│  └─ Incoming/
+├─ Receipts/
+├─ Contracts/
+├─ Projects/
+└─ Archive/
+```
+
+Multiple operational modes are supported:
+
+* `default`
+* `solo`
+* `employer`
+
+These define slightly different scaffolds depending on business scale.
 
 ---
 
-## Two-Phase Workflow (Recommended)
+## Business Rule Integration (Renaming + Classification)
 
-Indexly Organizer is intentionally **two-phase**.
+The Organizer now integrates seamlessly with **business-rule based renaming** via [`rename-file`](rename-file.md).
+
+Instead of manually preparing filenames, you can:
+
+1. Rename using business heuristics
+2. Automatically classify into Business profile folders
+3. Audit everything in one run
+
+---
+
+### Heuristic-Based Classification
+
+The business rule uses keyword detection to infer document type:
+
+| Category | Example Keywords                      |
+| -------- | ------------------------------------- |
+| Invoice  | invoice, inv, rechnung, bill, facture |
+| Tax      | tax, vat, ust, mwst, steuer           |
+| Receipt  | receipt, beleg, quittung              |
+| Contract | contract, agreement, nda              |
+| Payroll  | payroll, salary, lohn, gehalt         |
+
+If no keyword is detected, the CLI prompts the user interactively.
+
+---
+
+## Rename → Organize (Seamless Workflow)
+
+You may now rename and organize in a single command:
+
+```bash
+indexly rename-file . \
+  --business-naming \
+  --pattern "{prefix}-{date}-{title}" \
+  --organize \
+  --profile business \
+  --classify \
+  --dry-run
+```
+
+### What Happens
+
+1. Files are renamed using business rules.
+2. Prefixes (e.g., `vat`, `inv`, `receipt`) are inferred or prompted.
+3. Organizer classifies them into:
+
+   * `Business/Finance/Taxes`
+   * `Business/Invoices/Outgoing/Paid`
+   * etc.
+4. A full audit log is generated.
+
+This creates a **rename → classify → audit pipeline**.
+
+---
+
+## Two-Phase Workflow (Still Recommended for Large Imports)
+
+Indexly Organizer remains intentionally **two-phase**.
 
 ### Phase 1 – Create the Structure
 
-Creates folders only. No files are moved.
-
 ```bash
-indexly organize ./workspace --profile data --project-name "Sales Forecast" --apply
-```
-
-**Example structure (data profile):**
-
-```text
-Sales Forecast/
-├─ data/
-│  ├─ raw/
-│  ├─ processed/
-│  └─ external/
-├─ notebooks/
-├─ reports/
-└─ metadata/
+indexly organize ./workspace --profile business --apply
 ```
 
 ---
 
-### Phase 2 – Classify Files (Move)
+### Phase 2 – Classify Files
 
->![classifying files](/images/classify-files.png)
-
-Preview first:
+> ![classifying files](/images/classify-files.png)
 
 ```bash
-indexly organize ./incoming --profile data --project-name "Sales Forecast" --classify --dry-run
+indexly organize ./incoming --profile business --classify --dry-run
 ```
 
 Apply safely:
 
 ```bash
-indexly organize ./incoming --profile data --project-name "Sales Forecast" --classify --apply
+indexly organize ./incoming --profile business --classify --apply
 ```
-
-Files are **moved**, not copied. Classification equals relocation.
 
 ---
 
 ## Move-Only Classification Policy
 
-The Organizer now follows a **strict move-only policy**:
+Unchanged.
 
-* Files are classified by being moved
-* Name collisions are handled safely:
+Classification equals relocation.
 
-  * `file.pdf → file_01.pdf`
-* Parent directories are created automatically
-* No file is overwritten
-
-This guarantees a **single source of truth**.
+* Files are moved
+* No overwrites
+* Collision-safe renaming (`file.pdf → file_01.pdf`)
+* Parent directories auto-created
 
 ---
 
 ## Dry-Run Planning (No Side Effects)
 
-Dry-run mode produces a **placement plan** without touching the filesystem.
-
 ```bash
-indexly organize ./incoming --profile health --patient-id P-2041 --classify --dry-run
-```
-You may also auto-increment the patient ID by passing an empty string (""). Running the following command will generate a unique 5-digit ID, incremented by 1 on each execution.
-
-```bash
-indexly organize ./incoming --profile health --patient-id "" --classify --dry-run
+indexly organize ./incoming --profile business --classify --dry-run
 ```
 
-### Sample Placement Plan (Excerpt)
-
-```json
-{
-  "source": "incoming/lab_result.pdf",
-  "destination": "Health/P-2041/Records/Labs/lab_result.pdf",
-  "profile": "health",
-  "rule": "medical_document",
-  "hash": "a94a8fe5ccb19ba61c4c0873d391e987",
-  "timestamp": "2026-01-16T10:14:33Z"
-}
-```
-
-This allows users to **review decisions before execution**, which is critical for trust and learning.
-
----
-
-## Hashing & Integrity Tracking
-
-Files are hashed during organization.
-
-Hashes are used for:
-
-* Duplicate detection
-* Detecting file changes over time
-* Integrity validation
-* Audit verification
-
-When combined with Indexly’s indexing system, the Organizer can detect if a file **changed after being classified**.
-
----
-
-## Health Profile – Audit-Grade Tracking
-
-The **health profile** has been extended to support stronger auditing:
-
-* Patient-based folder isolation (`--patient-id`)
-* Hash tracking across runs
-* Indexed logs showing *when* and *how* a patient file changed
-
-This enables:
-
-* Traceability of medical records
-* Change detection without manual checks
-* Strong compliance guarantees
-
-Together, these features provide an **excellent audit grade** without additional tools.
+This works independently — or after a rename operation.
 
 ---
 
 ## Logging & Auditing
 
-Every run generates structured JSON logs containing:
+Every rename + organize chain generates:
 
-* Original and final paths
-* Hashes
-* Timestamps
-* Profile and rule applied
+* Original filename
+* Final filename
+* Destination path
+* Hash
+* Rule applied
 * Execution context
 
-Logs are **[indexable](indexing.md)**, meaning:
-
-* Historical runs can be searched
-* Hash changes are visible
-* File movement history is preserved
-
-This turns the Organizer into a **file governance engine**, not just a cleanup tool.
+Logs remain fully [indexable](indexing.md).
 
 ---
 
-## Mental Model (Simple Explanation)
+## Mental Model (Updated)
 
 Think of Indexly Organizer as:
 
-> A careful librarian who first writes a plan, checks every book’s identity, records every decision, and only then rearranges the shelves.
+> A careful financial assistant who first standardizes document names, then files them correctly, records every action, and ensures nothing is overwritten.
 
-Nothing happens silently.
-Nothing is lost.
-Everything can be explained.
+Now with business-rule intelligence.
 
 ---
 
 *Indexly Organizer: organize files once, understand them forever.*
+
+---

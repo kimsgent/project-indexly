@@ -12,179 +12,160 @@ canonicalURL: "/en/documentation/renaming-file/"
 
 # Rename Files Easily with `rename-file`
 
-The `rename-file` command in **Indexly** introduces a powerful way to rename files or entire directories using customizable naming patterns.  
-This feature helps you maintain consistent file structures, improve searchability, and keep your indexed content perfectly organized.
+The `rename-file` command in **Indexly** introduces a powerful way to rename files using customizable naming patterns.
+
+It now also supports:
+
+* 🏢 Business-rule intelligent renaming
+* 🗂 Optional profile-based organization
+* 🔁 Rename + classify in a single workflow
 
 ---
 
 ## Key Features
 
-- 🧠 **Pattern-based renaming** — define your own structure using `{date}`, `{title}`, and `{counter}` placeholders  
-- 📅 **Flexible date formatting** — choose your preferred timestamp format via `--date-format`  
-- 🔢 **Counter formatting** — pad numeric counters (e.g., `01`, `002`) with `--counter-format`  
-- 🧮 **Duplicate handling** — automatically increments counters to prevent filename collisions  
-- 📂 **Directory and recursive mode** — apply renaming to entire folders, optionally with `--recursive`  
-- 💾 **Database sync** — instantly update your Indexly database with new filenames using `--update-db`  
-- 🧪 **Dry-run preview** — simulate all renames safely before applying them  
+* 🧠 Pattern-based renaming (`{date}`, `{title}`, `{counter}`, `{prefix}`)
+* 🏢 Business-rule keyword detection (`--business-naming`)
+* 🗂 Optional direct classification via `--organize`
+* 📅 Flexible date formatting
+* 🔢 Collision-safe counters
+* 🧪 Dry-run preview
+* 💾 Optional database sync
 
 ---
 
-## Overview: How It Works
+## New: Business Naming Mode
 
-You can define a custom **pattern** to standardize filenames.  
-Indexly automatically replaces placeholders with actual values extracted from the file.
-
-### Available Placeholders
-
-| Placeholder | Meaning |
-|--------------|----------|
-| `{date}`     | Inserts the file’s date (based on modified date or prefix), formatted via `--date-format`. |
-| `{title}`    | Extracts the readable title from the filename and converts it into a slug. |
-| `{counter}`  | Adds a numeric index (useful for duplicates or ordered batches). |
-
----
-
-## Basic Rename Example
-
-To rename all files in the current directory to a date-title format:
+Enable structured business renaming:
 
 ```bash
-indexly rename-file --pattern "{date}-{title}" --date-format "%Y%m%d" --dry-run .
-````
+indexly rename-file . \
+  --business-naming \
+  --pattern "{prefix}-{date}-{title}" \
+  --dry-run
+```
 
-**Output:**
+### Sample Output
 
 ```
+⚠️ No business keyword found in 20260208-another-example-txt-file.txt.
+Select category [invoice/tax/receipt/payroll/contract] (invoice): tax
+Choose prefix for 'tax' [mwst/vat/steuer/ust/tax] (mwst): vat
+
 [Dry-run] Would rename:
-  ./notes/2023-10-05-meeting.md → ./notes/20231005-meeting.md
+  ... → vat-20260208-another-example-txt-file.txt
 ```
 
-👉 The `--dry-run` flag shows a preview without changing any files.
-When satisfied, run the same command **without** it to apply changes:
+### How It Works
 
-```bash
-indexly rename-file --pattern "{date}-{title}" --date-format "%Y%m%d" .
-```
+1. Detects business keywords.
+2. Assigns category.
+3. Selects or prompts for prefix.
+4. Applies pattern safely.
+5. Prevents collisions automatically.
 
 ---
 
-## Adding Counters for Uniqueness
+## Available Placeholders (Extended)
 
-If multiple files share the same date or title, `{counter}` keeps filenames unique:
-
-```bash
-indexly rename-file --pattern "{date}-{counter}-{title}" --date-format "%Y%m%d" .
-```
-
-**Example Output:**
-
-```
-✅ Renamed and synced: ./data/20250101-report.md → ./data/20250101-01-report.md
-✅ Renamed and synced: ./data/20250101-summary.md → ./data/20250101-02-summary.md
-
-```
-
-> 💡 Indexly automatically increments the counter (01, 02, 03, …) to prevent overwrites.
+| Placeholder | Meaning                  |
+| ----------- | ------------------------ |
+| `{date}`    | File date                |
+| `{title}`   | Slugified filename       |
+| `{counter}` | Collision-safe index     |
+| `{prefix}`  | Business category prefix |
 
 ---
 
-## Custom Counter Format
+## Rename + Organize in One Command
 
-Customize counter appearance with `--counter-format`.
-For instance, three-digit padded numbers (`001`, `002`, etc.):
+Bridge renaming directly into profile-based organization:
 
 ```bash
-indexly rename-file --pattern "{date}-{counter}-{title}" --date-format "%Y%m%d" --counter-format "03d" .
-
+indexly rename-file . \
+  --business-naming \
+  --pattern "{prefix}-{date}-{title}" \
+  --organize \
+  --profile business \
+  --classify \
+  --apply
 ```
 
-**Result:**
+### Result
 
-```
-✅ Renamed: ./project-plan.md → ./20250101-001-project-plan.md
-✅ Renamed: ./proposal.md → ./20250101-002-proposal.md
+Files are:
 
-```
+1. Renamed using business rules
+2. Classified into Business structure
+3. Logged and hashed
+4. Moved safely
+
+This makes organizing highly intuitive — especially with `--classify`.
+
+For details on profiles and classification, see:
+👉 [Profile-Based Organization](organizer-profiler.md)
 
 ---
 
-## Renaming Folders Recursively
+## Business Workflow Example (Practical Scenario)
 
-To rename all files in subfolders as well, simply add `--recursive`:
+You receive a folder of mixed files:
 
-```bash
-indexly rename-file --pattern "{date}-{title}" --date-format "%Y%m%d" --recursive .
+```
+INV-00012.txt
+receipt_2026.txt
+steuer_report.pdf
+contract_signed.docx
 ```
 
-All files inside subdirectories will also be processed, following the same pattern rules.
+Run:
+
+```bash
+indexly rename-file ./incoming \
+  --business-naming \
+  --pattern "{prefix}-{date}-{title}" \
+  --organize \
+  --profile business \
+  --classify \
+  --dry-run
+```
+
+In one preview, you will see:
+
+* Standardized filenames
+* Assigned categories
+* Destination folders
+* No file overwritten
+
+Remove `--dry-run` to execute.
 
 ---
 
-## Full Dry-Run Before Applying Changes
+## Everything Else Still Works
 
-You can safely preview everything before committing:
+All original pattern-based renaming remains unchanged.
 
-```bash
-indexly rename-file --pattern "{date}-{counter}-{title}" --date-format "%Y%m%d" --counter-format "02d" --dry-run --recursive .
-```
-
-**Output:**
-
-```
-[Dry-run] Would rename:
-  ./articles/2024-08-15-overview.md → ./articles/20240815-01-overview.md
-  ./articles/2024-08-15-summary.md → ./articles/20240815-02-summary.md
-```
-
-Once you confirm the preview, rerun the same command **without `--dry-run`** to execute.
-
----
-
-## Flexible Pattern Composition
-
-You can freely mix placeholders and separators in your pattern.
-Here are a few examples:
-
-| Pattern                    | Result Example              |
-| -------------------------- | --------------------------- |
-| `{counter}_{date}_{title}` | `01_20250101_report.md`     |
-| `draft-{title}-{date}`     | `draft-summary-20250101.md` |
-| `{date}-{title}-{counter}` | `20250101-summary-01.md`    |
-
-Use this flexibility to fit your naming conventions — from content creation to data pipelines.
-
----
-
-## Syncing Renames to Database
-
-Keep your Indexly database up to date automatically by using:
+You may still:
 
 ```bash
-indexly rename-file --pattern "{date}-{title}" --update-db .
+indexly rename-file --pattern "{date}-{title}" .
 ```
 
-This ensures all renamed files are reflected in your search index or metadata views.
-
----
-
-## Need More Options?
-
-Run the help command for a full overview of flags and usage examples:
-
-```bash
-indexly rename-file --help
-```
+Business mode is **optional and additive**.
 
 ---
 
 ## In Summary
 
-The new `rename-file` feature helps you:
+The enhanced `rename-file` now allows you to:
 
-* Keep filenames consistent and meaningful
-* Prevent duplication and collisions automatically
-* Control how dates and counters appear
-* Preview safely before applying changes
-* Update your database in sync with new filenames
+* Standardize filenames
+* Detect business document types
+* Apply structured prefixes
+* Organize automatically into profiles
+* Maintain full audit logs
+* Perform everything safely via dry-run
 
-It’s a simple yet powerful way to keep your file system clean, structured, and ready for indexing.
+Renaming is no longer isolated.
+It is now part of a structured organization pipeline.
+

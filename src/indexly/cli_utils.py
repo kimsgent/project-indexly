@@ -822,7 +822,15 @@ def build_parser():
 
     organize_parser.add_argument(
         "--category",
-        choices=["default", "student", "teacher", "support", "photographer", "solo", "employer"],
+        choices=[
+            "default",
+            "student",
+            "teacher",
+            "support",
+            "photographer",
+            "solo",
+            "employer",
+        ],
         help="Optional sub-category for profile (e.g. education, it). Default is 'default'.",
     )
 
@@ -1033,7 +1041,13 @@ def build_parser():
         "path", help="Path to a file or directory to rename"
     )
     rename_file_parser.add_argument(
-        "--pattern", help="Renaming pattern (supports {date}, {title}, {counter})"
+        "--pattern",
+        help="Renaming pattern (supports {date}, {title}, {counter}, {prefix})",
+    )
+    rename_file_parser.add_argument(
+        "--business-naming",
+        action="store_true",
+        help="Use business rules to add category-based prefix to filenames (interactive if needed)",
     )
     rename_file_parser.add_argument(
         "--dry-run",
@@ -1045,24 +1059,44 @@ def build_parser():
         action="store_true",
         help="Recursively rename all files in the given directory",
     )
+    # Organizer-related flags (only for use with --organize)
     rename_file_parser.add_argument(
-        "--update-db",
+        "--organize",
         action="store_true",
-        help="Also update database paths after renaming",
+        help=(
+            "Immediately run organizer after renaming. "
+            "Works with both --dry-run and --apply. "
+            "Organizer will use the new filenames without rescanning."
+        ),
     )
     rename_file_parser.add_argument(
-        "--date-format",
-        type=str,
-        choices=SUPPORTED_DATE_FORMATS,
-        default="%Y%m%d",
-        help="Specify date format to use in filename (default: %%Y%%m%%d)",
+        "--sort-by",
+        choices=["date", "name", "extension"],
+        default="date",
+        help="Sort files by date, name, or extension (effective only with --organize).",
     )
     rename_file_parser.add_argument(
-        "--counter-format",
-        default="d",
-        help="Format for counter (e.g. 02d, 03d, d). Default: plain integer.",
+        "--profile",
+        choices=["it", "education", "researcher", "engineer", "business"],
+        help="Create a profession-based directory scaffold (see organize for full options).",
     )
-
+    rename_file_parser.add_argument(
+        "--category",
+        choices=["default", "student", "teacher", "support", "solo", "employer"],
+        default="default",
+        help="Optional sub-category for profile (effective only with --organize).",
+    )
+    rename_file_parser.add_argument(
+        "--classify",
+        "--classify-files",
+        action="store_true",
+        help="Classify files into a profile-based structure (requires --profile).",
+    )
+    rename_file_parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="Actually create directories (by default, only dry-run is shown).",
+    )
     rename_file_parser.set_defaults(func=handle_rename_file)
 
     # ----------------------- read-json -----------------------

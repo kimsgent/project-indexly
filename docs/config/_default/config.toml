@@ -69,4 +69,3 @@ pagination.paperSize = 20
     pre = "<i class='fa fa-envelope'></i>"
     url = "/en/contact/"
     weight = 6
-
