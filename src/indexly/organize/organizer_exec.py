@@ -84,7 +84,8 @@ def execute_organizer(
     lister_category: str | None = None,
     lister_date: str | None = None,
     lister_duplicates: bool = False,
-    dry_run: bool = False,  # ✅ new parameter
+    dry_run: bool = False,
+    precomputed_plan: dict | None = None,
 ):
     """Execute organizer: move/copy files, detect duplicates, write log with feedback"""
 
@@ -92,10 +93,14 @@ def execute_organizer(
     log_dir = log_dir or (root / "log")
     root_name = root.name
 
-    print(f"📂 Building organization plan for {root}...")
-    plan = organize_folder(
-        root, sort_by=sort_by, executed_by=executed_by, dry_run=dry_run
-    )
+    if precomputed_plan is not None:
+        print("📂 Using precomputed rename plan for organization...")
+        plan = precomputed_plan
+    else:
+        print(f"📂 Building organization plan for {root}...")
+        plan = organize_folder(
+            root, sort_by=sort_by, executed_by=executed_by, dry_run=dry_run
+        )
     total_files = len(plan["files"])
     print(f"✅ Plan ready: {total_files} files to organize.\n")
 

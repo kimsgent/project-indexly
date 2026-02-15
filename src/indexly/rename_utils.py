@@ -6,6 +6,10 @@ from pathlib import Path
 from datetime import datetime
 from .path_utils import normalize_path
 from .db_utils import _sync_path_in_db
+from rich.prompt import Prompt
+from indexly.organize.profiles import business_rules
+from indexly.pipeline.rename_plan import RenameEntry
+
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +22,8 @@ SUPPORTED_DATE_FORMATS = [
 ]
 
 DEFAULT_PATTERN = "{date}-{title}"
+
+BUSINESS_CATEGORIES = ["invoice", "tax", "receipt", "payroll", "contract"]
 
 
 def _check_alias_column_in_metadata():
@@ -85,13 +91,83 @@ def _clean_filename_component(s: str) -> str:
     return s.strip("-")
 
 
+CATEGORY_HINTS = {
+    "invoice": business_rules.INVOICE_HINTS,
+    "tax": business_rules.TAX_HINTS,
+    "receipt": business_rules.RECEIPT_HINTS,
+    "payroll": business_rules.PAYROLL_HINTS,
+    "contract": business_rules.CONTRACT_HINTS,
+}
+
+
+def determine_business_prefix(file_path: Path) -> str | None:
+    fname = file_path.name.lower()
+
+    # Automatic keyword match
+    for category, hints in {
+        "invoice": business_rules.INVOICE_HINTS,
+        "tax": business_rules.TAX_HINTS,
+        "receipt": business_rules.RECEIPT_HINTS,
+        "payroll": business_rules.PAYROLL_HINTS,
+        "contract": business_rules.CONTRACT_HINTS,
+    }.items():
+        for hint in hints:
+            if hint in fname:
+                return hint  # return the matched keyword
+
+    # Interactive fallback
+    print(f"⚠️ No business keyword found in {file_path.name}. Please pick a category:")
+    category = Prompt.ask(
+        "Select category", choices=BUSINESS_CATEGORIES, default="invoice"
+    )
+
+    hints = getattr(business_rules, f"{category.upper()}_HINTS", set())
+    hints = list(hints)  # <-- convert set to list to allow indexing and order
+
+    if not hints:
+        return category
+
+    # Prompt for keyword if available
+    prefix = Prompt.ask(
+        f"Choose prefix for '{category}'", choices=hints, default=hints[0]
+    )
+
+    return prefix
+
+
+def generate_business_filename(
+    file_path: Path,
+    pattern: str = None,
+    counter: int = 0,
+    date_format: str = "%Y%m%d",
+    counter_format: str = "d",
+    business_prefix: str | None = None,
+) -> str:
+    base_name = generate_new_filename(
+        file_path,
+        pattern=pattern,
+        counter=counter,
+        date_format=date_format,
+        counter_format=counter_format,
+    )
+
+    if business_prefix:
+        name_only = Path(base_name).stem
+        ext = Path(base_name).suffix
+        new_name = f"{business_prefix}-{name_only}{ext}"
+        return new_name
+    return base_name
+
+
 def generate_new_filename(
     file_path: Path,
     pattern: str = None,
     counter: int = 0,
     date_format: str = "%Y%m%d",
     counter_format: str = "d",
+    prefix: str | None = None,
 ) -> str:
+
     if not file_path.exists() or file_path.stat().st_size == 0:
         logger.warning(f"⚠️ Skipping empty or missing file: {file_path}")
         return file_path.name
@@ -101,8 +177,8 @@ def generate_new_filename(
     ext = file_path.suffix
     modified_dt = datetime.fromtimestamp(file_path.stat().st_mtime)
 
+    # --- Date resolution ---
     existing_prefix = _extract_date_prefix(file_path.name)
-    date_str = None
 
     if existing_prefix:
         try:
@@ -117,6 +193,7 @@ def generate_new_filename(
     else:
         date_str = modified_dt.strftime(date_format)
 
+    # --- Title slug ---
     base_title = _remove_leading_date_from_string(file_path.stem).strip()
     title_slug = slugify(base_title) or "file"
 
@@ -134,7 +211,12 @@ def generate_new_filename(
         .replace("{counter}", counter_str)
     )
 
-    # Only add counter at end if not already in pattern
+    # --- Prefix substitution ---
+    if "{prefix}" in pattern:
+        prefix_value = slugify(prefix) if prefix else ""
+        new_name = new_name.replace("{prefix}", prefix_value)
+
+    # --- Auto-append counter if not in pattern ---
     if "{counter}" not in pattern and counter > 0:
         new_name = f"{new_name}-{counter_str}"
 
@@ -147,6 +229,59 @@ def generate_new_filename(
 
     return f"{new_name}{ext}"
 
+def rename_entries_to_plan(rename_entries: list):
+    """
+    Convert list of RenameEntry objects into a minimal precomputed plan
+    compatible with handle_organize/execute_organizer.
+    Only used for --organize after rename-file.
+    """
+    return {
+        "files": [
+            {
+                "original_path": str(entry.original_path),
+                "renamed_path": str(entry.renamed_path),
+            }
+            for entry in rename_entries
+        ]
+    }
+
+def execute_rename_then_organize(
+    rename_entries: list,
+    root: Path,
+    *,
+    dry_run: bool = True,
+    apply: bool = False,
+    sort_by: str = "date",
+    executed_by: str = "rename-file",
+    profile: str | None = None,
+    category: str | None = None,
+    classify: bool = True,
+    recursive: bool = False,
+    project_name: str | None = None,
+    shoot_name: str | None = None,
+    patient_id: str | None = None,
+):
+    from indexly.organize.cli_wrapper import handle_organize
+
+    # Only pass precomputed plan if rename-file triggered organize
+    precomputed_plan = rename_entries_to_plan(rename_entries)
+
+    handle_organize(
+        folder=root,
+        dry_run=dry_run,
+        apply=apply,
+        sort_by=sort_by,
+        executed_by=executed_by,
+        profile=profile,
+        category=category,
+        classify=classify,
+        recursive=recursive,
+        project_name=project_name,
+        shoot_name=shoot_name,
+        patient_id=patient_id,
+        # Pass plan for immediate movement
+        classify_raw=precomputed_plan,
+    )
 
 # -------------------------------------------------
 # Core Rename Logic (with DB sync)
@@ -160,6 +295,7 @@ def rename_file(
     update_db: bool = False,
     date_format: str = "%Y%m%d",
     counter_format: str = "d",
+    prefix: str = None,
 ) -> Path | None:
 
     file_path = Path(normalize_path(path))
@@ -177,13 +313,18 @@ def rename_file(
             counter,
             date_format=date_format,
             counter_format=counter_format,
+            prefix=prefix,
         )
+
         new_path = parent_dir / new_name
+
         if new_name == file_path.name:
             break
+
         if new_path.exists():
             counter += 1
             continue
+
         break
 
     if dry_run:
@@ -194,14 +335,16 @@ def rename_file(
     else:
         if new_name == file_path.name:
             print(f"✅ Skipped (already correct): {file_path}")
-
         else:
             shutil.move(str(file_path), str(new_path))
+
             if update_db:
                 if not _check_alias_column_in_metadata():
                     print("⏹️  Rename aborted due to missing alias column.")
-                    return
-                _sync_path_in_db(file_path, new_path)
+                    return None
+
+                _sync_path_in_db(str(file_path), str(new_path))
+
             print(f"✅ Renamed:\n  {file_path} → {new_path}")
 
     return new_path
@@ -215,82 +358,96 @@ def rename_files_in_dir(
     update_db: bool = False,
     date_format: str = "%Y%m%d",
     counter_format: str = "d",
+    prefix: str = None,
 ):
     """
     Rename all files in a directory:
     - Counter resets per date
     - Optionally syncs DB if update_db=True
     - Supports recursive renaming
+    - Uses pre-resolved business_prefix if provided
     """
     dir_path = Path(normalize_path(directory))
     if not dir_path.exists() or not dir_path.is_dir():
         print(f"⚠️ Directory not found: {dir_path}")
-        return
+        return []
 
     files = sorted(dir_path.rglob("*") if recursive else dir_path.glob("*"))
 
     last_date = None
     counter = 0
+    rename_entries: list[RenameEntry] = []
 
     for f in files:
-        if f.is_file():
-            # Extract date for this file (same logic as in generate_new_filename)
-            existing_prefix = _extract_date_prefix(f.name)
-            if existing_prefix:
-                try:
-                    parsed_dt = (
-                        datetime.strptime(existing_prefix, "%Y-%m-%d")
-                        if "-" in existing_prefix
-                        else datetime.strptime(existing_prefix, "%Y%m%d")
-                    )
-                    date_str = parsed_dt.strftime(date_format)
-                except ValueError:
-                    date_str = datetime.fromtimestamp(f.stat().st_mtime).strftime(
-                        date_format
-                    )
-            else:
+        if not f.is_file():
+            continue
+
+        existing_prefix = _extract_date_prefix(f.name)
+
+        if existing_prefix:
+            try:
+                parsed_dt = (
+                    datetime.strptime(existing_prefix, "%Y-%m-%d")
+                    if "-" in existing_prefix
+                    else datetime.strptime(existing_prefix, "%Y%m%d")
+                )
+                date_str = parsed_dt.strftime(date_format)
+            except ValueError:
                 date_str = datetime.fromtimestamp(f.stat().st_mtime).strftime(
                     date_format
                 )
+        else:
+            date_str = datetime.fromtimestamp(f.stat().st_mtime).strftime(date_format)
 
-            # Reset counter if date changed
-            if date_str != last_date:
-                counter = 0
-                last_date = date_str
+        if date_str != last_date:
+            counter = 0
+            last_date = date_str
 
-            # Generate unique filename with counter (collision-aware)
-            while True:
-                new_name = generate_new_filename(
-                    f,
-                    pattern,
-                    counter,
-                    date_format=date_format,
-                    counter_format=counter_format,
-                )
-                new_path = f.parent / new_name
-                if new_path.exists() and new_path != f:
-                    counter += 1
-                    continue
-                break
+        while True:
+            new_name = generate_new_filename(
+                f,
+                pattern,
+                counter,
+                date_format=date_format,
+                counter_format=counter_format,
+                prefix=prefix,
+            )
 
-            # Rename
-            if dry_run:
-                if new_name != f.name:
-                    print(f"[Dry-run] Would rename:\n  {f} → {new_path}")
-                else:
-                    print(f"[Dry-run] No rename needed: {f.name}")
+            new_path = f.parent / new_name
+
+            if new_path.exists() and new_path != f:
+                counter += 1
+                continue
+
+            break
+
+        rename_entries.append(
+            RenameEntry(
+                original_path=f,
+                renamed_path=new_path,
+            )
+        )
+
+        if dry_run:
+            if new_name != f.name:
+                print(f"[Dry-run] Would rename:\n  {f} → {new_path}")
             else:
-                if not _check_alias_column_in_metadata():
-                    print("⏹️  Rename aborted due to missing alias column.")
-                    return
+                print(f"[Dry-run] No rename needed: {f.name}")
+        else:
+            if not _check_alias_column_in_metadata():
+                print("⏹️  Rename aborted due to missing alias column.")
+                return rename_entries
 
-                if new_name != f.name:
-                    shutil.move(str(f), str(new_path))
-                    if update_db:
-                        _sync_path_in_db(f, new_path)
-                    print(f"✅ Renamed:\n  {f} → {new_path}")
-                else:
-                    print(f"✅ Skipped (already correct): {f.name}")
+            if new_name != f.name:
+                shutil.move(str(f), str(new_path))
 
-            # Increment counter for next file with same date
-            counter += 1
+                if update_db:
+                    _sync_path_in_db(str(f), str(new_path))
+
+                print(f"✅ Renamed:\n  {f} → {new_path}")
+            else:
+                print(f"✅ Skipped (already correct): {f.name}")
+
+        counter += 1
+
+    return rename_entries

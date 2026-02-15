@@ -37,7 +37,13 @@ from .db_utils import connect_db, get_tags_for_file, _sync_path_in_db
 from .search_core import search_fts5, search_regex, normalize_near_term
 from .extract_utils import update_file_metadata
 from .mtw_extractor import _extract_mtw
-from .rename_utils import rename_file, rename_files_in_dir, SUPPORTED_DATE_FORMATS
+from .rename_utils import (
+    rename_file,
+    rename_files_in_dir,
+    determine_business_prefix,
+    execute_rename_then_organize,
+    SUPPORTED_DATE_FORMATS,
+)
 from .clean_csv import clear_cleaned_data
 from .update_utils import check_for_updates
 
@@ -61,6 +67,7 @@ from .config import DB_FILE
 from .path_utils import normalize_path
 from .db_update import check_schema, apply_migrations
 from .log_utils import _unified_log_entry, _default_logger, shutdown_logger
+from indexly.pipeline.rename_plan import RenameEntry
 
 
 # Force UTF-8 output encoding (Recommended for Python 3.7+)
@@ -818,46 +825,102 @@ def handle_rename_file(args):
 
     # Determine valid date format
     date_format = (
-        args.date_format
-        if hasattr(args, "date_format") and args.date_format in SUPPORTED_DATE_FORMATS
+        getattr(args, "date_format", "%Y%m%d")
+        if getattr(args, "date_format", None) in SUPPORTED_DATE_FORMATS
         else "%Y%m%d"
     )
 
     # Determine counter format (default = plain integer)
-    counter_format = args.counter_format if hasattr(args, "counter_format") else "d"
+    counter_format = getattr(args, "counter_format", "d")
+
+    # --- Business prefix handling ---
+    business_prefix = None
+    if getattr(args, "business_naming", False):
+        if path.is_dir():
+            # Determine prefix once per folder
+            files = sorted([f for f in path.iterdir() if f.is_file()])
+            if not files:
+                print("⚠️ No files found in directory.")
+                return
+            business_prefix = determine_business_prefix(files[0])
+        else:
+            # Single file
+            business_prefix = determine_business_prefix(path)
 
     # --- Directory handling ---
     if path.is_dir():
-        rename_files_in_dir(
+        entries = rename_files_in_dir(
             str(path),
-            pattern=args.pattern,
-            dry_run=args.dry_run,
-            recursive=args.recursive,
-            update_db=args.update_db,
+            pattern=getattr(args, "pattern", None),
+            dry_run=getattr(args, "dry_run", True),
+            recursive=getattr(args, "recursive", False),
+            update_db=getattr(args, "update_db", False),
             date_format=date_format,
             counter_format=counter_format,
+            prefix=business_prefix,
         )
+        # Organize if requested
+        if getattr(args, "organize", False) and entries:
+            execute_rename_then_organize(
+                rename_entries=entries,
+                root=path,
+                dry_run=getattr(args, "dry_run", True),
+                apply=getattr(args, "apply", False),
+                sort_by=getattr(args, "sort_by", "date"),
+                profile=getattr(args, "profile", None),
+                category=getattr(args, "category", None),
+                classify=getattr(args, "classify", False),
+                recursive=getattr(args, "recursive", False),
+                project_name=getattr(args, "project_name", None),
+                shoot_name=getattr(args, "shoot_name", None),
+                patient_id=getattr(args, "patient_id", None),
+                executed_by="rename-file",
+            )
+
         return
 
     # --- Single file handling ---
     new_path = rename_file(
         str(path),
-        pattern=args.pattern,
-        dry_run=args.dry_run,
-        update_db=args.update_db,
+        pattern=getattr(args, "pattern", None),
+        dry_run=getattr(args, "dry_run", True),
+        update_db=getattr(args, "update_db", False),
         date_format=date_format,
         counter_format=counter_format,
+        prefix=business_prefix,
     )
 
+    if getattr(args, "organize", False) and new_path:
+        entry = RenameEntry(
+            original_path=path,
+            renamed_path=new_path,
+        )
+
+        execute_rename_then_organize(
+            rename_entries=[entry],
+            root=path.parent,
+            dry_run=getattr(args, "dry_run", True),
+            apply=getattr(args, "apply", False),
+            sort_by=getattr(args, "sort_by", "date"),
+            profile=getattr(args, "profile", None),
+            category=getattr(args, "category", None),
+            classify=getattr(args, "classify", False),
+            recursive=getattr(args, "recursive", False),
+            project_name=getattr(args, "project_name", None),
+            shoot_name=getattr(args, "shoot_name", None),
+            patient_id=getattr(args, "patient_id", None),
+            executed_by="rename-file",
+        )
+
     # --- Sync rename in DB immediately ---
-    if not args.dry_run:
+    if not getattr(args, "dry_run", True):
         try:
             _sync_path_in_db(str(path), str(new_path))
         except Exception as e:
             print(f"⚠️ DB sync after rename failed: {e}")
 
     # --- Output ---
-    if args.dry_run:
+    if getattr(args, "dry_run", True):
         print(f"[Dry-run] Would rename: {path} → {new_path}")
     else:
         print(f"✅ Renamed and synced: {path} → {new_path}")

@@ -85,7 +85,8 @@ def organize_folder(
     *,
     sort_by: str,
     executed_by: str,
-    dry_run: bool = False,  # ✅ new parameter
+    dry_run: bool = False,
+    precomputed_entries: list | None = None,
 ):
     now = datetime.utcnow().isoformat() + "Z"
 
@@ -98,9 +99,26 @@ def organize_folder(
     summary = empty_summary()
     files = []
 
-    for path in root.rglob("*"):
-        if not path.is_file():
-            continue
+    if precomputed_entries is None:
+        # Standalone mode (original behavior)
+        iterable = []
+        for p in root.rglob("*"):
+            if p.is_file():
+                iterable.append((p, p))  # (original_path, working_path)
+    else:
+        # Integrated mode (rename → organize)
+        iterable = []
+        for entry in precomputed_entries:
+            iterable.append(
+                (
+                    Path(entry.original_path),
+                    Path(entry.renamed_path),
+                )
+            )
+
+    for original_path, working_path in iterable:
+
+        path = working_path  # organizer works on renamed path if provided
 
         ext = path.suffix.lower()
         category = _category_for(ext, path)
@@ -115,9 +133,8 @@ def organize_folder(
         elif sort_by == "extension":
             target_dir = root / category / year / month / ext.lstrip(".")
         else:
-            target_dir = root / category / year / month  # fallback
+            target_dir = root / category / year / month
 
-        # ✅ Only create directories if not dry_run
         if not dry_run:
             target_dir.mkdir(parents=True, exist_ok=True)
 
@@ -125,7 +142,6 @@ def organize_folder(
         alias = None
         duplicate = False
 
-        # Check for duplicates
         if target_path.exists():
             duplicate = True
             stem = target_path.stem
@@ -139,10 +155,11 @@ def organize_folder(
                     break
                 i += 1
 
-        stat = path.stat()
+        stat = original_path.stat() if original_path.exists() else path.stat()
+
         files.append(
             file_entry_template(
-                original_path=str(path),
+                original_path=str(original_path),
                 new_path=str(target_path),
                 alias=alias,
                 extension=ext,
