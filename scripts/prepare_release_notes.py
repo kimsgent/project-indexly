@@ -6,6 +6,7 @@ import subprocess
 import shutil
 import re
 
+
 def release_exists(version: str) -> bool:
     """Check if release already exists on GitHub. Dry-run returns False if gh is missing."""
     if shutil.which("gh") is None:
@@ -17,9 +18,11 @@ def release_exists(version: str) -> bool:
     )
     return result.returncode == 0
 
+
 def is_special_version(version: str) -> bool:
     """Return True if version is dry-run or pre-release."""
     return bool(re.search(r"-(test|alpha|beta|rc)", version, re.IGNORECASE))
+
 
 def main():
     if len(sys.argv) < 2:
@@ -32,7 +35,9 @@ def main():
 
     # Skip if release already exists
     if release_exists(version):
-        print(f"⚠️ Release {version} already exists on GitHub, skipping NOTES generation")
+        print(
+            f"⚠️ Release {version} already exists on GitHub, skipping NOTES generation"
+        )
         return
 
     if release_file.exists():
@@ -68,15 +73,14 @@ def main():
             "### Changes",
             "- This is a dry-run or pre-release",
             "- Workflow validated successfully",
-            "- No real changes included"
+            "- No real changes included",
         ]
         notes_file.write_text("\n".join(dummy_content), encoding="utf-8")
         print(f"ℹ️ Dummy release notes created for {version}")
     else:
-        notes_file.write_text(
-            f"No release notes found for {version}", encoding="utf-8"
-        )
+        notes_file.write_text(f"No release notes found for {version}", encoding="utf-8")
         print(f"⚠️ No release notes found for {version}")
+
 
 if __name__ == "__main__":
     main()

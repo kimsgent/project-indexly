@@ -3,6 +3,7 @@
 from typing import Any
 from pathlib import Path
 
+
 def diff_snapshots(old: dict[str, Any] | None, new: dict[str, Any]) -> list[dict]:
     events = []
 

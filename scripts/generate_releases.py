@@ -12,9 +12,11 @@ API_FILE = BASE_DIR / "static" / "releases.json"
 # Ensure releases dir exists
 RELEASES_DIR.mkdir(parents=True, exist_ok=True)
 
+
 def is_prerelease(version: str) -> bool:
     """Return True if version string looks like a prerelease (alpha, beta, rc, test)."""
     return bool(re.search(r"(alpha|beta|rc|test|-test)", version, re.IGNORECASE))
+
 
 def generate_release_page(version, date, changes):
     """Generate content for a single release page if not already existing"""
@@ -29,7 +31,7 @@ def generate_release_page(version, date, changes):
             "weight: 15",
             "---\n",
             f"## Release v{version} ({date})\n",
-            "### Changes"
+            "### Changes",
         ]
         for change in changes:
             content.append(f"- {change}")
@@ -38,9 +40,11 @@ def generate_release_page(version, date, changes):
         filepath.write_text("\n".join(content), encoding="utf-8")
     return f"/releases/v{version}/"
 
+
 def build_summary(changes, max_items=2):
     """Build a short summary string from changes"""
     return " | ".join(changes[:max_items])
+
 
 def main():
     # Load changelog
@@ -53,7 +57,7 @@ def main():
             raise ValueError(
                 f"❌ Missing date in changelog for version {v.get('version')}. "
                 "Please update docs/data/changelog.json with a valid date."
-        )
+            )
 
     # Sort by date (newest first)
     versions_sorted = sorted(versions, key=lambda v: v["date"], reverse=True)
@@ -69,12 +73,14 @@ def main():
         "toc: true",
         "weight: 10",
         "---\n",
-        f"# Release Notes for {project}\n"
+        f"# Release Notes for {project}\n",
     ]
 
     # Add newest stable release in full
     if latest:
-        index_content.append(f"## Latest Release: v{latest['version']} ({latest['date']})\n")
+        index_content.append(
+            f"## Latest Release: v{latest['version']} ({latest['date']})\n"
+        )
         index_content.append("### Changes")
         for change in latest["changes"]:
             index_content.append(f"- {change}")
@@ -88,13 +94,15 @@ def main():
             continue
         url_path = generate_release_page(v["version"], v["date"], v["changes"])
         index_content.append(f"- [Release v{v['version']}]({url_path}) ({v['date']})")
-        archive_list.append({
-            "version": v["version"],
-            "date": v["date"],
-            "link": f"/en{url_path}",
-            "summary": build_summary(v["changes"]),
-            "prerelease": is_prerelease(v["version"])
-        })
+        archive_list.append(
+            {
+                "version": v["version"],
+                "date": v["date"],
+                "link": f"/en{url_path}",
+                "summary": build_summary(v["changes"]),
+                "prerelease": is_prerelease(v["version"]),
+            }
+        )
 
     # Write master index
     INDEX_FILE.write_text("\n".join(index_content), encoding="utf-8")
@@ -103,10 +111,11 @@ def main():
     api_data = {
         "project": project,
         "latest": latest if latest else {},
-        "archive": archive_list
+        "archive": archive_list,
     }
     API_FILE.write_text(json.dumps(api_data, indent=2), encoding="utf-8")
     print(f"Generated releases.json API at {API_FILE}")
+
 
 if __name__ == "__main__":
     main()
