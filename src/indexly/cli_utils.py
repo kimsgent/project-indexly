@@ -358,7 +358,10 @@ def build_parser():
     )
     csv_parser.add_argument("--freq", type=str, help="Resample frequency (D,W,M,Q,Y)")
     csv_parser.add_argument(
-        "--agg", type=str, default="mean", help="Aggregation for resampling"
+        "--agg",
+        choices=["mean", "median", "sum", "count"],
+        default="mean",
+        help="Aggregation function: used for resampling and line plot duplicates"
     )
     csv_parser.add_argument("--rolling", type=int, help="Rolling mean window size")
     csv_parser.add_argument(

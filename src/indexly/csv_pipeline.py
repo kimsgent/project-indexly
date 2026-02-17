@@ -145,6 +145,11 @@ def visualize_csv(df: pd.DataFrame, df_stats, args):
     # Prepare plotting DataFrame
     plot_df = df.copy()
     plot_df.columns = [c.strip() for c in plot_df.columns]
+    # --- SORT ordered categorical columns ---
+    categorical_cols = plot_df.select_dtypes(include="category").columns.tolist()
+    for col in categorical_cols:
+        if plot_df[col].dtype.name.startswith("category") and plot_df[col].cat.ordered:
+            plot_df = plot_df.sort_values(by=col)
     numeric_cols = plot_df.select_dtypes(include=np.number).columns.tolist()
 
     if not numeric_cols:
@@ -221,6 +226,7 @@ def visualize_csv(df: pd.DataFrame, df_stats, args):
                         plot_df,
                         getattr(args, "x_col", None),
                         getattr(args, "y_col", None),
+                        agg_func=getattr(args, "agg", "mean"),
                         mode=str(show_chart).lower(),
                         output=output_path,
                     )
