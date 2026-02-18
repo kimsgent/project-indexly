@@ -52,7 +52,42 @@ class CSVObserver(BaseObserver):
         return load_snapshot(Path(file_path).name, latest=(snapshot_ts is None), at_time=snapshot_ts)
 
     def compare(self, old: dict | None, new: dict) -> list[dict]:
-        return diff_snapshots(old, new)
+        events = diff_snapshots(old, new) or []
+        if not isinstance(events, list):
+            raise TypeError("CSVObserver.compare() must return list")
+        return events
+
+    def format_event(self, event: dict) -> str:
+        """
+        Render semantic CSV events for CLI output.
+        """
+
+        event_type = event.get("type")
+
+        if event_type == "CSV_CREATED":
+            return "CSV snapshot created"
+
+        if event_type == "CSV_DELETED":
+            return "CSV snapshot deleted"
+
+        if event_type == "COLUMN_ADDED":
+            return f"Column added: {event.get('column')}"
+
+        if event_type == "COLUMN_REMOVED":
+            return f"Column removed: {event.get('column')}"
+
+        if event_type == "ROW_COUNT_CHANGED":
+            return f"Row count changed: {event.get('old')} → {event.get('new')}"
+
+        if event_type == "COL_COUNT_CHANGED":
+            return f"Column count changed: {event.get('old')} → {event.get('new')}"
+
+        if event_type == "DATA_DISTRIBUTION_SHIFTED":
+            return "Data distribution shifted"
+
+        # Fallback safety
+        return super().format_event(event)
+
 
     def save(self, file_path: Path, state: dict) -> None:
         save_snapshot(
