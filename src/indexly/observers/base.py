@@ -1,33 +1,53 @@
-from typing import Any
+from abc import ABC, abstractmethod
+from pathlib import Path
+from typing import Any, Optional
 
 
-class BaseObserver:
+class BaseObserver(ABC):
     """
-    Base class for all observers.
+    Core observer contract.
+
+    Observers must:
+    - Define applies_to()
+    - Extract current state via extract()
+    - Compare states via compare()
+    - Provide event formatting via format_event()
     """
 
-    name: str = "base"
+    name: str
 
-    def applies_to(self, file_path, metadata: dict[str, Any]) -> bool:
-        """
-        Return True if this observer should run on the file.
-        """
-        return True
+    @abstractmethod
+    def applies_to(self, file_path: Path, metadata: dict[str, Any]) -> bool:
+        ...
 
-    def extract(self, file_path, metadata: dict[str, Any]) -> dict[str, Any]:
+    @abstractmethod
+    def extract(self, file_path: Path, metadata: dict[str, Any]) -> dict[str, Any]:
         """
-        Extract semantic state from file + metadata.
-        Must return a JSON-serializable dict.
+        Must NEVER return None.
+        Must always return a dict (empty dict allowed).
         """
-        raise NotImplementedError
+        ...
 
+    @abstractmethod
     def compare(
         self,
-        old: dict[str, Any] | None,
+        old: Optional[dict[str, Any]],
         new: dict[str, Any],
-    ) -> list[dict[str, Any]]:
+    ) -> list[dict]:
         """
-        Compare old vs new state.
-        Return list of semantic events.
+        Must ALWAYS return a list (empty list allowed).
+        Events are semantic and observer-defined.
         """
-        raise NotImplementedError
+        ...
+
+    def format_event(self, event: dict) -> str:
+        """
+        Default formatter.
+
+        If legacy field/old/new structure is present,
+        render it. Otherwise fallback to str(event).
+        """
+        if {"field", "old", "new"} <= event.keys():
+            return f"{event['field']}: {event['old']!r} → {event['new']!r}"
+
+        return str(event)
