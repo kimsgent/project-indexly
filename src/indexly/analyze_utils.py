@@ -44,6 +44,7 @@ def _safe_convert(obj):
 
     return obj
 
+
 def validate_json_content(file_path: Path) -> bool:
     """
     Validate standard JSON, NDJSON, or indexly-style JSON.
@@ -102,6 +103,7 @@ def validate_file_content(file_path: Path, file_type: str) -> bool:
 
     if file_type == "csv":
         from indexly.csv_analyzer import detect_delimiter  # local import
+
         delimiter = detect_delimiter(file_path)
         if not delimiter:
             console.print(f"[red]❌ No valid CSV delimiter detected.[/red]")
@@ -109,18 +111,23 @@ def validate_file_content(file_path: Path, file_type: str) -> bool:
         try:
             df = pd.read_csv(file_path, sep=delimiter, nrows=5, encoding="utf-8")
             if df.shape[1] < 2 and len("".join(df.columns)) < 3:
-                console.print(f"[red]❌ File does not contain valid tabular CSV content.[/red]")
+                console.print(
+                    f"[red]❌ File does not contain valid tabular CSV content.[/red]"
+                )
                 return False
             return True
         except Exception as e:
             console.print(f"[red]❌ Failed to parse as CSV:[/red] {e}")
             return False
-        
+
     # --- Parquet (.parquet) ---
     if file_type == "parquet" or file_path.suffix.lower() == ".parquet":
         try:
             import pyarrow.parquet as pq
-            table = pq.read_table(file_path, columns=None)  # just read schema & few rows
+
+            table = pq.read_table(
+                file_path, columns=None
+            )  # just read schema & few rows
             df = table.to_pandas().head(5)  # preview first 5 rows
             if df.empty or df.shape[1] < 1:
                 console.print(f"[red]❌ Parquet file appears empty or invalid.[/red]")
@@ -143,8 +150,10 @@ def validate_file_content(file_path: Path, file_type: str) -> bool:
             return False
 
     # --- JSON (.json or .json.gz) ---
-    if file_type in {"json", "json_gz", "ndjson", "generic_json"} or file_path.suffixes[-2:] == [".json", ".gz"]:
-            return validate_json_content(file_path)
+    if file_type in {"json", "json_gz", "ndjson", "generic_json"} or file_path.suffixes[
+        -2:
+    ] == [".json", ".gz"]:
+        return validate_json_content(file_path)
 
     # --- YAML (.yaml or .yml) ---
     if file_type in {"yaml", "yml"} or file_path.suffix.lower() in {".yaml", ".yml"}:
@@ -171,6 +180,7 @@ def validate_file_content(file_path: Path, file_type: str) -> bool:
     if file_type == "xml" or file_path.suffix.lower() == ".xml":
         try:
             import xml.etree.ElementTree as ET
+
             tree = ET.parse(file_path)
             root = tree.getroot()
             if not list(root):
@@ -180,7 +190,6 @@ def validate_file_content(file_path: Path, file_type: str) -> bool:
         except Exception as e:
             console.print(f"[red]❌ Invalid XML structure:[/red] {e}")
             return False
-
 
 
 # ------------------------------------------------------
@@ -194,6 +203,7 @@ def save_analysis_result(
     metadata=None,
     row_count: int | None = None,
     col_count: int | None = None,
+    raw_df: pd.DataFrame | None = None,
 ) -> None:
     """
     Robust unified persistence:
@@ -213,6 +223,7 @@ def save_analysis_result(
     # 🧩 Global no-persist guard
     # -------------------------------
     import builtins
+
     if getattr(builtins, "__INDEXLY_NO_PERSIST__", False):
         file_name = os.path.basename(file_path)
         console.print("[yellow]⚙️ Persistence disabled (--no-persist).[/yellow]")
@@ -224,7 +235,9 @@ def save_analysis_result(
         _migrate_cleaned_data_schema(conn)
 
         file_name = os.path.basename(file_path)
-        source_path = os.path.abspath(file_path) if os.path.exists(file_path) else str(file_path)
+        source_path = (
+            os.path.abspath(file_path) if os.path.exists(file_path) else str(file_path)
+        )
 
         # ------------------------------------------------------
         # 🧠 JSON-SAFE SUMMARY HANDLING
@@ -249,7 +262,15 @@ def save_analysis_result(
 
         metadata_json = _json_safe(metadata or {})
 
-        # Main payload
+        if isinstance(raw_df, pd.DataFrame):
+            raw_json = json.dumps(
+                _json_safe(raw_df.to_dict(orient="records")),
+                ensure_ascii=False,
+                indent=2,
+            )
+        else:
+            raw_json = None
+
         payload = {
             "file_name": file_name,
             "file_type": file_type,
@@ -262,17 +283,16 @@ def save_analysis_result(
                 ensure_ascii=False,
                 indent=2,
             ),
-            "raw_data_json": None,
+            "raw_data_json": raw_json,  # ✅ attach raw DataFrame as JSON
             "cleaned_at": __import__("datetime").datetime.now().isoformat(),
             "row_count": row_count or 0,
             "col_count": col_count or 0,
-
-            # Combined blob for external export tools
             "data_json": json.dumps(
                 {
                     "summary_statistics": summary_json,
                     "sample_data": sample_json,
                     "metadata": metadata_json,
+                    "raw_data": raw_json,  # optional: include in combined blob for export
                 },
                 ensure_ascii=False,
                 indent=2,
@@ -311,13 +331,13 @@ def save_analysis_result(
         conn.commit()
         conn.close()
 
-        console.print(f"[green]✔ Saved unified analysis result for {file_name} ({file_type})[/green]")
+        console.print(
+            f"[green]✔ Saved unified analysis result for {file_name} ({file_type})[/green]"
+        )
         console.print(f"[dim]↳ Source: {source_path}[/dim]")
 
     except Exception as e:
         console.print(f"[red]Failed to save analysis result for {file_path}: {e}[/red]")
-
-
 
 
 def load_cleaned_data(file_path: str = None, limit: int = 5):
@@ -379,7 +399,6 @@ def load_cleaned_data(file_path: str = None, limit: int = 5):
     if file_path:
         return True, results[0]  # single record with df
     return results  # list of records
-
 
 
 def handle_show_summary(file_path: str):

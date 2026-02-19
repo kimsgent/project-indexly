@@ -104,6 +104,7 @@ def _persist_analysis(
             metadata=derived_map or {},
             row_count=len(data_to_save),
             col_count=len(data_to_save.columns),
+            raw_df=getattr(df, "_raw_df", None),
         )
 
         # Mark as persisted
