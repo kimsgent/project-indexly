@@ -5,8 +5,8 @@ from typing import Dict, Any, Optional
 @dataclass
 class InferenceResult:
     test_name: str
-    statistic: float
-    p_value: float
+    statistic: Optional[float]
+    p_value: Optional[float]
     effect_size: Optional[float] = None
     ci_low: Optional[float] = None
     ci_high: Optional[float] = None

@@ -10,6 +10,11 @@ from .regression import run_ols
 from .formatter import format_result
 from .mixed_effects import run_mixed_effects
 from .exporter import export_markdown, export_pdf
+from .confidence_intervals import (
+    ci_mean,
+    ci_mean_difference_independent,
+    ci_proportion,
+)
 
 
 def run_inference(
@@ -20,6 +25,7 @@ def run_inference(
     use_cleaned: bool = True,
     na_policy: str = "drop",
     lag: int = 1,
+    auto_route: bool = True,
 ):
     df = load_dataframe(file_name, use_cleaned=use_cleaned)
 
@@ -42,7 +48,13 @@ def run_inference(
         return
 
     elif test == "ttest":
-        result = run_ttest(df, columns[0], group_col)
+        result = run_ttest(
+            df,
+            columns[0],
+            group_col,
+            auto_route=auto_route,
+            use_bootstrap=True,
+        )
 
     elif test == "paired-ttest":
         result = run_paired_ttest(df, columns[0], columns[1])
@@ -51,7 +63,7 @@ def run_inference(
         result = run_mannwhitney(df, columns[0], group_col)
 
     elif test == "anova":
-        result = run_anova(df, columns[0], group_col)
+        result = run_anova(df, columns[0], group_col, auto_route=auto_route)
 
     elif test == "kruskal":
         result = run_kruskal(df, columns[0], group_col)
@@ -61,10 +73,32 @@ def run_inference(
         return
 
     elif test == "ols":
-        result = run_ols(df, columns[0], columns[1:])
+        result = run_ols(df, columns[0], columns[1:], auto_route=auto_route, bootstrap_coefficients=True,)
 
     elif test == "mixed":
         result = run_mixed_effects(df, columns[0], group_col)
+
+    elif test == "ci-mean":
+        ci_low, ci_high = ci_mean(df[columns[0]])
+        print(f"Mean CI (95%): ({ci_low:.4f}, {ci_high:.4f})")
+        return
+
+    elif test == "ci-proportion":
+        successes = df[columns[0]].sum()
+        n = len(df)
+        ci_low, ci_high = ci_proportion(successes, n)
+        print(f"Proportion CI (95%): ({ci_low:.4f}, {ci_high:.4f})")
+        return
+
+    elif test == "ci-diff":
+        groups = df[group_col].unique()
+        if len(groups) != 2:
+            raise ValueError("CI difference requires exactly 2 groups.")
+        g1 = df[df[group_col] == groups[0]][columns[0]]
+        g2 = df[df[group_col] == groups[1]][columns[0]]
+        ci_low, ci_high = ci_mean_difference_independent(g1, g2)
+        print(f"Mean Difference CI (95%): ({ci_low:.4f}, {ci_high:.4f})")
+        return
 
     elif test == "export-md":
         result = run_anova(df, columns[0], group_col)

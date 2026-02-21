@@ -17,7 +17,12 @@ def export_markdown(result, filename="report.md"):
         f.write(f"P-value: {result.p_value}\n\n")
         f.write(f"Effect size: {result.effect_size}\n\n")
         f.write(f"CI: ({result.ci_low}, {result.ci_high})\n\n")
-        f.write(f"Metadata:\n{result.metadata}\n")
+
+        if result.additional_table:
+            f.write("\n## Additional Results\n\n")
+            f.write(f"{result.additional_table}\n\n")
+
+        f.write(f"\nMetadata:\n{result.metadata}\n")
 
 
 def export_pdf(result, filename="report.pdf"):
@@ -35,5 +40,9 @@ def export_pdf(result, filename="report.pdf"):
     elements.append(
         Paragraph(f"CI: {result.ci_low}, {result.ci_high}", styles["Normal"])
     )
-
+    if result.additional_table:
+        elements.append(Spacer(1, 0.3 * inch))
+        elements.append(Paragraph("Additional Results:", styles["Heading2"]))
+        elements.append(Spacer(1, 0.2 * inch))
+        elements.append(Paragraph(str(result.additional_table), styles["Normal"]))
     doc.build(elements)

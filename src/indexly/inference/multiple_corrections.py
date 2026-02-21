@@ -27,3 +27,27 @@ def benjamini_hochberg(p_values):
         ranked[idx] = p_values[idx] * n / (i + 1)
 
     return np.minimum.accumulate(ranked[::-1])[::-1]
+
+
+# 🔥 NEW: Unified correction interface
+def apply_correction(p_values, method: str | None):
+    """
+    Central correction dispatcher.
+    method: "bonferroni", "holm", "fdr_bh", or None
+    """
+
+    if method is None:
+        return np.array(p_values)
+
+    method = method.lower()
+
+    if method == "bonferroni":
+        return bonferroni(p_values)
+
+    if method == "holm":
+        return holm(p_values)
+
+    if method in ["fdr", "fdr_bh", "benjamini-hochberg"]:
+        return benjamini_hochberg(p_values)
+
+    raise ValueError("Unsupported correction method.")

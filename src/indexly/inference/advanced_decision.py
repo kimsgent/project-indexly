@@ -1,30 +1,62 @@
-from .nonparametric import run_mannwhitney, run_kruskal
+"""
+advanced_decision.py
+====================
+
+Automatic assumption-based rerouting engine.
+
+Purpose:
+--------
+Provides decision logic for automatically switching statistical tests
+based on assumption violations.
+
+Design:
+-------
+- Pure routing logic
+- No I/O
+- No printing
+- Returns structured decisions
+"""
+
+from typing import Literal
 
 
-def evaluate_ttest_fallback(metadata: dict):
+def decide_ttest_route(metadata: dict) -> Literal["ttest", "welch", "mannwhitney"]:
+    """
+    Decide which test to run based on:
+    - Normality
+    - Homogeneity of variance
+    """
+
     normal1 = metadata["normality_group1"]["normal"]
     normal2 = metadata["normality_group2"]["normal"]
     equal_var = metadata["homogeneity"]["equal_variance"]
 
-    suggestions = []
-
+    # Non-normal → Mann-Whitney
     if not normal1 or not normal2:
-        suggestions.append("Normality violated. Consider Mann–Whitney U test.")
+        return "mannwhitney"
 
+    # Unequal variance → Welch
     if not equal_var:
-        suggestions.append(
-            "Variance heterogeneity detected. Welch t-test automatically applied."
-        )
+        return "welch"
 
-    return suggestions
+    return "ttest"
 
 
-def evaluate_anova_fallback(df, value_col, group_col, p_value):
-    suggestions = []
+def decide_anova_route(normality_ok: bool) -> Literal["anova", "kruskal"]:
+    """
+    Decide between ANOVA and Kruskal-Wallis.
+    """
+    if not normality_ok:
+        return "kruskal"
 
-    if p_value < 0.05:
-        suggestions.append(
-            "Significant omnibus test. Consider Tukey post-hoc comparisons."
-        )
+    return "anova"
 
-    return suggestions
+
+def decide_regression_route(normal_resid: bool, homoscedastic: bool) -> Literal["ols", "robust"]:
+    """
+    Decide whether to use standard OLS or robust covariance.
+    """
+    if not normal_resid or not homoscedastic:
+        return "robust"
+
+    return "ols"
