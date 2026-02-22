@@ -31,7 +31,7 @@ from indexly.backup.cli import handle_backup
 from indexly.backup.cli_restore import handle_restore
 from indexly.compare.cli_compare import handle_compare
 from indexly.observers.runner import handle_observe_run, handle_observe_audit
-
+from indexly.inference.cli import handle_infer_csv
 
 # CLI display configurations here
 command_titles = {
@@ -361,7 +361,7 @@ def build_parser():
         "--agg",
         choices=["mean", "median", "sum", "count"],
         default="mean",
-        help="Aggregation function: used for resampling and line plot duplicates"
+        help="Aggregation function: used for resampling and line plot duplicates",
     )
     csv_parser.add_argument("--rolling", type=int, help="Rolling mean window size")
     csv_parser.add_argument(
@@ -433,6 +433,114 @@ def build_parser():
     )
 
     csv_parser.set_defaults(func=analyze_file, subcommand="analyze-csv")
+
+    # -----------------------------------------
+    # infer-csv subcommand
+    # -----------------------------------------
+
+    infer_parser = subparsers.add_parser(
+        "infer-csv", help="Run statistical inference on indexed CSV datasets."
+    )
+
+    # -------------------------
+    # Input datasets
+    # -------------------------
+    infer_parser.add_argument(
+        "files", nargs="+", help="One or more indexed CSV file names."
+    )
+
+    infer_parser.add_argument(
+        "--merge-on",
+        help="Column name to merge multiple datasets on (required if multiple files).",
+    )
+
+    # -------------------------
+    # Data version
+    # -------------------------
+    infer_parser.add_argument(
+        "--use-cleaned", action="store_true", help="Use cleaned_data_json (default)."
+    )
+
+    infer_parser.add_argument(
+        "--use-raw", action="store_true", help="Use raw_data_json."
+    )
+
+    # -------------------------
+    # Column selection
+    # -------------------------
+    infer_parser.add_argument("--x", nargs="+", help="Independent variable(s).")
+
+    infer_parser.add_argument("--y", help="Dependent variable.")
+
+    infer_parser.add_argument("--group", help="Grouping column for group comparisons.")
+
+    # -------------------------
+    # Missing value handling
+    # -------------------------
+    infer_parser.add_argument(
+        "--fill",
+        choices=["mean", "median"],
+        help="Fill missing values before inference.",
+    )
+
+    infer_parser.add_argument(
+        "--no-fill",
+        action="store_true",
+        help="Drop NA values in selected columns only (default).",
+    )
+
+    # -------------------------
+    # Test selection (explicit)
+    # -------------------------
+    infer_parser.add_argument(
+        "--test",
+        required=True,
+        choices=[
+            "correlation",
+            "spearman",
+            "lag",
+            "ttest",
+            "paired-ttest",
+            "anova",
+            "ols",
+            "mixed",
+            "mannwhitney",
+            "kruskal",
+        ],
+        help="Statistical test to perform.",
+    )
+
+    # -------------------------
+    # Advanced controls
+    # -------------------------
+    infer_parser.add_argument(
+        "--interaction", nargs="+", help="Interaction terms for OLS regression."
+    )
+
+    infer_parser.add_argument(
+        "--auto-route",
+        action="store_true",
+        help="Automatically reroute test if assumptions fail.",
+    )
+
+    infer_parser.add_argument(
+        "--bootstrap", action="store_true", help="Use bootstrap confidence intervals."
+    )
+
+    infer_parser.add_argument(
+        "--correction",
+        choices=["bonferroni", "holm", "bh"],
+        help="Multiple comparison correction method.",
+    )
+
+    # -------------------------
+    # Output
+    # -------------------------
+    infer_parser.add_argument(
+        "--export", choices=["md", "pdf"], help="Export inference report."
+    )
+
+    infer_parser.set_defaults(func=handle_infer_csv)
 
     # -------------------------------
     # Clear cleaned data

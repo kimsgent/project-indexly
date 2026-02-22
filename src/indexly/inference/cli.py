@@ -1,3 +1,4 @@
+import pandas as pd
 from .loader import load_dataframe
 from .preprocessing import select_columns, apply_na_policy
 from .correlation import pearson_corr, spearman_corr, lag_corr, correlation_matrix
@@ -15,6 +16,9 @@ from .confidence_intervals import (
     ci_mean_difference_independent,
     ci_proportion,
 )
+
+from .merge_engine import merge_dataframes
+from .exporter import export_report
 
 
 def run_inference(
@@ -73,7 +77,13 @@ def run_inference(
         return
 
     elif test == "ols":
-        result = run_ols(df, columns[0], columns[1:], auto_route=auto_route, bootstrap_coefficients=True,)
+        result = run_ols(
+            df,
+            columns[0],
+            columns[1:],
+            auto_route=auto_route,
+            bootstrap_coefficients=True,
+        )
 
     elif test == "mixed":
         result = run_mixed_effects(df, columns[0], group_col)
@@ -114,3 +124,97 @@ def run_inference(
         raise ValueError("Unsupported test.")
 
     print(format_result(result))
+
+
+def handle_infer_csv(args):
+
+    # -----------------------------
+    # Version validation
+    # -----------------------------
+    if args.use_raw and args.use_cleaned:
+        raise ValueError("Cannot use both --use-raw and --use-cleaned.")
+
+    use_cleaned = True
+    if args.use_raw:
+        use_cleaned = False
+
+    # -----------------------------
+    # Load datasets
+    # -----------------------------
+    dfs = [load_dataframe(file_name=f, use_cleaned=use_cleaned) for f in args.files]
+
+    # -----------------------------
+    # Merge if multiple
+    # -----------------------------
+    if len(dfs) > 1:
+        if not args.merge_on:
+            raise ValueError("--merge-on is required when multiple files are provided.")
+
+        df, merge_meta = merge_dataframes(dfs=dfs, merge_on=args.merge_on, how="inner")
+
+        print(f"[INFO] Merge complete.")
+        print(f"       Original rows: {merge_meta['original_row_counts']}")
+        print(f"       Merged rows:   {merge_meta['merged_row_count']}")
+
+    else:
+        df = dfs[0]
+
+    # -----------------------------
+    # Column validation
+    # -----------------------------
+    required_columns = []
+
+    if args.y:
+        required_columns.append(args.y)
+
+    if args.x:
+        required_columns.extend(args.x)
+
+    if args.group:
+        required_columns.append(args.group)
+
+    for col in required_columns:
+        if col not in df.columns:
+            raise ValueError(f"Column '{col}' not found in dataset.")
+
+    # -----------------------------
+    # NA policy (only selected cols)
+    # -----------------------------
+    if required_columns:
+        working_df = df[required_columns].copy()
+    else:
+        working_df = df.copy()
+
+    if args.fill:
+        for col in working_df.columns:
+            if working_df[col].dtype.kind in "biufc":
+                if args.fill == "mean":
+                    working_df[col] = working_df[col].fillna(working_df[col].mean())
+                elif args.fill == "median":
+                    working_df[col] = working_df[col].fillna(working_df[col].median())
+    else:
+        working_df = working_df.dropna()
+
+    # -----------------------------
+    # Dispatch to inference engine
+    # -----------------------------
+    results = run_inference(
+        df=working_df,
+        test=args.test,
+        x=args.x,
+        y=args.y,
+        group=args.group,
+        interaction=args.interaction,
+        auto_route=args.auto_route,
+        bootstrap=args.bootstrap,
+        correction=args.correction,
+    )
+
+    # -----------------------------
+    # Export handling
+    # -----------------------------
+    if args.export:
+        export_report(results, args.export)
+
+    else:
+        print(results)
