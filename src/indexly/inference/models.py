@@ -1,7 +1,6 @@
 from dataclasses import dataclass, field
 from typing import Dict, Any, Optional
 
-
 @dataclass
 class InferenceResult:
     test_name: str

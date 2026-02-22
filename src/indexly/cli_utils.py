@@ -506,6 +506,9 @@ def build_parser():
             "mixed",
             "mannwhitney",
             "kruskal",
+            "ci-mean",
+            "ci-proportion",
+            "ci-diff",
         ],
         help="Statistical test to perform.",
     )

@@ -8,18 +8,21 @@ from .anova import run_anova
 from .nonparametric import run_mannwhitney, run_kruskal
 from .posthoc import run_tukey
 from .regression import run_ols
-from .formatter import format_result
+from .formatter import format_result, display_inference_result
 from .mixed_effects import run_mixed_effects
-from .exporter import export_markdown, export_pdf
+from .merge_engine import merge_dataframes
+from .exporter import export_report
+from .multiple_corrections import apply_correction
+from .models import InferenceResult
 from .confidence_intervals import (
     ci_mean,
     ci_mean_difference_independent,
     ci_proportion,
 )
+from rich.table import Table
+from rich.console import Console
 
-from .merge_engine import merge_dataframes
-from .exporter import export_report
-
+console = Console()
 
 def run_inference(
     file_name: str,
@@ -31,6 +34,7 @@ def run_inference(
     lag: int = 1,
     auto_route: bool = True,
 ):
+
     df = load_dataframe(file_name, use_cleaned=use_cleaned)
 
     if columns:
@@ -38,92 +42,208 @@ def run_inference(
 
     df = apply_na_policy(df, policy=na_policy)
 
+    # map old API → new engine
+    result = run_inference_engine(
+        df=df,
+        test=test,
+        x=columns[1:] if columns and len(columns) > 1 else columns,
+        y=columns[0] if columns else None,
+        group=group_col,
+        auto_route=auto_route,
+        lag=lag,
+        bootstrap=True,  # preserve previous behavior
+        correction=None,
+    )
+
+    print(format_result(result))
+    return result
+
+
+def run_inference_engine(
+    df,
+    test: str,
+    x: list[str] | None = None,
+    y: str | None = None,
+    group: str | None = None,
+    interaction: list[str] | None = None,
+    auto_route: bool = True,
+    bootstrap: bool = False,
+    correction: str | None = None,
+    lag: int = 1,
+    alpha: float = 0.05,
+):
+    """
+    Pure statistical dispatcher.
+    Always returns InferenceResult.
+    No printing.
+    No loading.
+    No side effects.
+    """
+
+    # -----------------------------
+    # Correlations
+    # -----------------------------
     if test == "correlation":
-        result = pearson_corr(df, columns[0], columns[1])
+        return pearson_corr(df, x[0], x[1])
 
     elif test == "corr-spearman":
-        result = spearman_corr(df, columns[0], columns[1])
+        return spearman_corr(df, x[0], x[1])
 
     elif test == "corr-lag":
-        result = lag_corr(df, columns[0], columns[1], lag=lag)
+        return lag_corr(df, x[0], x[1], lag=lag)
 
     elif test == "corr-matrix":
-        print(correlation_matrix(df, columns))
-        return
+        matrix = correlation_matrix(df, x)
 
+        return InferenceResult(
+            test_name="correlation_matrix",
+            statistic=None,
+            p_value=None,
+            effect_size=None,
+            ci_low=None,
+            ci_high=None,
+            additional_table=matrix,
+            metadata={
+                "method": "pearson",
+                "columns": x,
+                "n": len(df),
+            },
+        )
+
+    # -----------------------------
+    # T-tests
+    # -----------------------------
     elif test == "ttest":
-        result = run_ttest(
+        return run_ttest(
             df,
-            columns[0],
-            group_col,
+            y,
+            group,
             auto_route=auto_route,
-            use_bootstrap=True,
+            use_bootstrap=bootstrap,
         )
 
     elif test == "paired-ttest":
-        result = run_paired_ttest(df, columns[0], columns[1])
+        return run_paired_ttest(
+            df,
+            x[0],
+            x[1],
+            use_bootstrap=bootstrap,
+        )
 
+    # -----------------------------
+    # Nonparametric
+    # -----------------------------
     elif test == "mannwhitney":
-        result = run_mannwhitney(df, columns[0], group_col)
-
-    elif test == "anova":
-        result = run_anova(df, columns[0], group_col, auto_route=auto_route)
+        return run_mannwhitney(df, y, group)
 
     elif test == "kruskal":
-        result = run_kruskal(df, columns[0], group_col)
+        return run_kruskal(df, y, group)
+
+    # -----------------------------
+    # ANOVA (+ optional correction)
+    # -----------------------------
+    elif test == "anova":
+        result = run_anova(df, y, group, auto_route=auto_route)
+
+        if correction:
+            result = apply_correction(result, method=correction)
+
+        return result
 
     elif test == "anova-posthoc":
-        print(run_tukey(df, columns[0], group_col))
-        return
+        result = run_tukey(df, y, group)
 
+        if correction:
+            result = apply_correction(result, method=correction)
+
+        return result
+
+    # -----------------------------
+    # Regression
+    # -----------------------------
     elif test == "ols":
-        result = run_ols(
+        return run_ols(
             df,
-            columns[0],
-            columns[1:],
+            y,
+            x,
+            interaction=interaction,
             auto_route=auto_route,
-            bootstrap_coefficients=True,
+            bootstrap_coefficients=bootstrap,
         )
 
     elif test == "mixed":
-        result = run_mixed_effects(df, columns[0], group_col)
+        return run_mixed_effects(df, y, group)
 
+    # -----------------------------
+    # CI: Single Mean
+    # -----------------------------
     elif test == "ci-mean":
-        ci_low, ci_high = ci_mean(df[columns[0]])
-        print(f"Mean CI (95%): ({ci_low:.4f}, {ci_high:.4f})")
-        return
+        ci_low, ci_high = ci_mean(df[y], alpha=alpha)
 
+        return InferenceResult(
+            test_name="Confidence Interval (Mean)",
+            statistic=None,
+            p_value=None,
+            effect_size=None,
+            ci_low=ci_low,
+            ci_high=ci_high,
+            additional_table=None,
+            metadata={"alpha": alpha},
+        )
+
+    # -----------------------------
+    # CI: Proportion
+    # -----------------------------
     elif test == "ci-proportion":
-        successes = df[columns[0]].sum()
-        n = len(df)
-        ci_low, ci_high = ci_proportion(successes, n)
-        print(f"Proportion CI (95%): ({ci_low:.4f}, {ci_high:.4f})")
-        return
+        successes = df[y].sum()
+        ci_low, ci_high = ci_proportion(successes, len(df), alpha=alpha)
 
+        return InferenceResult(
+            test_name="Confidence Interval (Proportion)",
+            statistic=successes / len(df),
+            p_value=None,
+            effect_size=None,
+            ci_low=ci_low,
+            ci_high=ci_high,
+            additional_table=None,
+            metadata={
+                "n": len(df),
+                "successes": successes,
+                "alpha": alpha,
+            },
+        )
+
+    # -----------------------------
+    # CI: Mean Difference
+    # -----------------------------
     elif test == "ci-diff":
-        groups = df[group_col].unique()
+        groups = df[group].unique()
+
         if len(groups) != 2:
             raise ValueError("CI difference requires exactly 2 groups.")
-        g1 = df[df[group_col] == groups[0]][columns[0]]
-        g2 = df[df[group_col] == groups[1]][columns[0]]
-        ci_low, ci_high = ci_mean_difference_independent(g1, g2)
-        print(f"Mean Difference CI (95%): ({ci_low:.4f}, {ci_high:.4f})")
-        return
 
-    elif test == "export-md":
-        result = run_anova(df, columns[0], group_col)
-        export_markdown(result)
-        return
+        g1 = df[df[group] == groups[0]][y]
+        g2 = df[df[group] == groups[1]][y]
 
-    elif test == "export-pdf":
-        result = run_anova(df, columns[0], group_col)
-        export_pdf(result)
-        return
+        ci_low, ci_high = ci_mean_difference_independent(g1, g2, alpha=alpha)
+
+        return InferenceResult(
+            test_name="Confidence Interval (Mean Difference)",
+            statistic=g1.mean() - g2.mean(),
+            p_value=None,
+            effect_size=None,
+            ci_low=ci_low,
+            ci_high=ci_high,
+            additional_table=None,
+            metadata={
+                "group_1": groups[0],
+                "group_2": groups[1],
+                "alpha": alpha,
+            },
+        )
 
     else:
         raise ValueError("Unsupported test.")
-
-    print(format_result(result))
 
 
 def handle_infer_csv(args):
@@ -132,6 +252,7 @@ def handle_infer_csv(args):
     # Version validation
     # -----------------------------
     if args.use_raw and args.use_cleaned:
+
         raise ValueError("Cannot use both --use-raw and --use-cleaned.")
 
     use_cleaned = True
@@ -142,6 +263,16 @@ def handle_infer_csv(args):
     # Load datasets
     # -----------------------------
     dfs = [load_dataframe(file_name=f, use_cleaned=use_cleaned) for f in args.files]
+
+    # -----------------------------
+    # Validate --y for certain tests
+    # -----------------------------
+    if args.test in ["ci-mean", "ci-proportion", "ci-diff"] and not args.y:
+        console.print(
+            f"[red]Error:[/] --y is required for [bold]{args.test}[/bold].",
+            style="bold red",
+        )
+        return
 
     # -----------------------------
     # Merge if multiple
@@ -198,7 +329,7 @@ def handle_infer_csv(args):
     # -----------------------------
     # Dispatch to inference engine
     # -----------------------------
-    results = run_inference(
+    results = run_inference_engine(
         df=working_df,
         test=args.test,
         x=args.x,
@@ -215,6 +346,5 @@ def handle_infer_csv(args):
     # -----------------------------
     if args.export:
         export_report(results, args.export)
-
     else:
-        print(results)
+        display_inference_result(results)
