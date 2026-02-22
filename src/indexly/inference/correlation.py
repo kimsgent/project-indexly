@@ -5,7 +5,6 @@ from .models import InferenceResult
 import numpy as np
 
 
-
 def pearson_corr(df, x: str, y: str, alpha: float = 0.05) -> InferenceResult:
     """
     Pearson correlation with proper CI using Fisher Z-transform.

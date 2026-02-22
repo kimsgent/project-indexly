@@ -9,6 +9,7 @@ from .power import power_ols
 from .advanced_decision import decide_regression_route
 from .bootstrap import bootstrap
 
+
 def run_ols(
     df: pd.DataFrame,
     y_col: str,
@@ -44,8 +45,7 @@ def run_ols(
     homoscedasticity = test_homoscedasticity(model, df)
 
     route = decide_regression_route(
-        normality["normal"],
-        homoscedasticity["homoscedastic"]
+        normality["normal"], homoscedasticity["homoscedastic"]
     )
 
     if auto_route and route == "robust":

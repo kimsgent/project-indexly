@@ -496,21 +496,32 @@ def build_parser():
         "--test",
         required=True,
         choices=[
-            "correlation",
-            "spearman",
-            "lag",
-            "ttest",
-            "paired-ttest",
-            "anova",
-            "ols",
-            "mixed",
-            "mannwhitney",
-            "kruskal",
-            "ci-mean",
-            "ci-proportion",
-            "ci-diff",
+            "correlation",      # Pearson correlation between two continuous variables
+            "corr-spearman",    # Spearman rank correlation between two variables
+            "corr-lag",         # Pearson correlation with lag applied to Y
+            "corr-matrix",      # Pearson correlation matrix for multiple columns
+            "ttest",            # Independent two-sample t-test
+            "paired-ttest",     # Paired-sample t-test
+            "anova",            # One-way ANOVA test for group differences
+            "anova-posthoc",    # Post-hoc Tukey test after ANOVA
+            "ols",              # Ordinary Least Squares regression
+            "mixed",            # Mixed-effects regression model
+            "mannwhitney",      # Non-parametric Mann-Whitney U test
+            "kruskal",          # Non-parametric Kruskal-Wallis H test
+            "ci-mean",          # Confidence interval for a single mean
+            "ci-proportion",    # Confidence interval for a proportion
+            "ci-diff",          # Confidence interval for mean difference between two groups
         ],
-        help="Statistical test to perform.",
+        help=(
+            "Select the statistical test to perform. \n"
+            "Correlation options: correlation (Pearson), corr-spearman (Spearman), "
+            "corr-lag (lagged Pearson), corr-matrix (Pearson correlation matrix). \n"
+            "T-tests: ttest (independent), paired-ttest. \n"
+            "ANOVA: anova, anova-posthoc. \n"
+            "Regression: ols (OLS), mixed (mixed-effects). \n"
+            "Non-parametric: mannwhitney, kruskal. \n"
+            "Confidence Intervals: ci-mean, ci-proportion, ci-diff."
+        ),
     )
 
     # -------------------------

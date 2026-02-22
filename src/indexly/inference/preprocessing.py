@@ -16,4 +16,3 @@ def apply_na_policy(df: pd.DataFrame, policy: str = "drop") -> pd.DataFrame:
     if policy == "median":
         return df.fillna(df.median(numeric_only=True))
     raise ValueError("Invalid NA policy.")
-
