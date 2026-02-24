@@ -38,3 +38,10 @@ def eta_squared(anova_table):
     ss_between = anova_table["sum_sq"][0]
     ss_total = anova_table["sum_sq"].sum()
     return ss_between / ss_total
+
+def rank_biserial_u(U: float, n1: int, n2: int) -> float:
+    """
+    Compute rank-biserial correlation for Mann-Whitney U.
+    r_rb = 1 - (2 * U) / (n1 * n2)
+    """
+    return 1 - (2 * U) / (n1 * n2)

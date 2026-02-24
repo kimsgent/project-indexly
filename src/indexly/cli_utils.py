@@ -31,7 +31,7 @@ from indexly.backup.cli import handle_backup
 from indexly.backup.cli_restore import handle_restore
 from indexly.compare.cli_compare import handle_compare
 from indexly.observers.runner import handle_observe_run, handle_observe_audit
-from indexly.inference.cli import handle_infer_csv
+
 
 # CLI display configurations here
 command_titles = {
@@ -75,6 +75,12 @@ def add_common_arguments(parser):
     parser.add_argument("--export-format", choices=["txt", "md", "pdf", "json"])
     parser.add_argument("--pdf-lib", choices=["fpdf", "reportlab"], default="fpdf")
     parser.add_argument("--output")
+
+
+def _lazy_handle_infer_csv(args):
+    from indexly.inference.cli import handle_infer_csv
+
+    return handle_infer_csv(args)
 
 
 def build_parser():
@@ -496,21 +502,21 @@ def build_parser():
         "--test",
         required=True,
         choices=[
-            "correlation",      # Pearson correlation between two continuous variables
-            "corr-spearman",    # Spearman rank correlation between two variables
-            "corr-lag",         # Pearson correlation with lag applied to Y
-            "corr-matrix",      # Pearson correlation matrix for multiple columns
-            "ttest",            # Independent two-sample t-test
-            "paired-ttest",     # Paired-sample t-test
-            "anova",            # One-way ANOVA test for group differences
-            "anova-posthoc",    # Post-hoc Tukey test after ANOVA
-            "ols",              # Ordinary Least Squares regression
-            "mixed",            # Mixed-effects regression model
-            "mannwhitney",      # Non-parametric Mann-Whitney U test
-            "kruskal",          # Non-parametric Kruskal-Wallis H test
-            "ci-mean",          # Confidence interval for a single mean
-            "ci-proportion",    # Confidence interval for a proportion
-            "ci-diff",          # Confidence interval for mean difference between two groups
+            "correlation",  # Pearson correlation between two continuous variables
+            "corr-spearman",  # Spearman rank correlation between two variables
+            "corr-lag",  # Pearson correlation with lag applied to Y
+            "corr-matrix",  # Pearson correlation matrix for multiple columns
+            "ttest",  # Independent two-sample t-test
+            "paired-ttest",  # Paired-sample t-test
+            "anova",  # One-way ANOVA test for group differences
+            "anova-posthoc",  # Post-hoc Tukey test after ANOVA
+            "ols",  # Ordinary Least Squares regression
+            "mixed",  # Mixed-effects regression model
+            "mannwhitney",  # Non-parametric Mann-Whitney U test
+            "kruskal",  # Non-parametric Kruskal-Wallis H test
+            "ci-mean",  # Confidence interval for a single mean
+            "ci-proportion",  # Confidence interval for a proportion
+            "ci-diff",  # Confidence interval for mean difference between two groups
         ],
         help=(
             "Select the statistical test to perform. \n"
@@ -544,7 +550,7 @@ def build_parser():
     infer_parser.add_argument(
         "--correction",
         choices=["bonferroni", "holm", "bh"],
-        help="Multiple comparison correction method.",
+        help="Multiple comparison correction method. 'bh' = Benjamini-Hochberg (also known as FDR correction).",
     )
 
     # -------------------------
@@ -554,7 +560,7 @@ def build_parser():
         "--export", choices=["md", "pdf"], help="Export inference report."
     )
 
-    infer_parser.set_defaults(func=handle_infer_csv)
+    infer_parser.set_defaults(func=_lazy_handle_infer_csv)
 
     # -------------------------------
     # Clear cleaned data

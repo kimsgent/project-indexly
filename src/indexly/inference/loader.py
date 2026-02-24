@@ -20,14 +20,20 @@ def load_dataframe(file_name: str, use_cleaned: bool = True) -> pd.DataFrame:
     conn.close()
 
     if not row:
-        raise ValueError(f"No data found for file: {file_name}")
+        raise ValueError(
+            f"Dataset '{file_name}' not found.\n"
+            f"Tip: Did you mean '{file_name}.csv'?\n"
+            f"Run 'indexly analyze-csv {file_name}.csv' first if not indexed."
+        )
 
     raw_json, cleaned_json = row
-
     data_json = cleaned_json if use_cleaned else raw_json
 
     if not data_json:
-        raise ValueError("Requested dataset version not available.")
+        version = "cleaned" if use_cleaned else "raw"
+        raise ValueError(
+            f"The {version} dataset for '{file_name}' is not available."
+        )
 
     data = json.loads(data_json)
     return pd.DataFrame(data)

@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Dict, Any, Optional
 
+
 @dataclass
 class InferenceResult:
     test_name: str
@@ -12,7 +13,10 @@ class InferenceResult:
     additional_table: Optional[Dict[str, Any]] = field(default=None)
     metadata: Dict[str, Any] = field(default_factory=dict)
 
-    def interpretation(self) -> str:
+    def interpretation(self) -> Optional[str]:
+        if self.p_value is None:
+            return None
+
         if self.p_value < 0.001:
             sig = "highly significant"
         elif self.p_value < 0.05:

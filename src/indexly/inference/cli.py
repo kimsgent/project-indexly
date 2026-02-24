@@ -12,7 +12,6 @@ from .formatter import format_result, display_inference_result
 from .mixed_effects import run_mixed_effects
 from .merge_engine import merge_dataframes
 from .exporter import export_report
-from .multiple_corrections import apply_correction
 from .models import InferenceResult
 from .confidence_intervals import (
     ci_mean,
@@ -23,6 +22,7 @@ from rich.table import Table
 from rich.console import Console
 
 console = Console()
+
 
 def run_inference(
     file_name: str,
@@ -93,7 +93,11 @@ def run_inference_engine(
         return lag_corr(df, x[0], x[1], lag=lag)
 
     elif test == "corr-matrix":
-        matrix = correlation_matrix(df, x)
+        corr_matrix, p_matrix = correlation_matrix(
+            df,
+            x,
+            correction=correction,
+        )
 
         return InferenceResult(
             test_name="correlation_matrix",
@@ -102,11 +106,15 @@ def run_inference_engine(
             effect_size=None,
             ci_low=None,
             ci_high=None,
-            additional_table=matrix,
+            additional_table={
+                "correlations": corr_matrix,
+                "p_values": p_matrix,
+            },
             metadata={
                 "method": "pearson",
                 "columns": x,
                 "n": len(df),
+                "correction": correction,
             },
         )
 
@@ -140,23 +148,24 @@ def run_inference_engine(
         return run_kruskal(df, y, group)
 
     # -----------------------------
-    # ANOVA (+ optional correction)
+    # ANOVA (no external correction)
     # -----------------------------
     elif test == "anova":
-        result = run_anova(df, y, group, auto_route=auto_route)
-
-        if correction:
-            result = apply_correction(result, method=correction)
-
-        return result
+        return run_anova(
+            df,
+            y,
+            group,
+            auto_route=auto_route,
+            correction=None,  # explicitly disable external correction
+        )
 
     elif test == "anova-posthoc":
-        result = run_tukey(df, y, group)
-
-        if correction:
-            result = apply_correction(result, method=correction)
-
-        return result
+        return run_tukey(
+            df,
+            y,
+            group,
+            correction=None,  # Tukey already controls FWER
+        )
 
     # -----------------------------
     # Regression
@@ -166,7 +175,7 @@ def run_inference_engine(
             df,
             y,
             x,
-            interaction=interaction,
+            interaction_terms=interaction,
             auto_route=auto_route,
             bootstrap_coefficients=bootstrap,
         )
@@ -262,7 +271,11 @@ def handle_infer_csv(args):
     # -----------------------------
     # Load datasets
     # -----------------------------
-    dfs = [load_dataframe(file_name=f, use_cleaned=use_cleaned) for f in args.files]
+    try:
+        dfs = [load_dataframe(file_name=f, use_cleaned=use_cleaned) for f in args.files]
+    except ValueError as e:
+        print(f"\n❌ {e}\n")
+        return
 
     # -----------------------------
     # Validate --y for certain tests
@@ -329,22 +342,26 @@ def handle_infer_csv(args):
     # -----------------------------
     # Dispatch to inference engine
     # -----------------------------
-    results = run_inference_engine(
-        df=working_df,
-        test=args.test,
-        x=args.x,
-        y=args.y,
-        group=args.group,
-        interaction=args.interaction,
-        auto_route=args.auto_route,
-        bootstrap=args.bootstrap,
-        correction=args.correction,
-    )
+    try:
+        results = run_inference_engine(
+            df=working_df,
+            test=args.test,
+            x=args.x,
+            y=args.y,
+            group=args.group,
+            interaction=args.interaction,
+            auto_route=args.auto_route,
+            bootstrap=args.bootstrap,
+            correction=args.correction,
+        )
 
-    # -----------------------------
-    # Export handling
-    # -----------------------------
-    if args.export:
-        export_report(results, args.export)
-    else:
-        display_inference_result(results)
+        # -----------------------------
+        # Export handling
+        # -----------------------------
+        if args.export:
+            export_report(results, args.export)
+        else:
+            display_inference_result(results)
+
+    except ValueError as e:
+        print(f"\n[Inference Error] {e}\n")

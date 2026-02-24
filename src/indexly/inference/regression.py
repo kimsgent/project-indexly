@@ -9,7 +9,6 @@ from .power import power_ols
 from .advanced_decision import decide_regression_route
 from .bootstrap import bootstrap
 
-
 def run_ols(
     df: pd.DataFrame,
     y_col: str,
@@ -23,75 +22,97 @@ def run_ols(
     confidence intervals, assumption checks, and model power.
     """
 
-    # Construct formula for interactions if any
+    df_work = df.copy()
+
+    # ------------------------
+    # Interaction encoding
+    # ------------------------
+    interaction_names = []
     if interaction_terms:
-        interaction_str = " + ".join(interaction_terms)
-        predictors = " + ".join(x_cols) + " + " + interaction_str
-    else:
-        predictors = " + ".join(x_cols)
+        for i, col1 in enumerate(interaction_terms):
+            for col2 in interaction_terms[i + 1:]:
+                inter_name = f"{col1}_x_{col2}"
+                df_work[inter_name] = (
+                    pd.Categorical(df_work[col1]).codes
+                    * pd.Categorical(df_work[col2]).codes
+                    if df_work[col1].dtype == "object" or df_work[col2].dtype == "object"
+                    else df_work[col1] * df_work[col2]
+                )
+                interaction_names.append(inter_name)
 
-    formula = f"{y_col} ~ {predictors}"
-    model = sm.OLS.from_formula(formula, data=df).fit()
+    # ------------------------
+    # One-hot encode categorical predictors (exclude numeric columns)
+    # ------------------------
+    predictors = x_cols + interaction_names
+    df_model = pd.get_dummies(df_work[predictors], drop_first=True)
 
+    # ------------------------
+    # Build formula and fit model
+    # ------------------------
+    formula = f"{y_col} ~ {' + '.join(df_model.columns)}"
+    model = sm.OLS.from_formula(
+        formula, data=pd.concat([df_work[y_col], df_model], axis=1)
+    ).fit()
+
+    # ------------------------
     # Coefficient CI
+    # ------------------------
     ci_table = ci_regression_coefficients(model)
 
-    # Effect size: f² for model
+    # ------------------------
+    # Effect size
+    # ------------------------
     f2 = cohen_f_squared(model)
 
+    # ------------------------
     # Residual assumptions
+    # ------------------------
     residuals = model.resid
     normality = test_normality_residuals(residuals)
-    homoscedasticity = test_homoscedasticity(model, df)
+    homoscedasticity = test_homoscedasticity(model, df_work)
 
     route = decide_regression_route(
         normality["normal"], homoscedasticity["homoscedastic"]
     )
-
     if auto_route and route == "robust":
         model = model.get_robustcov_results(cov_type="HC3")
 
+    # ------------------------
+    # Bootstrap if requested
+    # ------------------------
     if bootstrap_coefficients:
-        coef_names = model.params.index.tolist()
         boot_cis = {}
+        for name in model.params.index:
+            # resample dataframe rows and compute the coefficient
+            def coef_stat(df_sample):
+                m = sm.OLS.from_formula(formula, data=df_sample).fit()
+                return m.params[name]
 
-        def coef_stat(*data):
-            # data[0] = dataframe indices sampled
-            sampled_df = data[0]
-            m = sm.OLS.from_formula(formula, data=sampled_df).fit()
-            return m.params.values
-
-        rng = np.random.default_rng()
-
-        n = len(df)
-        boot_params = []
-
-        for _ in range(5000):
-            idx = rng.integers(0, n, n)
-            sampled_df = df.iloc[idx]
-            m = sm.OLS.from_formula(formula, data=sampled_df).fit()
-            boot_params.append(m.params.values)
-
-        boot_params = np.array(boot_params)
-
-        for i, name in enumerate(coef_names):
-            lower = np.percentile(boot_params[:, i], 2.5)
-            upper = np.percentile(boot_params[:, i], 97.5)
-            boot_cis[name] = (float(lower), float(upper))
+            lower, upper = bootstrap(
+                coef_stat,
+                pd.concat([df_work[y_col], df_model], axis=1),
+                n_boot=5000
+            )
+            boot_cis[name] = (lower, upper)
 
         ci_table = boot_cis
-    # Multicollinearity
-    vif_table = compute_vif(df[x_cols])
 
+    # ------------------------
+    # Multicollinearity
+    # ------------------------
+    vif_table = compute_vif(df_model)
+
+    # ------------------------
     # Model power
-    power = power_ols(f2, len(x_cols), len(df))
+    # ------------------------
+    power = power_ols(f2, len(df_model.columns), len(df))
 
     return InferenceResult(
         test_name="ols_regression",
         statistic=model.fvalue,
         p_value=model.f_pvalue,
         effect_size=model.rsquared,
-        ci_low=None,  # overall model not single CI
+        ci_low=None,
         ci_high=None,
         additional_table={
             "summary": model.summary().as_text(),
@@ -105,7 +126,7 @@ def run_ols(
         metadata={
             "dependent": y_col,
             "independent": x_cols,
-            "interaction_terms": interaction_terms or [],
+            "interaction_terms": interaction_names,
             "n": len(df),
             "power": power,
             "route_selected": route,

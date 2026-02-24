@@ -33,7 +33,7 @@ def benjamini_hochberg(p_values):
 def apply_correction(p_values, method: str | None):
     """
     Central correction dispatcher.
-    method: "bonferroni", "holm", "fdr_bh", or None
+    method: "bonferroni", "holm", "bh", or None
     """
 
     if method is None:
@@ -47,7 +47,7 @@ def apply_correction(p_values, method: str | None):
     if method == "holm":
         return holm(p_values)
 
-    if method in ["fdr", "fdr_bh", "benjamini-hochberg"]:
+    if method in ["bh", "fdr", "fdr_bh", "benjamini-hochberg"]:
         return benjamini_hochberg(p_values)
 
     raise ValueError("Unsupported correction method.")

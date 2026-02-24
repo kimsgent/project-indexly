@@ -2,7 +2,11 @@ import pandas as pd
 import numpy as np
 from scipy.stats import pearsonr, spearmanr, norm
 from .models import InferenceResult
-import numpy as np
+from itertools import combinations
+from .multiple_corrections import apply_correction
+
+
+
 
 
 def pearson_corr(df, x: str, y: str, alpha: float = 0.05) -> InferenceResult:
@@ -56,5 +60,40 @@ def lag_corr(df: pd.DataFrame, x: str, y: str, lag: int = 1) -> InferenceResult:
     )
 
 
-def correlation_matrix(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
-    return df[columns].corr(method="pearson")
+
+def correlation_matrix(
+    df: pd.DataFrame,
+    columns: list[str],
+    correction: str | None = None,
+):
+    """
+    Returns:
+        corr_matrix: Pearson r matrix
+        p_matrix: corrected (or raw) p-value matrix
+    """
+
+    n = len(columns)
+    corr_matrix = pd.DataFrame(np.eye(n), columns=columns, index=columns)
+    p_matrix = pd.DataFrame(np.zeros((n, n)), columns=columns, index=columns)
+
+    pairs = list(combinations(range(n), 2))
+    raw_p_values = []
+
+    # Compute correlations + collect p-values
+    for i, j in pairs:
+        col1, col2 = columns[i], columns[j]
+        r, p = pearsonr(df[col1], df[col2])
+
+        corr_matrix.iloc[i, j] = corr_matrix.iloc[j, i] = r
+        p_matrix.iloc[i, j] = p_matrix.iloc[j, i] = p
+
+        raw_p_values.append(p)
+
+    # Apply correction if requested
+    if correction:
+        corrected = apply_correction(raw_p_values, correction)
+
+        for (i, j), p_corr in zip(pairs, corrected):
+            p_matrix.iloc[i, j] = p_matrix.iloc[j, i] = p_corr
+
+    return corr_matrix, p_matrix
