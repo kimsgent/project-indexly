@@ -507,6 +507,7 @@ def build_parser():
             "corr-lag",  # Pearson correlation with lag applied to Y
             "corr-matrix",  # Pearson correlation matrix for multiple columns
             "ttest",  # Independent two-sample t-test
+            "bayes-ttest",  # Bayesian independent two-sample t-test using JZS prior (reports BF10 evidence)
             "paired-ttest",  # Paired-sample t-test
             "anova",  # One-way ANOVA test for group differences
             "anova-posthoc",  # Post-hoc Tukey test after ANOVA
@@ -522,7 +523,7 @@ def build_parser():
             "Select the statistical test to perform. \n"
             "Correlation options: correlation (Pearson), corr-spearman (Spearman), "
             "corr-lag (lagged Pearson), corr-matrix (Pearson correlation matrix). \n"
-            "T-tests: ttest (independent), paired-ttest. \n"
+            "T-tests: ttest (independent), bayes-ttest (two-sample t-test using JZS prior), paired-ttest. \n"
             "ANOVA: anova, anova-posthoc. \n"
             "Regression: ols (OLS), mixed (mixed-effects). \n"
             "Non-parametric: mannwhitney, kruskal. \n"

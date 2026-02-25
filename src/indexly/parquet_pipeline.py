@@ -8,37 +8,14 @@ from rich.table import Table
 from rich.panel import Panel
 import json
 import math
-from .datetime_utils import normalize_datetime_columns
 from pathlib import Path
 from rich.tree import Tree
 from io import StringIO
 
-from .datetime_utils import normalize_datetime_columns
+
 
 console = Console()
 
-def _safe_preview(df: pd.DataFrame, rows: int = 5) -> str:
-    try:
-        return df.head(rows).to_markdown(index=False)
-    except Exception:
-        return str(df.head(rows))
-
-def _schema_to_table(schema: Optional[list]) -> str:
-    if not schema:
-        return "No schema available."
-    t = Table(show_header=True, header_style="bold cyan")
-    t.add_column("Column")
-    t.add_column("Type")
-    for fld in schema:
-        name = fld.get("name", str(fld))
-        tp = fld.get("type", "") if isinstance(fld, dict) else ""
-        t.add_row(str(name), str(tp))
-    from io import StringIO
-    buf = StringIO()
-    console.file = buf  # temporarily direct to buffer
-    console.print(t)
-    # restore default behaviour by re-instantiating console? safer to capture via print of table.renderable
-    return buf.getvalue()
 
 # ---------------------------------------------------------------------
 # 🌲 Build a simple tree view representation

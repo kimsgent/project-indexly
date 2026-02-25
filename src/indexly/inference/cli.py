@@ -3,6 +3,7 @@ from .loader import load_dataframe
 from .preprocessing import select_columns, apply_na_policy
 from .correlation import pearson_corr, spearman_corr, lag_corr, correlation_matrix
 from .ttest import run_ttest
+from .bayesian import run_bayesian_ttest
 from .paired_ttest import run_paired_ttest
 from .anova import run_anova
 from .nonparametric import run_mannwhitney, run_kruskal
@@ -137,6 +138,8 @@ def run_inference_engine(
             x[1],
             use_bootstrap=bootstrap,
         )
+    elif test == "bayes-ttest":
+        return run_bayesian_ttest(df, y, group)
 
     # -----------------------------
     # Nonparametric

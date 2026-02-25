@@ -46,10 +46,12 @@ console = Console()
 # -------------------------------
 
 import warnings
+
 warnings.filterwarnings(
     "ignore",
-    message="Pandas doesn't allow columns to be created via a new attribute name"
+    message="Pandas doesn't allow columns to be created via a new attribute name",
 )
+
 
 # -------------------------------------------------------
 # 🧩 Step 1: Load CSV with automatic delimiter detection
@@ -278,28 +280,38 @@ def run_csv_pipeline(file_path: Path, args, df: pd.DataFrame = None):
     raw_df = df.copy()  # preserve original
     df._raw_df = raw_df
 
-    try:
-        save_analysis_result(
-            file_path=str(file_path),
-            file_type="csv",
-            summary=None,
-            sample_data=None,
-            metadata={
-                "profile": "csv_raw",
-                "hash": sha256(file_path) if file_path else None,
-                "row_count": raw_df.shape[0],
-                "col_count": raw_df.shape[1],
-            },
-            row_count=raw_df.shape[0],
-            col_count=raw_df.shape[1],
-            raw_df=raw_df,
+    # Respect global --no-persist flag
+    if not getattr(args, "no_persist", False):
+
+        try:
+            save_analysis_result(
+                file_path=str(file_path),
+                file_type="csv",
+                summary=None,
+                sample_data=None,
+                metadata={
+                    "profile": "csv_raw",
+                    "hash": sha256(file_path) if file_path else None,
+                    "row_count": raw_df.shape[0],
+                    "col_count": raw_df.shape[1],
+                },
+                row_count=raw_df.shape[0],
+                col_count=raw_df.shape[1],
+                raw_df=raw_df,
+            )
+
+            console.print(f"[green]✔ Persisted raw data for {file_path.name}[/green]")
+
+        except Exception as e:
+            console.print(f"[red]⚠️ Failed to save raw CSV data: {e}[/red]")
+
+    else:
+        console.print(
+            f"[dim]💤 Skipping raw persistence (--no-persist) for {file_path.name}[/dim]"
         )
-    except Exception as e:
-        console.print(f"[red]⚠️ Failed to save raw CSV data: {e}[/red]")
 
     # --- Step 1: Clean CSV ---
     df, summary_records = clean_csv(df, args)
-
 
     # --- Step 1: Clean CSV ---
     df, summary_records = clean_csv(df, args)

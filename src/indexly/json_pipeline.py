@@ -5,13 +5,9 @@ from typing import Tuple, Dict, Any, Optional
 import pandas as pd
 import json
 from rich.console import Console
-from indexly.csv_analyzer import export_results
-from .csv_analyzer import _json_safe
 from datetime import datetime
 from .universal_loader import _safe_read_text
 from .visualize_json import (
-    json_visual_summary,
-    json_to_dataframe,
     summarize_json_dataframe,
     json_preview,
     json_build_tree,
@@ -26,7 +22,6 @@ from .analyze_json import (
     load_json_as_dataframe,
     analyze_json_dataframe,
     normalize_datetime_columns,
-    _print_datetime_summary,
 )
 from .json_cache_normalizer import (
     is_search_cache_json,
@@ -229,7 +224,7 @@ def run_json_generic_pipeline(
     args = args or {}
     show_tree = bool(args.get("treeview", False))
     path_obj = Path(file_path)
-    
+
     if meta:
         args["meta"] = meta  # merge into args
 
@@ -375,4 +370,3 @@ def run_json_generic_pipeline(
             build_json_table_output(df, dt_summary=dt_summary)  # only once
 
     return df, summary_dict, tree_dict or table_output
-
