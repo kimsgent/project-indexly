@@ -6,9 +6,6 @@ from itertools import combinations
 from .multiple_corrections import apply_correction
 
 
-
-
-
 def pearson_corr(df, x: str, y: str, alpha: float = 0.05) -> InferenceResult:
     """
     Pearson correlation with proper CI using Fisher Z-transform.
@@ -58,7 +55,6 @@ def lag_corr(df: pd.DataFrame, x: str, y: str, lag: int = 1) -> InferenceResult:
         p_value=p,
         metadata={"x": x, "y": y, "lag": lag, "n": len(df_lag)},
     )
-
 
 
 def correlation_matrix(

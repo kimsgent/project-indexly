@@ -85,13 +85,19 @@ def run_inference_engine(
     # Correlations
     # -----------------------------
     if test == "correlation":
-        return pearson_corr(df, x[0], x[1])
+        if len(x) != 1:
+            raise ValueError(
+                "Correlation test requires exactly one --x variable and one --y variable."
+            )
+        if y is None:
+            raise ValueError("Correlation test requires --y to be specified.")
+        return pearson_corr(df, x[0], y)
 
     elif test == "corr-spearman":
-        return spearman_corr(df, x[0], x[1])
+        return spearman_corr(df, x[0], y)
 
     elif test == "corr-lag":
-        return lag_corr(df, x[0], x[1], lag=lag)
+        return lag_corr(df, x[0], y, lag=lag)
 
     elif test == "corr-matrix":
         corr_matrix, p_matrix = correlation_matrix(
@@ -281,14 +287,43 @@ def handle_infer_csv(args):
         return
 
     # -----------------------------
-    # Validate --y for certain tests
+    # Validate required arguments per test
     # -----------------------------
-    if args.test in ["ci-mean", "ci-proportion", "ci-diff"] and not args.y:
-        console.print(
-            f"[red]Error:[/] --y is required for [bold]{args.test}[/bold].",
-            style="bold red",
-        )
-        return
+    if args.test:
+
+        # Tests requiring only y
+        if args.test in ["ci-mean", "ci-proportion", "ci-diff"]:
+            if not args.y:
+                console.print(
+                    f"[red]Error:[/] --y is required for [bold]{args.test}[/bold].",
+                    style="bold red",
+                )
+                return
+
+        # Correlation
+        elif args.test == "correlation":
+            if not args.x or not args.y:
+                console.print(
+                    "[red]Error:[/] --test correlation requires both --x and --y.",
+                    style="bold red",
+                )
+                return
+
+            if not isinstance(args.x, list) or len(args.x) != 1:
+                console.print(
+                    "[red]Error:[/] Correlation requires exactly one --x variable.",
+                    style="bold red",
+                )
+                return
+
+        # Group comparison tests (kruskal, anova etc.)
+        elif args.test in ["kruskal", "anova"]:
+            if not args.y or not args.group:
+                console.print(
+                    f"[red]Error:[/] --test {args.test} requires --y and --group.",
+                    style="bold red",
+                )
+                return
 
     # -----------------------------
     # Merge if multiple
@@ -297,11 +332,18 @@ def handle_infer_csv(args):
         if not args.merge_on:
             raise ValueError("--merge-on is required when multiple files are provided.")
 
-        df, merge_meta = merge_dataframes(dfs=dfs, merge_on=args.merge_on, how="inner")
+        df, merge_meta = merge_dataframes(
+            dfs=dfs,
+            merge_on=args.merge_on,
+            how="inner",
+            agg=args.agg,
+        )
 
         print(f"[INFO] Merge complete.")
         print(f"       Original rows: {merge_meta['original_row_counts']}")
         print(f"       Merged rows:   {merge_meta['merged_row_count']}")
+        print(f"       Aggregation mode: {merge_meta['aggregation_mode']}")
+        print(f"       Duplicate keys:   {merge_meta['duplicate_keys_detected']}")
 
     else:
         df = dfs[0]

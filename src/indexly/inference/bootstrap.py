@@ -42,13 +42,10 @@ def bootstrap(func, *arrays, paired=False, n_boot=5000, alpha=0.05, random_state
 
     else:
         for _ in range(n_boot):
-            resampled = [
-                rng.choice(a, size=len(a), replace=True)
-                for a in arrays
-            ]
+            resampled = [rng.choice(a, size=len(a), replace=True) for a in arrays]
             stats.append(func(*resampled))
 
     lower = np.percentile(stats, 100 * alpha / 2)
     upper = np.percentile(stats, 100 * (1 - alpha / 2))
 
-    return float(lower), float(upper)   
+    return float(lower), float(upper)

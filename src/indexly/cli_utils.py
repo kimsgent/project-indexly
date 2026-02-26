@@ -460,6 +460,13 @@ def build_parser():
         help="Column name to merge multiple datasets on (required if multiple files).",
     )
 
+    infer_parser.add_argument(
+        "--agg",
+        choices=["none", "mean", "sum"],
+        default="none",
+        help="Aggregate duplicate merge keys before merging (mean, sum, none).",
+    )
+
     # -------------------------
     # Data version
     # -------------------------
