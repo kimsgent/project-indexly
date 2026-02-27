@@ -99,6 +99,21 @@ Indexly includes built-in analyzers for structured data:
 
 → See: [Data Analysis](/documentation/data-analysis-overview/)
 
+### 🧮 Statistical Inference (CSV Only)
+
+Indexly can perform **rigorous statistical inference** directly on CSV datasets:
+
+#### Core Capabilities
+
+- **📊 Correlation Analysis** – Pearson (Fisher Z CI), Spearman, lag correlation, full correlation matrices
+- **🧪 Parametric Tests** – Independent and paired t-tests, one-way ANOVA, Tukey post-hoc
+- **📈 Regression Models** – OLS with interaction terms and mixed-effects modeling
+- **🛡 Assumption-Aware** – Automatic rerouting to nonparametric tests when assumptions fail
+- **🔁 Bootstrap Support** – Optional bootstrap confidence intervals and coefficient estimation
+- **📄 Structured Export** – Export formatted inference reports to Markdown or PDF
+
+→ See: [Inference Documentation](/inference/)
+
 ---
 
 ## 📦 Comparison & Diffing

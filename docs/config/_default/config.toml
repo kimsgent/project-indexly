@@ -19,6 +19,12 @@ pagination.paperSize = 20
   showVisitedLinks = true
   themeVariant = "auto"
 
+  [params.katex]
+    version = "0.16.8"
+    html_dom_element = "document.body"
+    options = { throwOnError = false, macros = { "\\RR" = "\\mathbb{R}" } }
+    mhchem = true  # optional, include if you plan to render chemical formulas
+
 [sitemap]
   changefreq = "weekly"
   priority = 0.7

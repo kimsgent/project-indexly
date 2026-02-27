@@ -10,6 +10,8 @@
     "pagefind": "^1.4.0"
   },
   "scripts": {
+    "dev": "hugo server",
+    "build": "hugo --minify && npx pagefind --site public",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

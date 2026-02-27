@@ -40,7 +40,7 @@ Indexly provides unified analysis and summarization for the following formats:
 
 - Auto-detected delimiters (`,`, `;`, `\t`, etc.)
 - Summary statistics, validation, preview, and full analysis with `analyze-csv`
-
+- Structured statistical inference including correlation, t-tests, ANOVA, regression, and nonparametric testing via the [infer-csv](/inference/) pipeline.
 ### **JSON**
 
 - Generic JSON (list, dict, mixed)
