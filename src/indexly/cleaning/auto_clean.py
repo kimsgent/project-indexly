@@ -265,7 +265,29 @@ def _handle_datetime_columns(
 
 
 def _safe_fillna(df: pd.DataFrame, col: str, fill_value: Any) -> pd.DataFrame:
-    """Fill missing values safely."""
+    """Fill missing values safely with dtype awareness."""
+    dtype = df[col].dtype
+
+    # Handle pandas nullable integer (Int64)
+    if str(dtype) == "Int64":
+        if isinstance(fill_value, float):
+            fill_value = int(round(fill_value))
+        df[col] = df[col].fillna(fill_value)
+        return df
+
+    # Handle numpy integer dtypes (int64, int32, etc.)
+    if pd.api.types.is_integer_dtype(dtype):
+        if isinstance(fill_value, float):
+            fill_value = int(round(fill_value))
+        df[col] = df[col].fillna(fill_value)
+        return df
+
+    # Handle float columns
+    if pd.api.types.is_float_dtype(dtype):
+        df[col] = df[col].fillna(float(fill_value))
+        return df
+
+    # Default fallback (object, category, etc.)
     df[col] = df[col].fillna(fill_value)
     return df
 

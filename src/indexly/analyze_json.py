@@ -30,7 +30,7 @@ import numpy as np
 from rich.console import Console
 from rich.table import Table
 from .db_utils import _migrate_cleaned_data_schema
-from .analyze_utils import save_analysis_result, load_cleaned_data
+from .analyze_utils import save_analysis_result
 
 
 
@@ -44,7 +44,7 @@ try:
 except Exception as e:
     normalize_datetime_columns = None
     _NORMALIZE_IMPORT_ERR = e
-    
+
 
 def _safe_export_file(path: str, content: str):
     """Fallback exporter for plain text / md."""
@@ -246,69 +246,6 @@ def analyze_json_dataframe(df: pd.DataFrame) -> Tuple[pd.DataFrame, str, Dict[st
 # -------------------------
 
 
-def _suppress_datetime_warnings():
-    """Suppress repetitive pandas datetime inference warnings."""
-    warnings.filterwarnings(
-        "ignore",
-        message="Could not infer format, so each element will be parsed individually",
-        category=UserWarning,
-    )
-
-
-def _print_dataset_overview(df: pd.DataFrame, file_name: str):
-    """Print a quick summary of the loaded DataFrame."""
-    rows, cols = df.shape
-    mem_mb = df.memory_usage(deep=True).sum() / 1024**2
-    num = len(df.select_dtypes(include=np.number).columns)
-    obj = len(df.select_dtypes(include="object").columns)
-    dt = len(df.select_dtypes(include="datetime64").columns)
-
-    console.print(f"[green]✅ Loaded JSON:[/green] {os.path.basename(file_name)} ({rows:,}×{cols})")
-    console.print(f"   • Memory usage: {mem_mb:.2f} MB")
-    console.print(f"   • Numeric: {num} | Object: {obj} | Datetime: {dt}\n")
-
-
-def _print_datetime_summary(summary_dict: dict):
-    """Render a clean, concise summary table for datetime normalization."""
-    if not summary_dict or all(not v for v in summary_dict.values()):
-        console.print("[yellow]⚠️ No datetime normalization details available.[/yellow]")
-        return
-
-    # Flatten handle/auto summaries
-    records = []
-    for phase, items in summary_dict.items():
-        if isinstance(items, list):
-            for item in items:
-                if isinstance(item, dict):
-                    records.append({
-                        "phase": phase,
-                        "column": item.get("column", "—"),
-                        "action": item.get("action", "—"),
-                        "valid": f"{item.get('valid_ratio', 0) * 100:.1f}%" if "valid_ratio" in item else "—",
-                    })
-
-    if not records:
-        console.print("[yellow]⚠️ Datetime summary is empty.[/yellow]")
-        return
-
-    # Limit to first 8 entries for readability
-    show_n = min(len(records), 8)
-    console.print(f"[blue]🕒 Datetime normalization summary (showing first {show_n} of {len(records)}):[/blue]")
-
-    table = Table(show_header=True, header_style="bold magenta")
-    table.add_column("Phase", style="cyan", width=10)
-    table.add_column("Column", style="bold")
-    table.add_column("Action", style="dim")
-    table.add_column("Valid %", justify="right")
-
-    for rec in records[:show_n]:
-        table.add_row(rec["phase"], rec["column"], rec["action"], rec["valid"])
-
-    console.print(table)
-    if len(records) > show_n:
-        console.print(f"[dim](truncated; total {len(records)} columns)[/dim]\n")
-
-
 def run_analyze_json(args):
     """
     CLI entry: indexly analyze-json <file>
@@ -382,5 +319,3 @@ def run_analyze_json(args):
             console.print(f"[red]❌ Export failed: {e}[/red]")
 
     console.print("[bold green]✔ JSON analysis completed.[/bold green]\n")
-
-

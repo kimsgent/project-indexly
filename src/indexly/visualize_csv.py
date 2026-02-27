@@ -726,7 +726,9 @@ def visualize_line_plot(
 # ============================================
 # 📊 Bar Chart Visualization (Improved)
 # ============================================
-def visualize_bar_plot(df, x_col, y_col, mode="static", output=None, title=None):
+def visualize_bar_plot(
+    df, x_col, y_col, mode="static", agg_func="mean", output=None, title=None
+):
     """
     Render a bar chart using either matplotlib (static) or plotly (interactive).
     Automatically coerces numeric columns (e.g., '$123,000.00') to floats.
@@ -759,6 +761,8 @@ def visualize_bar_plot(df, x_col, y_col, mode="static", output=None, title=None)
         console.print(f"[red]❌ No valid data to plot for {x_col} vs {y_col}[/red]")
         return
 
+    if agg_func:
+        df = df.groupby(x_col, dropna=False)[y_col].agg(agg_func).reset_index()
     if mode == "interactive":
         ensure_optional_packages(["plotly.express"])
         import plotly.express as px
