@@ -957,6 +957,7 @@ def handle_show_help(args):
         "Tagging & File Operations": ["tag", "rename-file"],
         "Analysis & Data Inspection": [
             "analyze-csv",
+            "infer-csv",
             "analyze-json",
             "analyze-file",
             "analyze-db",
