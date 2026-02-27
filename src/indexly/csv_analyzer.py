@@ -131,12 +131,22 @@ def analyze_csv(file_or_df, from_df=False):
 
         try:
             delimiter = detect_delimiter(file_path)
-            delimiter = delimiter or ','                       # <-- fallback
+            delimiter = delimiter or ","  # <-- fallback
             console.print(f"📄 Detected delimiter: '{delimiter}'", style="bold cyan")
             try:
-                df = pd.read_csv(file_path, delimiter=delimiter, encoding='utf-8', on_bad_lines='skip')
+                df = pd.read_csv(
+                    file_path,
+                    delimiter=delimiter,
+                    encoding="utf-8",
+                    on_bad_lines="skip",
+                )
             except UnicodeDecodeError:
-                df = pd.read_csv(file_path, delimiter=delimiter, encoding='utf-8-sig', on_bad_lines='skip')
+                df = pd.read_csv(
+                    file_path,
+                    delimiter=delimiter,
+                    encoding="utf-8-sig",
+                    on_bad_lines="skip",
+                )
 
         except Exception as e:
             console.print(f"[!] Failed to read CSV: {e}", style="bold red")
@@ -419,7 +429,9 @@ def export_results(
                     except Exception:
                         return token
 
-                s = re.sub(r"\b\d+\.?\d*e[+\-]?\d+\b", _sci_to_full, s, flags=re.IGNORECASE)
+                s = re.sub(
+                    r"\b\d+\.?\d*e[+\-]?\d+\b", _sci_to_full, s, flags=re.IGNORECASE
+                )
                 s = re.sub(r"\s{2,}", " ", s)
                 cleaned.append(s)
                 progress.advance(task)
@@ -506,8 +518,12 @@ def export_results(
 
         with open_func(export_path, mode, encoding="utf-8") as f:
             f.write("{\n")
-            f.write(f'"metadata": {json.dumps(_json_safe(metadata), ensure_ascii=False)},\n')
-            f.write(f'"summary_statistics": {json.dumps(_json_safe(summary_data), ensure_ascii=False)},\n')
+            f.write(
+                f'"metadata": {json.dumps(_json_safe(metadata), ensure_ascii=False)},\n'
+            )
+            f.write(
+                f'"summary_statistics": {json.dumps(_json_safe(summary_data), ensure_ascii=False)},\n'
+            )
             f.write('"sample_data": [\n')
 
             if df is not None and len(df) > 0:
@@ -518,7 +534,9 @@ def export_results(
                     TextColumn("{task.completed}/{task.total} rows"),
                     TimeRemainingColumn(),
                 ) as progress:
-                    total_task = progress.add_task("Exporting JSON rows...", total=len(df))
+                    total_task = progress.add_task(
+                        "Exporting JSON rows...", total=len(df)
+                    )
                     for i, start in enumerate(range(0, len(df), chunk_size)):
                         chunk = df.iloc[start : start + chunk_size]
                         for j, row in enumerate(chunk.itertuples(index=False)):
@@ -543,7 +561,9 @@ def export_results(
         import pandas as pd
 
         if df is None or df.empty:
-            raise ValueError(f"No DataFrame available for {export_format.upper()} export.")
+            raise ValueError(
+                f"No DataFrame available for {export_format.upper()} export."
+            )
 
         metadata = {
             "analyzed_at": datetime.utcnow().isoformat() + "Z",
@@ -573,7 +593,9 @@ def export_results(
             if "datetime_summary" in results:
                 summary_info["datetime_summary"] = results["datetime_summary"]
             if "df_stats" in results:
-                summary_info["numeric_stats"] = json.loads(results["df_stats"].to_json(orient="index"))
+                summary_info["numeric_stats"] = json.loads(
+                    results["df_stats"].to_json(orient="index")
+                )
             if "meta" in results:
                 summary_info["meta_info"] = results["meta"]
 
@@ -582,7 +604,12 @@ def export_results(
             meta_path = export_path.replace(".csv", "_meta.json")
             df.to_csv(export_path, index=False)
             with open(meta_path, "w", encoding="utf-8") as m:
-                json.dump({"metadata": metadata, "summary": summary_info}, m, ensure_ascii=False, indent=2)
+                json.dump(
+                    {"metadata": metadata, "summary": summary_info},
+                    m,
+                    ensure_ascii=False,
+                    indent=2,
+                )
 
         # --- Excel ---
         elif export_format == "excel":
@@ -600,20 +627,26 @@ def export_results(
 
         elif export_format == "parquet":
             if df is None or df.empty:
-                raise ValueError(f"No DataFrame available for {export_format.upper()} export.")
+                raise ValueError(
+                    f"No DataFrame available for {export_format.upper()} export."
+                )
 
             # --- DEBUG info ---
-            console.print(f"[cyan]💡 Debug: DataFrame shape={df.shape}, columns={df.columns.tolist()}[/cyan]")
+            console.print(
+                f"[cyan]💡 Debug: DataFrame shape={df.shape}, columns={df.columns.tolist()}[/cyan]"
+            )
             console.print(df.head(5))  # show first 5 rows
 
             total_rows = len(df)
 
             # --- Replace tqdm with Rich progress ---
             with Progress() as progress:
-                task = progress.add_task("[green]Preparing Parquet chunks...", total=total_rows)
+                task = progress.add_task(
+                    "[green]Preparing Parquet chunks...", total=total_rows
+                )
 
                 for i, start in enumerate(range(0, total_rows, chunk_size)):
-                    chunk = df.iloc[start:start + chunk_size]
+                    chunk = df.iloc[start : start + chunk_size]
 
                     # optional: use console.print instead of tqdm.write
                     console.print(f"[dim]Chunk {i + 1}: shape={chunk.shape}[/dim]")
@@ -625,12 +658,20 @@ def export_results(
             import pyarrow.parquet as pq
 
             table = pa.Table.from_pandas(df)
-            meta_bytes = json.dumps({"metadata": metadata, "summary": summary_info}, ensure_ascii=False).encode("utf-8")
-            table = table.replace_schema_metadata({**(table.schema.metadata or {}), b"indexly_meta": meta_bytes})
+            meta_bytes = json.dumps(
+                {"metadata": metadata, "summary": summary_info}, ensure_ascii=False
+            ).encode("utf-8")
+            table = table.replace_schema_metadata(
+                {**(table.schema.metadata or {}), b"indexly_meta": meta_bytes}
+            )
 
             # --- Write table ---
-            pq.write_table(table, export_path, compression="snappy" if compress else None)
-            console.print(f"[green]✅ Parquet export complete: {export_path} ({total_rows} rows)[/green]")
+            pq.write_table(
+                table, export_path, compression="snappy" if compress else None
+            )
+            console.print(
+                f"[green]✅ Parquet export complete: {export_path} ({total_rows} rows)[/green]"
+            )
 
         # --- SQLite Database Export ---
         elif export_format == "db":
@@ -671,10 +712,11 @@ def export_results(
                 if "datetime_summary" in results:
                     summary_info["datetime_summary"] = results["datetime_summary"]
                 if "df_stats" in results:
-                    summary_info["numeric_stats"] = json.loads(results["df_stats"].to_json(orient="index"))
+                    summary_info["numeric_stats"] = json.loads(
+                        results["df_stats"].to_json(orient="index")
+                    )
                 if "meta" in results:
                     summary_info["meta_info"] = results["meta"]
-
 
             # --- Write SQLite DB ---
             try:
@@ -686,11 +728,20 @@ def export_results(
                 # --- Write meta file next to DB ---
                 meta_path = export_path.replace(".db", "_meta.json")
                 with open(meta_path, "w", encoding="utf-8") as m:
-                    json.dump({"metadata": metadata, "summary": summary_info}, m, ensure_ascii=False, indent=2)
+                    json.dump(
+                        {"metadata": metadata, "summary": summary_info},
+                        m,
+                        ensure_ascii=False,
+                        indent=2,
+                    )
 
                 # 🪶 Rich console feedback
-                console.print(f"[green]✅ SQLite export complete:[/green] [bold]{export_path}[/bold]")
-                console.print(f"   ┗━ Table: [cyan]{table_name}[/cyan] | Rows: [yellow]{len(df)}[/yellow] | Columns: [yellow]{len(df.columns)}[/yellow]")
+                console.print(
+                    f"[green]✅ SQLite export complete:[/green] [bold]{export_path}[/bold]"
+                )
+                console.print(
+                    f"   ┗━ Table: [cyan]{table_name}[/cyan] | Rows: [yellow]{len(df)}[/yellow] | Columns: [yellow]{len(df.columns)}[/yellow]"
+                )
 
             except Exception as e:
                 console.print(f"[red]❌ Failed to export SQLite DB: {e}[/red]")

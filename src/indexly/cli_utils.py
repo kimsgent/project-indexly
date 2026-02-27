@@ -77,6 +77,12 @@ def add_common_arguments(parser):
     parser.add_argument("--output")
 
 
+def _lazy_handle_infer_csv(args):
+    from indexly.inference.cli import handle_infer_csv
+
+    return handle_infer_csv(args)
+
+
 def build_parser():
     from .indexly import (
         handle_index,
@@ -361,7 +367,7 @@ def build_parser():
         "--agg",
         choices=["mean", "median", "sum", "count"],
         default="mean",
-        help="Aggregation function: used for resampling and line plot duplicates"
+        help="Aggregation function: used for resampling and line plot duplicates",
     )
     csv_parser.add_argument("--rolling", type=int, help="Rolling mean window size")
     csv_parser.add_argument(
@@ -433,6 +439,136 @@ def build_parser():
     )
 
     csv_parser.set_defaults(func=analyze_file, subcommand="analyze-csv")
+
+    # -----------------------------------------
+    # infer-csv subcommand
+    # -----------------------------------------
+
+    infer_parser = subparsers.add_parser(
+        "infer-csv", help="Run statistical inference on indexed CSV datasets."
+    )
+
+    # -------------------------
+    # Input datasets
+    # -------------------------
+    infer_parser.add_argument(
+        "files", nargs="+", help="One or more indexed CSV file names."
+    )
+
+    infer_parser.add_argument(
+        "--merge-on",
+        help="Column name to merge multiple datasets on (required if multiple files).",
+    )
+
+    infer_parser.add_argument(
+        "--agg",
+        choices=["none", "mean", "sum"],
+        default="none",
+        help="Aggregate duplicate merge keys before merging (mean, sum, none).",
+    )
+
+    # -------------------------
+    # Data version
+    # -------------------------
+    infer_parser.add_argument(
+        "--use-cleaned", action="store_true", help="Use cleaned_data_json (default)."
+    )
+
+    infer_parser.add_argument(
+        "--use-raw", action="store_true", help="Use raw_data_json."
+    )
+
+    # -------------------------
+    # Column selection
+    # -------------------------
+    infer_parser.add_argument("--x", nargs="+", help="Independent variable(s).")
+
+    infer_parser.add_argument("--y", help="Dependent variable.")
+
+    infer_parser.add_argument("--group", help="Grouping column for group comparisons.")
+
+    # -------------------------
+    # Missing value handling
+    # -------------------------
+    infer_parser.add_argument(
+        "--fill",
+        choices=["mean", "median"],
+        help="Fill missing values before inference.",
+    )
+
+    infer_parser.add_argument(
+        "--no-fill",
+        action="store_true",
+        help="Drop NA values in selected columns only (default).",
+    )
+
+    # -------------------------
+    # Test selection (explicit)
+    # -------------------------
+    infer_parser.add_argument(
+        "--test",
+        required=True,
+        choices=[
+            "correlation",  # Pearson correlation between two continuous variables
+            "corr-spearman",  # Spearman rank correlation between two variables
+            "corr-lag",  # Pearson correlation with lag applied to Y
+            "corr-matrix",  # Pearson correlation matrix for multiple columns
+            "ttest",  # Independent two-sample t-test
+            "bayes-ttest",  # Bayesian independent two-sample t-test using JZS prior (reports BF10 evidence)
+            "paired-ttest",  # Paired-sample t-test
+            "anova",  # One-way ANOVA test for group differences
+            "anova-posthoc",  # Post-hoc Tukey test after ANOVA
+            "ols",  # Ordinary Least Squares regression
+            "mixed",  # Mixed-effects regression model
+            "mannwhitney",  # Non-parametric Mann-Whitney U test
+            "kruskal",  # Non-parametric Kruskal-Wallis H test
+            "ci-mean",  # Confidence interval for a single mean
+            "ci-proportion",  # Confidence interval for a proportion
+            "ci-diff",  # Confidence interval for mean difference between two groups
+        ],
+        help=(
+            "Select the statistical test to perform. \n"
+            "Correlation options: correlation (Pearson), corr-spearman (Spearman), "
+            "corr-lag (lagged Pearson), corr-matrix (Pearson correlation matrix). \n"
+            "T-tests: ttest (independent), bayes-ttest (two-sample t-test using JZS prior), paired-ttest. \n"
+            "ANOVA: anova, anova-posthoc. \n"
+            "Regression: ols (OLS), mixed (mixed-effects). \n"
+            "Non-parametric: mannwhitney, kruskal. \n"
+            "Confidence Intervals: ci-mean, ci-proportion, ci-diff."
+        ),
+    )
+
+    # -------------------------
+    # Advanced controls
+    # -------------------------
+    infer_parser.add_argument(
+        "--interaction", nargs="+", help="Interaction terms for OLS regression."
+    )
+
+    infer_parser.add_argument(
+        "--auto-route",
+        action="store_true",
+        help="Automatically reroute test if assumptions fail.",
+    )
+
+    infer_parser.add_argument(
+        "--bootstrap", action="store_true", help="Use bootstrap confidence intervals."
+    )
+
+    infer_parser.add_argument(
+        "--correction",
+        choices=["bonferroni", "holm", "bh"],
+        help="Multiple comparison correction method. 'bh' = Benjamini-Hochberg (also known as FDR correction).",
+    )
+
+    # -------------------------
+    # Output
+    # -------------------------
+    infer_parser.add_argument(
+        "--export", choices=["md", "pdf"], help="Export inference report."
+    )
+
+    infer_parser.set_defaults(func=_lazy_handle_infer_csv)
 
     # -------------------------------
     # Clear cleaned data
