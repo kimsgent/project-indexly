@@ -51,8 +51,18 @@ def run_observers(file_path: Path, metadata: dict[str, Any] | None = None) -> No
             else:
                 old_state = load_snapshot(observer.name, raw_path)
 
-            new_state = observer.extract(file_path, metadata)
-            events = observer.compare(old_state, new_state)
+            new_state = observer.extract(file_path, metadata) or {}
+            if not isinstance(new_state, dict):
+                raise TypeError(
+                    f"{observer.name}.extract() must return dict, got {type(new_state)}"
+                )
+
+            events = observer.compare(old_state, new_state) or []
+
+            if not isinstance(events, list):
+                raise TypeError(
+                    f"{observer.name}.compare() must return list, got {type(events)}"
+                )
 
             # Log events in structured logging
             for event in events:
@@ -80,14 +90,15 @@ def run_observers(file_path: Path, metadata: dict[str, Any] | None = None) -> No
                 state=new_state,
             )
 
-            # --- User-friendly terminal output ---
+            # --- User-friendly terminal output ----
             if events:
                 print(f"\n📄 [{observer.name}] changes detected for: {raw_path}")
                 for ev in events:
-                    print(
-                        f"  - {ev['field']}: "
-                        f"{ev['old']!r} → {ev['new']!r}"
-                    )
+                    try:
+                        rendered = observer.format_event(ev)
+                    except Exception:
+                        rendered = str(ev)
+                    print(f"  - {rendered}")
             else:
                 print(f"\n📄 [{observer.name}] no changes detected for: {raw_path}")
 

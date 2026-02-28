@@ -15,16 +15,16 @@ PYTHON_DEP = "python@3.11"
 # CLI arguments
 parser = argparse.ArgumentParser(description="Generate Homebrew formula")
 parser.add_argument(
-    "--source", type=str, default=None,
-    help="Path to local tar.gz source (for dry-run or test tags)"
+    "--source",
+    type=str,
+    default=None,
+    help="Path to local tar.gz source (for dry-run or test tags)",
 )
 parser.add_argument(
-    "--dry-run", action="store_true",
-    help="Dry-run mode, do not require GitHub tag"
+    "--dry-run", action="store_true", help="Dry-run mode, do not require GitHub tag"
 )
 parser.add_argument(
-    "--out", type=str, default="Formula/indexly.rb",
-    help="Output path for formula"
+    "--out", type=str, default="Formula/indexly.rb", help="Output path for formula"
 )
 args = parser.parse_args()
 
@@ -43,6 +43,7 @@ if args.dry_run or "-test" in VERSION:
         if not dist_file.exists():
             sys.exit(f"ERROR: Source file {dist_file} not found for dry-run/test")
         TARBALL_URL = f"file://{dist_file.resolve()}"
+
         def sha256_of_url(url: str) -> str:
             # Local file SHA
             with dist_file.open("rb") as f:
@@ -50,14 +51,19 @@ if args.dry_run or "-test" in VERSION:
                 for chunk in iter(lambda: f.read(8192), b""):
                     h.update(chunk)
             return h.hexdigest()
-        print(f"WARNING: Non-release VERSION detected ({VERSION}); using local tarball {dist_file}")
+
+        print(
+            f"WARNING: Non-release VERSION detected ({VERSION}); using local tarball {dist_file}"
+        )
     else:
         sys.exit("ERROR: --source must be provided for dry-run/test mode")
 else:
     TARBALL_URL = f"{HOMEPAGE}/archive/refs/tags/{VERSION}.tar.gz"
+
     def sha256_of_url(url: str) -> str:
         with urllib.request.urlopen(url) as r:
             return hashlib.sha256(r.read()).hexdigest()
+
 
 # Formula template - REWRITTEN FOR virtualenv_install_with_resources
 FORMULA_TEMPLATE = """\
@@ -89,6 +95,7 @@ class {formula_class} < Formula
 end
 """
 
+
 def main():
     print("Generating Homebrew formula…")
     sha256 = sha256_of_url(TARBALL_URL)
@@ -115,6 +122,7 @@ def main():
 
     print(f"✔ Formula written to {out}")
     print("✔ Audit-compatible")
+
 
 if __name__ == "__main__":
     main()

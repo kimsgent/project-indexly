@@ -250,7 +250,7 @@ Continue exploring Indexly’s analytical capabilities:
 * 🏷️ [Tagging & Metadata Management](tagging.md)
 * ⚡ [Real-Time Watchdog Indexing](config.md#watchdog-real-time-indexing)
 * 📊 [Search & Filter with FTS5](/features/_index.en.md#search)
-
+* 🧠 [Apply Statistical Inference with `infer-csv`](/inference/) — move from descriptive summaries (`analyze-csv`) to rigorous hypothesis testing and structured statistical evaluation
 ---
 
 ✨ **Indexly makes your data talk — visually, statistically, and intelligently.**

@@ -30,11 +30,12 @@ from .clean_csv import (
     _remove_outliers,
     _normalize_numeric,
 )
-
+from .analyze_utils import save_analysis_result
 from indexly.observers.registry import get_observers
 from indexly.observers.csv.csv_observer import CSVObserver
 from indexly.compare.hash_utils import sha256
 from indexly.observers.runner import run_observers
+
 
 from scipy.stats import entropy as shannon_entropy
 
@@ -43,6 +44,13 @@ console = Console()
 # -------------------------------
 # CSV Pipeline modular stages
 # -------------------------------
+
+import warnings
+
+warnings.filterwarnings(
+    "ignore",
+    message="Pandas doesn't allow columns to be created via a new attribute name",
+)
 
 
 # -------------------------------------------------------
@@ -216,18 +224,28 @@ def visualize_csv(df: pd.DataFrame, df_stats, args):
                     "bar": visualize_bar_plot,
                     "pie": visualize_pie_plot,
                 }
+
                 if chart_type in chart_funcs:
-                    chart_funcs[chart_type](
-                        plot_df,
-                        getattr(args, "x_col", None),
-                        getattr(args, "y_col", None),
-                        mode=str(show_chart).lower(),
-                        output=output_path,
-                    )
-                else:
-                    console.print(
-                        f"[yellow]⚠️ Unsupported chart type: {chart_type}[/yellow]"
-                    )
+
+                    # Scatter does NOT support aggregation
+                    if chart_type == "scatter":
+                        chart_funcs[chart_type](
+                            plot_df,
+                            getattr(args, "x_col", None),
+                            getattr(args, "y_col", None),
+                            mode=str(show_chart).lower(),
+                            output=output_path,
+                        )
+                    else:
+                        chart_funcs[chart_type](
+                            plot_df,
+                            getattr(args, "x_col", None),
+                            getattr(args, "y_col", None),
+                            agg_func=getattr(args, "agg", "mean"),
+                            mode=str(show_chart).lower(),
+                            output=output_path,
+                        )
+
         else:
             console.print(f"[yellow]⚠️ Unknown chart mode: {show_chart}[/yellow]")
     except Exception as e:
@@ -258,7 +276,42 @@ def run_csv_pipeline(file_path: Path, args, df: pd.DataFrame = None):
             console.print(f"[red]❌ Failed to load CSV: {file_path}[/red]")
             return None, None, None
 
-    raw_df = df.copy()
+    # --- Step 0.5: Save raw CSV before cleaning ---
+    raw_df = df.copy()  # preserve original
+    df._raw_df = raw_df
+
+    # Respect global --no-persist flag
+    if not getattr(args, "no_persist", False):
+
+        try:
+            save_analysis_result(
+                file_path=str(file_path),
+                file_type="csv",
+                summary=None,
+                sample_data=None,
+                metadata={
+                    "profile": "csv_raw",
+                    "hash": sha256(file_path) if file_path else None,
+                    "row_count": raw_df.shape[0],
+                    "col_count": raw_df.shape[1],
+                },
+                row_count=raw_df.shape[0],
+                col_count=raw_df.shape[1],
+                raw_df=raw_df,
+            )
+
+            console.print(f"[green]✔ Persisted raw data for {file_path.name}[/green]")
+
+        except Exception as e:
+            console.print(f"[red]⚠️ Failed to save raw CSV data: {e}[/red]")
+
+    else:
+        console.print(
+            f"[dim]💤 Skipping raw persistence (--no-persist) for {file_path.name}[/dim]"
+        )
+
+    # --- Step 1: Clean CSV ---
+    df, summary_records = clean_csv(df, args)
 
     # --- Step 1: Clean CSV ---
     df, summary_records = clean_csv(df, args)

@@ -5,8 +5,6 @@ import numpy as np
 import pandas as pd
 import time
 
-    
-
 
 # ---------------- Rich Imports ----------------
 try:
@@ -34,7 +32,9 @@ def ensure_optional_packages(packages):
             )
             # Handle special cases explicitly
             if pkg.lower() == "kaleido":
-                subprocess.check_call([sys.executable, "-m", "pip", "install", "kaleido==0.2.1"])
+                subprocess.check_call(
+                    [sys.executable, "-m", "pip", "install", "kaleido==0.2.1"]
+                )
             else:
                 subprocess.check_call([sys.executable, "-m", "pip", "install", pkg])
 
@@ -134,7 +134,11 @@ def _ascii_histogram(
     percents = hist_counts / total * 100
 
     # --- Scaling ---
-    count_ratio = (hist_counts.max() / max(1, hist_counts.min())) if hist_counts.min() > 0 else np.inf
+    count_ratio = (
+        (hist_counts.max() / max(1, hist_counts.min()))
+        if hist_counts.min() > 0
+        else np.inf
+    )
     if scale == "sqrt":
         scaled = np.sqrt(hist_counts)
     elif scale == "log" or count_ratio > 1000:  # auto log-scaling for extreme skew
@@ -182,7 +186,9 @@ def _ascii_histogram(
         label = f"[{bin_edges[i]:.{decimals}f}, {bin_edges[i+1]:.{decimals}f}]"
         console.print(f"{label:<24} {bar:<{width}} {display_percent} ({display_count})")
 
+
 # ---------------- Visualize Post Clean --------------
+
 
 def _visualize_post_clean(df, chart_type="box", mode="static"):
     """
@@ -196,7 +202,9 @@ def _visualize_post_clean(df, chart_type="box", mode="static"):
     console = Console()
     numeric_cols = df.select_dtypes(include=[np.number]).columns
     if numeric_cols.empty:
-        console.print("[yellow]No numeric columns available for visualization.[/yellow]")
+        console.print(
+            "[yellow]No numeric columns available for visualization.[/yellow]"
+        )
         return
 
     if mode == "ascii":
@@ -207,7 +215,11 @@ def _visualize_post_clean(df, chart_type="box", mode="static"):
         pltxt.show()
 
     elif mode == "static":
-        df[numeric_cols].plot(kind="box" if chart_type == "box" else "hist", subplots=True, layout=(len(numeric_cols), 1))
+        df[numeric_cols].plot(
+            kind="box" if chart_type == "box" else "hist",
+            subplots=True,
+            layout=(len(numeric_cols), 1),
+        )
         plt.suptitle(f"{chart_type.capitalize()} Plot of Numeric Columns (Post-clean)")
         plt.tight_layout()
         plt.show()
@@ -216,7 +228,9 @@ def _visualize_post_clean(df, chart_type="box", mode="static"):
         if chart_type == "box":
             fig = px.box(df, y=numeric_cols, title="Interactive Box Plot (Post-clean)")
         else:
-            fig = px.histogram(df, x=numeric_cols[0], title="Interactive Histogram (Post-clean)")
+            fig = px.histogram(
+                df, x=numeric_cols[0], title="Interactive Histogram (Post-clean)"
+            )
         fig.show()
 
 
@@ -370,7 +384,10 @@ def visualize_data(
         ensure_optional_packages(["matplotlib"])
         import matplotlib.pyplot as plt
 
-        if transformed_df.empty or transformed_df.select_dtypes(include=np.number).empty:
+        if (
+            transformed_df.empty
+            or transformed_df.select_dtypes(include=np.number).empty
+        ):
             console.print("⚠️ No numeric data available to plot.", style="bold red")
             return
 
@@ -384,11 +401,13 @@ def visualize_data(
         elif chart_type == "box":
             ax.boxplot(
                 [transformed_df[col].dropna() for col in numeric_cols],
-                labels=numeric_cols
+                labels=numeric_cols,
             )
             ax.set_title("Boxplot of Transformed Columns")
         else:
-            console.print(f"⚠️ Unsupported static chart type: {chart_type}", style="yellow")
+            console.print(
+                f"⚠️ Unsupported static chart type: {chart_type}", style="yellow"
+            )
             return
 
         plt.tight_layout()
@@ -403,7 +422,10 @@ def visualize_data(
         ensure_optional_packages(["plotly"])
         import plotly.express as px
 
-        if transformed_df.empty or transformed_df.select_dtypes(include=np.number).empty:
+        if (
+            transformed_df.empty
+            or transformed_df.select_dtypes(include=np.number).empty
+        ):
             console.print("⚠️ No numeric data available to plot.", style="bold red")
             return
 
@@ -415,7 +437,7 @@ def visualize_data(
                 x="value",
                 color="variable",
                 nbins=10,
-                title="Histogram of Transformed Columns"
+                title="Histogram of Transformed Columns",
             )
         elif chart_type == "box":
             fig = px.box(
@@ -423,10 +445,12 @@ def visualize_data(
                 x="variable",
                 y="value",
                 color="variable",
-                title="Boxplot of Transformed Columns"
+                title="Boxplot of Transformed Columns",
             )
         else:
-            console.print(f"⚠️ Unsupported interactive chart type: {chart_type}", style="yellow")
+            console.print(
+                f"⚠️ Unsupported interactive chart type: {chart_type}", style="yellow"
+            )
             return
 
         if output:
@@ -437,8 +461,9 @@ def visualize_data(
 
 
 # --------------------------------------------------------------------
-# visualize_scatter_plotly() 
+# visualize_scatter_plotly()
 # --------------------------------------------------------------------
+
 
 def visualize_scatter_plotly(df, x_col, y_col, mode="interactive", output=None):
     """
@@ -453,11 +478,15 @@ def visualize_scatter_plotly(df, x_col, y_col, mode="interactive", output=None):
     console = Console()
 
     if not x_col or not y_col:
-        console.print("[red]❌ Scatter plot requires --x-col and --y-col arguments.[/red]")
+        console.print(
+            "[red]❌ Scatter plot requires --x-col and --y-col arguments.[/red]"
+        )
         return
 
     if x_col not in df.columns or y_col not in df.columns:
-        console.print(f"[red]❌ Columns '{x_col}' or '{y_col}' not found in dataset.[/red]")
+        console.print(
+            f"[red]❌ Columns '{x_col}' or '{y_col}' not found in dataset.[/red]"
+        )
         return
 
     console.print(f"[cyan]Generating scatter plot: {x_col} vs {y_col}[/cyan]")
@@ -483,14 +512,18 @@ def visualize_scatter_plotly(df, x_col, y_col, mode="interactive", output=None):
 
         if ext in [".html", ".htm"]:
             fig.write_html(output)
-            console.print(f"[green]✅ Interactive scatter plot saved as HTML: {output}[/green]")
+            console.print(
+                f"[green]✅ Interactive scatter plot saved as HTML: {output}[/green]"
+            )
 
         elif ext in [".png", ".jpg", ".jpeg", ".svg", ".pdf"]:
             try:
                 # Ensure Kaleido is properly installed before using it
                 ensure_optional_packages(["kaleido"])
                 fig.write_image(output)
-                console.print(f"[green]✅ Interactive scatter plot exported to image: {output}[/green]")
+                console.print(
+                    f"[green]✅ Interactive scatter plot exported to image: {output}[/green]"
+                )
             except Exception as e:
                 fallback = output + ".html"
                 fig.write_html(fallback)
@@ -503,7 +536,9 @@ def visualize_scatter_plotly(df, x_col, y_col, mode="interactive", output=None):
             # Default fallback
             fallback = f"{output}.html"
             fig.write_html(fallback)
-            console.print(f"[yellow]💡 Unrecognized extension. Saved as {fallback}[/yellow]")
+            console.print(
+                f"[yellow]💡 Unrecognized extension. Saved as {fallback}[/yellow]"
+            )
 
     # --- Static Mode (force Kaleido image output) ---
     elif mode == "static":
@@ -511,7 +546,9 @@ def visualize_scatter_plotly(df, x_col, y_col, mode="interactive", output=None):
             ensure_optional_packages(["kaleido"])
             file_path = output or f"scatter_{x_col}_vs_{y_col}.png"
             fig.write_image(file_path)
-            console.print(f"[green]✅ Static scatter plot exported to {file_path}[/green]")
+            console.print(
+                f"[green]✅ Static scatter plot exported to {file_path}[/green]"
+            )
         except Exception as e:
             fallback = (output or f"scatter_{x_col}_vs_{y_col}") + ".html"
             fig.write_html(fallback)
@@ -523,11 +560,15 @@ def visualize_scatter_plotly(df, x_col, y_col, mode="interactive", output=None):
     else:
         console.print("[yellow]⚠️ Unsupported mode for scatter plot.[/yellow]")
 
+
 # --------------------------------------------------------------------
 # visualize_line_plotly()
 # --------------------------------------------------------------------
 
-def visualize_line_plot(df, x_col, y_col, mode="interactive", output=None, title=None):
+
+def visualize_line_plot(
+    df, x_col, y_col, agg_func="mean", mode="interactive", output=None, title=None
+):
     """
     Create a robust, adaptive line chart for x_col vs y_col using Plotly (interactive) or Matplotlib (static).
 
@@ -552,6 +593,7 @@ def visualize_line_plot(df, x_col, y_col, mode="interactive", output=None, title
        - Displays inline if no output path is given
     """
     from rich.console import Console
+
     console = Console()
 
     # --- Ensure dependencies ---
@@ -563,7 +605,9 @@ def visualize_line_plot(df, x_col, y_col, mode="interactive", output=None, title
 
     # --- Validate input columns ---
     if x_col not in df.columns or y_col not in df.columns:
-        console.print(f"[red]❌ Columns '{x_col}' or '{y_col}' not found in dataset.[/red]")
+        console.print(
+            f"[red]❌ Columns '{x_col}' or '{y_col}' not found in dataset.[/red]"
+        )
         return
 
     # --- Copy and clean relevant data ---
@@ -595,9 +639,13 @@ def visualize_line_plot(df, x_col, y_col, mode="interactive", output=None, title
     # --- Handle duplicates by aggregation ---
     if data.duplicated(subset=[x_col]).any():
         console.print(
-            f"[cyan]ℹ️ Detected multiple entries per '{x_col}'. Aggregating using mean of '{y_col}'.[/cyan]"
+            f"[cyan]ℹ️ Detected multiple entries per '{x_col}'. Aggregating using {agg_func} of '{y_col}'.[/cyan]"
         )
-        data = data.groupby(x_col, as_index=False)[y_col].mean()
+        # safe aggregation
+        agg_map = {"mean": "mean", "median": "median", "sum": "sum", "count": "count"}
+        data = data.groupby(x_col, as_index=False)[y_col].agg(
+            agg_map.get(agg_func, "mean")
+        )
 
     # --- Sort chronologically or numerically if applicable ---
     try:
@@ -630,19 +678,25 @@ def visualize_line_plot(df, x_col, y_col, mode="interactive", output=None, title
             fig.update_layout(
                 xaxis_title=x_col,
                 yaxis_title=y_col,
-                xaxis=dict(showline=True, mirror=True, zeroline=False, tickformat=tickformat),
+                xaxis=dict(
+                    showline=True, mirror=True, zeroline=False, tickformat=tickformat
+                ),
                 yaxis=dict(showline=True, mirror=True, zeroline=True),
             )
 
             if output:
                 fig.write_html(output)
-                console.print(f"[green]✅ Interactive line chart saved as HTML: {output}[/green]")
+                console.print(
+                    f"[green]✅ Interactive line chart saved as HTML: {output}[/green]"
+                )
             else:
                 fig.show()
             return
 
         except Exception as e:
-            console.print(f"[yellow]⚠️ Plotly rendering failed ({e}); falling back to static plot.[/yellow]")
+            console.print(
+                f"[yellow]⚠️ Plotly rendering failed ({e}); falling back to static plot.[/yellow]"
+            )
             mode = "static"
 
     # --- Static Mode (Matplotlib) ---
@@ -669,11 +723,12 @@ def visualize_line_plot(df, x_col, y_col, mode="interactive", output=None, title
     console.print(f"[yellow]⚠️ Unsupported mode '{mode}' for line chart.[/yellow]")
 
 
-
 # ============================================
 # 📊 Bar Chart Visualization (Improved)
 # ============================================
-def visualize_bar_plot(df, x_col, y_col, mode="static", output=None, title=None):
+def visualize_bar_plot(
+    df, x_col, y_col, mode="static", agg_func="mean", output=None, title=None
+):
     """
     Render a bar chart using either matplotlib (static) or plotly (interactive).
     Automatically coerces numeric columns (e.g., '$123,000.00') to floats.
@@ -681,6 +736,7 @@ def visualize_bar_plot(df, x_col, y_col, mode="static", output=None, title=None)
     import pandas as pd
     import numpy as np
     from rich.console import Console
+
     console = Console()
 
     if not x_col or not y_col:
@@ -688,7 +744,9 @@ def visualize_bar_plot(df, x_col, y_col, mode="static", output=None, title=None)
 
     # ✅ Auto-clean numeric-like string columns (e.g. '$1,000,000')
     if y_col in df.columns and df[y_col].dtype == "object":
-        console.print(f"[dim]🔢 Converting '{y_col}' to numeric (auto-detected as object)[/dim]")
+        console.print(
+            f"[dim]🔢 Converting '{y_col}' to numeric (auto-detected as object)[/dim]"
+        )
         df[y_col] = (
             df[y_col]
             .astype(str)
@@ -703,11 +761,15 @@ def visualize_bar_plot(df, x_col, y_col, mode="static", output=None, title=None)
         console.print(f"[red]❌ No valid data to plot for {x_col} vs {y_col}[/red]")
         return
 
+    if agg_func:
+        df = df.groupby(x_col, dropna=False)[y_col].agg(agg_func).reset_index()
     if mode == "interactive":
         ensure_optional_packages(["plotly.express"])
         import plotly.express as px
 
-        fig = px.bar(df, x=x_col, y=y_col, title=title or f"Bar chart: {y_col} by {x_col}")
+        fig = px.bar(
+            df, x=x_col, y=y_col, title=title or f"Bar chart: {y_col} by {x_col}"
+        )
         fig.update_layout(template="plotly_white")
         if output:
             fig.write_html(output)
@@ -732,7 +794,9 @@ def visualize_bar_plot(df, x_col, y_col, mode="static", output=None, title=None)
 # ============================================
 # 🥧 Pie Chart Visualization (Improved)
 # ============================================
-def visualize_pie_plot(df, x_col, y_col, mode="static", output=None, agg_func="sum", title=None):
+def visualize_pie_plot(
+    df, x_col, y_col, mode="static", output=None, agg_func="sum", title=None
+):
     """
     Render a pie chart based on aggregate data.
     Groups df[y_col] by df[x_col] using agg_func (sum by default).
@@ -741,6 +805,7 @@ def visualize_pie_plot(df, x_col, y_col, mode="static", output=None, agg_func="s
     import pandas as pd
     import numpy as np
     from rich.console import Console
+
     console = Console()
 
     if not x_col or not y_col:
@@ -748,7 +813,9 @@ def visualize_pie_plot(df, x_col, y_col, mode="static", output=None, agg_func="s
 
     # ✅ Auto-clean numeric-like string columns
     if y_col in df.columns and df[y_col].dtype == "object":
-        console.print(f"[dim]🔢 Converting '{y_col}' to numeric (auto-detected as object)[/dim]")
+        console.print(
+            f"[dim]🔢 Converting '{y_col}' to numeric (auto-detected as object)[/dim]"
+        )
         df[y_col] = (
             df[y_col]
             .astype(str)
@@ -758,12 +825,18 @@ def visualize_pie_plot(df, x_col, y_col, mode="static", output=None, agg_func="s
         df[y_col] = pd.to_numeric(df[y_col], errors="coerce")
 
     # Group and aggregate data
-    grouped = df.groupby(x_col, dropna=False, observed=True)[y_col].agg(agg_func).reset_index()
+    grouped = (
+        df.groupby(x_col, dropna=False, observed=True)[y_col]
+        .agg(agg_func)
+        .reset_index()
+    )
     grouped = grouped.dropna(subset=[y_col])
     grouped = grouped.sort_values(by=y_col, ascending=False)
 
     if grouped.empty:
-        console.print(f"[red]❌ No valid data to plot for pie chart ({x_col} vs {y_col})[/red]")
+        console.print(
+            f"[red]❌ No valid data to plot for pie chart ({x_col} vs {y_col})[/red]"
+        )
         return
 
     if mode == "interactive":
@@ -800,4 +873,3 @@ def visualize_pie_plot(df, x_col, y_col, mode="static", output=None, agg_func="s
         if output:
             plt.savefig(output)
         plt.show()
-

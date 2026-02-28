@@ -14,3 +14,6 @@ class AnalysisResult:
     metadata: dict = None
     cleaned: bool = False
     persisted: bool = False
+
+    # Optional storage for raw DataFrame, not serialized automatically
+    _raw_df: pd.DataFrame | None = None

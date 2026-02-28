@@ -83,13 +83,13 @@ def connect_db(db_path: str | None = None):
         """
         CREATE VIRTUAL TABLE IF NOT EXISTS file_index
         USING fts5(
-            path, 
-            content, 
-            clean_content, 
+            path,
+            content,
+            clean_content,
             modified,
-            hash, 
-            tag, 
-            tokenize = 'porter', 
+            hash,
+            tag,
+            tokenize = 'porter',
             prefix='2 3 4'
         );
         """
@@ -122,7 +122,7 @@ def connect_db(db_path: str | None = None):
         );
         """
     )
-    
+
     conn.commit()
     return conn
 
@@ -195,7 +195,7 @@ def _get_db_connection():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             file_name TEXT UNIQUE,
             file_type TEXT,
-            source_path TEXT,        -- ✅ Added for real file source tracking
+            source_path TEXT,
             summary_json TEXT,
             sample_json TEXT,
             metadata_json TEXT,

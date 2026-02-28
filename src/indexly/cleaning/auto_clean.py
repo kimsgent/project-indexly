@@ -204,12 +204,15 @@ def _handle_datetime_columns(
     # -----------------------
     suffixes = ["_year", "_month", "_day", "_weekday", "_hour", "_timestamp"]
     existing_derivatives = {
-        col[:-len(suffix)] for col in df.columns for suffix in suffixes if col.endswith(suffix)
+        col[: -len(suffix)]
+        for col in df.columns
+        for suffix in suffixes
+        if col.endswith(suffix)
     }
 
     for rec in auto_summary:
-        col = rec['column']
-        if rec['dtype'] != "datetime" or col in existing_derivatives:
+        col = rec["column"]
+        if rec["dtype"] != "datetime" or col in existing_derivatives:
             datetime_summary.append(rec)
             continue
 
@@ -231,7 +234,9 @@ def _handle_datetime_columns(
             if derive_level == "all":
                 _safe_add(f"{col}_quarter", dt_series.dt.quarter.astype("Int64"))
                 _safe_add(f"{col}_monthname", dt_series.dt.month_name())
-                _safe_add(f"{col}_week", dt_series.dt.isocalendar().week.astype("Int64"))
+                _safe_add(
+                    f"{col}_week", dt_series.dt.isocalendar().week.astype("Int64")
+                )
                 _safe_add(f"{col}_dayofyear", dt_series.dt.day_of_year.astype("Int64"))
                 _safe_add(f"{col}_minute", dt_series.dt.minute.astype("Int64"))
                 _safe_add(f"{col}_iso", dt_series.dt.strftime("%Y-%m-%dT%H:%M:%SZ"))
@@ -242,24 +247,47 @@ def _handle_datetime_columns(
 
         datetime_summary.append(rec)
         for dcol in derived_map[col]:
-            datetime_summary.append({
-                "column": dcol,
-                "dtype": "derived",
-                "action": f"derived from {col}",
-                "n_filled": 0,
-                "strategy": "-",
-                "valid_ratio": 1.0,
-            })
+            datetime_summary.append(
+                {
+                    "column": dcol,
+                    "dtype": "derived",
+                    "action": f"derived from {col}",
+                    "n_filled": 0,
+                    "strategy": "-",
+                    "valid_ratio": 1.0,
+                }
+            )
 
     return df, datetime_summary
-
 
 
 # --- Public Entry Points ---
 
 
 def _safe_fillna(df: pd.DataFrame, col: str, fill_value: Any) -> pd.DataFrame:
-    """Fill missing values safely."""
+    """Fill missing values safely with dtype awareness."""
+    dtype = df[col].dtype
+
+    # Handle pandas nullable integer (Int64)
+    if str(dtype) == "Int64":
+        if isinstance(fill_value, float):
+            fill_value = int(round(fill_value))
+        df[col] = df[col].fillna(fill_value)
+        return df
+
+    # Handle numpy integer dtypes (int64, int32, etc.)
+    if pd.api.types.is_integer_dtype(dtype):
+        if isinstance(fill_value, float):
+            fill_value = int(round(fill_value))
+        df[col] = df[col].fillna(fill_value)
+        return df
+
+    # Handle float columns
+    if pd.api.types.is_float_dtype(dtype):
+        df[col] = df[col].fillna(float(fill_value))
+        return df
+
+    # Default fallback (object, category, etc.)
     df[col] = df[col].fillna(fill_value)
     return df
 
@@ -326,6 +354,9 @@ def auto_clean_csv(
 
     derived_map: dict[str, list[str]] = {}
     summary_records: list[dict[str, Any]] = []
+
+    # Preserve raw_df if present
+    _original_raw = getattr(df, "_raw_df", None)
 
     # -------------------------
     # Step 1: Fill missing values
@@ -398,14 +429,17 @@ def auto_clean_csv(
     except Exception as e:
         console.print(f"[red]⚠️ Datetime handling failed: {e}[/red]")
 
-
     # -------------------------
     # Step 3: Optional persistence
     # -------------------------
     # --- Temporarily disable persistence for testing orchestrator-level save ---
     if persist and verbose:
-        console.print(f"[dim]💾 Skipping internal persistence (handled by orchestrator)...[/dim]")
+        console.print(
+            f"[dim]💾 Skipping internal persistence (handled by orchestrator)...[/dim]"
+        )
+    # Restore raw_df after transformations
+    if _original_raw is not None:
+        df._raw_df = _original_raw
 
     # Always return cleaned DataFrame and summaries
     return df, summary_records, derived_map
-
