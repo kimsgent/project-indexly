@@ -5,25 +5,31 @@ toc: true
 weight: 10
 ---
 
-## Latest Release: v1.2.2 (2026-02-15)
+## Latest Release: v1.2.3 (2026-02-27)
 
 ### Changes
-- feat(rename): introduce business-rule based renaming with heuristic keyword detection (invoice, tax, receipt, payroll, contract)
-- feat(rename): add --business-naming mode with interactive category and prefix selection
-- feat(rename): support {prefix} placeholder for structured business filename patterns
-- feat(rename,organize): integrate rename-file with organizer via --organize for seamless rename → classify workflows
-- refactor(rename): clean up CLI flags and streamline business prefix handling
-- refactor(rename,organize): centralize rename → organize execution flow and remove duplicated integration paths
-- feat(organize): extend business profile scaffolding for default, solo, and employer modes
-- feat(search): implement Pagefind search across main Project Indexly pages
-- refactor(search): refine dedicated search page layout and center Pagefind UI
-- fix(brew): stabilize Homebrew formula generation, correct EOF formatting, and adopt virtualenv_install_with_resources
-- chore(release): update documentation and prepare release artifacts for v1.2.2
+- feat(regression): add categorical handshake, interaction handling, and inline comments in OLS engine
+- feat(inference): add multi-dataset merge engine, infer-csv CLI, and structured export system
+- feat(statistics): implement full Phase 1-3 inferential modules
+- feat(csv): extend --agg support for line, timeseries, and pie charts
+- fix(auto-clean): make _safe_fillna dtype-aware to prevent Int64 fillna float crash
+- fix(bayesian): return InferenceResult, handle empty/single-sample groups, compatible with display_inference_result
+- fix(regression): corrected VIF handling, robust interactions, and bootstrap integration
+- fix(csv): preserve raw_df across auto_clean transformations and silence pandas attribute warning
+- fix(observer): stabilize metadata-based execution and enforce contracts
+- fix(csv analysis): remove changes to grouping of categorical data
+- chore(docs): update documentation in preparation for release v1.2.3
+- cli: align --test choices with inference engine and improve help documentation
+- improve(statistics): enhance statistical inference CLI and correlation handling
+- wip(statistics): refactor bootstrap, ttest, ols, anova, posthoc, and correction pipeline
+- chore(config): add .editorconfig and apply general formatting updates
+- ci(release): force checkout of main in release workflow to fix detached HEAD error
 
 ---
 
 ## Archive
 
+- [Release v1.2.2](/releases/v1.2.2/) (2026-02-15)
 - [Release v1.2.1](/releases/v1.2.1/) (2026-02-07)
 - [Release v1.2.0](/releases/v1.2.0/) (2026-01-20)
 - [Release v1.1.9](/releases/v1.1.9/) (2026-01-20)
