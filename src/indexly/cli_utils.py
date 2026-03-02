@@ -380,6 +380,45 @@ def build_parser():
     csv_parser.add_argument("--output", type=str, help="Output filename for chart")
     csv_parser.add_argument("--title", type=str, help="Plot title override")
 
+    # Boxplot engine flags
+    csv_parser.add_argument(
+        "--boxplot",
+        action="store_true",
+        help="Use the new isolated boxplot visualization engine",
+    )
+    csv_parser.add_argument(
+        "--group-by", type=str, help="Column(s) to group by for boxplot"
+    )
+    csv_parser.add_argument(
+        "--use-raw", action="store_true", help="Use raw (uncleaned) data for boxplot"
+    )
+    csv_parser.add_argument(
+        "--use-clean", action="store_true", help="Use cleaned data for boxplot"
+    )
+    csv_parser.add_argument(
+        "--norm",
+        choices=["zscore", "minmax"],
+        help="Optional normalization for boxplot data",
+    )
+    csv_parser.add_argument(
+        "--outliers",
+        choices=["classic", "robust", "show", "hide"],
+        default="show",
+        help="Outlier handling method for boxplot",
+    )
+    csv_parser.add_argument(
+        "--show-mean", action="store_true", help="Display mean marker on boxplot"
+    )
+    csv_parser.add_argument(
+        "--merge-on", type=str, help="Column to merge multiple datasets on"
+    )
+    csv_parser.add_argument(
+        "--merge-how",
+        choices=["inner", "left", "right", "outer"],
+        default="inner",
+        help="Merge strategy for multi-file comparison",
+    )
+
     # Cleaning options
     csv_parser.add_argument(
         "--auto-clean", action="store_true", help="Run robust cleaning pipeline"

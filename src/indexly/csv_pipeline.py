@@ -313,9 +313,6 @@ def run_csv_pipeline(file_path: Path, args, df: pd.DataFrame = None):
     # --- Step 1: Clean CSV ---
     df, summary_records = clean_csv(df, args)
 
-    # --- Step 1: Clean CSV ---
-    df, summary_records = clean_csv(df, args)
-
     # --- Step 2: Analyze CSV ---
     try:
         df_stats, table_output = analyze_csv_pipeline(df, args)
@@ -349,7 +346,12 @@ def run_csv_pipeline(file_path: Path, args, df: pd.DataFrame = None):
             console.print(f"[red]❌ Time series visualization failed: {e}[/red]")
 
     # --- Step 3: Visualization ---
-    visualize_csv(df, df_stats, args)
+    if getattr(args, "boxplot", False):
+        from indexly.visualization.boxplot_engine import run_boxplot
+
+        run_boxplot(args)
+    else:
+        visualize_csv(df, df_stats, args)
 
     # --- Step 4: Cleaning summary ---
     if summary_records:
