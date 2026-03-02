@@ -20,21 +20,17 @@ def validate_boxplot_args(args) -> None:
     # -------------------------------------------------
     # Conflict: --boxplot cannot be combined with --chart-type
     # -------------------------------------------------
-    if getattr(args, "chart_type", None):
-        raise ValueError(
-            "⚠️ --boxplot cannot be combined with --chart-type.\n"
-            "Use either quick boxplot (--chart-type box) "
-            "or advanced boxplot (--boxplot)."
-        )
+    if getattr(args, "chart_type", None) not in (None, "None") and getattr(
+        args, "boxplot", False
+    ):
+        raise ValueError("⚠️ --boxplot cannot be combined with --chart-type.")
 
     # -------------------------------------------------
     # y_col is required
     # -------------------------------------------------
     y_cols = getattr(args, "y_col", None)
     if not y_cols:
-        raise ValueError(
-            "⚠️ --boxplot requires at least one --y-col."
-        )
+        raise ValueError("⚠️ --boxplot requires at least one --y-col.")
 
     # Normalize to list
     if isinstance(y_cols, str):
@@ -47,9 +43,7 @@ def validate_boxplot_args(args) -> None:
     use_cleaned = getattr(args, "use_clean", False)
 
     if use_raw and use_cleaned:
-        raise ValueError(
-            "⚠️ Use either --use-raw or --use-cleaned, not both."
-        )
+        raise ValueError("⚠️ Use either --use-raw or --use-cleaned, not both.")
 
     # -------------------------------------------------
     # Aggregation validation
@@ -94,6 +88,5 @@ def validate_boxplot_args(args) -> None:
     mode = getattr(args, "mode", None)
     if mode and mode.lower() not in ALLOWED_MODE:
         raise ValueError(
-            f"⚠️ Invalid mode '{mode}'. "
-            f"Allowed: {sorted(ALLOWED_MODE)}"
+            f"⚠️ Invalid mode '{mode}'. " f"Allowed: {sorted(ALLOWED_MODE)}"
         )

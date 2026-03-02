@@ -3,7 +3,7 @@
 from typing import List, Dict, Optional
 import pandas as pd
 import numpy as np
-
+from pathlib import Path
 from indexly.visualization.boxplot_validation import validate_boxplot_args
 from indexly.visualization.boxplot_preprocessor import (
     apply_group_aggregation,
@@ -26,12 +26,15 @@ MAX_ROWS = 1_000_000
 # ---------------------------------------------------------
 
 def run_boxplot(args):
-
     validate_boxplot_args(args)
 
     file_names: List[str] = args.input_files
-    y_cols: List[str] = args.y_cols
+    y_cols: List[str] = args.y_col
     x_col: Optional[str] = args.x_col
+
+    # ensure y_cols is always a list
+    if isinstance(y_cols, str):
+        y_cols = [y_cols]
 
     # -----------------------------------------------------
     # 1️⃣ Load Datasets
@@ -40,23 +43,25 @@ def run_boxplot(args):
     datasets: Dict[str, pd.DataFrame] = {}
 
     for name in file_names:
+        # ensure only the file name is passed to the loader, not full path
+        db_file_name = Path(name).name
+
         df = load_dataframe(
-            name,
+            db_file_name,
             use_cleaned=args.use_cleaned,
             use_raw=args.use_raw,
         )
 
         if df.empty:
-            raise ValueError(f"Dataset '{name}' is empty.")
+            raise ValueError(f"Dataset '{db_file_name}' is empty.")
 
-        datasets[name] = df.copy()
+        datasets[db_file_name] = df.copy()
 
     # -----------------------------------------------------
     # 2️⃣ Optional Merge
     # -----------------------------------------------------
 
     if args.merge_on:
-
         if len(datasets) < 2:
             raise ValueError("Merge requires at least two datasets.")
 
@@ -85,18 +90,15 @@ def run_boxplot(args):
     # -----------------------------------------------------
 
     elif len(datasets) > 1:
-
         processed = {}
 
         for name, df in datasets.items():
-
             df_agg = apply_group_aggregation(
                 df,
                 x_col=x_col,
                 y_cols=y_cols,
                 agg_list=args.agg,
             )
-
             processed[name] = df_agg
 
         long_df = combine_datasets_long(processed, y_cols)
@@ -106,16 +108,13 @@ def run_boxplot(args):
     # -----------------------------------------------------
 
     else:
-
         name, df = next(iter(datasets.items()))
-
         df_processed = apply_group_aggregation(
             df,
             x_col=x_col,
             y_cols=y_cols,
             agg_list=args.agg,
         )
-
         long_df = reshape_to_long(
             df_processed,
             y_cols=y_cols,
@@ -128,8 +127,7 @@ def run_boxplot(args):
 
     if len(long_df) > MAX_ROWS:
         raise ValueError(
-            f"Too many rows after preprocessing ({len(long_df)}). "
-            "Refusing to render boxplot."
+            f"Too many rows after preprocessing ({len(long_df)}). Refusing to render boxplot."
         )
 
     # -----------------------------------------------------
@@ -144,7 +142,6 @@ def run_boxplot(args):
     # -----------------------------------------------------
 
     if args.mode == "interactive":
-
         fig = render_interactive_boxplot(
             df=long_df,
             x_col="variable" if not x_col else x_col,
@@ -154,9 +151,7 @@ def run_boxplot(args):
             notch=True,
         )
         fig.show()
-
     else:
-
         ax = render_static_boxplot(
             df=long_df,
             x_col="variable" if not x_col else x_col,
@@ -167,7 +162,6 @@ def run_boxplot(args):
             title="Boxplot",
         )
         ax.figure.show()
-
 
 # ---------------------------------------------------------
 # Internal Helpers

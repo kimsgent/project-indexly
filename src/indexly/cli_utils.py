@@ -333,7 +333,7 @@ def build_parser():
     csv_parser.add_argument(
         "--chart-type",
         choices=["bar", "line", "box", "hist", "scatter", "pie"],
-        default="None",
+        default=None,
         help="Chart type for visualizing numeric data",
     )
     csv_parser.add_argument(

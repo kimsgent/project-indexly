@@ -349,6 +349,10 @@ def run_csv_pipeline(file_path: Path, args, df: pd.DataFrame = None):
     if getattr(args, "boxplot", False):
         from indexly.visualization.boxplot_engine import run_boxplot
 
+        # inject input_files manually for single-file pipeline
+        if not hasattr(args, "input_files"):
+            args.input_files = [file_path.name]  # just the CSV file name, not full path
+
         run_boxplot(args)
     else:
         visualize_csv(df, df_stats, args)
