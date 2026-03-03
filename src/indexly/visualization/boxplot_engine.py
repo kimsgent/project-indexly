@@ -25,6 +25,7 @@ MAX_ROWS = 1_000_000
 # Main Entry
 # ---------------------------------------------------------
 
+
 def run_boxplot(args):
     validate_boxplot_args(args)
 
@@ -72,17 +73,22 @@ def run_boxplot(args):
             agg=args.merge_agg or "none",
         )
 
-        df_processed = apply_group_aggregation(
-            merged_df,
-            x_col=x_col,
-            y_cols=y_cols,
-            agg_list=args.agg,
-        )
+        if args.use_raw or args.use_cleaned:
+            # Use raw columns, no aggregation
+            df_processed = merged_df[[x_col] + y_cols].copy()
+        else:
+            df_processed = apply_group_aggregation(
+                merged_df.copy(),
+                x_col=x_col,
+                y_cols=y_cols,
+                agg_list=args.agg,
+            )
 
         long_df = reshape_to_long(
             df_processed,
             y_cols=y_cols,
             dataset_name="merged",
+            x_col=x_col,
         )
 
     # -----------------------------------------------------
@@ -93,15 +99,22 @@ def run_boxplot(args):
         processed = {}
 
         for name, df in datasets.items():
-            df_agg = apply_group_aggregation(
-                df,
-                x_col=x_col,
-                y_cols=y_cols,
-                agg_list=args.agg,
-            )
+            if args.use_raw or args.use_cleaned:
+                df_agg = df[[x_col] + y_cols].copy()
+            else:
+                df_agg = apply_group_aggregation(
+                    df.copy(),
+                    x_col=x_col,
+                    y_cols=y_cols,
+                    agg_list=args.agg,
+                )
             processed[name] = df_agg
 
-        long_df = combine_datasets_long(processed, y_cols)
+        long_df = combine_datasets_long(
+            processed,
+            y_cols=y_cols,
+            x_col=x_col,
+        )
 
     # -----------------------------------------------------
     # 4️⃣ Single Dataset
@@ -109,16 +122,20 @@ def run_boxplot(args):
 
     else:
         name, df = next(iter(datasets.items()))
-        df_processed = apply_group_aggregation(
-            df,
-            x_col=x_col,
-            y_cols=y_cols,
-            agg_list=args.agg,
-        )
+        if args.use_raw or args.use_cleaned:
+            df_processed = df[[x_col] + y_cols].copy()
+        else:
+            df_processed = apply_group_aggregation(
+                df.copy(),
+                x_col=x_col,
+                y_cols=y_cols,
+                agg_list=args.agg,
+            )
         long_df = reshape_to_long(
             df_processed,
             y_cols=y_cols,
             dataset_name=name,
+            x_col=x_col,
         )
 
     # -----------------------------------------------------
@@ -152,7 +169,7 @@ def run_boxplot(args):
         )
         fig.show()
     else:
-        ax = render_static_boxplot(
+        render_static_boxplot(
             df=long_df,
             x_col="variable" if not x_col else x_col,
             y_col="value",
@@ -161,11 +178,12 @@ def run_boxplot(args):
             notch=True,
             title="Boxplot",
         )
-        ax.figure.show()
+
 
 # ---------------------------------------------------------
 # Internal Helpers
 # ---------------------------------------------------------
+
 
 def _apply_normalization(df: pd.DataFrame, method: str):
 

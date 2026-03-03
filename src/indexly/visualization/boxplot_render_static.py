@@ -101,5 +101,7 @@ def render_static_boxplot(
     # Export if requested
     if export_path:
         plt.savefig(export_path, dpi=dpi, bbox_inches="tight")
+    else:
+        plt.show()
 
     return ax
