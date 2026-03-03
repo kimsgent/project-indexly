@@ -48,8 +48,14 @@ def validate_boxplot_args(args) -> None:
         y_cols = [y_cols]
 
     # enforce x_col only when required
-    if (use_raw or use_cleaned or len(y_cols) == 1) and x_col is None:
-        raise ValueError("⚠️ --boxplot requires --x-col to be specified for the x-axis.")
+    # Rule:
+    # - x_col required if using raw/cleaned (no aggregation)
+    # - x_col optional if aggregated
+    # - y_cols length alone does NOT trigger requirement
+    if (use_raw or use_cleaned) and x_col is None:
+        raise ValueError(
+            "⚠️ --boxplot requires --x-col to be specified when using raw or cleaned data."
+        )
 
     # -------------------------------------------------
     # Raw / Cleaned conflict
