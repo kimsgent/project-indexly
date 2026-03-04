@@ -339,8 +339,8 @@ def build_parser():
     csv_parser.add_argument(
         "--export-plot", help="Export chart to file (png, svg, html)"
     )
-    csv_parser.add_argument("--x-col", help="X-axis column for scatter plot")
-    csv_parser.add_argument("--y-col", nargs="+", help="Y-axis column for scatter plot")
+    csv_parser.add_argument("--x-col", help="X-axis column for scatter and box plot")
+    csv_parser.add_argument("--y-col", nargs="+", help="Y-axis column for scatter and box plot")
     csv_parser.add_argument(
         "--transform",
         choices=["none", "log", "sqrt", "softplus", "exp-log", "auto"],
