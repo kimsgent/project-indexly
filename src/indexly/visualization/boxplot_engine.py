@@ -1,6 +1,7 @@
 # indexly/visualization/boxplot_engine.py
 
 from typing import List, Dict, Optional
+import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 from pathlib import Path
@@ -16,7 +17,12 @@ from indexly.visualization.boxplot_render_interactive import render_interactive_
 
 from indexly.inference.loader import load_dataframe
 from indexly.inference.merge_engine import merge_dataframes
-
+from rich.console import Console
+from indexly.visualization.boxplot_summary import (
+    build_boxplot_summary,
+    render_static_summary,
+    render_interactive_summary,
+)
 
 MAX_ROWS = 1_000_000
 
@@ -24,7 +30,7 @@ MAX_ROWS = 1_000_000
 # ---------------------------------------------------------
 # Main Entry
 # ---------------------------------------------------------
-
+console = Console()
 
 def run_boxplot(args):
     validate_boxplot_args(args)
@@ -142,9 +148,21 @@ def run_boxplot(args):
     # 5️⃣ Safety Guard
     # -----------------------------------------------------
 
+    adaptive_mode = False
+
     if len(long_df) > MAX_ROWS:
-        raise ValueError(
-            f"Too many rows after preprocessing ({len(long_df)}). Refusing to render boxplot."
+        adaptive_mode = True
+        console.print(
+            f"[yellow]Dataset has {len(long_df)} rows, exceeding {MAX_ROWS}. "
+            "Switching to summary rendering mode for performance.[/yellow]"
+        )
+
+        # Build statistical summary for large datasets
+        summaries = build_boxplot_summary(
+            df=long_df,
+            group_col=x_col if x_col else None,
+            value_col="value",
+            outlier_method=getattr(args, "outlier_method", "classic")
         )
 
     # -----------------------------------------------------
@@ -158,26 +176,42 @@ def run_boxplot(args):
     # 7️⃣ Render
     # -----------------------------------------------------
 
-    if args.mode == "interactive":
-        fig = render_interactive_boxplot(
-            df=long_df,
-            x_col="variable" if not x_col else x_col,
-            y_col="value",
-            hue_col="dataset",
-            title="Boxplot",
-            notch=True,
-        )
-        fig.show()
+    if adaptive_mode:
+        # Adaptive rendering using summary builder
+        if args.mode == "interactive":
+            fig = render_interactive_summary(
+                summaries=summaries,
+                title="Boxplot (summary mode)"
+            )
+            fig.show()
+        else:
+            ax = render_static_summary(
+                ax=plt.gca(),
+                summaries=summaries,
+                show_mean=args.show_mean
+            )
     else:
-        render_static_boxplot(
-            df=long_df,
-            x_col="variable" if not x_col else x_col,
-            y_col="value",
-            hue_col="dataset",
-            show_mean=args.show_mean,
-            notch=True,
-            title="Boxplot",
-        )
+        # Normal rendering (existing code)
+        if args.mode == "interactive":
+            fig = render_interactive_boxplot(
+                df=long_df,
+                x_col="variable" if not x_col else x_col,
+                y_col="value",
+                hue_col="dataset",
+                title="Boxplot",
+                notch=True,
+            )
+            fig.show()
+        else:
+            render_static_boxplot(
+                df=long_df,
+                x_col="variable" if not x_col else x_col,
+                y_col="value",
+                hue_col="dataset",
+                show_mean=args.show_mean,
+                notch=True,
+                title="Boxplot",
+            )
 
 
 # ---------------------------------------------------------
