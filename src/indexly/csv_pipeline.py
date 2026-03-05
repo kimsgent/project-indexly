@@ -376,24 +376,6 @@ def run_csv_pipeline(file_path: Path, args, df: pd.DataFrame = None):
 # --------------------------------------------------------
 # 🔧 Helper printing utilities
 # --------------------------------------------------------
-def _print_summary_table(summary_dict: dict):
-    table = Table(show_header=True, header_style="bold cyan")
-    table.add_column("Column")
-    table.add_column("Statistics")
-    for col, stats in summary_dict.items():
-        formatted = ", ".join(f"{k}: {v}" for k, v in stats.items())
-        table.add_row(col, formatted)
-    console.print(table)
-
-
-def _print_sample_table(df: pd.DataFrame):
-    table = Table(show_header=True, header_style="bold yellow")
-    for col in df.columns:
-        table.add_column(str(col))
-    for _, row in df.head(10).iterrows():
-        table.add_row(*(str(x) for x in row.values))
-    console.print(table)
-
 
 def _summarize_pipeline_cleaning(
     df: pd.DataFrame,

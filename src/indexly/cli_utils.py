@@ -546,7 +546,7 @@ def build_parser():
     # -------------------------
     infer_parser.add_argument(
         "--test",
-        required=True,
+        required=False,
         choices=[
             "correlation",  # Pearson correlation between two continuous variables
             "corr-spearman",  # Spearman rank correlation between two variables
@@ -599,7 +599,52 @@ def build_parser():
         choices=["bonferroni", "holm", "bh"],
         help="Multiple comparison correction method. 'bh' = Benjamini-Hochberg (also known as FDR correction).",
     )
-
+    # -------------------------
+    # Boxplot Visualization
+    # -------------------------
+    infer_parser.add_argument(
+        "--boxplot",
+        action="store_true",
+        help=(
+            "Render a boxplot visualization for the selected variables before running "
+            "statistical inference. Supports multi-file datasets and merged datasets. "
+            "If provided, the visualization pipeline runs instead of the inference test."
+        ),
+    )
+    infer_parser.add_argument(
+        "--x-col",
+        dest="x_col",
+        help=(
+            "Column to use on the X-axis for boxplot grouping. "
+            "Typically a categorical or grouping variable."
+        ),
+    )
+    infer_parser.add_argument(
+        "--y-col",
+        dest="y_col",
+        nargs="+",
+        help=(
+            "Numeric column(s) to visualize in the boxplot. "
+            "Multiple columns will produce multiple boxplots."
+        ),
+    )
+    infer_parser.add_argument(
+        "--merge-how",
+        choices=["inner", "left", "right", "outer"],
+        default="inner",
+        help="Merge strategy when multiple datasets are provided (default: inner).",
+    )
+    infer_parser.add_argument(
+        "--normalize",
+        choices=["zscore", "minmax"],
+        help="Optional normalization applied before visualization.",
+    )
+    infer_parser.add_argument(
+        "--mode",
+        choices=["static", "interactive"],
+        default="static",
+        help="Rendering mode for the boxplot (static matplotlib or interactive plotly).",
+    )
     # -------------------------
     # Output
     # -------------------------

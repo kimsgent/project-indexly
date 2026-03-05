@@ -34,7 +34,7 @@ from rich import print as rprint
 from rapidfuzz import fuzz
 from .filetype_utils import extract_text_from_file, SUPPORTED_EXTENSIONS
 from .db_utils import connect_db, get_tags_for_file, _sync_path_in_db
-from .search_core import search_fts5, search_regex, normalize_near_term
+from .search_core import search_fts5, search_regex
 from .extract_utils import update_file_metadata
 from .mtw_extractor import _extract_mtw
 from .rename_utils import (
@@ -48,7 +48,6 @@ from .clean_csv import clear_cleaned_data
 from .update_utils import check_for_updates
 
 from .profiles import (
-    save_profile,
     apply_profile,
 )
 from .cli_utils import (
