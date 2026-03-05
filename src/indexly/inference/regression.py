@@ -3,7 +3,13 @@ import pandas as pd
 import numpy as np
 from .models import InferenceResult
 from .effect_size import cohen_f_squared
-from .assumptions import test_normality_residuals, test_homoscedasticity, compute_vif
+from .assumptions import (
+    test_normality_residuals,
+    test_independence,
+    test_homoscedasticity,
+    compute_vif,
+    detect_outliers_iqr,
+)
 from .power import power_ols
 from .advanced_decision import decide_regression_route
 from .bootstrap import bootstrap
@@ -25,11 +31,25 @@ def run_ols(
     df_work = df.copy()
 
     # ------------------------
+    # Outlier detection (IQR)
+    # ------------------------
+    outliers = {}
+
+    if y_col in df_work.columns:
+        outliers[y_col] = detect_outliers_iqr(df_work[y_col])
+
+    for col in x_cols:
+        if pd.api.types.is_numeric_dtype(df_work[col]):
+            outliers[col] = detect_outliers_iqr(df_work[col])
+
+    # ------------------------
     # Build formula
     # ------------------------
     formula_terms = []
     for col in x_cols:
-        if df_work[col].dtype == "object" or pd.api.types.is_categorical_dtype(df_work[col]):
+        if df_work[col].dtype == "object" or pd.api.types.is_categorical_dtype(
+            df_work[col]
+        ):
             formula_terms.append(f"C({col})")
         else:
             formula_terms.append(col)
@@ -39,9 +59,14 @@ def run_ols(
     if interaction_terms:
         for i, col1 in enumerate(interaction_terms):
             for col2 in interaction_terms[i + 1 :]:
-                inter_name = f"C({col1}):C({col2})" if (
-                    df_work[col1].dtype == "object" or df_work[col2].dtype == "object"
-                ) else f"{col1}:{col2}"
+                inter_name = (
+                    f"C({col1}):C({col2})"
+                    if (
+                        df_work[col1].dtype == "object"
+                        or df_work[col2].dtype == "object"
+                    )
+                    else f"{col1}:{col2}"
+                )
                 formula_terms.append(inter_name)
                 interaction_names.append(inter_name)
 
@@ -83,6 +108,7 @@ def run_ols(
     residuals = model.resid
     normality = test_normality_residuals(residuals)
     homoscedasticity = test_homoscedasticity(model, df_work)
+    independence = test_independence(model)
 
     route = decide_regression_route(
         normality["normal"], homoscedasticity["homoscedastic"]
@@ -108,9 +134,11 @@ def run_ols(
             "summary": model.summary().as_text(),
             "coefficients_ci": ci_table,
             "vif": vif_table.to_dict(),
+            "outliers": outliers,
             "assumptions": {
                 "normality_residuals": normality,
                 "homoscedasticity": homoscedasticity,
+                "independence": independence,
             },
         },
         metadata={
