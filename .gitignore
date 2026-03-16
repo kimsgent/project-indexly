@@ -35,6 +35,7 @@ docs/*
 # Ignore generated + cache files
 docs/public/
 docs/resources/
+docs/static/pagefind/
 docs/.hugo_build.lock
 
 # ----------------
