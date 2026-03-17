@@ -10,11 +10,11 @@
     </a>
 
     <!-- Hamburger Toggler -->
-    <button class="navbar-toggler custom-toggler" type="button" 
-      data-bs-toggle="collapse" 
-      data-bs-target="#mainNavbar" 
-      aria-controls="mainNavbar" 
-      aria-expanded="false" 
+    <button class="navbar-toggler custom-toggler" type="button"
+      data-bs-toggle="collapse"
+      data-bs-target="#mainNavbar"
+      aria-controls="mainNavbar"
+      aria-expanded="false"
       aria-label="Toggle navigation">
       <span class="navbar-toggler-icon"></span>
     </button>
@@ -32,6 +32,17 @@
             </a>
           </li>
         {{ end -}}
+	<!-- AutoDoctor CTA -->
+	<li class="nav-item ms-lg-2">
+	  <a href="https://github.com/kimsgent/autodoctor"
+	     class="nav-link autodoctor-link"
+	     target="_blank"
+	     rel="noopener noreferrer"
+	     aria-label="AutoDoctor on GitHub">
+	    <i class="fa fa-stethoscope"></i>
+	    <span class="ms-1">AutoDoctor</span>
+	  </a>
+	</li>
 	<!-- Pagefind Search Icon -->
          <li class="nav-item">
 	   <a href="{{ "/search/" | relLangURL }}" class="nav-link">
