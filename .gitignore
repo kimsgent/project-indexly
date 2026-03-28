@@ -9,7 +9,10 @@ dist/
 build/
 .venv/
 venv/
+.direnv/
 .env
+.envrc
+.python-version
 *.sqlite3
 
 # ----------------
