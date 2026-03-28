@@ -31,7 +31,6 @@ from .analyze_utils import (
     save_analysis_result,
 )
 from indexly.json_cache_normalizer import (
-    is_search_cache_json,
     normalize_search_cache_json,
     _print_search_summary,
 )
@@ -39,7 +38,6 @@ from indexly.json_cache_normalizer import (
 from indexly.universal_loader import (
     detect_and_load,
     detect_file_type,
-    load_json_or_ndjson,
 )
 
 console = Console()

@@ -313,9 +313,6 @@ def run_csv_pipeline(file_path: Path, args, df: pd.DataFrame = None):
     # --- Step 1: Clean CSV ---
     df, summary_records = clean_csv(df, args)
 
-    # --- Step 1: Clean CSV ---
-    df, summary_records = clean_csv(df, args)
-
     # --- Step 2: Analyze CSV ---
     try:
         df_stats, table_output = analyze_csv_pipeline(df, args)
@@ -349,7 +346,16 @@ def run_csv_pipeline(file_path: Path, args, df: pd.DataFrame = None):
             console.print(f"[red]❌ Time series visualization failed: {e}[/red]")
 
     # --- Step 3: Visualization ---
-    visualize_csv(df, df_stats, args)
+    if getattr(args, "boxplot", False):
+        from indexly.visualization.boxplot_engine import run_boxplot
+
+        # inject input_files manually for single-file pipeline
+        if not hasattr(args, "input_files"):
+            args.input_files = [file_path.name]  # just the CSV file name, not full path
+
+        run_boxplot(args)
+    else:
+        visualize_csv(df, df_stats, args)
 
     # --- Step 4: Cleaning summary ---
     if summary_records:
@@ -370,24 +376,6 @@ def run_csv_pipeline(file_path: Path, args, df: pd.DataFrame = None):
 # --------------------------------------------------------
 # 🔧 Helper printing utilities
 # --------------------------------------------------------
-def _print_summary_table(summary_dict: dict):
-    table = Table(show_header=True, header_style="bold cyan")
-    table.add_column("Column")
-    table.add_column("Statistics")
-    for col, stats in summary_dict.items():
-        formatted = ", ".join(f"{k}: {v}" for k, v in stats.items())
-        table.add_row(col, formatted)
-    console.print(table)
-
-
-def _print_sample_table(df: pd.DataFrame):
-    table = Table(show_header=True, header_style="bold yellow")
-    for col in df.columns:
-        table.add_column(str(col))
-    for _, row in df.head(10).iterrows():
-        table.add_row(*(str(x) for x in row.values))
-    console.print(table)
-
 
 def _summarize_pipeline_cleaning(
     df: pd.DataFrame,

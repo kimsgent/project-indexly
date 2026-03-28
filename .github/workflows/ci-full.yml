@@ -1,0 +1,59 @@
+name: CI Full - Complete Validation
+
+on:
+  push:
+    branches: [main, staging]
+    paths-ignore:
+      - "docs/**"
+      - "public/**"
+
+  pull_request:
+    branches: [main, staging]
+    paths-ignore:
+      - "docs/**"
+      - "public/**"
+
+jobs:
+  test-full:
+    name: Full Pytest Suite
+    runs-on: ubuntu-latest
+
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && !startsWith(github.head_ref, 'codex/'))
+
+    strategy:
+      matrix:
+        python-version: [3.13]
+
+    steps:
+      - name: Debug GitHub context
+        run: |
+          echo "event_name: ${{ github.event_name }}"
+          echo "ref: ${{ github.ref }}"
+          echo "head_ref: ${{ github.head_ref }}"
+          echo "base_ref: ${{ github.base_ref }}"
+          echo "actor: ${{ github.actor }}"
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies (full)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-ci.txt
+          pip install -e .
+
+      - name: Run Pytest (full)
+        run: |
+          python -m pytest -v tests/ --maxfail=5 --disable-warnings
+
+      - name: Upload pytest results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-results
+          path: .pytest_cache/

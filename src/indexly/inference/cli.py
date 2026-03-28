@@ -1,4 +1,5 @@
 import pandas as pd
+from types import SimpleNamespace
 from .loader import load_dataframe
 from .preprocessing import select_columns, apply_na_policy
 from .correlation import pearson_corr, spearman_corr, lag_corr, correlation_matrix
@@ -19,6 +20,7 @@ from .confidence_intervals import (
     ci_mean_difference_independent,
     ci_proportion,
 )
+from indexly.visualization.boxplot_engine import run_boxplot
 from rich.table import Table
 from rich.console import Console
 
@@ -267,6 +269,15 @@ def run_inference_engine(
 def handle_infer_csv(args):
 
     # -----------------------------
+    # Validate command intent
+    # -----------------------------
+    if not args.test and not getattr(args, "boxplot", False):
+        raise ValueError(
+            "infer-csv requires at least one action: "
+            "--test for statistical inference or --boxplot for visualization."
+        )
+
+    # -----------------------------
     # Version validation
     # -----------------------------
     if args.use_raw and args.use_cleaned:
@@ -385,28 +396,49 @@ def handle_infer_csv(args):
         working_df = working_df.dropna()
 
     # -----------------------------
-    # Dispatch to inference engine
+    # Optional visualization (boxplot)
     # -----------------------------
-    try:
-        results = run_inference_engine(
-            df=working_df,
-            test=args.test,
-            x=args.x,
-            y=args.y,
-            group=args.group,
-            interaction=args.interaction,
-            auto_route=args.auto_route,
-            bootstrap=args.bootstrap,
-            correction=args.correction,
+    if getattr(args, "boxplot", False):
+
+        run_boxplot(
+            SimpleNamespace(
+                input_files=args.files,
+                x_col=getattr(args, "x_col", None),
+                y_col=getattr(args, "y_col", None),
+                merge_on=args.merge_on,
+                merge_how=getattr(args, "merge_how", "inner"),
+                merge_agg=args.agg,
+                agg=args.agg,
+                use_raw=args.use_raw,
+                use_cleaned=args.use_cleaned,
+                normalize=getattr(args, "normalize", None),
+                mode=getattr(args, "mode", "static"),
+                show_mean=True,
+            )
         )
 
-        # -----------------------------
-        # Export handling
-        # -----------------------------
-        if args.export:
-            export_report(results, args.export)
-        else:
-            display_inference_result(results)
+    # -----------------------------
+    # Dispatch to inference engine
+    # -----------------------------
+    if args.test:
 
-    except ValueError as e:
-        print(f"\n[Inference Error] {e}\n")
+        try:
+            results = run_inference_engine(
+                df=working_df,
+                test=args.test,
+                x=args.x,
+                y=args.y,
+                group=args.group,
+                interaction=args.interaction,
+                auto_route=args.auto_route,
+                bootstrap=args.bootstrap,
+                correction=args.correction,
+            )
+
+            if args.export:
+                export_report(results, args.export)
+            else:
+                display_inference_result(results)
+
+        except ValueError as e:
+            print(f"\n[Inference Error] {e}\n")
