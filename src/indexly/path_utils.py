@@ -2,7 +2,7 @@ import os
 import sys
 
 def normalize_path(path: str | None) -> str | None:
-    """
+    r"""
     Normalize file paths for consistent comparison and storage.
 
     - Expands ~ and environment variables

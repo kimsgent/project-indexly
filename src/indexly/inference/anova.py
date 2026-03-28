@@ -3,7 +3,7 @@ from statsmodels.formula.api import ols
 from .models import InferenceResult
 from .effect_size import eta_squared
 from .power import power_anova
-from .assumptions import test_normality
+from .assumptions import test_normality, detect_outliers_iqr
 from .nonparametric import run_kruskal
 from .advanced_decision import decide_anova_route
 from .posthoc import run_tukey
@@ -43,6 +43,15 @@ def run_anova(
 
     # Extract unique group labels
     groups = df[group_col].unique()
+
+    # -----------------------------
+    # Detect outliers per group
+    # -----------------------------
+    outliers = {}
+
+    for g in groups:
+        group_series = df[df[group_col] == g][value_col]
+        outliers[str(g)] = detect_outliers_iqr(group_series)
 
     # Test normality within each group separately
     normality_results = [
@@ -101,6 +110,8 @@ def run_anova(
             "anova_table": table.to_dict(),
             # Store posthoc results if performed
             "posthoc": posthoc_result.to_dict() if posthoc_result else None,
+            "outliers": outliers,
+            "normality_by_group": normality_results,
         },
         metadata={
             # Group labels used in analysis
