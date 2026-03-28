@@ -3,8 +3,8 @@ class Indexly < Formula
 
   desc "Local semantic file indexing and search tool"
   homepage "https://github.com/kimsgent/project-indexly"
-  url "https://github.com/kimsgent/project-indexly/archive/refs/tags/v1.2.3.tar.gz"
-  sha256 "e8bf853735d28a3a0707b4a68f2781ea248854caabc38397def7881dd3f0281c"
+  url "https://github.com/kimsgent/project-indexly/archive/refs/tags/v1.2.4.tar.gz"
+  sha256 "75e4178b5bcdf85b9442776cb218d20b7affde0031362cfcaab93e01712d3e1e"
   license "MIT"
 
   depends_on "python@3.11"
