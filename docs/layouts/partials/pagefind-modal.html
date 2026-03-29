@@ -9,10 +9,8 @@
 </div>
 
 <!-- Pagefind UI CSS (load AFTER your custom.css from baseof) -->
-<link rel="stylesheet" href="/en/pagefind/pagefind-ui.css">
-
-<!-- Scripts -->
-<script src="/en/pagefind/pagefind-ui.js"></script>
+<link rel="stylesheet" href="{{ "pagefind/pagefind-ui.css" | relURL }}">
+<script src="{{ "pagefind/pagefind-ui.js" | relURL }}"></script>
 <script>
   document.addEventListener('DOMContentLoaded', () => {
     const modal = document.getElementById('pagefind-modal');
@@ -20,19 +18,20 @@
     const openBtn = document.getElementById('open-pagefind');
     const closeBtn = document.getElementById('pagefind-close');
 
-    if (!openBtn || !modal || !container || !closeBtn) return;
+    if (!openBtn || !modal || !container || !closeBtn || typeof PagefindUI === "undefined") return;
 
-    const searchUI = new PagefindUI({
+    new PagefindUI({
       element: "#pagefind-container",
       showSubResults: true,
       showImages: false,
-      resetStyles: false
+      resetStyles: false,
+      autofocus: true,
+      baseUrl: "{{ "/" | relLangURL }}"
     });
 
     const openModal = () => {
       modal.classList.add('open');
       document.body.classList.add('modal-open');
-      container.querySelector('input')?.focus();
     };
 
     const closeModal = () => {

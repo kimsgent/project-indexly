@@ -30,20 +30,18 @@
 </section>
 
 <!-- Pagefind CSS -->
-<link rel="stylesheet" href="/en/pagefind/pagefind-ui.css">
-
-<!-- Pagefind Script -->
-<script src="/en/pagefind/pagefind-ui.js"></script>
+<link rel="stylesheet" href="{{ "pagefind/pagefind-ui.css" | relURL }}">
+<script src="{{ "pagefind/pagefind-ui.js" | relURL }}"></script>
 <script>
   window.addEventListener('DOMContentLoaded', () => {
     new PagefindUI({
       element: "#search-container",
       showSubResults: true,
       showImages: false,
-      resetStyles: false
+      resetStyles: false,
+      baseUrl: "{{ "/" | relLangURL }}"
     });
   });
 </script>
-
 {{ end }}
 
