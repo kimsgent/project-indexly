@@ -30,8 +30,8 @@
 </section>
 
 <!-- Pagefind CSS -->
-<link rel="stylesheet" href="{{ "pagefind/pagefind-ui.css" | relURL }}">
-<script src="{{ "pagefind/pagefind-ui.js" | relURL }}"></script>
+<link rel="stylesheet" href="{{ "pagefind/pagefind-ui.css" | relLangURL }}">
+<script src="{{ "pagefind/pagefind-ui.js" | relLangURL }}"></script>
 <script>
   window.addEventListener('DOMContentLoaded', () => {
     new PagefindUI({
@@ -39,7 +39,7 @@
       showSubResults: true,
       showImages: false,
       resetStyles: false,
-      baseUrl: "{{ "/" | relLangURL }}"
+      baseUrl: "{{ .Site.Home.RelPermalink }}"
     });
   });
 </script>
