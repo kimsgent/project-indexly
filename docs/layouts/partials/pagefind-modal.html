@@ -8,42 +8,40 @@
   </div>
 </div>
 
-<!-- Pagefind UI CSS (load AFTER your custom.css from baseof) -->
-<link rel="stylesheet" href="/pagefind/pagefind-ui.css">
-
-<!-- Scripts -->
-<script src="/pagefind/pagefind-ui.js"></script>
+<link rel="stylesheet" href="{{ "pagefind/pagefind-ui.css" | relURL }}">
+<script src="{{ "pagefind/pagefind-ui.js" | relURL }}"></script>
 <script>
   document.addEventListener('DOMContentLoaded', () => {
     const modal = document.getElementById('pagefind-modal');
-    const container = document.getElementById('pagefind-container');
     const openBtn = document.getElementById('open-pagefind');
     const closeBtn = document.getElementById('pagefind-close');
-    
-    if (!openBtn || !modal || !container || !closeBtn) return;
 
-    const searchUI = new PagefindUI({
+    if (!modal || !openBtn || !closeBtn || typeof PagefindUI === "undefined") return;
+
+    new PagefindUI({
       element: "#pagefind-container",
       showSubResults: true,
       showImages: false,
-      resetStyles: false
+      resetStyles: false,
+      autofocus: true,
+      baseUrl: "{{ .Site.Home.RelPermalink }}"
     });
 
-    const openModal = () => {
+    openBtn.addEventListener('click', () => {
       modal.classList.add('open');
       document.body.classList.add('modal-open');
-      container.querySelector('input')?.focus();
-    };
-    
-    const closeModal = () => {
+    });
+
+    closeBtn.addEventListener('click', () => {
       modal.classList.remove('open');
       document.body.classList.remove('modal-open');
-    };
+    });
 
-    openBtn.addEventListener('click', openModal);
-    closeBtn.addEventListener('click', closeModal);
-    document.addEventListener('keydown', (e) => { 
-      if (e.key === "Escape") closeModal(); 
+    document.addEventListener('keydown', (e) => {
+      if (e.key === "Escape") {
+        modal.classList.remove('open');
+        document.body.classList.remove('modal-open');
+      }
     });
   });
 </script>

@@ -3,20 +3,16 @@
 <section class="search-page py-5" style="min-height: 70vh;">
   <div class="container text-center">
 
-    <!-- Logo Placeholder -->
     <div class="mb-4">
-      <img src="/images/logo.png" alt="Indexly Logo" style="max-height: 80px;">
+      <img src="{{ "/images/logo.png" | relURL }}" alt="Indexly Logo" style="max-height: 80px;">
     </div>
 
     <h1 class="mb-4">Search Indexly Documentation</h1>
 
-    <!-- Search UI -->
     <div class="search-wrapper mb-5">
-	<div id="search-container"></div>
+      <div id="search-container"></div>
     </div>
 
-
-    <!-- Navigation Options -->
     <div class="mt-5">
       <a href="{{ "/documentation/" | relLangURL }}" class="btn btn-primary me-2">
         Documentation Overview
@@ -29,21 +25,20 @@
   </div>
 </section>
 
-<!-- Pagefind CSS -->
-<link rel="stylesheet" href="/pagefind/pagefind-ui.css">
-
-<!-- Pagefind Script -->
-<script src="/pagefind/pagefind-ui.js"></script>
+<link rel="stylesheet" href="{{ "pagefind/pagefind-ui.css" | relURL }}">
+<script src="{{ "pagefind/pagefind-ui.js" | relURL }}"></script>
 <script>
   window.addEventListener('DOMContentLoaded', () => {
+    if (typeof PagefindUI === "undefined") return;
+
     new PagefindUI({
       element: "#search-container",
       showSubResults: true,
       showImages: false,
-      resetStyles: false
+      resetStyles: false,
+      baseUrl: "{{ .Site.Home.RelPermalink }}"
     });
   });
 </script>
 
 {{ end }}
-

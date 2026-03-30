@@ -3,16 +3,32 @@
 # ----------------
 __pycache__/
 *.py[cod]
+*$py.class
+
+# Packaging
 *.egg-info/
 *.egg
 dist/
 build/
+site/
+pip-wheel-metadata/
+
+# Virtual environments
 .venv/
 venv/
+env/
+ENV/
 .direnv/
+
+# Environment files
 .env
+.env.*
 .envrc
+
+# Python version / tooling
 .python-version
+
+# Databases
 *.sqlite3
 
 # ----------------

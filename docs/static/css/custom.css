@@ -399,6 +399,27 @@ body.dark .td-click-to-copy.fas,
 }
 
 /* -------------------------
+   AutoDoctor
+---------------------------- */
+
+.navbar .autodoctor-link {
+  border: 1px solid #30638e;
+  background: linear-gradient(135deg, #2a5a82, #30638e);
+  color: #fff !important;
+  border-radius: 999px;
+  padding: 0.35rem 0.8rem !important;
+  font-weight: 600;
+  transition: all 0.2s ease-in-out;
+}
+
+.navbar .autodoctor-link:hover,
+.navbar .autodoctor-link:focus {
+  background: #30638e;
+  color: #fff !important;
+  transform: translateY(-1px);
+}
+
+/* -------------------------
    Additional Helpers & Fixes
 ---------------------------- */
 .flex-fill {

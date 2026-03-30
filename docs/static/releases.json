@@ -1,28 +1,31 @@
 {
   "project": "FTS5 File Search Tool",
   "latest": {
-    "version": "1.2.3",
-    "date": "2026-02-27",
+    "version": "1.2.4",
+    "date": "2026-03-28",
     "changes": [
-      "feat(regression): add categorical handshake, interaction handling, and inline comments in OLS engine",
-      "feat(inference): add multi-dataset merge engine, infer-csv CLI, and structured export system",
-      "feat(statistics): implement full Phase 1-3 inferential modules",
-      "feat(csv): extend --agg support for line, timeseries, and pie charts",
-      "fix(auto-clean): make _safe_fillna dtype-aware to prevent Int64 fillna float crash",
-      "fix(bayesian): return InferenceResult, handle empty/single-sample groups, compatible with display_inference_result",
-      "fix(regression): corrected VIF handling, robust interactions, and bootstrap integration",
-      "fix(csv): preserve raw_df across auto_clean transformations and silence pandas attribute warning",
-      "fix(observer): stabilize metadata-based execution and enforce contracts",
-      "fix(csv analysis): remove changes to grouping of categorical data",
-      "chore(docs): update documentation in preparation for release v1.2.3",
-      "cli: align --test choices with inference engine and improve help documentation",
-      "improve(statistics): enhance statistical inference CLI and correlation handling",
-      "wip(statistics): refactor bootstrap, ttest, ols, anova, posthoc, and correction pipeline",
-      "chore(config): add .editorconfig and apply general formatting updates",
-      "ci(release): force checkout of main in release workflow to fix detached HEAD error"
+      "feat(inference): add outlier diagnostics and Durbin-Watson integration",
+      "feat(csv): introduce boxplot visualization engine with CLI integration",
+      "feat(boxplot): implement adaptive summary rendering for large datasets",
+      "refactor(csv): restructure infer-csv with separated validation and general cleanup",
+      "fix(parser): allow multiple values for --y-col in analyze-csv boxplot",
+      "fix(boxplot): correct x-axis interpretation via proper x_col propagation",
+      "fix(boxplot): resolve y_col handling for single-column input",
+      "fix(core): resolve docstring escape sequence warning during indexing",
+      "cli: improve help text for --x-col and --y-col usage",
+      "chore(ci): split workflow into ci-full.yml and ci-lite.yml",
+      "chore(repo): add CODEOWNERS and PR templates for standardized review process",
+      "chore: ignore Pagefind build artifacts"
     ]
   },
   "archive": [
+    {
+      "version": "1.2.3",
+      "date": "2026-02-27",
+      "link": "/en/releases/v1.2.3/",
+      "summary": "feat(regression): add categorical handshake, interaction handling, and inline comments in OLS engine | feat(inference): add multi-dataset merge engine, infer-csv CLI, and structured export system",
+      "prerelease": false
+    },
     {
       "version": "1.2.2",
       "date": "2026-02-15",

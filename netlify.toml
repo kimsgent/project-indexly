@@ -3,16 +3,15 @@
 # -----------------------------
 
 [build]
-  base = "docs"              # Hugo site root
-  publish = "public"         # Folder inside base to deploy
-  command = "hugo -e production"  # Use production environment
+  base = "docs"
+  publish = "public"
+  command = "hugo -e production && npx -y pagefind@latest --site public"
 
 [context.production.environment]
   HUGO_VERSION = "0.148.1"
   HUGO_EXTENDED = "true"
 
 [build.environment]
-  # Cache Hugo resources to speed up builds
   HUGO_CACHEDIR = "/tmp/hugo_cache"
   HUGO_ENVIRONMENT = "production"
 
