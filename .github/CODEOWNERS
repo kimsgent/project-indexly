@@ -1,0 +1,10 @@
+# Default: everything requires your review
+* @kimsgent
+
+# Critical areas (extra visibility)
+.github/workflows/ @kimsgent
+scripts/ @kimsgent
+Formula/ @kimsgent
+
+# Project-Indexly specific (optional but recommended)
+indexly/ @kimsgent

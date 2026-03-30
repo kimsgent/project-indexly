@@ -2,6 +2,25 @@
   "project": "FTS5 File Search Tool",
   "versions": [
     {
+      "version": "1.2.4",
+      "date": "2026-03-28",
+      "changes": [
+        "feat(inference): add outlier diagnostics and Durbin-Watson integration",
+        "feat(csv): introduce boxplot visualization engine with CLI integration",
+        "feat(boxplot): implement adaptive summary rendering for large datasets",
+        "refactor(csv): restructure infer-csv with separated validation and general cleanup",
+        "fix(parser): allow multiple values for --y-col in analyze-csv boxplot",
+        "fix(boxplot): correct x-axis interpretation via proper x_col propagation",
+        "fix(boxplot): resolve y_col handling for single-column input",
+        "fix(core): resolve docstring escape sequence warning during indexing",
+        "cli: improve help text for --x-col and --y-col usage",
+        "chore(ci): split workflow into ci-full.yml and ci-lite.yml",
+        "chore(repo): add CODEOWNERS and PR templates for standardized review process",
+        "chore: ignore Pagefind build artifacts"
+      ]
+    },
+
+    {
       "version": "1.2.3",
       "date": "2026-02-27",
       "changes": [

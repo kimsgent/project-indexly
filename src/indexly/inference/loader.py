@@ -3,7 +3,9 @@ import pandas as pd
 from indexly.db_utils import _get_db_connection
 
 
-def load_dataframe(file_name: str, use_cleaned: bool = True) -> pd.DataFrame:
+def load_dataframe(
+    file_name: str, use_cleaned: bool = True, use_raw: bool = False
+) -> pd.DataFrame:
     conn = _get_db_connection()
     cursor = conn.cursor()
 
@@ -27,13 +29,16 @@ def load_dataframe(file_name: str, use_cleaned: bool = True) -> pd.DataFrame:
         )
 
     raw_json, cleaned_json = row
-    data_json = cleaned_json if use_cleaned else raw_json
+
+    # pick dataset according to flags
+    if use_raw:
+        data_json = raw_json
+    else:
+        data_json = cleaned_json if use_cleaned else raw_json
 
     if not data_json:
-        version = "cleaned" if use_cleaned else "raw"
-        raise ValueError(
-            f"The {version} dataset for '{file_name}' is not available."
-        )
+        version = "cleaned" if not use_raw else "raw"
+        raise ValueError(f"The {version} dataset for '{file_name}' is not available.")
 
     data = json.loads(data_json)
     return pd.DataFrame(data)

@@ -84,14 +84,17 @@ On some systems, Homebrew Python and Indexly’s runtime paths must be explicitl
 #### **Bash**
 
 ```bash
+eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+**Add Python 3.11 from Homebrew to PATH**
 echo 'export PATH="$(brew --prefix)/opt/python@3.11/bin:$PATH"' >> ~/.bashrc
-echo 'export PYTHONPATH="$(brew --prefix)/Cellar/indexly/$(indexly --version)/libexec:$PYTHONPATH"' >> ~/.bashrc
 
 echo '
 indexly() {
-  PYTHONPATH="$(brew --prefix)/Cellar/indexly/$(indexly --version)/libexec/lib/python3.11/site-packages:$PYTHONPATH" \
-  "$(brew --prefix)/opt/python@3.11/bin/python3.11" \
-  "$(brew --prefix)/Cellar/indexly/$(indexly --version)/libexec/bin/indexly" "$@"
+  local INDEXLY_VER
+  INDEXLY_VER=$(brew list --versions indexly | awk '{print $2}')
+  PYTHONPATH="$(brew --prefix)/Cellar/indexly/$INDEXLY_VER/libexec/lib/python3.11/site-packages:$PYTHONPATH"
+  "$(brew --prefix)/opt/python@3.11/bin/python3.11"
+  "$(brew --prefix)/Cellar/indexly/$INDEXLY_VER/libexec/bin/indexly" "$@"
 }
 ' >> ~/.bashrc
 ```
@@ -99,14 +102,17 @@ indexly() {
 #### **Zsh**
 
 ```bash
+eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+**Add Python 3.11 from Homebrew to PATH**
 echo 'export PATH="$(brew --prefix)/opt/python@3.11/bin:$PATH"' >> ~/.zshrc
-echo 'export PYTHONPATH="$(brew --prefix)/Cellar/indexly/$(indexly --version)/libexec:$PYTHONPATH"' >> ~/.zshrc
 
 echo '
 indexly() {
-  PYTHONPATH="$(brew --prefix)/Cellar/indexly/$(indexly --version)/libexec/lib/python3.11/site-packages:$PYTHONPATH" \
-  "$(brew --prefix)/opt/python@3.11/bin/python3.11" \
-  "$(brew --prefix)/Cellar/indexly/$(indexly --version)/libexec/bin/indexly" "$@"
+  local INDEXLY_VER
+  INDEXLY_VER=$(brew list --versions indexly | awk '{print $2}')
+  PYTHONPATH="$(brew --prefix)/Cellar/indexly/$INDEXLY_VER/libexec/lib/python3.11/site-packages:$PYTHONPATH"
+  "$(brew --prefix)/opt/python@3.11/bin/python3.11"
+  "$(brew --prefix)/Cellar/indexly/$INDEXLY_VER/libexec/bin/indexly" "$@"
 }
 ' >> ~/.zshrc
 ```
@@ -151,4 +157,3 @@ indexly --help
 Indexly is now ready to use. 🚀
 
 **See also [Customizing Windows Terminal](windows-terminal-setup.md)**
-
