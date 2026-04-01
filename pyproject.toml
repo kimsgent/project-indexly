@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 name = "indexly"
 version = "1.2.4"
 description = "A local file indexing and search tool with FTS5, regex, and CSV analysis support."
-readme = { file = "README.md", content-type = "text/markdown" }
+readme = { file = "README_PYPI.md", content-type = "text/markdown" }
 
 # Optional but strongly recommended
 # Long PyPI-facing description for SEO
@@ -135,6 +135,7 @@ force-include = { "requirements.txt" = "requirements.txt" }
 include = [
   "LICENSE.txt",
   "README.md",
+  "README_PYPI.md",
   "src/indexly/docs/README.md",
   "src/indexly/assets/fonts/*.ttf",
   "src/indexly/assets/csv/*.csv",
@@ -145,6 +146,7 @@ include = [
 packages = ["src/indexly", "indexly"]
 include = [
   "LICENSE.txt",
+  "README_PYPI.md",
   "src/indexly/LICENSE.txt",
   "src/indexly/docs/README.md",
   "src/indexly/assets/fonts/*.ttf",
