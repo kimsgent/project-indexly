@@ -25,8 +25,6 @@ import argparse
 import logging
 import time
 import sqlite3
-import pandas as pd
-import numpy as np
 from rich.console import Console
 from datetime import datetime
 from .ripple import Ripple
@@ -44,8 +42,6 @@ from .rename_utils import (
     execute_rename_then_organize,
     SUPPORTED_DATE_FORMATS,
 )
-from .clean_csv import clear_cleaned_data
-from .update_utils import check_for_updates
 
 from .profiles import (
     apply_profile,
@@ -756,6 +752,8 @@ def run_watch(args):
 
 
 def clear_cleaned_data_handler(args):
+    from .clean_csv import clear_cleaned_data
+
     if getattr(args, "all", False):
         clear_cleaned_data(remove_all=True)
     elif getattr(args, "file", None):
@@ -1081,6 +1079,8 @@ def main():
     # ----------------------------------
     if not getattr(args, "no_update_check", False):
         try:
+            from .update_utils import check_for_updates
+
             info = check_for_updates()
             if info["update_available"]:
                 console.print(
@@ -1094,6 +1094,8 @@ def main():
     # 3) Manual "--check-updates" mode
     # ----------------------------------
     if getattr(args, "check_updates", False):
+        from .update_utils import check_for_updates
+
         info = check_for_updates()
         console.print(f"Current: {info['current']}")
         console.print(f"Latest:  {info['latest'] or 'unknown'}")

@@ -21,16 +21,7 @@ from .cache_utils import save_cache, load_cache
 from .path_utils import normalize_path
 from .migration_manager import run_migrations
 from .rename_utils import SUPPORTED_DATE_FORMATS
-from .clean_csv import clear_cleaned_data
-from .analyze_db import analyze_db
-from .analysis_orchestrator import analyze_file
 from .log_utils import handle_log_clean
-from .read_indexly_json import read_indexly_json
-from indexly.organize.cli_wrapper import handle_organize, handle_lister
-from indexly.backup.cli import handle_backup
-from indexly.backup.cli_restore import handle_restore
-from indexly.compare.cli_compare import handle_compare
-from indexly.observers.runner import handle_observe_run, handle_observe_audit
 
 
 # CLI display configurations here
@@ -81,6 +72,127 @@ def _lazy_handle_infer_csv(args):
     from indexly.inference.cli import handle_infer_csv
 
     return handle_infer_csv(args)
+
+
+def _lazy_analyze_file(args):
+    try:
+        from .analysis_orchestrator import analyze_file
+    except ModuleNotFoundError as exc:
+        raise SystemExit(
+            "Feature requires: pip install indexly[analysis]"
+        ) from exc
+    return analyze_file(args)
+
+
+def _lazy_analyze_db(args):
+    try:
+        from .analyze_db import analyze_db
+    except ModuleNotFoundError as exc:
+        raise SystemExit(
+            "Feature requires: pip install indexly[analysis]"
+        ) from exc
+    return analyze_db(args)
+
+
+def _lazy_clear_cleaned_data(args):
+    try:
+        from .clean_csv import clear_cleaned_data
+    except ModuleNotFoundError as exc:
+        raise SystemExit(
+            "Feature requires: pip install indexly[analysis]"
+        ) from exc
+    return clear_cleaned_data(
+        file_path=args.file, remove_all=getattr(args, "all", False)
+    )
+
+
+def _lazy_handle_organize(args):
+    from indexly.organize.cli_wrapper import handle_organize
+
+    return handle_organize(
+        folder=args.folder,
+        sort_by=args.sort_by,
+        backup=args.backup,
+        log_dir=args.log_dir,
+        executed_by=args.executed_by,
+        lister=args.lister,
+        lister_ext=args.lister_ext,
+        lister_category=args.lister_category,
+        lister_date=args.lister_date,
+        lister_duplicates=args.lister_duplicates,
+        profile=args.profile,
+        category=args.category,
+        apply=args.apply,
+        dry_run=args.dry_run,
+        project_name=args.project_name,
+        shoot_name=args.shoot_name,
+        classify=args.classify,
+        patient_id=args.patient_id,
+        recursive=args.recursive,
+        classify_raw=args.classify_raw,
+    )
+
+
+def _lazy_handle_lister(args):
+    from indexly.organize.cli_wrapper import handle_lister
+
+    return handle_lister(
+        args.source,
+        ext=args.ext,
+        category=args.category,
+        date=args.date,
+        duplicates=args.duplicates,
+        sort_by=args.sort_by,
+        no_generate=getattr(args, "no_generate", False),
+        detect_duplicates=getattr(args, "detect_duplicates", False),
+        no_cache=getattr(args, "no_cache", False),
+    )
+
+
+def _lazy_read_indexly_json(args):
+    from .read_indexly_json import read_indexly_json
+
+    return read_indexly_json(
+        file_path=args.file,
+        treeview=args.treeview,
+        preview=args.preview,
+        show_summary=args.show_summary,
+    )
+
+
+def _lazy_handle_backup(args):
+    from indexly.backup.cli import handle_backup
+
+    return handle_backup(args)
+
+
+def _lazy_handle_restore(args):
+    from indexly.backup.cli_restore import handle_restore
+
+    return handle_restore(args)
+
+
+def _lazy_handle_compare(args):
+    from indexly.compare.cli_compare import handle_compare
+
+    return handle_compare(args)
+
+
+def _lazy_handle_observe_run(args):
+    from indexly.observers.runner import handle_observe_run
+
+    return handle_observe_run(
+        path=args.path,
+        recursive=args.recursive,
+        log_dir=args.log_dir,
+        snapshot_ts=args.snapshot_ts,
+    )
+
+
+def _lazy_handle_observe_audit(args):
+    from indexly.observers.runner import handle_observe_audit
+
+    return handle_observe_audit(patient_id=args.patient_id)
 
 
 def build_parser():
@@ -477,7 +589,7 @@ def build_parser():
         help="Show extended summary of columns and derived fields",
     )
 
-    csv_parser.set_defaults(func=analyze_file, subcommand="analyze-csv")
+    csv_parser.set_defaults(func=_lazy_analyze_file, subcommand="analyze-csv")
 
     # -----------------------------------------
     # infer-csv subcommand
@@ -666,11 +778,7 @@ def build_parser():
     clear_parser.add_argument(
         "--all", action="store_true", help="Remove all cleaned datasets"
     )
-    clear_parser.set_defaults(
-        func=lambda args: clear_cleaned_data(
-            file_path=args.file, remove_all=getattr(args, "all", False)
-        )
-    )
+    clear_parser.set_defaults(func=_lazy_clear_cleaned_data)
 
     # -------------------------------
     # Analyze JSON
@@ -705,7 +813,7 @@ def build_parser():
         action="store_true",
         help="Disable saving cleaned or analyzed results to the database",
     )
-    sub_analyze_json.set_defaults(func=analyze_file, subcommand="analyze-json")
+    sub_analyze_json.set_defaults(func=_lazy_analyze_file, subcommand="analyze-json")
 
     # -------------------------------
     # Analyze any supported file
@@ -879,7 +987,7 @@ def build_parser():
         help="Excel sheet names to analyze (default: all)",
     )
 
-    analyze_file_parser.set_defaults(func=analyze_file)
+    analyze_file_parser.set_defaults(func=_lazy_analyze_file)
 
     # -----------------------------------------
     # analyze-db subcommand
@@ -979,7 +1087,7 @@ def build_parser():
         help="Include diagrams in MD/HTML export.",
     )
 
-    analyze_db_parser.set_defaults(func=analyze_db)
+    analyze_db_parser.set_defaults(func=_lazy_analyze_db)
 
     # ------------------------
     # Organizer CLI
@@ -1111,30 +1219,7 @@ def build_parser():
         help="Recursively classify files in all subfolders (default: root only)",
     )
 
-    organize_parser.set_defaults(
-        func=lambda args: handle_organize(
-            folder=args.folder,
-            sort_by=args.sort_by,
-            backup=args.backup,
-            log_dir=args.log_dir,
-            executed_by=args.executed_by,
-            lister=args.lister,
-            lister_ext=args.lister_ext,
-            lister_category=args.lister_category,
-            lister_date=args.lister_date,
-            lister_duplicates=args.lister_duplicates,
-            profile=args.profile,
-            category=args.category,
-            apply=args.apply,
-            dry_run=args.dry_run,
-            project_name=args.project_name,
-            shoot_name=args.shoot_name,
-            classify=args.classify,
-            patient_id=args.patient_id,
-            recursive=args.recursive,
-            classify_raw=args.classify_raw,
-        )
-    )
+    organize_parser.set_defaults(func=_lazy_handle_organize)
     # ------------------------
     # Observer CLI
     # ------------------------
@@ -1162,14 +1247,7 @@ def build_parser():
         "--snapshot-ts",
         help="Optional ISO timestamp to compare against historical snapshot",
     )
-    observe_run.set_defaults(
-        func=lambda args: handle_observe_run(
-            path=args.path,
-            recursive=args.recursive,
-            log_dir=args.log_dir,
-            snapshot_ts=args.snapshot_ts,
-        )
-    )
+    observe_run.set_defaults(func=_lazy_handle_observe_run)
 
     # observe audit
     observe_audit = observe_sub.add_parser(
@@ -1181,9 +1259,7 @@ def build_parser():
         dest="patient_id",
         help="Patient ID (health domain)",
     )
-    observe_audit.set_defaults(
-        func=lambda args: handle_observe_audit(patient_id=args.patient_id)
-    )
+    observe_audit.set_defaults(func=_lazy_handle_observe_audit)
 
     # Lister
     lister_parser = subparsers.add_parser(
@@ -1224,19 +1300,7 @@ def build_parser():
         help="Do not use cached lister results; read filesystem or logs directly",
     )
 
-    lister_parser.set_defaults(
-        func=lambda args: handle_lister(
-            args.source,
-            ext=args.ext,
-            category=args.category,
-            date=args.date,
-            duplicates=args.duplicates,
-            sort_by=args.sort_by,
-            no_generate=getattr(args, "no_generate", False),
-            detect_duplicates=getattr(args, "detect_duplicates", False),
-            no_cache=getattr(args, "no_cache", False),
-        )
-    )
+    lister_parser.set_defaults(func=_lazy_handle_lister)
 
     # Stats
     stats_parser = subparsers.add_parser("stats", help="Show database statistics")
@@ -1349,14 +1413,7 @@ def build_parser():
     )
 
     # IMPORTANT: always set func → otherwise argparse prints top-level help
-    read_json_parser.set_defaults(
-        func=lambda args: read_indexly_json(
-            file_path=args.file,
-            treeview=args.treeview,
-            preview=args.preview,
-            show_summary=args.show_summary,
-        )
-    )
+    read_json_parser.set_defaults(func=_lazy_read_indexly_json)
 
     # Backup
     backup_parser = subparsers.add_parser(
@@ -1406,7 +1463,7 @@ def build_parser():
         help="Confirm destructive actions (required for --disable-auto)",
     )
 
-    backup_parser.set_defaults(func=lambda args: handle_backup(args))
+    backup_parser.set_defaults(func=_lazy_handle_backup)
 
     # Restore Backup
     restore_parser = subparsers.add_parser(
@@ -1416,7 +1473,7 @@ def build_parser():
     restore_parser.add_argument("backup", help="Backup name")
     restore_parser.add_argument("--target", help="Restore destination")
     restore_parser.add_argument("--decrypt", help="Decryption password")
-    restore_parser.set_defaults(func=handle_restore)
+    restore_parser.set_defaults(func=_lazy_handle_restore)
 
     # Compare
     compare_parser = subparsers.add_parser(
@@ -1477,7 +1534,7 @@ def build_parser():
         help="Show summary only (folders)",
     )
 
-    compare_parser.set_defaults(func=lambda args: handle_compare(args))
+    compare_parser.set_defaults(func=_lazy_handle_compare)
 
     # Migrate
     migrate_parser = subparsers.add_parser(

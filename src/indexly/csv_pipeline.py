@@ -3,10 +3,8 @@ import os
 import re
 import math
 from pathlib import Path
-import pandas as pd
-import numpy as np
+from typing import TYPE_CHECKING
 from rich.console import Console
-from tqdm import tqdm
 from datetime import datetime
 from rich.table import Table
 from .analyze_utils import load_cleaned_data
@@ -35,9 +33,10 @@ from indexly.observers.registry import get_observers
 from indexly.observers.csv.csv_observer import CSVObserver
 from indexly.compare.hash_utils import sha256
 from indexly.observers.runner import run_observers
+from .optional_deps import require_extra_dependency
 
-
-from scipy.stats import entropy as shannon_entropy
+if TYPE_CHECKING:  # pragma: no cover
+    import pandas as pd
 
 console = Console()
 
@@ -53,11 +52,18 @@ warnings.filterwarnings(
 )
 
 
+def _load_analysis_stack():
+    pd = require_extra_dependency("pandas", "pandas", "analysis")
+    np = require_extra_dependency("numpy", "numpy", "analysis")
+    return pd, np
+
+
 # -------------------------------------------------------
 # 🧩 Step 1: Load CSV with automatic delimiter detection
 # -------------------------------------------------------
 def load_csv(file_path: Path, args) -> pd.DataFrame:
     """Robust CSV loader with delimiter detection and fallback."""
+    pd, _ = _load_analysis_stack()
     try:
         delimiter = detect_delimiter(file_path)
         df = pd.read_csv(file_path, delimiter=delimiter, encoding="utf-8")
@@ -143,6 +149,7 @@ def analyze_csv_pipeline(df: pd.DataFrame, args):
 
 def visualize_csv(df: pd.DataFrame, df_stats, args):
     """Visualize numeric columns according to CLI options."""
+    pd, np = _load_analysis_stack()
     show_chart = getattr(args, "show_chart", None)
     if not show_chart or df.empty:
         return
@@ -261,6 +268,7 @@ def run_csv_pipeline(file_path: Path, args, df: pd.DataFrame = None):
     - Visualization
     Returns: df, df_stats, table_output
     """
+    _load_analysis_stack()
 
     console = Console()
     df_stats = None
@@ -392,10 +400,11 @@ def _summarize_pipeline_cleaning(
       - entropy for categorical
       - skewness/kurtosis for numeric
     """
-    import numpy as np
-    import pandas as pd
-    from scipy.stats import entropy as shannon_entropy
-    from tqdm import tqdm
+    pd, np = _load_analysis_stack()
+    shannon_entropy = require_extra_dependency(
+        "scipy.stats", "scipy", "analysis"
+    ).entropy
+    tqdm = require_extra_dependency("tqdm", "tqdm", "analysis").tqdm
 
     derived_map = derived_map or {}
 

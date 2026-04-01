@@ -19,7 +19,6 @@ import signal
 import logging
 import sqlite3
 import json
-import pandas as pd
 from .config import DB_FILE
 from .path_utils import normalize_path
 from pathlib import Path
