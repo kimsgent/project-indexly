@@ -34,7 +34,6 @@ from .extract_utils import (
     extract_image_metadata,
 )
 from .utils import clean_text
-from .mtw_extractor import _extract_mtw
 
 # ✅ Single source of truth
 SUPPORTED_EXTENSIONS = {
@@ -167,6 +166,8 @@ def extract_text_from_file(
             return None, None  # skip binaries
 
         elif ext == ".mtw":
+            from .mtw_extractor import _extract_mtw
+
             # Special handling for MTW
             print(f"📂 Extracting .mtw file: {file_path} ...")
             extracted_files = _extract_mtw(file_path, os.path.dirname(file_path))

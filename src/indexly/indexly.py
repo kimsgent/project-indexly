@@ -38,7 +38,6 @@ from .filetype_utils import (
 from .db_utils import connect_db, get_tags_for_file, _sync_path_in_db
 from .search_core import search_fts5, search_regex
 from .extract_utils import update_file_metadata
-from .mtw_extractor import _extract_mtw
 from .rename_utils import (
     rename_file,
     rename_files_in_dir,
@@ -113,6 +112,8 @@ async def async_index_file(
         # MTW archives (Tier 3 only)
         # -------------------------
         if full_path.lower().endswith(".mtw"):
+            from .mtw_extractor import _extract_mtw
+
             extracted_files = _extract_mtw(full_path, extended=mtw_extended)
             if not extracted_files:
                 print(f"⚠️ No extractable content in: {full_path}")
@@ -798,6 +799,8 @@ def handle_doctor(args):
 
 
 def handle_extract_mtw(args):
+    from .mtw_extractor import _extract_mtw
+
     # Normalize inputs
     file_path = normalize_path(args.file)
     output_dir = (
