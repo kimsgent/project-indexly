@@ -14,15 +14,6 @@ from rich.panel import Panel
 # Local utilities (adjust imports if needed)
 from .csv_analyzer import export_results, detect_delimiter, analyze_csv
 from .cleaning.auto_clean import auto_clean_csv
-from .visualize_csv import (
-    visualize_data,
-    visualize_scatter_plotly,
-    visualize_line_plot,
-    visualize_bar_plot,
-    visualize_pie_plot,
-)
-from .visualize_timeseries import _handle_timeseries_visualization
-from .visualize_csv import apply_transformation
 from .clean_csv import (
     _summarize_post_clean,
     _remove_outliers,
@@ -150,6 +141,15 @@ def analyze_csv_pipeline(df: pd.DataFrame, args):
 def visualize_csv(df: pd.DataFrame, df_stats, args):
     """Visualize numeric columns according to CLI options."""
     pd, np = _load_analysis_stack()
+    from .visualize_csv import (
+        visualize_data,
+        visualize_scatter_plotly,
+        visualize_line_plot,
+        visualize_bar_plot,
+        visualize_pie_plot,
+        apply_transformation,
+    )
+
     show_chart = getattr(args, "show_chart", None)
     if not show_chart or df.empty:
         return
@@ -348,6 +348,8 @@ def run_csv_pipeline(file_path: Path, args, df: pd.DataFrame = None):
 
     if getattr(args, "timeseries", False):
         try:
+            from .visualize_timeseries import _handle_timeseries_visualization
+
             console.print("[cyan]📈 Running time series visualization...[/cyan]")
             _handle_timeseries_visualization(df, args)
         except Exception as e:

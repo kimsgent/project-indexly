@@ -16,5 +16,6 @@ def require_extra_dependency(module_name: str, package_name: str, extra: str):
     except ModuleNotFoundError as exc:
         raise RuntimeError(
             f"Feature requires optional dependency '{package_name}'. "
-            f"Feature requires: pip install indexly[{extra}]"
+            f"Install with: pip install {package_name} "
+            f"(or install extras group '{extra}' via pip install indexly[{extra}])."
         ) from exc

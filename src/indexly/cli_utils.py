@@ -74,23 +74,72 @@ def _lazy_handle_infer_csv(args):
     return handle_infer_csv(args)
 
 
+_MISSING_MODULE_HINTS = {
+    # analysis extra
+    "pandas": ("analysis", "pandas"),
+    "numpy": ("analysis", "numpy"),
+    "scipy": ("analysis", "scipy"),
+    "statsmodels": ("analysis", "statsmodels"),
+    "tabulate": ("analysis", "tabulate"),
+    "pyarrow": ("analysis", "pyarrow"),
+    "tqdm": ("analysis", "tqdm"),
+    # visualization extra
+    "plotly": ("visualization", "plotly"),
+    "matplotlib": ("visualization", "matplotlib"),
+    "seaborn": ("visualization", "seaborn"),
+    "plotext": ("visualization", "plotext"),
+    "kaleido": ("visualization", "kaleido"),
+    # documents extra
+    "fitz": ("documents", "pymupdf"),
+    "pytesseract": ("documents", "pytesseract"),
+    "PIL": ("documents", "Pillow"),
+    "docx": ("documents", "python-docx"),
+    "openpyxl": ("documents", "openpyxl"),
+    "extract_msg": ("documents", "extract_msg"),
+    "eml_parser": ("documents", "eml-parser"),
+    "pptx": ("documents", "python-pptx"),
+    "ebooklib": ("documents", "ebooklib"),
+    "odf": ("documents", "odfpy"),
+    "olefile": ("documents", "olefile"),
+    # pdf export extra
+    "fpdf": ("pdf_export", "fpdf2"),
+    "reportlab": ("pdf_export", "reportlab"),
+}
+
+
+def _missing_dependency_message(exc: ModuleNotFoundError, default_extra: str) -> str:
+    module_name = (getattr(exc, "name", "") or "").split(".")[0]
+    extra, package = _MISSING_MODULE_HINTS.get(
+        module_name, (default_extra, module_name or default_extra)
+    )
+    return (
+        f"Missing optional dependency '{package}'. "
+        f"Install with: pip install {package} "
+        f"(or install extras group '{extra}' via pip install indexly[{extra}])."
+    )
+
+
 def _lazy_analyze_file(args):
     try:
         from .analysis_orchestrator import analyze_file
     except ModuleNotFoundError as exc:
-        raise SystemExit(
-            "Feature requires: pip install indexly[analysis]"
-        ) from exc
-    return analyze_file(args)
+        raise SystemExit(_missing_dependency_message(exc, "analysis")) from exc
+
+    try:
+        return analyze_file(args)
+    except RuntimeError as exc:
+        # Bubble optional-dependency hints as user-facing messages
+        msg = str(exc)
+        if "Feature requires optional dependency" in msg:
+            raise SystemExit(msg) from exc
+        raise
 
 
 def _lazy_analyze_db(args):
     try:
         from .analyze_db import analyze_db
     except ModuleNotFoundError as exc:
-        raise SystemExit(
-            "Feature requires: pip install indexly[analysis]"
-        ) from exc
+        raise SystemExit(_missing_dependency_message(exc, "analysis")) from exc
     return analyze_db(args)
 
 
@@ -98,9 +147,7 @@ def _lazy_clear_cleaned_data(args):
     try:
         from .clean_csv import clear_cleaned_data
     except ModuleNotFoundError as exc:
-        raise SystemExit(
-            "Feature requires: pip install indexly[analysis]"
-        ) from exc
+        raise SystemExit(_missing_dependency_message(exc, "analysis")) from exc
     return clear_cleaned_data(
         file_path=args.file, remove_all=getattr(args, "all", False)
     )
