@@ -142,6 +142,7 @@ include = [
 ]
 
 [tool.hatch.build.targets.wheel]
+packages = ["src/indexly", "indexly"]
 include = [
   "LICENSE.txt",
   "src/indexly/LICENSE.txt",
