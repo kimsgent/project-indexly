@@ -30,7 +30,11 @@ from datetime import datetime
 from .ripple import Ripple
 from rich import print as rprint
 from rapidfuzz import fuzz
-from .filetype_utils import extract_text_from_file, SUPPORTED_EXTENSIONS
+from .filetype_utils import (
+    extract_text_from_file,
+    SUPPORTED_EXTENSIONS,
+    get_missing_documents_dependencies,
+)
 from .db_utils import connect_db, get_tags_for_file, _sync_path_in_db
 from .search_core import search_fts5, search_regex
 from .extract_utils import update_file_metadata
@@ -291,6 +295,14 @@ async def scan_and_index_files(
     if not file_paths:
         print("⚠️ No supported files found.")
         return []
+
+    missing_doc_packages = get_missing_documents_dependencies(file_paths)
+    if missing_doc_packages:
+        raise ValueError(
+            "Missing optional document dependencies for detected files: "
+            + ", ".join(missing_doc_packages)
+            + ". Install once and retry with: pip install indexly[documents]"
+        )
 
     start_time = datetime.now()
 

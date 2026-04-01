@@ -344,6 +344,8 @@ def _extract_pdf(
             full_text = "\n\n".join(text_pages).strip()
             return {"text": full_text, "metadata": metadata}
 
+    except RuntimeError:
+        raise
     except Exception as e:
         print(f"⚠️ Error extracting text from {path}: {e}")
         return {"text": "", "metadata": metadata}
