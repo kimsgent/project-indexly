@@ -955,121 +955,288 @@ def handle_update_db(args):
 
 
 def handle_show_help(args):
-    """Display CLI help for all commands, with optional Markdown or detailed output."""
+    """Display categorized command help in terminal or Markdown format."""
     import argparse
-    from textwrap import indent
-    from indexly.indexly import build_parser  # adjust import if needed
+    from rich import box
+    from rich.panel import Panel
+    from rich.table import Table
+    from rich.text import Text
 
     parser = build_parser()
 
+    def _find_subparsers_action(arg_parser):
+        for action in getattr(arg_parser, "_actions", []):
+            if isinstance(action, argparse._SubParsersAction):
+                return action
+        return None
+
+    root_subparsers_action = _find_subparsers_action(parser)
+    if not root_subparsers_action:
+        console.print("[bold red]No commands found in parser.[/bold red]")
+        return
+
+    command_parsers = dict(root_subparsers_action.choices)
+
+    summary_lookup = {}
+    for choice_action in getattr(root_subparsers_action, "_choices_actions", []):
+        summary_lookup[choice_action.dest] = (choice_action.help or "").strip()
+
     categories = {
-        "Indexing & Watching": ["index", "watch"],
-        "Searching": ["search", "regex"],
-        "Organizing & Listing": ["organize", "lister"],
-        "Tagging & File Operations": ["tag", "rename-file"],
+        "Search & Index Workflow": ["index", "search", "regex", "watch", "tag"],
         "Analysis & Data Inspection": [
             "analyze-csv",
             "infer-csv",
-            "analyze-json",
             "analyze-file",
+            "analyze-json",
             "analyze-db",
             "clear-data",
             "read-json",
+            "extract-mtw",
         ],
-        "Analysis & Extraction": ["extract-mtw"],
-        "Backup, Restore & Compare": ["backup", "restore", "compare"],
-        "Database Maintenance": ["update-db", "migrate", "stats"],
-        "Logs & Maintenance": ["log-clean"],
-        "Meta": ["show-help"],
+        "Organization & File Operations": [
+            "organize",
+            "lister",
+            "rename-file",
+            "compare",
+            "backup",
+            "restore",
+        ],
+        "Automation, Health & Maintenance": [
+            "ignore",
+            "observe",
+            "doctor",
+            "update-db",
+            "migrate",
+            "stats",
+            "log-clean",
+        ],
+        "Help & Meta": ["show-help"],
     }
 
-    # collect subcommands
-    subparsers = {}
-    for action in parser._subparsers._actions:
-        if isinstance(action, argparse._SubParsersAction):
-            subparsers.update(action.choices)
+    scope_hints = {
+        "index": "Core (documents extra improves rich doc/PDF/OCR parsing)",
+        "analyze-csv": "Requires optional extras: analysis",
+        "infer-csv": "Requires analysis extra (charts may use visualization)",
+        "analyze-file": "Core command; extras depend on input file type",
+        "analyze-db": "Requires optional extras: analysis",
+        "extract-mtw": "Requires optional extras: analysis",
+    }
 
-    def extract_summary(subparser):
-        help_lines = subparser.format_help().splitlines()
+    all_commands = list(command_parsers.keys())
+    assigned = {cmd for cmds in categories.values() for cmd in cmds}
+    uncategorized = sorted(cmd for cmd in all_commands if cmd not in assigned)
+    if uncategorized:
+        categories["Other Commands"] = uncategorized
 
-        skip_prefixes = (
-            "usage:",
-            "positional arguments:",
-            "options:",
-            "optional arguments:",
+    def _command_summary(command, subparser):
+        summary = summary_lookup.get(command, "")
+        if summary:
+            return summary
+        desc = (subparser.description or "").strip()
+        if desc:
+            return desc
+        return "(no description available)"
+
+    def _command_usage(subparser):
+        usage = (subparser.format_usage() or "").strip()
+        if usage.lower().startswith("usage: "):
+            usage = usage[7:]
+        usage = " ".join(usage.split())
+        if len(usage) > 96:
+            usage = usage[:95] + "…"
+        return usage or "-"
+
+    def _extract_modes(subparser):
+        modes = []
+
+        nested_subparsers = _find_subparsers_action(subparser)
+        if nested_subparsers:
+            modes.extend(str(name) for name in nested_subparsers.choices.keys())
+
+        for action in getattr(subparser, "_actions", []):
+            if action.option_strings:
+                continue
+            choices = getattr(action, "choices", None)
+            if not choices:
+                continue
+            for choice in choices:
+                choice_text = str(choice)
+                if choice_text not in modes:
+                    modes.append(choice_text)
+
+        return modes
+
+    def _format_option(action):
+        preferred = next(
+            (opt for opt in action.option_strings if opt.startswith("--")),
+            action.option_strings[0],
         )
 
-        for line in help_lines:
-            line = line.strip()
-            if not line:
-                continue
-            if any(line.lower().startswith(p) for p in skip_prefixes):
-                continue
-            return line
+        takes_value = not isinstance(
+            action, (argparse._StoreTrueAction, argparse._StoreFalseAction)
+        )
+        if not takes_value:
+            return preferred
 
-        return "(no description)"
+        metavar = action.metavar
+        if isinstance(metavar, tuple):
+            metavar = " ".join(str(v) for v in metavar)
+        if not metavar:
+            metavar = action.dest.upper()
+        if action.nargs in ("+", "*"):
+            metavar = f"{metavar} ..."
+        return f"{preferred} {metavar}"
 
-    # Markdown output
+    def _extract_key_options(subparser, limit):
+        options = []
+        for action in getattr(subparser, "_actions", []):
+            if not action.option_strings:
+                continue
+            if action.dest == "help":
+                continue
+            formatted = _format_option(action)
+            if formatted and formatted not in options:
+                options.append(formatted)
+            if len(options) >= limit:
+                break
+        return options
+
+    def _scope_for(command):
+        return scope_hints.get(command, "Core")
+
+    def _markdown_escape(text):
+        return str(text).replace("|", "\\|")
+
+    def _iter_category_commands():
+        for category, command_list in categories.items():
+            filtered = [cmd for cmd in command_list if cmd in command_parsers]
+            if filtered:
+                yield category, filtered
+
     if getattr(args, "markdown", False):
-        print("# 🧭 Indexly Command Reference\n")
-        print("A categorized overview of all Indexly commands and their purpose.\n")
-        for category, cmd_list in categories.items():
+        print("# Indexly Command Reference\n")
+        print("Categorized command overview generated from the current CLI parser.\n")
+        print(
+            "_Tip: install optional packs as needed: "
+            "`indexly[documents]`, `indexly[analysis]`, "
+            "`indexly[visualization]`, `indexly[pdf_export]`._\n"
+        )
+
+        for category, commands in _iter_category_commands():
             print(f"## {category}\n")
-            print("| Command | Description |")
-            print("|----------|-------------|")
-            for cmd in cmd_list:
-                sp = subparsers.get(cmd)
-                if not sp:
-                    continue
-                desc = extract_summary(sp)
-                print(f"| `{cmd}` | {desc} |")
+            if getattr(args, "details", False):
+                print(
+                    "| Command | Purpose | Scope | Modes | Usage | Key Options |\n"
+                    "|---|---|---|---|---|---|"
+                )
+            else:
+                print("| Command | Purpose | Modes |\n|---|---|---|")
+
+            for command in commands:
+                subparser = command_parsers[command]
+                summary = _markdown_escape(_command_summary(command, subparser))
+                modes = ", ".join(_extract_modes(subparser)) or "—"
+                modes = _markdown_escape(modes)
+
+                if getattr(args, "details", False):
+                    scope = _markdown_escape(_scope_for(command))
+                    usage = _markdown_escape(_command_usage(subparser))
+                    options = ", ".join(_extract_key_options(subparser, limit=6)) or "—"
+                    options = _markdown_escape(options)
+                    print(
+                        f"| `{command}` | {summary} | {scope} | {modes} | "
+                        f"`{usage}` | {options} |"
+                    )
+                else:
+                    print(f"| `{command}` | {summary} | {modes} |")
+
             print()
-        print("_Use `indexly <command> --help` for detailed usage instructions._\n")
+
+        print("_Use `indexly <command> --help` for full command details._")
         return
 
-    # CLI output (terminal)
-    print("\n📚 **Indexly Commands Overview**\n")
+    title = "Indexly Command Guide"
+    subtitle = (
+        "Detailed view: includes scope hints, usage, and high-signal flags"
+        if getattr(args, "details", False)
+        else "Compact view: grouped commands and where each command applies"
+    )
+    console.print(
+        Panel.fit(
+            f"[bold]{title}[/bold]\n[dim]{subtitle}[/dim]",
+            border_style="cyan",
+        )
+    )
 
-    for category, cmd_list in categories.items():
-        print(f"🔹 {category}")
-        for cmd in cmd_list:
-            sp = subparsers.get(cmd)
-            if not sp:
-                continue
-            desc = extract_summary(sp)
-            print(f"   • {cmd:<15} — {desc}")
+    for category, commands in _iter_category_commands():
+        if getattr(args, "details", False):
+            console.print(f"\n[bold bright_cyan]{category}[/bold bright_cyan]")
+            for command in commands:
+                subparser = command_parsers[command]
+                summary = _command_summary(command, subparser)
+                modes = ", ".join(_extract_modes(subparser)) or "—"
+                usage = _command_usage(subparser)
+                key_flags = ", ".join(_extract_key_options(subparser, limit=6)) or "—"
 
-            if getattr(args, "details", False):
-                # Only show the concise usage block, not the entire argparse dump
-                usage_line = next(
-                    (
-                        l.strip()
-                        for l in sp.format_help().splitlines()
-                        if l.strip().startswith("usage:")
-                    ),
-                    None,
+                body = Text()
+                body.append("What it does: ", style="bold")
+                body.append(summary + "\n")
+                body.append("Scope: ", style="bold")
+                body.append(_scope_for(command) + "\n")
+                body.append("Modes: ", style="bold")
+                body.append(modes + "\n")
+                body.append("Usage: ", style="bold")
+                body.append(usage + "\n")
+                body.append("Key flags: ", style="bold")
+                body.append(key_flags)
+
+                console.print(
+                    Panel(
+                        body,
+                        title=f"[bold cyan]{command}[/bold cyan]",
+                        border_style="cyan",
+                        expand=True,
+                    )
                 )
-                if usage_line:
-                    print(indent(f"\n{usage_line}\n", "      "))
+        else:
+            table = Table(
+                title=f"[bold bright_cyan]{category}[/bold bright_cyan]",
+                box=box.ROUNDED,
+                show_lines=False,
+                header_style="bold white",
+                expand=True,
+            )
+            table.add_column("Command", style="bold cyan", no_wrap=True)
+            table.add_column("What It Does", style="white")
+            table.add_column("Modes", style="yellow")
 
-                # Show only the "options" section in indented style
-                help_lines = sp.format_help().splitlines()
-                options_section = []
-                capture = False
-                for line in help_lines:
-                    if line.strip().lower().startswith("options"):
-                        capture = True
-                        continue
-                    if capture:
-                        if line.strip() == "":
-                            break
-                        options_section.append(line)
-                if options_section:
-                    print(indent("\n".join(options_section) + "\n", "      "))
+            for command in commands:
+                subparser = command_parsers[command]
+                summary = _command_summary(command, subparser)
+                modes = ", ".join(_extract_modes(subparser)) or "—"
+                table.add_row(command, summary, modes)
 
-        print()
+            console.print(table)
 
-    print("💡 Tip: Use `indexly <command> --help` for full details.\n")
+    if getattr(args, "details", False):
+        packs = Text()
+        packs.append("Optional packs:\n", style="bold")
+        packs.append("• indexly[documents]  (PDF/DOCX/OCR/media parsing)\n")
+        packs.append("• indexly[analysis]   (CSV/statistics/data profiling)\n")
+        packs.append("• indexly[visualization] (matplotlib/plotly charts)\n")
+        packs.append("• indexly[pdf_export] (report PDF generation)")
+        console.print(
+            Panel.fit(
+                packs,
+                title="Feature Packs",
+                border_style="blue",
+            )
+        )
+
+    console.print(
+        "\n[dim]Tip: run `indexly <command> --help` for the full argument list."
+        "[/dim]\n"
+    )
 
 
 def main():
