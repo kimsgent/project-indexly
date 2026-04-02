@@ -3,21 +3,47 @@
   "latest": {
     "version": "1.2.4",
     "date": "2026-03-28",
-    "changes": [
-      "feat(inference): add outlier diagnostics and Durbin-Watson integration",
-      "feat(csv): introduce boxplot visualization engine with CLI integration",
-      "feat(boxplot): implement adaptive summary rendering for large datasets",
-      "refactor(csv): restructure infer-csv with separated validation and general cleanup",
-      "fix(parser): allow multiple values for --y-col in analyze-csv boxplot",
-      "fix(boxplot): correct x-axis interpretation via proper x_col propagation",
-      "fix(boxplot): resolve y_col handling for single-column input",
-      "fix(core): resolve docstring escape sequence warning during indexing",
-      "cli: improve help text for --x-col and --y-col usage",
-      "chore(ci): split workflow into ci-full.yml and ci-lite.yml",
-      "chore(repo): add CODEOWNERS and PR templates for standardized review process",
-      "chore: ignore Pagefind build artifacts"
-    ]
+    "link": "/en/releases/v1.2.4/",
+    "summary": "feat(inference): add outlier diagnostics and Durbin-Watson integration | feat(csv): introduce boxplot visualization engine with CLI integration",
+    "prerelease": false
   },
+  "recent": [
+    {
+      "version": "1.2.3",
+      "date": "2026-02-27",
+      "link": "/en/releases/v1.2.3/",
+      "summary": "feat(regression): add categorical handshake, interaction handling, and inline comments in OLS engine | feat(inference): add multi-dataset merge engine, infer-csv CLI, and structured export system",
+      "prerelease": false
+    },
+    {
+      "version": "1.2.2",
+      "date": "2026-02-15",
+      "link": "/en/releases/v1.2.2/",
+      "summary": "feat(rename): introduce business-rule based renaming with heuristic keyword detection (invoice, tax, receipt, payroll, contract) | feat(rename): add --business-naming mode with interactive category and prefix selection",
+      "prerelease": false
+    },
+    {
+      "version": "1.2.1",
+      "date": "2026-02-07",
+      "link": "/en/releases/v1.2.1/",
+      "summary": "feat(observers): implement core observer framework with user-friendly logging, CSV & health observers, and organizer_exec integration | feat(organize): integrate lister caching with fallback log generation and optional hash-based duplicate detection",
+      "prerelease": false
+    },
+    {
+      "version": "1.2.0",
+      "date": "2026-01-20",
+      "link": "/en/releases/v1.2.0/",
+      "summary": "fix(brew): move Homebrew formula template outside Python to avoid accidental trailing blank lines and pass audit | chore(release): update generate_brew_formula.py for v1.2.0 formula generation",
+      "prerelease": false
+    },
+    {
+      "version": "1.1.9",
+      "date": "2026-01-20",
+      "link": "/en/releases/v1.1.9/",
+      "summary": "fix(brew): prevent extra trailing blank line when writing formula in generate_brew_formula.py, ensuring Homebrew audit passes | chore(release): prepare v1.1.9 documentation and Homebrew tap release",
+      "prerelease": false
+    }
+  ],
   "archive": [
     {
       "version": "1.2.3",
@@ -53,188 +79,14 @@
       "link": "/en/releases/v1.1.9/",
       "summary": "fix(brew): prevent extra trailing blank line when writing formula in generate_brew_formula.py, ensuring Homebrew audit passes | chore(release): prepare v1.1.9 documentation and Homebrew tap release",
       "prerelease": false
-    },
-    {
-      "version": "1.1.8",
-      "date": "2026-01-20",
-      "link": "/en/releases/v1.1.8/",
-      "summary": "fix(brew): update generate_brew_formula.py to properly trim trailing blank lines in the formula | chore(brew): cleanly close triple-quoted formula block before writing to disk to ensure Homebrew audit passes",
-      "prerelease": false
-    },
-    {
-      "version": "1.1.7",
-      "date": "2026-01-19",
-      "link": "/en/releases/v1.1.7/",
-      "summary": "fix(brew): escape Ruby #{libexec} interpolation in generate_brew_formula.py to prevent CI NameError | chore(release): prepare documentation and Homebrew metadata for v1.1.7",
-      "prerelease": false
-    },
-    {
-      "version": "1.1.6",
-      "date": "2026-01-19",
-      "link": "/en/releases/v1.1.6/",
-      "summary": "chore(brew): remove caveats from formula to pass audit --strict | chore(brew): update generate_brew_formula.py to produce audit-compatible formula without trailing blank lines",
-      "prerelease": false
-    },
-    {
-      "version": "1.1.5",
-      "date": "2026-01-19",
-      "link": "/en/releases/v1.1.5/",
-      "summary": "docs(install): rewrite installation guide with full pip and Homebrew workflows for users and developers | docs(install): document Homebrew shell setup and indexly() wrapper for reliable CLI execution",
-      "prerelease": false
-    },
-    {
-      "version": "1.1.4",
-      "date": "2026-01-18",
-      "link": "/en/releases/v1.1.4/",
-      "summary": "fix(brew): correct Homebrew formula dependencies order and remove vendored numeric stack | fix(brew): rename Python resources to match PyPI package names (e.g., extract-msg)",
-      "prerelease": false
-    },
-    {
-      "version": "1.1.3",
-      "date": "2026-01-18",
-      "link": "/en/releases/v1.1.3/",
-      "summary": "fix(brew): vendor Python runtime dependencies to produce a fully functional Homebrew install | feat(brew): extend generate_brew_formula.py with PyPI resource resolution and sha256 verification",
-      "prerelease": false
-    },
-    {
-      "version": "1.1.2",
-      "date": "2026-01-17",
-      "link": "/en/releases/v1.1.2/",
-      "summary": "fix(brew): use bin/indexly in formula test block for Homebrew audit | chore(brew): update generate_brew_formula.py template for correct formula output",
-      "prerelease": false
-    },
-    {
-      "version": "1.1.1",
-      "date": "2026-01-17",
-      "link": "/en/releases/v1.1.1/",
-      "summary": "Fix(ci): use --formular flag for Homebrew audit after audit behavior change",
-      "prerelease": false
-    },
-    {
-      "version": "1.1.0",
-      "date": "2026-01-17",
-      "link": "/en/releases/v1.1.0/",
-      "summary": "Fixed Homebrew formula generation pipeline | Resolved Formula/indexly.rb creation failures due to GitHub tarball delays",
-      "prerelease": false
-    },
-    {
-      "version": "1.0.9",
-      "date": "2026-01-17",
-      "link": "/en/releases/v1.0.9/",
-      "summary": "fix(github actions): Updated Homebrew workflow to audit formula by name instead of file path.",
-      "prerelease": false
-    },
-    {
-      "version": "1.0.8",
-      "date": "2026-01-17",
-      "link": "/en/releases/v1.0.8/",
-      "summary": "fix(github actions): GitHub Actions: added missing Homebrew tap authentication token to enable automated `brew` releases.",
-      "prerelease": false
-    },
-    {
-      "version": "1.0.7",
-      "date": "2026-01-16",
-      "link": "/en/releases/v1.0.7/",
-      "summary": "feat(organize): introduced profile-based directory scaffolding with modular rules and safe placement planning | feat(organize): added dry-run placement planner with detailed logging and hash-based safety checks",
-      "prerelease": false
-    },
-    {
-      "version": "1.0.6",
-      "date": "2026-01-10",
-      "link": "/en/releases/v1.0.6/",
-      "summary": "fix(log): enforced LOG_MAX_BYTES to prevent uncontrolled incremental log growth | fix(ignore): improved ignore preset loading, loader cache handling, path matching, and CLI inspection output",
-      "prerelease": false
-    },
-    {
-      "version": "1.0.5",
-      "date": "2025-11-29",
-      "link": "/en/releases/v1.0.5/",
-      "summary": "fix(loader): correctly validate .ndjson files when extension is provided, resolving NDJSON fallback and allowing Indexly-exported concatenated logs to be analyzed directly | feat(log-clean): added multi-log cleaning with NDJSON/CSV export, path normalization and filename sanitization",
-      "prerelease": false
-    },
-    {
-      "version": "1.0.4",
-      "date": "2025-10-26",
-      "link": "/en/releases/v1.0.4/",
-      "summary": "feat(csv-cleaning): implemented a fully automated CSV data cleaning pipeline with smart datetime parsing, mixed-type handling, missing-value imputation, and Rich-based summary display | feat(csv-cleaning): added delimiter fallback detection and dynamic visualization integration for clean and intuitive data exploration",
-      "prerelease": false
-    },
-    {
-      "version": "1.0.3",
-      "date": "2025-10-12",
-      "link": "/en/releases/v1.0.3/",
-      "summary": "feat(rename-file): added support for pattern-based file renaming with placeholders {date}, {title}, and {counter} | feat(rename-file): implemented --counter-format flag for customizable numeric padding",
-      "prerelease": false
-    },
-    {
-      "version": "1.0.2",
-      "date": "2025-09-20",
-      "link": "/en/releases/v1.0.2/",
-      "summary": "meta: corrected project URLs in pyproject.toml for PyPI | Homepage now points to Netlify site instead of GitHub",
-      "prerelease": false
-    },
-    {
-      "version": "1.0.1",
-      "date": "2025-09-20",
-      "link": "/en/releases/v1.0.1/",
-      "summary": "fix: FAQ shortcode use global site.Data instead of .Site.Data to prevent context errors | fix: replace Colorama with Rich markup for search term highlighting",
-      "prerelease": false
-    },
-    {
-      "version": "1.0.0",
-      "date": "2025-09-05",
-      "link": "/en/releases/v1.0.0/",
-      "summary": "Unified snippet logic across FTS5 and regex search | Aligned regex output with FTS search including colored highlights and tags",
-      "prerelease": false
-    },
-    {
-      "version": "0.9.8",
-      "date": "2025-08-22",
-      "link": "/en/releases/v0.9.8/",
-      "summary": "Full CLI migration to argparse subparsers | Enhanced FTS5 search with logical operators, input validation, and snippet support",
-      "prerelease": false
-    },
-    {
-      "version": "0.9.6",
-      "date": "2025-07-29",
-      "link": "/en/releases/v0.9.6/",
-      "summary": "Added CSV file analysis via analyze-csv subcommand with summary export | Integrated pandas for robust CSV parsing and numeric/statistical summary",
-      "prerelease": false
-    },
-    {
-      "version": "0.9.4",
-      "date": "2025-07-10",
-      "link": "/en/releases/v0.9.4/",
-      "summary": "Modularized export logic into export_utils.py (pdf/txt/json) | Modularized filetype extraction into filetype_utils.py",
-      "prerelease": false
-    },
-    {
-      "version": "0.9.2",
-      "date": "2025-07-03",
-      "link": "/en/releases/v0.9.2/",
-      "summary": "Added fuzzy search support using --fuzzy and --fuzzy-threshold arguments | Implemented saved search profiles: --save-profile and --profile",
-      "prerelease": false
-    },
-    {
-      "version": "0.9.0",
-      "date": "2025-05-04",
-      "link": "/en/releases/v0.9.0/",
-      "summary": "Fixed CLI argument handling for --pdf-lib and --output to prevent errors | Improved internal argument validation for export options",
-      "prerelease": false
-    },
-    {
-      "version": "0.8.8",
-      "date": "2025-05-03",
-      "link": "/en/releases/v0.8.8/",
-      "summary": "Implemented CLI filters: --filetype, --date-from, --date-to, --path-contains | Integrated filters with FTS5 and regex search",
-      "prerelease": false
-    },
-    {
-      "version": "0.8.6",
-      "date": "2025-04-29",
-      "link": "/en/releases/v0.8.6/",
-      "summary": "Initial version with SQLite FTS5 search support | Added regex search using custom REGEXP function",
-      "prerelease": false
     }
-  ]
+  ],
+  "archived": {
+    "count": 26,
+    "link": "/en/releases/Archive/"
+  },
+  "retention": {
+    "max_old_releases": 5,
+    "active_releases_count": 6
+  }
 }

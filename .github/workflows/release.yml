@@ -58,12 +58,14 @@ jobs:
           fi
 
       - name: Generate Hugo release notes + API
+        env:
+          RELEASES_KEEP_OLD: "5"
         run: python scripts/generate_releases.py
 
       - name: Prepare GitHub release notes
         run: python scripts/prepare_release_notes.py "${VERSION}"
 
-      - name: Update download page with new version
+      - name: Update download page and release artifacts
         if: github.event_name != 'workflow_dispatch'
         run: |
           DOWNLOAD_FILE="docs/content/download/_index.en.md"
@@ -77,7 +79,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add "$DOWNLOAD_FILE"
-          git commit -m "Update download link for $VERSION" || echo "No changes to commit"
+          git add -A docs/content/releases docs/static/releases.json
+          git commit -m "Update download link and release docs for $VERSION" || echo "No changes to commit"
 
       - name: Build with Hatch
         run: hatch build
