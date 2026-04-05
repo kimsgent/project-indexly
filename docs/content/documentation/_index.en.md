@@ -27,7 +27,7 @@ Indexly is a local-first CLI for indexing, searching, analyzing, and organizing 
 
 ## What Is New
 
-{{< alert title="Release Highlights (v1.2.4)" color="primary" >}}
+{{< alert title="Release Highlights (v2.0.0)" color="primary" >}}
 <div class="p-3 rounded" style="background:#ffffff; color:#1f2937;">
   <h4 class="mb-2" style="color:#0f172a;">What changed recently</h4>
   <ul class="mb-3">
@@ -36,7 +36,7 @@ Indexly is a local-first CLI for indexing, searching, analyzing, and organizing 
     <li>Improved Homebrew and cross-platform installation guidance for macOS, Linux, and Windows.</li>
     <li>Expanded command help structure (`indexly show-help`) with clearer categories and scope hints.</li>
   </ul>
-  <a href="/releases/" class="btn btn-primary btn-sm me-2">View Release Notes</a>
+  <a href="/en/releases/" class="btn btn-primary btn-sm me-2">View Release Notes</a>
   <a href="/en/documentation/indexly-installation/" class="btn btn-outline-secondary btn-sm">Open Installation Guide</a>
 </div>
 {{< /alert >}}
