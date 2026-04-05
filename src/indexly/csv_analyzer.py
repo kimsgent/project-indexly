@@ -4,63 +4,33 @@ import re
 import json
 import math
 import os
-import sys
 import csv
-import importlib.util
-import subprocess
-import argparse
-import importlib.util
-import subprocess
-from pathlib import Path
-from rich.console import Console
-from rich.progress import Progress
-from datetime import datetime
-from rich.console import Console
-
-console = Console()
-
-REQUIRED_PACKAGES = ["pandas", "numpy", "scipy", "tabulate"]
-
-
-def ensure_packages(packages):
-    for pkg in packages:
-        if importlib.util.find_spec(pkg) is None:
-            console.print(f"📦 Installing missing package: {pkg}...")
-            subprocess.check_call([sys.executable, "-m", "pip", "install", pkg])
-
-
-ensure_packages(REQUIRED_PACKAGES)
-
-# ✅ Now safe to import
-import pandas as pd
-import numpy as np
 import shutil
-import json
-import math
-from decimal import Decimal
-from fractions import Fraction
-from scipy.stats import iqr
-from tabulate import tabulate
+from pathlib import Path
 from datetime import datetime, date
 import datetime as dt
+from decimal import Decimal
+from fractions import Fraction
+from rich.console import Console
 from rich.progress import Progress
+from .optional_deps import require_extra_dependency
+
+console = Console()
+_ANALYSIS_RUNTIME = None
 
 
-try:
-    from scipy.stats import iqr
-except ImportError:
-    iqr = None
+def _ensure_analysis_runtime():
+    global _ANALYSIS_RUNTIME
+    if _ANALYSIS_RUNTIME is not None:
+        return _ANALYSIS_RUNTIME
 
+    pd = require_extra_dependency("pandas", "pandas", "analysis")
+    np = require_extra_dependency("numpy", "numpy", "analysis")
+    scipy_stats = require_extra_dependency("scipy.stats", "scipy", "analysis")
+    tabulate_module = require_extra_dependency("tabulate", "tabulate", "analysis")
 
-def check_requirements():
-    try:
-        import pandas
-        import tabulate
-    except ImportError:
-        print("[!] Required packages not found. Installing...")
-        os.system(f"{sys.executable} -m pip install pandas tabulate")
-        if iqr is None:
-            os.system(f"{sys.executable} -m pip install scipy")
+    _ANALYSIS_RUNTIME = (pd, np, getattr(scipy_stats, "iqr", None), tabulate_module)
+    return _ANALYSIS_RUNTIME
 
 
 def detect_delimiter(file_path):
@@ -104,6 +74,9 @@ def analyze_csv(file_or_df, from_df=False):
     - Otherwise, file_or_df is treated as a file path to read CSV
     Returns: df, df_stats, table_output
     """
+
+    pd, np, iqr, tabulate_module = _ensure_analysis_runtime()
+    tabulate = tabulate_module.tabulate
 
     console = Console()
     file_path = None
@@ -292,6 +265,8 @@ def _json_safe(obj, preserve_numeric: bool = True):
         preserve_numeric: If True, keeps all numeric types as numeric rather than stringifying.
                           Recommended for analytical exports.
     """
+
+    pd, np, _, _ = _ensure_analysis_runtime()
 
     # --- Basic numeric types ---
     if isinstance(obj, (pd.Timestamp, np.datetime64)):
@@ -556,9 +531,7 @@ def export_results(
     # 🪶 Rich CSV / Parquet / Excel export
     # ----------------------------------------
     elif export_format in ("csv", "excel", "parquet", "db"):
-        import pyarrow as pa
-        import pyarrow.parquet as pq
-        import pandas as pd
+        pd, _, _, _ = _ensure_analysis_runtime()
 
         if df is None or df.empty:
             raise ValueError(
@@ -626,6 +599,8 @@ def export_results(
         # --- Parquet ---
 
         elif export_format == "parquet":
+            pa = require_extra_dependency("pyarrow", "pyarrow", "analysis")
+            pq = require_extra_dependency("pyarrow.parquet", "pyarrow", "analysis")
             if df is None or df.empty:
                 raise ValueError(
                     f"No DataFrame available for {export_format.upper()} export."
@@ -654,9 +629,6 @@ def export_results(
                     progress.advance(task, advance=len(chunk))
 
             # --- Build PyArrow table ---
-            import pyarrow as pa
-            import pyarrow.parquet as pq
-
             table = pa.Table.from_pandas(df)
             meta_bytes = json.dumps(
                 {"metadata": metadata, "summary": summary_info}, ensure_ascii=False

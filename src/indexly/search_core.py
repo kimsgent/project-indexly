@@ -30,7 +30,6 @@ from .cache_utils import (
 )
 from .path_utils import normalize_path
 from .cli_utils import filter_files_by_tag, enrich_results_with_tags
-from nltk.tokenize import sent_tokenize
 from rapidfuzz import fuzz, process
 from colorama import Fore, Style
 from .config import DB_FILE, PROFILE_FILE

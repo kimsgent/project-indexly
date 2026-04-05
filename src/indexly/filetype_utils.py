@@ -19,6 +19,7 @@ Central place for supported file types and extraction.
 """
 
 import os
+import importlib.util
 from pathlib import Path
 from .extract_utils import (
     _extract_docx,
@@ -33,7 +34,6 @@ from .extract_utils import (
     extract_image_metadata,
 )
 from .utils import clean_text
-from .mtw_extractor import _extract_mtw
 
 # ✅ Single source of truth
 SUPPORTED_EXTENSIONS = {
@@ -63,6 +63,45 @@ SUPPORTED_EXTENSIONS = {
     ".bmp",
     ".mtw",
 }
+
+
+DOCUMENT_DEPENDENCY_MAP = {
+    ".pdf": [("fitz", "pymupdf"), ("pytesseract", "pytesseract"), ("PIL", "Pillow")],
+    ".docx": [("docx", "python-docx")],
+    ".xlsx": [("openpyxl", "openpyxl")],
+    ".msg": [("extract_msg", "extract_msg")],
+    ".eml": [("eml_parser", "eml-parser")],
+    ".pptx": [("pptx", "python-pptx")],
+    ".epub": [("ebooklib", "ebooklib")],
+    ".odt": [("odf", "odfpy")],
+    ".jpg": [("PIL", "Pillow")],
+    ".jpeg": [("PIL", "Pillow")],
+    ".png": [("PIL", "Pillow")],
+    ".bmp": [("PIL", "Pillow")],
+    ".tiff": [("PIL", "Pillow")],
+}
+
+
+def get_missing_documents_dependencies(file_paths: list[str]) -> list[str]:
+    """
+    Return missing Python packages required by detected document/image file types.
+    """
+    required_modules: dict[str, str] = {}
+    for path in file_paths:
+        ext = Path(path).suffix.lower()
+        for module_name, package_name in DOCUMENT_DEPENDENCY_MAP.get(ext, []):
+            required_modules[module_name] = package_name
+
+    missing_packages = []
+    for module_name, package_name in required_modules.items():
+        try:
+            installed = importlib.util.find_spec(module_name) is not None
+        except Exception:
+            installed = False
+        if not installed:
+            missing_packages.append(package_name)
+
+    return sorted(set(missing_packages))
 
 
 def extract_text_from_file(
@@ -127,6 +166,8 @@ def extract_text_from_file(
             return None, None  # skip binaries
 
         elif ext == ".mtw":
+            from .mtw_extractor import _extract_mtw
+
             # Special handling for MTW
             print(f"📂 Extracting .mtw file: {file_path} ...")
             extracted_files = _extract_mtw(file_path, os.path.dirname(file_path))

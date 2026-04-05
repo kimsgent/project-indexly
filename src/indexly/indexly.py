@@ -25,18 +25,19 @@ import argparse
 import logging
 import time
 import sqlite3
-import pandas as pd
-import numpy as np
 from rich.console import Console
 from datetime import datetime
 from .ripple import Ripple
 from rich import print as rprint
 from rapidfuzz import fuzz
-from .filetype_utils import extract_text_from_file, SUPPORTED_EXTENSIONS
+from .filetype_utils import (
+    extract_text_from_file,
+    SUPPORTED_EXTENSIONS,
+    get_missing_documents_dependencies,
+)
 from .db_utils import connect_db, get_tags_for_file, _sync_path_in_db
 from .search_core import search_fts5, search_regex
 from .extract_utils import update_file_metadata
-from .mtw_extractor import _extract_mtw
 from .rename_utils import (
     rename_file,
     rename_files_in_dir,
@@ -44,8 +45,6 @@ from .rename_utils import (
     execute_rename_then_organize,
     SUPPORTED_DATE_FORMATS,
 )
-from .clean_csv import clear_cleaned_data
-from .update_utils import check_for_updates
 
 from .profiles import (
     apply_profile,
@@ -113,6 +112,8 @@ async def async_index_file(
         # MTW archives (Tier 3 only)
         # -------------------------
         if full_path.lower().endswith(".mtw"):
+            from .mtw_extractor import _extract_mtw
+
             extracted_files = _extract_mtw(full_path, extended=mtw_extended)
             if not extracted_files:
                 print(f"⚠️ No extractable content in: {full_path}")
@@ -295,6 +296,14 @@ async def scan_and_index_files(
     if not file_paths:
         print("⚠️ No supported files found.")
         return []
+
+    missing_doc_packages = get_missing_documents_dependencies(file_paths)
+    if missing_doc_packages:
+        raise ValueError(
+            "Missing optional document dependencies for detected files: "
+            + ", ".join(missing_doc_packages)
+            + ". Install once and retry with: pip install indexly[documents]"
+        )
 
     start_time = datetime.now()
 
@@ -756,6 +765,8 @@ def run_watch(args):
 
 
 def clear_cleaned_data_handler(args):
+    from .clean_csv import clear_cleaned_data
+
     if getattr(args, "all", False):
         clear_cleaned_data(remove_all=True)
     elif getattr(args, "file", None):
@@ -788,6 +799,8 @@ def handle_doctor(args):
 
 
 def handle_extract_mtw(args):
+    from .mtw_extractor import _extract_mtw
+
     # Normalize inputs
     file_path = normalize_path(args.file)
     output_dir = (
@@ -1081,6 +1094,8 @@ def main():
     # ----------------------------------
     if not getattr(args, "no_update_check", False):
         try:
+            from .update_utils import check_for_updates
+
             info = check_for_updates()
             if info["update_available"]:
                 console.print(
@@ -1094,6 +1109,8 @@ def main():
     # 3) Manual "--check-updates" mode
     # ----------------------------------
     if getattr(args, "check_updates", False):
+        from .update_utils import check_for_updates
+
         info = check_for_updates()
         console.print(f"Current: {info['current']}")
         console.print(f"Latest:  {info['latest'] or 'unknown'}")
