@@ -43,6 +43,8 @@ jobs:
             --out Formula/indexly.rb
 
       - name: Create PR for formula update
+        id: create_pr
+        continue-on-error: true
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -54,3 +56,20 @@ jobs:
             Automated Homebrew formula update for `${{ github.ref_name }}`.
           add-paths: |
             Formula/indexly.rb
+
+      - name: Fallback push release branch
+        if: steps.create_pr.outcome == 'failure'
+        run: |
+          BRANCH="release/brew-${{ github.ref_name }}"
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
+          if git diff --quiet -- Formula/indexly.rb; then
+            echo "No formula changes detected; nothing to push."
+            exit 0
+          fi
+
+          git checkout -B "$BRANCH"
+          git add Formula/indexly.rb
+          git commit -m "chore: brew release ${{ github.ref_name }}"
+          git push --force-with-lease origin HEAD:"$BRANCH"
