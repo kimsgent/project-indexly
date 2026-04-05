@@ -18,50 +18,13 @@ Usage:
 import io
 import re
 import os
-import sys
-import struct
 import json
 import sqlite3
-import subprocess
 import shutil
 import platform
 from datetime import datetime
-from contextlib import suppress
-
-# --- package check helpers (migrated from utils.py) ---
-def prompt_install(package_list):
-    install_all = False
-    try:
-        for module, package in package_list:
-            try:
-                __import__(module)
-            except ImportError:
-                if not install_all:
-                    response = (
-                        input(f"Install missing package '{package}'? [Y/n/A=all]: ")
-                        .strip()
-                        .lower()
-                    )
-                    if response in ("a", "all"):
-                        install_all = True
-                        response = "y"
-
-                if install_all or response in ("", "y", "yes"):
-                    subprocess.check_call(
-                        [sys.executable, "-m", "pip", "install", package]
-                    )
-    except KeyboardInterrupt:
-        print("\n⛔ Package installation cancelled by user.")
-        sys.exit(1)
-
-
-def check_and_install_packages(pkg_list):
-    try:
-        prompt_install(pkg_list)
-    except KeyboardInterrupt:
-        print("\n❌ Cancelled while checking packages.")
-        sys.exit(1)
-
+from bs4 import BeautifulSoup
+from .optional_deps import require_extra_dependency
 
 # ---------------------------------------------------------------------
 # External tool checks (boolean-returning for doctor / programmatic use)
@@ -92,48 +55,6 @@ def print_external_tools_info():
             print("  sudo apt install tesseract-ocr")
 
 
-# --- run checks BEFORE heavy imports ---
-check_and_install_packages(
-    [
-        ("nltk", "nltk"),
-        ("fitz", "pymupdf"),
-        ("pytesseract", "pytesseract"),
-        ("PIL", "pillow"),
-        ("docx", "python-docx"),
-        ("openpyxl", "openpyxl"),
-        ("rapidfuzz", "rapidfuzz"),
-        ("fpdf", "fpdf2"),
-        ("reportlab", "reportlab"),
-        ("bs4", "beautifulsoup4"),
-        ("extract_msg", "extract_msg"),
-        ("eml_parser", "eml-parser"),
-        ("PyPDF2", "PyPDF2"),
-        ("watchdog", "watchdog"),
-        ("colorama", "colorama"),
-        ("pptx", "python-pptx"),
-        ("ebooklib", "ebooklib"),
-        ("odf", "odfpy"),
-        ("pandas", "pandas"),
-    ]
-)
-
-
-# --- third-party imports (safe now) ---
-import docx
-import extract_msg
-import eml_parser
-import fitz  # PyMuPDF
-import pytesseract
-import openpyxl
-import pandas as pd
-
-from pptx import Presentation
-from ebooklib import epub
-from bs4 import BeautifulSoup
-from odf.opendocument import load
-from odf.text import P
-from PIL import Image, ExifTags
-
 # --- internal imports (unchanged) ---
 from .config import DB_FILE, SEMANTIC_METADATA_KEYS
 from .path_utils import normalize_path
@@ -141,6 +62,7 @@ from .path_utils import normalize_path
 
 def _extract_docx(path):
     from .fts_core import extract_virtual_tags
+    docx = require_extra_dependency("docx", "python-docx", "documents")
 
     doc = docx.Document(path)
 
@@ -191,6 +113,7 @@ def safe_get(obj, key, fallback=""):
 
 def _extract_msg(path):
     from .fts_core import extract_virtual_tags
+    extract_msg = require_extra_dependency("extract_msg", "extract_msg", "documents")
 
     try:
         msg = extract_msg.Message(path)
@@ -220,6 +143,7 @@ def _extract_msg(path):
 
 def _extract_eml(path):
     from .fts_core import extract_virtual_tags
+    eml_parser = require_extra_dependency("eml_parser", "eml-parser", "documents")
 
     try:
         with open(path, "rb") as f:
@@ -248,6 +172,9 @@ def _extract_eml(path):
 
 
 def _extract_pptx(path):
+    Presentation = require_extra_dependency(
+        "pptx", "python-pptx", "documents"
+    ).Presentation
     try:
         prs = Presentation(path)
         text = []
@@ -262,6 +189,7 @@ def _extract_pptx(path):
 
 
 def _extract_epub(path):
+    epub = require_extra_dependency("ebooklib.epub", "ebooklib", "documents")
     try:
         book = epub.read_epub(path)
         text = []
@@ -276,6 +204,8 @@ def _extract_epub(path):
 
 
 def _extract_odt(path):
+    load = require_extra_dependency("odf.opendocument", "odfpy", "documents").load
+    P = require_extra_dependency("odf.text", "odfpy", "documents").P
     try:
         doc = load(path)
         text = []
@@ -289,6 +219,7 @@ def _extract_odt(path):
 
 
 def _extract_xlsx(path):
+    openpyxl = require_extra_dependency("openpyxl", "openpyxl", "documents")
     wb = openpyxl.load_workbook(path, data_only=True)
     text = []
     for sheet in wb.worksheets:
@@ -330,6 +261,11 @@ def _extract_pdf(
     }
 
     try:
+        fitz = require_extra_dependency("fitz", "pymupdf", "documents")
+        pytesseract = require_extra_dependency(
+            "pytesseract", "pytesseract", "documents"
+        )
+        Image = require_extra_dependency("PIL.Image", "Pillow", "documents")
         file_size_mb = os.path.getsize(path) / (1024 * 1024)
 
         with fitz.open(path) as doc:
@@ -408,6 +344,8 @@ def _extract_pdf(
             full_text = "\n\n".join(text_pages).strip()
             return {"text": full_text, "metadata": metadata}
 
+    except RuntimeError:
+        raise
     except Exception as e:
         print(f"⚠️ Error extracting text from {path}: {e}")
         return {"text": "", "metadata": metadata}
@@ -510,6 +448,8 @@ def _gps_to_decimal(coord, ref):
 
 def extract_image_metadata(path: str) -> dict:
     """Extract image metadata including EXIF + GPS if present."""
+    Image = require_extra_dependency("PIL.Image", "Pillow", "documents")
+    ExifTags = require_extra_dependency("PIL.ExifTags", "Pillow", "documents")
     md = {}
     try:
         with Image.open(path) as img:
@@ -634,4 +574,3 @@ def update_file_metadata(
         print(f"⚠️ Failed to update metadata for {file_path}: {e}")
 
     return semantic_text
-

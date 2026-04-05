@@ -14,10 +14,22 @@ Used by:
 """
 import re
 from textwrap import wrap
-from fpdf.errors import FPDFException
 from rich.text import Text
 from .db_utils import get_tags_for_file
-from nltk.tokenize import sent_tokenize
+
+try:
+    from fpdf.errors import FPDFException
+except Exception:  # pragma: no cover - optional dependency
+    class FPDFException(Exception):
+        pass
+
+
+def _sentence_split(text: str) -> list[str]:
+    """
+    Lightweight sentence splitter to avoid hard dependency on nltk.
+    """
+    parts = re.split(r"(?<=[.!?])\s+", text.strip())
+    return [p for p in parts if p]
 
 
 # print("DEBUG: updated hightlight_term loaded")
@@ -56,7 +68,7 @@ def format_tags(path):
 
 def get_snippets(text, query, context_sentences=2):
     text = re.sub(r"\s+", " ", text).strip()
-    sentences = sent_tokenize(text)
+    sentences = _sentence_split(text)
     matches = []
 
     for i, sent in enumerate(sentences):

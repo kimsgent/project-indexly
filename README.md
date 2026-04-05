@@ -1,151 +1,170 @@
-# 🔍 Project Indexly
+# Indexly
 
-**Blazing-fast Local File Search Tool with SQLite FTS5, Tagging & Advanced Analysis**
+Local-first file indexing, search, and analysis CLI for Windows, macOS, and Linux.
 
-> Privacy-first, offline file search made elegant.
+[![PyPI](https://img.shields.io/pypi/v/indexly.svg)](https://pypi.org/project/indexly/)
+[![Python](https://img.shields.io/pypi/pyversions/indexly.svg)](https://pypi.org/project/indexly/)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE.txt)
 
----
+![Indexly CLI preview](docs/static/images/indexly-terminal-768.png)
 
-![Python](https://img.shields.io/badge/Python-3.9%2B-blue)
-![License](https://img.shields.io/badge/License-MIT-green)
-![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux-lightgrey)
+## Why Indexly
 
----
+Indexly helps you work with large local folders without sending your data to external services.
 
-## 🚀 Overview
+- Fast full-text search powered by SQLite FTS5
+- Regex search when you need exact pattern matching
+- Smart indexing with incremental updates and watch mode
+- Built-in tagging and filtering for better organization
+- Analysis tools for CSV, JSON, XML, SQLite, and more
+- File and folder compare workflows
+- Backup and restore commands for safer operations
+- Cross-platform command line interface with readable output
 
-**Project Indexly** is a high-performance local file search and analysis tool powered by SQLite FTS5. It indexes your files, enriches them with metadata, and lets you search, tag, analyze, and export results efficiently — all **100% offline**.
+## Install
 
-Ideal for developers, researchers, writers, analysts, and anyone who works with large document collections.
-
----
-
-## ✨ Key Features
-
-* ⚡ **Fast full-text search** using FTS5
-* 📁 Smart file-type detection (TXT, MD, CSV, XML, JSON, images & more)
-* 🧠 **Advanced CSV & JSON analysis**
-* 🕒 **Time-series visualization (CSV)**
-* 🏷️ Tag management
-* 📤 Export to CSV, Markdown, JSON
-* 🔁 Real-time reindexing (optional)
-* 🔒 Zero network calls — full privacy
-* 🗂️ Rich metadata extraction (documents & images)
-* 🎨 Colorized CLI output
-
----
-
-## 📸 Screenshot
-
-| Demo Preview                                               |
-| ---------------------------------------------------------- |
-| ![Preview](docs/static/images/plot.png) |
-
----
-
-## 📦 Installation
+### Option 1: pip (Windows, macOS, Linux)
 
 ```bash
-git clone https://github.com/kimsgent/project-indexly.git
-cd project-indexly
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
+python -m pip install --upgrade pip
+python -m pip install indexly
 ```
 
----
+Verify:
 
-## ⚙️ Usage Examples
+```bash
+indexly --version
+```
 
-### 🔍 Index files
+### Option 2: Homebrew (macOS and Linux)
+
+```bash
+brew tap kimsgent/indexly
+brew install indexly
+```
+
+Verify:
+
+```bash
+indexly --version
+```
+
+## Optional Feature Packs
+
+Indexly installs with a lightweight core by default. Optional capabilities are grouped as extras.
+
+```bash
+python -m pip install "indexly[documents]"
+python -m pip install "indexly[analysis]"
+python -m pip install "indexly[visualization]"
+python -m pip install "indexly[pdf_export]"
+```
+
+Install all optional packs:
+
+```bash
+python -m pip install "indexly[documents,analysis,visualization,pdf_export]"
+```
+
+## First Run in 2 Minutes
+
+### 1. Index a folder
 
 ```bash
 indexly index /path/to/folder
 ```
 
-### 🧠 Search
+### 2. Search your data
 
 ```bash
-indexly search "report OR analysis"
+indexly search "invoice OR contract"
 ```
 
-### 🏷️ Add tags
+### 3. Run regex search
 
 ```bash
-indexly tag add --files notes.txt --tags project meeting
+indexly regex "[A-Z]{3}-\\d{4}"
 ```
 
-### 📤 Export results
+### 4. Add tags for filtering
 
 ```bash
-indexly search "invoice" --export-format csv --output invoices.csv
+indexly tag add --files "/path/to/file.txt" --tags urgent finance
 ```
 
-### 📊 Analyze CSV (summary + time-series)
+### 5. Analyze CSV (requires analysis extra)
 
 ```bash
-indexly analyze-csv data.csv --auto-clean --show-summary
+indexly analyze-csv sales.csv --show-summary
 ```
 
----
+## Common Commands
 
-## 📁 Supported File Types
-
-| Type    | Notes                    |
-| ------- | ------------------------ |
-| `.txt`  | Full-text indexed        |
-| `.md`   | Markdown supported       |
-| `.csv`  | Header-aware, analyzable |
-| `.json` | NDJSON + structured JSON |
-| `.xml`  | Structured tree analysis |
-| Images  | Metadata extracted       |
-| Others  | MIME-based detection     |
-
----
-
-## 🧱 Project Structure
-
-```text
-indexly/
-├── core/
-├── cli/
-├── utils/
-├── analysis/
-├── exports/
-├── docs/
-└── tests/
+```bash
+indexly --help
+indexly show-help
+indexly index /path/to/folder
+indexly search "keyword"
+indexly watch /path/to/folder
+indexly analyze-file /path/to/file
+indexly compare path_a path_b
+indexly backup /path/to/folder
+indexly restore backup_name --target /restore/path
+indexly doctor
 ```
 
----
+## Supported Content (Highlights)
 
-## 🛣️ Roadmap
+- Text and Markdown
+- CSV, JSON/NDJSON, XML, YAML
+- SQLite databases
+- Spreadsheet and document formats via optional extras
+- PDF and image workflows via optional extras
 
-* [x] CSV & JSON analyzers
-* [x] Time-series visualization
-* [ ] GUI
-* [ ] Self-hosted web dashboard
+## For Developers
 
----
+### Local setup
 
-## 📚 Documentation
+```bash
+git clone https://github.com/kimsgent/project-indexly.git
+cd project-indexly
+python -m venv .venv
+```
 
-👉 *“Project Indexly Docs”* — [https://projectindexly.com](https://projectindexly.com)
+Activate virtual environment:
 
----
+- macOS/Linux: `source .venv/bin/activate`
+- Windows (PowerShell): `.venv\Scripts\Activate.ps1`
 
-## 📬 Contact
+Install in editable mode with optional packs:
 
-✉️ [gentkims@gmail.com](mailto:gentkims@gmail.com)
+```bash
+python -m pip install --upgrade pip
+python -m pip install -e ".[documents,analysis,visualization,pdf_export]"
+python -m pip install pytest pytest-cov flake8 black isort mypy build twine
+```
 
----
+Run quick checks:
 
-## 👨‍💻 Author
+```bash
+indexly --help
+pytest -q
+```
 
-**N. K Franklin-Gent** — built in Dieburg, Germany.
-Co-created with ChatGPT 🤝
+## Troubleshooting
 
----
+- If `indexly` is not found, restart your terminal after installation.
+- If a feature is missing, install its extra group, for example `indexly[analysis]` or `indexly[documents]`.
+- If Homebrew commands are unavailable on Linux, initialize brew shell environment first.
+- Run `indexly doctor` for a quick environment health check.
 
-## 📝 License
+## Documentation and Links
 
-MIT — see `LICENSE.txt`.
+- Documentation: [projectindexly.com](https://projectindexly.com)
+- Source code: [github.com/kimsgent/project-indexly](https://github.com/kimsgent/project-indexly)
+- PyPI package: [pypi.org/project/indexly](https://pypi.org/project/indexly/)
+- Issues: [github.com/kimsgent/project-indexly/issues](https://github.com/kimsgent/project-indexly/issues)
+
+## License
+
+MIT. See [LICENSE.txt](LICENSE.txt).

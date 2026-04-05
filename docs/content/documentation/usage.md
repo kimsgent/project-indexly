@@ -4,356 +4,304 @@ slug: "usage-guide"
 icon: "mdi:play-circle"
 weight: 2
 type: docs
-date: 2025-10-12
-summary: "Learn how to install, index, search, tag, and export data efficiently using Indexly’s powerful CLI tools."
-description: "A complete usage guide for Indexly. Discover installation steps, Windows Terminal setup, indexing, search, tagging, filtering, and exporting results in PDF, Markdown, or text formats."
+date: 2026-04-01
+summary: "Learn the day-to-day Indexly workflow: install, index, search, tag, analyze, compare, and back up with practical command examples."
+description: "Practical Indexly usage guide for Windows, macOS, and Linux. Covers indexing, search, regex, tagging, analysis, organizing, backup/restore, and common troubleshooting."
 keywords: [
   "Indexly usage guide",
-  "Indexly install",
   "Indexly search",
-  "Indexly tagging",
-  "Indexly export",
-  "Python CLI tool",
-  "file indexing",
-  "document search",
-  "command line guide",
-  "Indexly tutorial"
+  "Indexly indexing",
+  "Indexly regex",
+  "Indexly analyze csv",
+  "Indexly backup restore",
+  "local file search",
+  "cli workflow"
 ]
 cta: "Get started with Indexly"
 canonicalURL: "/en/documentation/usage-guide/"
-type: docs
 toc: true
 categories:
-   - Getting Started
-   - Usage
+  - Getting Started
+  - Usage
 tags:
-   - usage
-   - indexing
-   - search
-   - export
-   - configuration
+  - usage
+  - indexing
+  - search
+  - analysis
+  - backup
 ---
 
 ---
 
-## Overview
+## What This Guide Covers
 
-This guide explains **how to use Indexly’s CLI tools** to organize, index, search, analyze, and inspect local data.
+This guide is for everyday usage of Indexly on local files and folders.
+You will learn the most common workflows:
 
-It assumes:
-- Indexly is installed
-- Files are local and accessible
-- You want repeatable, auditable workflows
+- Index and re-index files quickly
+- Search with full-text and regex
+- Tag and organize content
+- Analyze CSV and other structured files
+- Compare, back up, and restore safely
 
-For a high-level view of what Indexly can do and why, see:
-→ [Features Overview](/features/)
+If you have not installed Indexly yet, start with [Install Indexly](indexly-installation.md).
 
 ---
-## Installation
 
-You can install **Indexly** directly from [PyPI](https://pypi.org/project/indexly/):
-
-```bash
-pip install indexly
-````
-
-Or install all dependencies from the requirements file:
+## Quick Start
 
 ```bash
-pip install -r requirements.txt
-````
-
-Or manually:
-
-```bash
-pip install nltk pymupdf pytesseract pillow python-docx openpyxl rapidfuzz fpdf2 reportlab \
-beautifulsoup4 extract_msg eml-parser PyPDF2 watchdog colorama
+indexly --help
+indexly index /path/to/folder
+indexly search "invoice"
+indexly regex "[A-Z]{3}-\\d{4}"
 ```
 
->📌 See [Full Installation Guide](indexly-installation.md#installation) for Windows tips.
+Use `indexly show-help` for a compact overview of all commands.
 
+---
 
-## **2. 🗂️ Organizer – Automatic File Organization**
+## Install And Optional Packs
 
-### **Overview**
+For full platform-specific setup, use [Install Indexly](indexly-installation.md).
 
-The **[Organizer](organizer.md)** automatically sorts files, detects duplicates, and generates JSON logs.
-
-### **Basic Command**
+Indexly has a lightweight core install. Optional capability packs are installed only when needed:
 
 ```bash
-indexly organize ~/Downloads --sort-by date
+python -m pip install "indexly[documents]"
+python -m pip install "indexly[analysis]"
+python -m pip install "indexly[visualization]"
+python -m pip install "indexly[pdf_export]"
 ```
 
-### **With Backup & Logs**
+Install all optional packs at once:
 
 ```bash
-indexly organize ~/Downloads \
-  --sort-by extension \
-  --backup ~/organizer-backups \
-  --log-dir ~/organizer-logs
+python -m pip install "indexly[documents,analysis,visualization,pdf_export]"
 ```
 
-### **Listing & Duplicates**
+---
+
+## 1) Index Files
+
+Index a folder recursively:
 
 ```bash
-indexly organize ~/Downloads --lister --lister-duplicates
+indexly index /path/to/folder
 ```
 
-> 📌 **Log Files:** JSON logs are machine-readable and stored in `--log-dir`. They support later Lister queries or automated pipelines.
-
-
-----
-
-## **3. 📋 Lister – Query Organizer Logs**
-
-### **Overview**
-
-[Lister](lister.md) reads logs without rescanning the filesystem and allows filtering.
-
-### **Example Commands**
+Index only a specific extension:
 
 ```bash
-# List all JSON files
-indexly lister ~/organizer-logs --ext .json
-
-# Show duplicates
-indexly lister ~/organizer-logs --duplicates
+indexly index /path/to/folder --filetype .pdf
 ```
 
-**Filters:**
-
-- `--ext` – file extension
-- `--category` – custom categories
-- `--date YYYY-MM` – organize by month
-- `--duplicates` – list only duplicates
-
-----
-
-## **4. 💾 [Backup & Restore](backup-restore.md)**
-
-### **Backup Types**
-
-- **Full** – standalone snapshots
-- **Incremental** – only changes since last backup
-
-### **Examples**
+Use a custom ignore file:
 
 ```bash
-# Full backup
-indexly backup ~/Documents
-
-# Incremental backup
-indexly backup ~/Documents --incremental
-
-# Encrypted backup
-indexly backup ~/Documents --encrypt
+indexly index /path/to/folder --ignore /path/to/.indexlyignore
 ```
 
-### **Restore Example**
+OCR control for PDFs:
 
 ```bash
-indexly restore incremental_2026-01-01_194042.tar.zst.enc \
-  --target ~/restore \
-  --decrypt
+indexly index /path/to/folder --ocr
+indexly index /path/to/folder --no-ocr
 ```
 
-----
+See [Indexing](indexing.md) and [Ignore Rules & Index Hygiene](ignore-rules-index-hygiene.md).
 
-## **5. 📦 [Indexing Files](indexing.md)**
+---
 
-### **Command**
+## 2) Search And Regex
+
+Full-text search:
 
 ```bash
-indexly index /path/to/folder --tag projectX
+indexly search "invoice AND 2026"
+indexly search "\"quarterly report\"" --context 80
 ```
 
-- Recursive indexing
-- Attach **tags** for search filtering
-- Supports all common file types
-
->![Sample indexing](/images/indexly_indexing.png)
-
-----
-
-## **6. 🔍 [Search & Regex](/searching/)**
+Filter search results:
 
 ```bash
-# Full-text search
-indexly search "keyword"
-
-# Regex search
-indexly regex "pattern"
-
-# Filter by tag
-indexly search "keyword" --filter-tag urgent
+indexly search "report" --filetype .pdf .md --filter-tag finance
+indexly search "contract" --date-from 2026-01-01 --date-to 2026-03-31
+indexly search "meeting" --path-contains "/projects/client-a"
 ```
 
-**Search Profiles:**
+Fuzzy search:
 
 ```bash
-# Save search profile
-indexly search "budget" --save-profile q3_plans
-
-# Reuse profile
-indexly search "project plan" --profile q3_plans
+indexly search "projetc plan" --fuzzy --fuzzy-threshold 85
 ```
 
->![Sample Search](/images/search-demo-placeholder.png)
-
-----
-
-## **7. 🏷️ [Tagging](tagging.md)**
+Regex search:
 
 ```bash
-# Add tags
-indexly tag add --files "/path/to/file.txt" --tags important
+indexly regex "\\bINV-\\d{6}\\b"
+```
 
-# Remove tags
-indexly tag remove --files "/path/to/file.txt" --tags important
+Save and reuse profiles:
 
-# List tags
+```bash
+indexly search "budget" --filetype .csv --save-profile budget_csv
+indexly search "budget" --profile budget_csv
+```
+
+Export results:
+
+```bash
+indexly search "invoice" --export-format md --output invoice_results.md
+indexly regex "\\bTODO\\b" --export-format json --output todo_hits.json
+```
+
+See [Configuration](config.md) and [Tagging](tagging.md).
+
+---
+
+## 3) Tag And Organize
+
+Tag files and folders:
+
+```bash
+indexly tag add --files "/path/to/file.txt" --tags urgent finance
+indexly tag add --files "/path/to/folder" --tags archive --recursive
 indexly tag list --file "/path/to/file.txt"
+indexly tag remove --files "/path/to/file.txt" --tags urgent
 ```
 
-**Best Practices:**
-
-- Use lowercase, no spaces
-- Use `--recursive` for folders
-- Tags immediately affect searches
-
-
-----
-
-## **8. 📊 [Data Analysis](data-analysis-overview.md)**
-
-### **Supported Formats**
-
-| **Format**  | **Features**                                  |
-| ----------- | --------------------------------------------- |
-| CSV         | Auto-detect delimiters, statistics, IQR, etc. |
-| JSON/NDJSON | Full JSON or NDJSON files                     |
-| XLSX        | Sheet auto-selection, table preview           |
-| SQLite DB   | Table counts, numeric stats                   |
-| XML         | Tree inspection, XRechnung support            |
-| Parquet     | Columnar-efficient loading                    |
-
-### **Commands**
+Organize by date/name/extension:
 
 ```bash
-indexly analyze-csv --file data.csv --format md --output summary.md
-indexly analyze-file ./chinook.db --show-summary
-indexly analyze-json data.ndjson
+indexly organize /path/to/downloads --sort-by date
+indexly organize /path/to/downloads --sort-by extension --backup /path/to/backup --log-dir /path/to/logs
 ```
 
-----
-
-## **9. 📑 [File & Folder Comparison](file-folder-comparison.md)**
-
-### **CLI Command**
+Query organizer logs with `lister`:
 
 ```bash
-indexly compare path_a path_b [OPTIONS]
+indexly lister /path/to/logs --ext .pdf
+indexly lister /path/to/logs --duplicates
 ```
 
-### **Options**
+See [Organizer](organizer.md), [Organizer Profiler](organizer-profiler.md), and [Lister](lister.md).
 
-| **Option**                | **Description**                                                    |
-| ------------------------- | ------------------------------------------------------------------ |
-| `--threshold THRESHOLD`   | Similarity tolerance (0.0 exact, 1.0 very loose)                   |
-| `--json`                  | Output results as JSON                                             |
-| `--quiet`                 | Suppress output (exit code only, useful for scripts)               |
-| `--extensions EXTENSIONS` | Comma-separated file extensions to include (e.g., `.py,.json`)     |
-| `--ignore IGNORE`         | Comma-separated files/folders to ignore (e.g., `.git,__pycache__`) |
-| `--context CONTEXT`       | Lines of context to show around diffs (default: 3)                 |
-| `--summary-only`          | Show only summary for folders                                      |
+---
 
-### **Exit Codes**
+## 4) Analyze Data
 
-| **Code** | **Meaning**                                                  |
-| -------- | ------------------------------------------------------------ |
-| 0        | Files/folders identical                                      |
-| 1        | Differences detected                                         |
-| 2        | Invalid comparison (mismatched types, missing paths, errors) |
-
-### **File Comparison Example**
+CSV analysis:
 
 ```bash
-indexly compare blog-post.json "E:/text/test/data/titanic_01.json"
+indexly analyze-csv sales.csv --show-summary
+indexly analyze-csv sales.csv --auto-clean --show-summary
+indexly analyze-csv sales.csv --show-chart ascii --chart-type bar
 ```
 
-**Output (with context folding example):**
+Analyze other formats with one command:
 
 ```bash
--           "item": "Batteries",
--           "quantity": 1,
--           "unit": "pack"
-[dim]… 94 lines hidden[/dim]
-+ {"PassengerId":"1","Survived":"0", ... }
-+ {"PassengerId":"2","Survived":"1", ... }
+indexly analyze-file data.json --show-summary
+indexly analyze-file dataset.xlsx --sheet-name Sheet1 --show-summary
+indexly analyze-file metrics.parquet --show-summary
 ```
 
-### **Folder Comparison Example**
+Run statistical inference on indexed CSV datasets:
 
 ```bash
-indexly compare folder_a folder_b --summary-only
+indexly infer-csv sales_q1.csv sales_q2.csv --merge-on customer_id --test ttest --x group --y revenue
 ```
 
-| **Metric** | **Count** |
-| ---------- | --------- |
-| Identical  | 12        |
-| Similar    | 3         |
-| Modified   | 5         |
-| Missing A  | 1         |
-| Missing B  | 2         |
+See [Data Analysis Overview](data-analysis-overview.md) and [Time-Series Visualization](time-series-visualization.md).
 
-----
+---
 
-## **10. 🧾 Exporting Results**
+## 5) Compare, Back Up, And Restore
+
+Compare files or folders:
 
 ```bash
-# Export search or comparison results to PDF
-indexly search "keyword" --export-format pdf --output result.pdf
-
-# Export JSON for automation
-indexly compare file_a.json file_b.json --json
+indexly compare /path/a /path/b
+indexly compare /path/a /path/b --extensions .py,.md --context 5
+indexly compare /path/a /path/b --json
 ```
 
-----
+Back up data:
 
-## **11. ⚡ Quick Reference Cheat Sheet**
+```bash
+indexly backup /path/to/folder
+indexly backup /path/to/folder --incremental
+indexly backup /path/to/folder --encrypt "your-password"
+```
 
-| **Task**              | **Command**                                                   |
-| --------------------- | ------------------------------------------------------------- |
-| Organize files        | indexly organize /path --sort-by date                         |
-| List organized files  | indexly lister /log/dir --ext .json                           |
-| Backup                | indexly backup /path --incremental --encrypt                  |
-| Index files           | indexly index /path --tag projectX                            |
-| Search                | indexly search "term"                                         |
-| Regex search          | indexly regex "pattern"                                       |
-| Tag files             | indexly tag add --files file.txt --tags urgent                |
-| Compare files/folders | indexly compare file_a file_b --context 5                     |
-| Export results        | indexly search "term" --export-format pdf --output result.pdf |
+Restore from backup:
 
-----
+```bash
+indexly restore backup_name --target /path/to/restore
+indexly restore backup_name --target /path/to/restore --decrypt "your-password"
+```
 
-## **12. ✅ Key Takeaways**
+See [Backup & Restore](backup-restore.md) and [File/Folder Comparison](file-folder-comparison.md).
 
-✨ **Organize & Backup** – Safe, reversible, auditable
+---
 
-🔍 **Search & Tag** – Full-text, regex, fuzzy, filtered searches
+## 6) Health, Maintenance, And Monitoring
 
-📑 **Compare** – GitHub-style diffs, similarity scoring, context folding
+Environment and database health checks:
 
-📊 **Analyze** – CSV, JSON, DB stats
+```bash
+indexly doctor
+indexly doctor --json
+indexly update-db
+indexly migrate check
+```
 
-💾 **Export** – PDF, JSON, TXT
+Semantic observers:
 
-⚡ **Performance** – Smart caching, incremental indexing
+```bash
+indexly observe run /path/to/folder
+indexly observe audit
+```
 
-🔒 **Privacy & Safety** – Runs locally; encrypted backups
+Live indexing:
 
-> **Recommended Workflow:**
-**Organize → Backup → Index → Tag → Search → Compare → Export**
-Use links to see detailed pages for Organizer, Lister, Backup, Compare.
+```bash
+indexly watch /path/to/folder
+```
 
+See [Indexly Doctor](indexly-doctor.md), [DB Migration Utility](db-migration-utility.md), and [Observers](observers.md).
+
+---
+
+## Friendly Missing-Dependency Messages
+
+When a feature needs an optional package group, Indexly prints a direct install hint.
+
+Examples:
+
+- Analysis features: `Feature requires: pip install indexly[analysis]`
+- Document parsing features: `Feature requires: pip install indexly[documents]`
+- Visualization features: `Feature requires: pip install indexly[visualization]`
+- PDF export features: `Feature requires: pip install indexly[pdf_export]`
+
+This lets core commands like `indexly --help` and `indexly --version` remain usable even when optional packs are not installed.
+
+---
+
+## Practical Tips
+
+- Quote paths that contain spaces.
+- Start with `indexly <command> --help` before trying advanced flags.
+- Use `indexly doctor` when behavior seems inconsistent between environments.
+- Keep your index and backup workflows separate for easier recovery.
+
+---
+
+## Related Documentation
+
+- [Install Indexly](indexly-installation.md)
+- [Configuration](config.md)
+- [Tagging](tagging.md)
+- [Organizer](organizer.md)
+- [Developer Guide](developer.md)

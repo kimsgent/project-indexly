@@ -3,173 +3,264 @@ title: "Indexly Developer Guide"
 slug: "developer-guide"
 icon: "mdi:code-braces"
 weight: 5
-date: 2025-10-12
-summary: "Dive into Indexly’s source structure, core modules, and developer setup using Hatch, Hatchling, and Python tools for custom extensions."
-description: "A complete guide for developers to explore Indexly’s architecture, modules, and build process. Learn how to extend search features, add filetype support, and contribute effectively."
+date: 2026-04-01
+summary: "Production-grade developer guide for Indexly: architecture, dependency policy, local setup, testing, packaging, and contribution workflow."
+description: "Learn how to develop Indexly safely and efficiently. Covers project structure, optional dependency design, command wiring, quality checks, and Homebrew-friendly packaging practices."
 keywords: [
   "Indexly developer guide",
-  "Indexly source code",
-  "Indexly modules",
-  "Python CLI app",
-  "build with Hatch",
-  "extend search filters",
-  "open source tools",
-  "real-time indexing",
-  "filetype parser",
-  "Indexly dev setup"
+  "Indexly architecture",
+  "Indexly development setup",
+  "Python CLI development",
+  "Homebrew packaging",
+  "optional dependencies",
+  "hatchling build"
 ]
 cta: "Start building with Indexly"
 canonicalURL: "/en/documentation/developer-guide/"
 type: docs
 categories:
-    - Development 
-    - Advanced Usage
+    - Development
+    - Architecture
 tags:
     - development
     - setup
-    - configuration
+    - architecture
     - contributing
-    - features
+    - packaging
 ---
 
-For tinkerers, builders, and curious minds.
-
----
-
-## Project Structure
-
-```text
-indexly/
-│   LICENSE.txt
-│   README.md
-│   pyproject.toml
-└───src/
-    └───indexly/
-        │   __init__.py
-        │   __main__.py
-        │   indexly.py
-        │   ... (other modules)
-        ├───assets/
-        │       DejaVuSans-Bold.ttf
-        │       DejaVuSans-Oblique.ttf
-        │       DejaVuSans.ttf
-        └───docs/
-                README.md  (canonical documentation)
-        └───csv/
-                sample.csv
-```
-
+This guide is for contributors who want to ship reliable changes without breaking CLI stability.
 
 ---
 
-## Core Modules
+## Development Principles
 
-| File                | Purpose                   |
-| ------------------- | ------------------------- |
-| `indexly.py`        | Main CLI                  |
-| `cli_utils.py`      | CLI argument setup        |
-| `output_utils.py`   | Markdown/PDF/JSON exports |
-| `fts_core.py`       | Full-text search logic    |
-| `db_utils.py`       | Database creation/updates |
-| `watcher.py`        | Real-time indexing        |
-| `export_utils.py`   | PDF/TXT/JSON export       |
-| `path_utils.py`     | Path sanitization         |
-| `filetype_utils.py` | Detects/parses file types |
-| `log_utils.py`      | Logging & colors          |
+Indexly is maintained with these priorities:
+
+- Keep the core install lightweight and brew-friendly.
+- Preserve CLI backward compatibility where possible.
+- Fail gracefully when optional dependencies are missing.
+- Prefer clear modules over tightly coupled logic.
+- Keep changes testable and easy to review.
 
 ---
 
-## Dev Setup
+## Local Setup
 
-First, clone the repository and set up a virtual environment:
+Clone and create a virtual environment:
 
 ```bash
 git clone https://github.com/kimsgent/project-indexly.git
 cd project-indexly
+python -m venv .venv
+```
 
-# Create and activate virtual environment
-python -m venv venv
-source venv/bin/activate   # On Linux/Mac
-venv\Scripts\activate      # On Windows
+Activate:
 
-# Install requirements
-pip install indexly
-pip install -r requirements.txt
+- macOS/Linux: `source .venv/bin/activate`
+- Windows (PowerShell): `.venv\Scripts\Activate.ps1`
 
-# If developing, install additional dev requirements
-pip install -r requirements-dev.txt
+Install editable package:
 
+```bash
+python -m pip install --upgrade pip
+python -m pip install -e .
+```
+
+Install optional packs for full feature development:
+
+```bash
+python -m pip install -e ".[documents,analysis,visualization,pdf_export]"
+```
+
+Install dev tooling:
+
+```bash
+python -m pip install pytest pytest-cov flake8 black isort mypy build twine hatch
+```
+
+Quick verification:
+
+```bash
+python -m indexly --help
+indexly --version
+```
+
+For platform install notes, see [Install Indexly](indexly-installation.md).
+
+---
+
+## Repository Structure
+
+```text
+project-indexly/
+├── pyproject.toml
+├── README.md
+├── README_PYPI.md
+├── scripts/
+│   └── generate_brew_formula.py
+├── tests/
+├── docs/
+│   └── content/documentation/
+└── src/indexly/
+    ├── __main__.py
+    ├── indexly.py
+    ├── cli_utils.py
+    ├── optional_deps.py
+    ├── filetype_utils.py
+    ├── db_utils.py
+    ├── fts_core.py
+    ├── backup/
+    ├── compare/
+    ├── inference/
+    ├── observers/
+    ├── organize/
+    ├── visualization/
+    └── assets/
 ```
 
 ---
 
-Quick test run:
+## Key Modules And Responsibilities
 
-```bash
-indexly search "demo"
-```
-
-```mermaid
-
-graph TD
-  A[Clone repository] --> B[Install tools: Python, Hatch, Hatchling]
-  B --> C[Build & install locally: hatch build / hatch install]
-  C --> D[Explore project structure]
-  D --> E[Run CLI: indexly --help]
-  E --> F[Contribute: edit, test, docs]
-
-  D --> G[indexly/]
-  G --> H[src/indexly/]
-  H --> I[indexly.py]
-  H --> J[__main__.py]
-  H --> K[assets/]
-  H --> L[docs/]
-  H --> M[csv/]
-  G --> N[pyproject.toml]
-  G --> O[README.md]
-  G --> P[LICENSE.txt]
-
-````
-
-### Using Hatch & Hatchling
-
-
-Indexly also supports Hatch
-for builds and dependency management.
-The project includes a pyproject.toml with general and development requirements.
-
-```bash
-pip install hatch
-pip install hatchling
-hatch --version
-```
-
-Build and install locally:
-
-```bash
-hatch build
-hatch install
-```
-
-> 📌 See [Full Installation Guide](indexly-installation.md) for Windows tips.
----
-
-## Tips for Extension
-
-* New filetypes → `filetype_utils.py`
-* New export formats → `output_utils.py`
-* CLI options → `cli_utils.py`
-* New search filters → `fts_core.py`
+| Area | Main modules | Purpose |
+| --- | --- | --- |
+| CLI entry | `__main__.py`, `indexly.py`, `cli_utils.py` | Parses commands and routes to feature handlers |
+| Indexing/search | `fts_core.py`, `search_core.py`, `db_utils.py`, `db_pipeline.py` | FTS5 indexing, query execution, and persistence |
+| File extraction | `filetype_utils.py`, `extract_utils.py`, `optional_deps.py` | File-type routing and lazy optional imports |
+| Analysis | `csv_analyzer.py`, `analysis_orchestrator.py`, `analyze_json.py`, `analyze_db.py`, `inference/` | CSV/data profiling, structured-data analysis, and statistical inference |
+| Organization | `organize/organizer.py`, `organize/lister.py`, `organize/cli_wrapper.py` | Folder structuring, logs, lister views |
+| Compare | `compare/compare_engine.py`, `compare/file_compare.py`, `compare/folder_compare.py` | File/folder diff and similarity checks |
+| Backup/restore | `backup/cli.py`, `backup/restore.py`, `backup/compress.py` | Full/incremental backup and restore workflows |
+| Monitoring | `watcher.py`, `observers/runner.py` | Live folder watch and observer-based audits |
 
 ---
 
-## References & Next Steps
+## Dependency Policy (Important)
 
-* [Python Documentation](https://docs.python.org/3/)
-* [Hatch Documentation](https://hatch.pypa.io/)
-* Explore FTS5 and SQLite
+Indexly is designed for lightweight core installation and optional feature packs.
+When adding dependencies:
 
+- Keep core dependencies minimal, pure Python where possible.
+- Put heavy/compiled libraries in extras (`documents`, `analysis`, `visualization`, `pdf_export`).
+- Never import optional dependencies at module import time for core paths.
+- Use lazy imports and user-friendly install hints.
 
-for advanced search capabilities.
+Use this pattern for optional imports:
 
-* Start experimenting with indexing your own documents and images.
+```python
+try:
+    import pandas as pd
+except ModuleNotFoundError as exc:
+    raise ModuleNotFoundError(
+        "Feature requires optional dependency 'pandas'. "
+        "Feature requires: pip install indexly[analysis]"
+    ) from exc
+```
+
+---
+
+## How Commands Are Wired
+
+Typical command flow:
+
+1. `src/indexly/__main__.py` starts the CLI.
+2. `src/indexly/indexly.py` builds/dispatches command handlers.
+3. Handler calls the feature module (for example indexing, analysis, compare).
+4. Output helpers print results and optional exports.
+
+When adding a command:
+
+1. Add parser arguments in `cli_utils.py` or command parser section.
+2. Add handler logic in `indexly.py` (or a dedicated module).
+3. Keep default behavior safe and non-destructive.
+4. Add tests and update relevant docs page(s).
+
+---
+
+## Common Extension Points
+
+- New file type extraction: `filetype_utils.py`, `extract_utils.py`
+- Search behavior: `fts_core.py`, `search_core.py`
+- CSV/data features: `csv_analyzer.py`, `analysis_orchestrator.py`, `inference/`
+- Export and rendering: `output_utils.py`, `export_utils.py`, `visualization/`
+- Ignore behavior: `ignore/` and `ignore_defaults/`
+- Backup behavior: `backup/`
+
+---
+
+## Testing And Quality Checks
+
+Run fast checks during development:
+
+```bash
+pytest -q
+flake8 src tests
+black --check src tests
+isort --check-only src tests
+mypy src/indexly
+```
+
+Smoke-test critical commands after larger changes:
+
+```bash
+indexly --help
+indexly show-help
+indexly doctor
+```
+
+If you modify indexing, analysis, compare, backup, or migration behavior, run targeted command tests in a local sandbox folder.
+
+---
+
+## Build, Package, And Brew Formula
+
+Build package artifacts:
+
+```bash
+python -m build
+twine check dist/*
+```
+
+Generate Homebrew formula:
+
+```bash
+python scripts/generate_brew_formula.py --out Formula/indexly.rb
+```
+
+Dry-run formula generation with local source artifact:
+
+```bash
+python scripts/generate_brew_formula.py --dry-run --source dist/indexly-<version>.tar.gz --out Formula/indexly.rb
+```
+
+Brew-oriented review checklist:
+
+- Formula uses `virtualenv_install_with_resources`.
+- Dependency resource list stays small and stable.
+- No heavy scientific stack in core runtime dependencies.
+- CLI starts correctly with only core dependencies installed.
+
+---
+
+## Documentation Responsibilities
+
+When behavior changes, update docs in the same PR:
+
+- User-facing install/usage: `README.md`, `README_PYPI.md`
+- Website docs: `docs/content/documentation/`
+- Packaging behavior: `scripts/generate_brew_formula.py` docs and examples
+
+Keep examples copy-paste ready and aligned with `indexly --help`.
+
+---
+
+## Contribution Workflow
+
+1. Create a feature branch from latest `main`.
+2. Keep commits focused and descriptive.
+3. Run quality checks locally.
+4. Include a risk note in your PR for production-sensitive changes.
+5. Document any compatibility impact (especially brew/package/install changes).
+
+See [Contributing](https://github.com/kimsgent/project-indexly/blob/main/CONTRIBUTING.md) for collaboration details.

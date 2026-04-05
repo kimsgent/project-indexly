@@ -2,6 +2,23 @@
   "project": "FTS5 File Search Tool",
   "versions": [
     {
+      "version": "2.0.0",
+      "date": "2026-04-05",
+      "changes": [
+        "feat(release): enforce release retention and archive old release pages",
+        "feat(ux): improve show-help UX and documentation entry experience",
+        "fix(brew): generate auditable formula with writable runtime paths",
+        "fix(deps): surface exact missing packages for analysis dependencies",
+        "fix(core): remove pandas startup dependency",
+        "fix(deps): add friendly dependency preflight and decouple pandas from startup",
+        "refactor(deps): modularize optional dependencies for brew audit compliance",
+        "docs: refresh usage and developer guides",
+        "docs(install): update installation guides for Homebrew and pip",
+        "docs(readme): improve GitHub and PyPI installation documentation"
+      ]
+    },
+
+    {
       "version": "1.2.4",
       "date": "2026-03-28",
       "changes": [

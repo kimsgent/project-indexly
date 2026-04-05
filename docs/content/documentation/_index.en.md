@@ -1,138 +1,97 @@
 ---
-title: "Indexly Overview"
-subtitle: "Your local file indexing and search tool"
-description: "Indexly helps researchers and power users search Word, PDF, and text documents locally. Fast, offline, with tagging and FTS5."
-keywords: ["Word document search", "offline file search", "FTS5 search tool", "research document indexing"]
+title: "Documentation"
+subtitle: "Start here for installation, usage, and developer workflows"
+description: "Official Indexly documentation hub. Learn installation, indexing, search, analysis, backup, migration, and developer setup."
+keywords:
+  - indexly documentation
+  - local file indexing
+  - sqlite fts5 search
+  - indexly install guide
+  - indexly cli commands
 weight: 5
 type: docs
 toc: true
 categories:
-    - Overview 
-    - Getting Started
+  - Overview
+  - Getting Started
 tags:
-    - overview
-    - features
-    - usage
-    - configuration
+  - overview
+  - installation
+  - usage
+  - development
 ---
 
-> *"You who searches, finds."*
+Welcome to the Indexly documentation hub.
 
-Welcome to **Indexly** – your fast, flexible, full-text local file search engine. Powered by Python and SQLite FTS5, Indexly brings powerful content searching, tagging, exporting, and indexing to your terminal.
+Indexly is a local-first CLI for indexing, searching, analyzing, and organizing files without sending your data to external services.
 
-Works great on **Windows** (tested), Linux, and macOS. CLI-only for now; GUI may come later.
+## What Is New
 
----
+{{< alert title="Release Highlights (v2.0.0)" color="primary" >}}
+<div class="p-3 rounded" style="background:#ffffff; color:#1f2937;">
+  <h4 class="mb-2" style="color:#0f172a;">What changed recently</h4>
+  <ul class="mb-3">
+    <li>Lightweight core installation with optional feature packs (`documents`, `analysis`, `visualization`, `pdf_export`).</li>
+    <li>Friendlier missing-dependency guidance so users know exactly which extra to install.</li>
+    <li>Improved Homebrew and cross-platform installation guidance for macOS, Linux, and Windows.</li>
+    <li>Expanded command help structure (`indexly show-help`) with clearer categories and scope hints.</li>
+  </ul>
+  <a href="/en/releases/" class="btn btn-primary btn-sm me-2">View Release Notes</a>
+  <a href="/en/documentation/indexly-installation/" class="btn btn-outline-secondary btn-sm">Open Installation Guide</a>
+</div>
+{{< /alert >}}
+
+## Start Here
+
+- New user: [Install Indexly](indexly-installation.md)
+- Daily workflows: [Usage Guide](usage.md)
+- Configuration and filtering: [Configuration](config.md)
+- Engineering and contributions: [Developer Guide](developer.md)
+
+## Quick Workflow
 
 ```mermaid
+flowchart LR
+    A["Install (pip or Homebrew)"] --> B["Index Local Files"]
+    B --> C["Search / Regex"]
+    C --> D["Tag, Organize, and List"]
+    D --> E["Analyze Data (CSV/JSON/DB)"]
+    E --> F["Compare, Backup, Restore"]
+    F --> G["Observe, Doctor, and Maintain DB"]
+```
 
-flowchart TD
-    %% Nodes
-    A["📘 Indexly Overview"]:::overview
-    B["✨ Features Overview"]:::features
-    C["⚙️ Configuration & Features"]:::config
-    D["📖 Usage Guide"]:::usage
-    E["🛠️ Developer Guide"]:::dev
-    F["🏷️ Virtual Tag Detection"]:::tags
-    G["🖥️ Customizing Windows Terminal"]:::terminal
+## Documentation Map
 
-    %% Links
-    A --> B
-    A --> C
-    A --> D
-    A --> E
-    A --> F
-    D --> G
+| Goal | Recommended Page |
+| --- | --- |
+| Install and verify on Windows, macOS, Linux | [Install Indexly](indexly-installation.md) |
+| Learn command workflows end-to-end | [Usage Guide](usage.md) |
+| Improve indexing quality and ignore rules | [Ignore Rules & Index Hygiene](ignore-rules-index-hygiene.md) |
+| Organize folders and inspect logs | [Organizer](organizer.md), [Lister](lister.md) |
+| Analyze CSV/JSON/XML/SQLite datasets | [Data Analysis Overview](data-analysis-overview.md) |
+| Run statistical inference for CSV datasets | [Inference Docs](/inference/) |
+| Compare files and folders safely | [File & Folder Comparison](file-folder-comparison.md) |
+| Maintain health and schema consistency | [Indexly Doctor](indexly-doctor.md), [DB Migration Utility](db-migration-utility.md) |
+| Extend or contribute to the project | [Developer Guide](developer.md) |
 
-    B -->|Dev references| E
-    C -->|Profiles & advanced filters| D
-    C -->|Dev references| E
-    F -->|CLI usage| D
-    F -->|Developer tag extension| E
+## Popular Deep Dives
 
-    %% Styles
-    classDef overview fill:#F0F8FF,stroke:#333,stroke-width:1px;
-    classDef features fill:#FFFACD,stroke:#333,stroke-width:1px;
-    classDef config fill:#E6E6FA,stroke:#333,stroke-width:1px;
-    classDef usage fill:#F5F5DC,stroke:#333,stroke-width:1px;
-    classDef dev fill:#FFE4E1,stroke:#333,stroke-width:1px;
-    classDef tags fill:#F0FFF0,stroke:#333,stroke-width:1px;
-    classDef terminal fill:#FFF0F5,stroke:#333,stroke-width:1px;
+- [Indexing](indexing.md)
+- [Tagging](tagging.md)
+- [Semantic Indexing Overview](semantic-indexing-overview.md)
+- [Observers](observers.md)
+- [Backup & Restore](backup-restore.md)
+- [Time-Series Visualization](time-series-visualization.md)
+- [Indexly Logging System](indexly-logging-system.md)
 
-````
----
+## Notes For Developers
 
-## Table of Contents
+If you are contributing code, start with:
 
-* [Features](/features)
-* [Installation & Basic Usage](usage.md#basic-usage)
-* [Renaming Files with Patterns →](rename-file.md)
-* [Extracting Minitab MTW files →](mtw-parser.md)
-* [Data Analysis Overview →](data-analysis-overview.md)
-* [Time-Series Visualization→](time-series-visualization.md)
-* New in v1.2.3: [Statistical Inference→](/inference)
-* [The Story of Chinook→](story-of-chinook.md)
-* [Indexly Doctor→](indexly-doctor.md)
-* [Semantic Indexing→](semantic-indexing-overview.md)
-* [Organizer, Lister & Backup/Restore→](organizer.md)
-* [Indexly Semantic Observers→](observers.md)
-* [Indexly Logging System→](indexly-logging-system.md)
-* [Developer Notes](developer.md)
-* [License & Credits](#license-credits)
+1. [Developer Guide](developer.md)
+2. [Contributing Guide](https://github.com/kimsgent/project-indexly/blob/main/CONTRIBUTING.md)
+3. `indexly show-help --details` for parser-level command scope
 
----
+## License
 
-## Key Highlights
-
-* Full-text search via SQLite FTS5
-* Regex & fuzzy search
-* Tagging & filtering
-* CSV, JSON analysis & stats
-* Watchdog real-time indexing
-* Export to PDF, TXT, JSON
-* Developer-friendly modular CLI
-
-> For full instructions, explore [Usage Guide](usage.md), [Config & Features](config.md), or [Developer Notes](developer.md).
-
----
-
-## Requirements
-
-* Python 3.10+
-* Run locally, no server needed
-
-> ```bash
-> pip install -r requirements.txt
-> ```
-> Or manually:
-> ```bash
-> pip install nltk pymupdf pytesseract pillow python-docx openpyxl rapidfuzz fpdf2 reportlab \
-> beautifulsoup4 extract_msg eml-parser PyPDF2 watchdog colorama
-> ```
-
-📌 See [Installation Guide](indexly-installation.md) for Windows tips.
-
----
-
-## Workflow Overview
-
-```bash
-Organize 🗂️ → Validate/List 📋 → Backup 💾 → Index 📦 → Search 🔍 → Tag & Filter 🏷️ → Compare 📑 → Export 🧾
-````
-
-
----
-
-## Related Docs
-
-* [How to Use Indexly](usage.md)
-* [Configuration & Filtering](config.md)
-* [Developer Setup](developer.md)
-
----
-
-## License & Credits
-
-**Author:** N. K Franklin-Gent
-Built with ❤️ for the curious mind.
-Licensed under the [MIT License](LICENSE.txt).
+Indexly is licensed under the [MIT License](LICENSE.txt).

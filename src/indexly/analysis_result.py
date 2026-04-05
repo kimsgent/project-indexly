@@ -1,6 +1,10 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
-import pandas as pd
-from typing import Union
+from typing import TYPE_CHECKING, Union
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 @dataclass
 class AnalysisResult:
@@ -9,11 +13,11 @@ class AnalysisResult:
     """
     file_path: str
     file_type: str
-    df: Union[pd.DataFrame, None] = None
-    summary: Union[pd.DataFrame, dict, None] = None
+    df: Union["pd.DataFrame", None] = None
+    summary: Union["pd.DataFrame", dict, None] = None
     metadata: dict = None
     cleaned: bool = False
     persisted: bool = False
 
     # Optional storage for raw DataFrame, not serialized automatically
-    _raw_df: pd.DataFrame | None = None
+    _raw_df: "pd.DataFrame | None" = None

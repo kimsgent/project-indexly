@@ -1,9 +1,9 @@
 # mtw_extractor.py
 import os
+import csv
 import struct
 import re
 from datetime import datetime
-import pandas as pd
 
 from .path_utils import normalize_path
 from .extract_utils import store_metadata
@@ -108,9 +108,12 @@ def _extract_mtw(path: str, output_dir: str = None, extended: bool = False):
 
                 ints = extract_integers(raw)
                 if ints:
-                    df = pd.DataFrame({"value": ints})
                     data_csv = normalize_path(f"{base}_{name}_data.csv")
-                    df.to_csv(data_csv, index=False)
+                    with open(data_csv, "w", encoding="utf-8", newline="") as fh:
+                        writer = csv.writer(fh)
+                        writer.writerow(["value"])
+                        for value in ints:
+                            writer.writerow([value])
                     generated_files.append(data_csv)
 
             else:  # generic stream -> txt

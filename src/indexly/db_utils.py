@@ -19,12 +19,10 @@ import signal
 import logging
 import sqlite3
 import json
-import pandas as pd
 from .config import DB_FILE
 from .path_utils import normalize_path
 from pathlib import Path
 from datetime import datetime
-from .analysis_result import AnalysisResult
 from rich.console import Console
 
 console = Console()

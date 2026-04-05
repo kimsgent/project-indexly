@@ -20,20 +20,16 @@ import os
 import html
 import json
 import logging
-import pandas as pd
-from typing import Any, Dict
+from typing import Any, Dict, TYPE_CHECKING
 from datetime import datetime
-from fpdf import FPDF
-from reportlab.lib.pagesizes import A4
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from fpdf.errors import FPDFException
 from pathlib import Path
 from typing import Any, Optional
 from .db_utils import get_tags_for_file
 from .mermaid_diagram import build_mermaid_from_schema
+from .optional_deps import require_extra_dependency
+
+if TYPE_CHECKING:  # pragma: no cover
+    import pandas as pd
 
 
 def export_results_to_pdf(results, search_term, output_file="search_results.pdf"):
@@ -46,6 +42,8 @@ def export_results_to_pdf(results, search_term, output_file="search_results.pdf"
     """
 
     try:
+        FPDF = require_extra_dependency("fpdf", "fpdf2", "pdf_export").FPDF
+
         # --- FPDF Export ---
         pdf = FPDF()
         pdf.set_auto_page_break(auto=True, margin=15)
@@ -129,9 +127,18 @@ def export_results_to_pdf_reportlab(results, search_term, output_file):
     from . import indexly
 
     """Minimal ReportLab fallback export"""
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib.styles import getSampleStyleSheet
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+    A4 = require_extra_dependency(
+        "reportlab.lib.pagesizes", "reportlab", "pdf_export"
+    ).A4
+    getSampleStyleSheet = require_extra_dependency(
+        "reportlab.lib.styles", "reportlab", "pdf_export"
+    ).getSampleStyleSheet
+    reportlab_platypus = require_extra_dependency(
+        "reportlab.platypus", "reportlab", "pdf_export"
+    )
+    SimpleDocTemplate = reportlab_platypus.SimpleDocTemplate
+    Paragraph = reportlab_platypus.Paragraph
+    Spacer = reportlab_platypus.Spacer
 
     doc = SimpleDocTemplate(output_file, pagesize=A4)
     styles = getSampleStyleSheet()
@@ -233,7 +240,7 @@ def safe_export(
     results: Any,
     export_path: Optional[Path] = None,
     export_format: str = "txt",
-    df: Optional[pd.DataFrame] = None,
+    df: Optional[Any] = None,
     source_file: Optional[Path] = None,
     compress: bool = False,
 ) -> str:
