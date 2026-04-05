@@ -3,8 +3,8 @@ class Indexly < Formula
 
   desc "Local file indexing and search CLI with FTS5 and regex support"
   homepage "https://github.com/kimsgent/project-indexly"
-  url "https://github.com/kimsgent/project-indexly/archive/refs/tags/v2.0.2.tar.gz"
-  sha256 "f59917ea326f870c167e90f948112f5f3a9abaeb7bbcf18c529eaae3cabb8991"
+  url "https://github.com/kimsgent/project-indexly/archive/refs/tags/v2.0.1.tar.gz"
+  sha256 "97c1da2a0ba50fed940a7f2a003177645737c5bf7f7f446f1856e95542756bf0"
   license "MIT"
 
   depends_on "libyaml"
