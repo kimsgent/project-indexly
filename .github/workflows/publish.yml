@@ -11,6 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pull-requests: write
 
     steps:
       - uses: actions/checkout@v4
@@ -41,10 +42,15 @@ jobs:
             --source dist/*.tar.gz \
             --out Formula/indexly.rb
 
-      - name: Commit formula
-        run: |
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
-          git add Formula/indexly.rb
-          git commit -m "brew: release ${{ github.ref_name }}"
-          git push
+      - name: Create PR for formula update
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore: brew release ${{ github.ref_name }}"
+          branch: release/brew-${{ github.ref_name }}
+          base: main
+          title: "chore: brew release ${{ github.ref_name }}"
+          body: |
+            Automated Homebrew formula update for `${{ github.ref_name }}`.
+          add-paths: |
+            Formula/indexly.rb
