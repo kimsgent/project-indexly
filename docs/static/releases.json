@@ -1,13 +1,20 @@
 {
   "project": "FTS5 File Search Tool",
   "latest": {
-    "version": "2.0.0",
+    "version": "2.0.1",
     "date": "2026-04-05",
-    "link": "/en/releases/v2.0.0/",
-    "summary": "feat(release): enforce release retention and archive old release pages | feat(ux): improve show-help UX and documentation entry experience",
+    "link": "/en/releases/v2.0.1/",
+    "summary": "fix(workflow): update publish pipeline to create a PR for Homebrew formula updates instead of pushing directly to main | fix(workflow): add pull-requests write permission for the publish workflow token",
     "prerelease": false
   },
   "recent": [
+    {
+      "version": "2.0.0",
+      "date": "2026-04-05",
+      "link": "/en/releases/v2.0.0/",
+      "summary": "feat(release): enforce release retention and archive old release pages | feat(ux): improve show-help UX and documentation entry experience",
+      "prerelease": false
+    },
     {
       "version": "1.2.4",
       "date": "2026-03-28",
@@ -34,18 +41,18 @@
       "date": "2026-02-07",
       "link": "/en/releases/v1.2.1/",
       "summary": "feat(observers): implement core observer framework with user-friendly logging, CSV & health observers, and organizer_exec integration | feat(organize): integrate lister caching with fallback log generation and optional hash-based duplicate detection",
-      "prerelease": false
-    },
-    {
-      "version": "1.2.0",
-      "date": "2026-01-20",
-      "link": "/en/releases/v1.2.0/",
-      "summary": "fix(brew): move Homebrew formula template outside Python to avoid accidental trailing blank lines and pass audit | chore(release): update generate_brew_formula.py for v1.2.0 formula generation",
       "prerelease": false
     }
   ],
   "archive": [
     {
+      "version": "2.0.0",
+      "date": "2026-04-05",
+      "link": "/en/releases/v2.0.0/",
+      "summary": "feat(release): enforce release retention and archive old release pages | feat(ux): improve show-help UX and documentation entry experience",
+      "prerelease": false
+    },
+    {
       "version": "1.2.4",
       "date": "2026-03-28",
       "link": "/en/releases/v1.2.4/",
@@ -72,17 +79,10 @@
       "link": "/en/releases/v1.2.1/",
       "summary": "feat(observers): implement core observer framework with user-friendly logging, CSV & health observers, and organizer_exec integration | feat(organize): integrate lister caching with fallback log generation and optional hash-based duplicate detection",
       "prerelease": false
-    },
-    {
-      "version": "1.2.0",
-      "date": "2026-01-20",
-      "link": "/en/releases/v1.2.0/",
-      "summary": "fix(brew): move Homebrew formula template outside Python to avoid accidental trailing blank lines and pass audit | chore(release): update generate_brew_formula.py for v1.2.0 formula generation",
-      "prerelease": false
     }
   ],
   "archived": {
-    "count": 27,
+    "count": 28,
     "link": "/en/releases/Archive/"
   },
   "retention": {
