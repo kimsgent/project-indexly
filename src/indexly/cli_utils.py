@@ -1748,13 +1748,19 @@ def build_parser():
     # -------------------------------------------------------------------
 
     show_help_parser = subparsers.add_parser(
-        "show-help", help="Display help for all Indexly commands"
+        "show-help", help="Display categorized help for all Indexly commands"
     )
     show_help_parser.add_argument(
-        "--markdown", action="store_true", help="Output as Markdown for docs"
+        "--markdown",
+        action="store_true",
+        help="Output categorized help as Markdown (for docs/pages)",
     )
     show_help_parser.add_argument(
-        "--details", action="store_true", help="Show detailed help for each command"
+        "--details",
+        action="store_true",
+        help=(
+            "Show expanded details (scope hints, usage, command modes, and key flags)"
+        ),
     )
     show_help_parser.set_defaults(func=handle_show_help)
 

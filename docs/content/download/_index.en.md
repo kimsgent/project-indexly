@@ -30,7 +30,7 @@ Get the latest version of Project Indexly:
   </p>
 
   <a href="/en/documentation/autodoctor/" class="btn btn-primary btn-sm me-2">View Documentation</a>
-  <a href="https://github.com/gentkims/autodoctor" class="btn btn-outline-secondary btn-sm" target="_blank" rel="noopener noreferrer">Open Project on GitHub</a>
+  <a href="https://github.com/kimsgent/autodoctor" class="btn btn-outline-secondary btn-sm" target="_blank" rel="noopener noreferrer">Open Project on GitHub</a>
 </div>
 {{< /alert >}}
 
