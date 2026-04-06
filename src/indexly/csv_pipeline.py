@@ -1,29 +1,17 @@
 from __future__ import annotations
-import os
-import re
-import math
+import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING
 from rich.console import Console
-from datetime import datetime
-from rich.table import Table
-from .analyze_utils import load_cleaned_data
-from collections import Counter, defaultdict
-from rich.panel import Panel
 
 # Local utilities (adjust imports if needed)
-from .csv_analyzer import export_results, detect_delimiter, analyze_csv
+from .csv_analyzer import detect_delimiter, analyze_csv
 from .cleaning.auto_clean import auto_clean_csv
 from .clean_csv import (
     _summarize_post_clean,
     _remove_outliers,
     _normalize_numeric,
 )
-from .analyze_utils import save_analysis_result
-from indexly.observers.registry import get_observers
-from indexly.observers.csv.csv_observer import CSVObserver
-from indexly.compare.hash_utils import sha256
-from indexly.observers.runner import run_observers
 from .optional_deps import require_extra_dependency
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -34,8 +22,6 @@ console = Console()
 # -------------------------------
 # CSV Pipeline modular stages
 # -------------------------------
-
-import warnings
 
 warnings.filterwarnings(
     "ignore",
@@ -201,7 +187,9 @@ def visualize_csv(df: pd.DataFrame, df_stats, args):
         elif str(show_chart).lower() in ("static", "interactive"):
             if chart_type in ("hist", "box"):
                 # Delegate to static/interactive helper functions
-                import matplotlib.pyplot as plt
+                plt = require_extra_dependency(
+                    "matplotlib.pyplot", "matplotlib", "visualization"
+                )
 
                 fig, ax = plt.subplots(figsize=(10, 6))
                 if chart_type == "hist":
@@ -284,38 +272,13 @@ def run_csv_pipeline(file_path: Path, args, df: pd.DataFrame = None):
             console.print(f"[red]❌ Failed to load CSV: {file_path}[/red]")
             return None, None, None
 
-    # --- Step 0.5: Save raw CSV before cleaning ---
+    # --- Step 0.5: Preserve raw CSV snapshot for unified persistence ---
     raw_df = df.copy()  # preserve original
     df._raw_df = raw_df
 
-    # Respect global --no-persist flag
     if not getattr(args, "no_persist", False):
-
-        try:
-            save_analysis_result(
-                file_path=str(file_path),
-                file_type="csv",
-                summary=None,
-                sample_data=None,
-                metadata={
-                    "profile": "csv_raw",
-                    "hash": sha256(file_path) if file_path else None,
-                    "row_count": raw_df.shape[0],
-                    "col_count": raw_df.shape[1],
-                },
-                row_count=raw_df.shape[0],
-                col_count=raw_df.shape[1],
-                raw_df=raw_df,
-            )
-
-            console.print(f"[green]✔ Persisted raw data for {file_path.name}[/green]")
-
-        except Exception as e:
-            console.print(f"[red]⚠️ Failed to save raw CSV data: {e}[/red]")
-
-    else:
         console.print(
-            f"[dim]💤 Skipping raw persistence (--no-persist) for {file_path.name}[/dim]"
+            f"[dim]🧾 Preserved raw snapshot in memory for {file_path.name}[/dim]"
         )
 
     # --- Step 1: Clean CSV ---
@@ -324,19 +287,6 @@ def run_csv_pipeline(file_path: Path, args, df: pd.DataFrame = None):
     # --- Step 2: Analyze CSV ---
     try:
         df_stats, table_output = analyze_csv_pipeline(df, args)
-        # ---------------------------
-        # 📝 Prepare observer metadata
-        # ---------------------------
-        metadata = {
-            "profile": "csv",
-            "hash": sha256(file_path) if file_path else None,
-            "row_count": len(df) if df is not None else None,
-            "col_count": len(df.columns) if df is not None else None,
-        }
-
-        # Trigger observers for CSV
-        if file_path:
-            run_observers(file_path, metadata=metadata)
 
         if df_stats is None:
             console.print(
