@@ -12,7 +12,7 @@ from .csv_pipeline import run_csv_pipeline
 from .json_pipeline import (
     run_json_pipeline,
     run_json_generic_pipeline,
-    flatten_nested_json,
+    run_record_list_json_pipeline,
 )
 from .db_pipeline import run_db_pipeline
 from .xml_pipeline import run_xml_pipeline
@@ -20,9 +20,6 @@ from .parquet_pipeline import run_parquet_pipeline
 from .excel_pipeline import run_excel_pipeline
 from .visualize_json import (
     json_build_tree,
-    json_preview,
-    build_json_table_output,
-    summarize_json_dataframe,
 )
 from .csv_analyzer import export_results
 from .analyze_utils import (
@@ -296,80 +293,13 @@ def analyze_file(args) -> Optional[AnalysisResult]:
             elif isinstance(loader_raw, list) and all(
                 isinstance(x, dict) for x in loader_raw
             ):
-                console.print(
-                    f"[cyan]📄 Detected record-list JSON (NDJSON style) — using record-list fallback[/cyan]"
+                df, summary_dict, table_output, tree_dict = run_record_list_json_pipeline(
+                    records=loader_raw,
+                    file_path=file_path,
+                    metadata=metadata,
+                    show_treeview=show_treeview,
+                    verbose=True,
                 )
-
-                # ----- Upgrade: promote single-key dicts (e.g., {"employee": {...}}) -----
-                promoted_raw = []
-                for item in loader_raw:
-                    if len(item) == 1 and isinstance(list(item.values())[0], dict):
-                        promoted_raw.append(list(item.values())[0])
-                    else:
-                        promoted_raw.append(item)
-
-                # ----- Flatten nested dicts/lists into flat records -----
-                flattened_records = flatten_nested_json(promoted_raw)
-                df = (
-                    pd.DataFrame(flattened_records)
-                    if flattened_records
-                    else pd.DataFrame()
-                )
-                df_preview = df.head(5).to_dict(orient="records")
-
-                # ----- Robustly coerce numeric-like strings to numbers -----
-                for col in df.columns:
-                    coerced = pd.to_numeric(df[col], errors="coerce")
-                    if coerced.notna().sum() > 0:
-                        df[col] = coerced
-
-                # ----- Compute full numeric + non-numeric summaries -----
-                if not df.empty and df.shape[1] > 0:
-                    try:
-                        numeric_summary, non_numeric_summary = summarize_json_dataframe(
-                            df
-                        )
-                        table_output = build_json_table_output(df)
-                    except Exception:
-                        numeric_summary = {}
-                        non_numeric_summary = {}
-                        table_output = {
-                            "numeric_summary": {},
-                            "non_numeric_summary": {},
-                            "rows": len(df),
-                            "cols": len(df.columns),
-                        }
-                else:
-                    numeric_summary = {}
-                    non_numeric_summary = {}
-                    table_output = {
-                        "numeric_summary": {},
-                        "non_numeric_summary": {},
-                        "rows": len(df),
-                        "cols": len(df.columns),
-                    }
-
-                summary_dict = {
-                    "detected_type": "ndjson",
-                    "rows": len(promoted_raw),
-                    "columns": list(df.columns),
-                    "preview": df_preview if show_treeview else None,
-                    "numeric_summary": numeric_summary,
-                    "non_numeric_summary": non_numeric_summary,
-                    **table_output,
-                }
-
-                tree_dict = {}  # tree handled below if requested
-                if show_treeview:
-                    try:
-                        tree_obj = json_build_tree(
-                            promoted_raw, root_name=file_path.name
-                        )
-                        tree_dict = {"tree": tree_obj}
-                        summary_dict["metadata"] = metadata
-                        summary_dict["preview"] = json_preview(promoted_raw)
-                    except Exception as e:
-                        tree_dict = {"note": f"Failed to build tree: {e}"}
 
             # ======================================================
             # 4) GENERIC JSON (fallback to nested JSON handler)
