@@ -34,6 +34,8 @@ from indexly.json_cache_normalizer import (
     normalize_search_cache_json,
     _print_search_summary,
 )
+from indexly.compare.hash_utils import sha256
+from indexly.observers.runner import run_observers
 
 from indexly.universal_loader import (
     detect_and_load,
@@ -90,6 +92,7 @@ def _persist_analysis(
     try:
         summary_records = getattr(df, "_summary_records", None)
         derived_map = derived_map or getattr(df, "_derived_map", None)
+        raw_df = getattr(df, "_raw_df", None) if df is not None else None
 
         # Serialize summary safely
         summary_safe = _serialize_timestamps(summary_records or table_output or {})
@@ -102,8 +105,20 @@ def _persist_analysis(
             metadata=derived_map or {},
             row_count=len(data_to_save),
             col_count=len(data_to_save.columns),
-            raw_df=getattr(df, "_raw_df", None),
+            raw_df=raw_df,
         )
+
+        # CSV observers depend on persisted cleaned_data state.
+        if file_type == "csv":
+            run_observers(
+                file_path,
+                metadata={
+                    "profile": "csv",
+                    "hash": sha256(file_path) if file_path else None,
+                    "row_count": len(data_to_save),
+                    "col_count": len(data_to_save.columns),
+                },
+            )
 
         # Mark as persisted
         if df is not None:
@@ -112,7 +127,12 @@ def _persist_analysis(
             df_preview._persisted = True
 
         if verbose:
-            console.print(f"[green]✔ Persisted cleaned data for {file_path.name}[/green]")
+            if isinstance(raw_df, pd.DataFrame) and not raw_df.empty:
+                console.print(
+                    f"[green]✔ Persisted cleaned + raw data for {file_path.name}[/green]"
+                )
+            else:
+                console.print(f"[green]✔ Persisted cleaned data for {file_path.name}[/green]")
 
         return True
 
