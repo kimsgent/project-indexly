@@ -369,17 +369,22 @@ def analyze_file(args) -> Optional[AnalysisResult]:
                 _print_search_summary(df, console)
 
             # ======================================================
-            # Persist using unified save (unchanged)
+            # Persist JSON summary unless disabled via --no-persist
             # ======================================================
-            save_analysis_result(
-                file_path=file_path,
-                file_type="json",
-                summary=summary_dict,
-                sample_data=df,
-                metadata=metadata,
-                row_count=len(df) if df is not None else 0,
-                col_count=len(df.columns) if df is not None else 0,
-            )
+            if getattr(args, "no_persist", False):
+                console.print(
+                    f"[dim]💤 Skipping persistence (--no-persist) for {file_path.name}[/dim]"
+                )
+            else:
+                save_analysis_result(
+                    file_path=file_path,
+                    file_type="json",
+                    summary=summary_dict,
+                    sample_data=df,
+                    metadata=metadata,
+                    row_count=len(df) if df is not None else 0,
+                    col_count=len(df.columns) if df is not None else 0,
+                )
 
         except Exception as e:
             console.print(f"[red]❌ JSON pipeline failed: {e}[/red]")
