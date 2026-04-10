@@ -6,7 +6,7 @@ repos:
     hooks:
       - id: pytest
         name: Run pytest before commit
-        entry: python -m pytest -v
+        entry: .venv-indexly/Scripts/python.exe -m pytest -v
         language: system
         types: [python]
         pass_filenames: false
