@@ -3,7 +3,6 @@ title: "SQLite Schema Reference"
 linkTitle: "SQLite Schema"
 description: "Authoritative SQLite schema reference for AutoDoctor tables, columns, indexes, and query patterns used by agent writers and API readers."
 slug: "sqlite-schema-reference"
-type: docs
 aliases:
   - "/docs/autodoctor/reference/database/"
 keywords:

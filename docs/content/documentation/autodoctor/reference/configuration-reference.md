@@ -1,15 +1,15 @@
 ---
 title: "Configuration Reference"
 linkTitle: "Configuration"
-description: "Complete AutoDoctor configuration reference for environment variables, registry keys, INI settings, and precedence rules across agent, API, dashboard, and installer."
+description: "Complete AutoDoctor configuration reference for environment variables, registry keys, INI settings, browser-based PDF export, and precedence rules across agent, API, dashboard, and installer."
 slug: "configuration-reference"
-type: docs
 aliases:
   - "/docs/autodoctor/reference/config/"
 keywords:
   - "AUTO_DOCTOR_HOME"
   - "AutoDoctor registry keys"
   - "autodoctor.ini settings"
+  - "AUTO_DOCTOR_CHROMIUM_PATH"
 tags:
   - "configuration"
   - "reference"
@@ -18,7 +18,7 @@ categories:
   - "autodoctor"
 weight: 52
 date: "2026-03-15"
-lastmod: "2026-03-15"
+lastmod: "2026-04-17"
 draft: false
 params:
   summary: "Use this page as the authoritative list of AutoDoctor configuration keys and override behavior."
@@ -66,6 +66,7 @@ DB path resolution:
 | `AUTO_DOCTOR_CORS_ORIGINS` | API app | Comma-separated CORS allow-list | Localhost-focused defaults |
 | `AUTO_DOCTOR_API_KEY` | API app | Optional header auth key (`X-AutoDoctor-Key`) | Disabled when unset |
 | `AUTO_DOCTOR_SYSTEM_PYTHON` | Installer only | Force interpreter path for system-Python service mode | Auto-detect `py -3` then `python` |
+| `AUTO_DOCTOR_CHROMIUM_PATH` | Report export | Explicit Chrome/Chromium path for automatic PDF generation | Auto-discover common Chrome/Chromium paths |
 
 ## Windows Registry Keys
 
@@ -111,6 +112,7 @@ Default file: `<root>\config\autodoctor.ini`
 $env:AUTO_DOCTOR_HOME = "D:\Ops\AutoDoctor"
 $env:AUTO_DOCTOR_DB_PATH = "D:\Ops\AutoDoctor\db\autodoctor.db"
 $env:AUTO_DOCTOR_API_PORT = "9000"
+$env:AUTO_DOCTOR_CHROMIUM_PATH = "C:\Program Files\Google\Chrome\Application\chrome.exe"
 ```
 
 ```powershell
@@ -123,6 +125,15 @@ setx AUTO_DOCTOR_API_PORT "8000"
 {{< alert title="Important" color="warning" >}}
 Registry values override INI and environment values for API host/port. Remove stale registry keys when testing config changes.
 {{< /alert >}}
+
+## Browser-Side Dashboard Override
+
+The dashboard also supports a browser override that is not stored in environment variables:
+
+- query string: `?api_base=http://127.0.0.1:8000`
+- browser state: `window.AUTO_DOCTOR_API_BASE` or `localStorage`
+
+Use this only for debugging proxy or split-host layouts.
 
 ## Next Steps
 

@@ -19,6 +19,8 @@ keywords: [
 ]
 cta: "Optimize your Indexly setup"
 canonicalURL: "/en/documentation/configuration/"
+aliases:
+  - "/en/documentation/config/"
 type: docs
 categories:
     - Features 

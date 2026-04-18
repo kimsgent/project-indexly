@@ -3,7 +3,6 @@ title: "Common Questions"
 linkTitle: "Common Questions"
 description: "Frequently asked questions for AutoDoctor installation modes, service behavior, runtime paths, dashboard access, and API troubleshooting."
 slug: "common-questions"
-type: docs
 aliases:
   - "/docs/autodoctor/faq/common/"
 keywords:

@@ -38,18 +38,15 @@
   {{ end -}}
 </title>
 
-{{ if .IsHome }}
-<link rel="canonical" href="https://projectindexly.com/en/">
-<link rel="alternate" href="https://projectindexly.com/en/" hreflang="en">
-<link rel="alternate" href="https://projectindexly.com/de/" hreflang="de">
-<link rel="alternate" href="https://projectindexly.com/" hreflang="x-default">
-{{ else }}
-<link rel="canonical" href="{{ .Permalink }}">
-{{ $url := .Permalink }}
-<link rel="alternate" href="{{ $url | replaceRE "/en/" "/en/" }}" hreflang="en">
-<link rel="alternate" href="{{ $url | replaceRE "/en/" "/de/" }}" hreflang="de">
-<link rel="alternate" href="{{ $url | replaceRE "/en/" "/" }}" hreflang="x-default">
+{{ $translations := .AllTranslations }}
+{{ if not (gt (len $translations) 0) }}
+  {{ $translations = slice . }}
 {{ end }}
+<link rel="canonical" href="{{ .Permalink }}">
+{{ range $translations }}
+<link rel="alternate" href="{{ .Permalink }}" hreflang="{{ .Language.Lang }}">
+{{ end }}
+<link rel="alternate" href="{{ .Permalink }}" hreflang="x-default">
 
 <!-- Meta description & keywords -->
 <meta name="description" content="{{ with .Params.description }}{{ . }}{{ else }}{{ .Site.Params.description }}{{ end }}">

@@ -3,7 +3,6 @@ title: "AutoDoctor Documentation"
 linkTitle: "AutoDoctor"
 description: "Official AutoDoctor documentation for users, technical operators, and developers. Covers installation, configuration, diagnostics, remediation, API, dashboard, and troubleshooting."
 slug: "autodoctor"
-type: docs
 aliases:
   - "/docs/autodoctor/home/"
 keywords:
