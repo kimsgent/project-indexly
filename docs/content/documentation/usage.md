@@ -19,6 +19,8 @@ keywords: [
 ]
 cta: "Get started with Indexly"
 canonicalURL: "/en/documentation/usage-guide/"
+aliases:
+  - "/en/documentation/usage/"
 toc: true
 categories:
   - Getting Started

@@ -5,7 +5,6 @@ from typing import Tuple, Dict, Any, Optional
 import pandas as pd
 import json
 from rich.console import Console
-from datetime import datetime
 from .universal_loader import _safe_read_text
 from .visualize_json import (
     summarize_json_dataframe,
@@ -43,6 +42,107 @@ def _safe_dict_keys(d):
     return out
 
 
+def _parse_ndjson_record_list(text: str) -> list[dict] | None:
+    """Parse NDJSON text only when every non-empty line is a JSON object."""
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if not lines:
+        return None
+
+    records: list[dict] = []
+    for line in lines:
+        try:
+            obj = json.loads(line)
+        except Exception:
+            return None
+        if not isinstance(obj, dict):
+            return None
+        records.append(obj)
+
+    return records or None
+
+
+def run_record_list_json_pipeline(
+    records: list[dict],
+    file_path: Path,
+    metadata: Optional[dict] = None,
+    show_treeview: bool = False,
+    verbose: bool = True,
+):
+    """
+    Shared NDJSON/record-list pipeline used by both analyze-file and analyze-json reroutes.
+    """
+    metadata = metadata or {}
+
+    if verbose:
+        console.print(
+            "[cyan]📄 Detected record-list JSON (NDJSON style) — using record-list fallback[/cyan]"
+        )
+
+    promoted_raw = []
+    for item in records:
+        if len(item) == 1 and isinstance(list(item.values())[0], dict):
+            promoted_raw.append(list(item.values())[0])
+        else:
+            promoted_raw.append(item)
+
+    flattened_records = flatten_nested_json(promoted_raw)
+    df = pd.DataFrame(flattened_records) if flattened_records else pd.DataFrame()
+    setattr(df, "_from_orchestrator", True)
+    setattr(df, "_source_file_path", str(file_path))
+
+    if not df.empty:
+        for col in df.columns:
+            coerced = pd.to_numeric(df[col], errors="coerce")
+            if coerced.notna().sum() > 0:
+                df[col] = coerced
+
+    if not df.empty and df.shape[1] > 0:
+        try:
+            numeric_summary, non_numeric_summary = summarize_json_dataframe(df)
+            table_output = build_json_table_output(df)
+        except Exception:
+            numeric_summary = {}
+            non_numeric_summary = {}
+            table_output = {
+                "numeric_summary": {},
+                "non_numeric_summary": {},
+                "rows": len(df),
+                "cols": len(df.columns),
+            }
+    else:
+        numeric_summary = {}
+        non_numeric_summary = {}
+        table_output = {
+            "numeric_summary": {},
+            "non_numeric_summary": {},
+            "rows": len(df),
+            "cols": len(df.columns),
+        }
+
+    summary_dict = {
+        "detected_type": "ndjson",
+        "rows": len(promoted_raw),
+        "columns": list(df.columns),
+        "preview": None,
+        "numeric_summary": numeric_summary,
+        "non_numeric_summary": non_numeric_summary,
+        "metadata": metadata,
+        **table_output,
+    }
+
+    tree_dict = {}
+    if show_treeview:
+        try:
+            tree_obj = json_build_tree(promoted_raw, root_name=file_path.name)
+            tree_dict = {"tree": tree_obj}
+            summary_dict["preview"] = json_preview(promoted_raw)
+            summary_dict["tree"] = tree_obj
+        except Exception as e:
+            tree_dict = {"note": f"Failed to build tree: {e}"}
+
+    return df, summary_dict, table_output, tree_dict
+
+
 def run_json_pipeline(
     file_path: Path, args=None, df: pd.DataFrame | None = None, verbose: bool = True
 ):
@@ -59,10 +159,12 @@ def run_json_pipeline(
     # NEW BLOCK (Point 2)
     # Detect “search-cache” JSON files BEFORE any normal JSON pipeline logic
     # -------------------------------------------------------------------------
+    prefetched_raw_json = None
     if df is None:
         try:
             with open(path_obj, "r", encoding="utf-8") as f:
                 raw_json = json.load(f)
+            prefetched_raw_json = raw_json
 
             if is_search_cache_json(raw_json):
                 if verbose:
@@ -94,23 +196,50 @@ def run_json_pipeline(
         if verbose:
             console.print(f"🔍 Loading JSON file: [bold]{path_obj.name}[/bold]")
 
-        # IMPORTANT: use safe-read with max_lines=None to fully read JSON files
-        text = _safe_read_text(path_obj, max_lines=None)
-        if text is None:
-            if verbose:
-                console.print(f"[red]❌ Could not read JSON: {path_obj}[/red]")
-            return None, None, None
+        if prefetched_raw_json is not None:
+            raw_json = prefetched_raw_json
+        else:
+            # IMPORTANT: use safe-read with max_lines=None to fully read JSON files
+            text = _safe_read_text(path_obj, max_lines=None)
+            if text is None:
+                if verbose:
+                    console.print(f"[red]❌ Could not read JSON: {path_obj}[/red]")
+                return None, None, None
 
-        try:
-            # Try to parse JSON normally
-            raw_json = json.loads(text)
-        except Exception as e:
-            if verbose:
-                console.print(f"[red]❌ Invalid JSON format: {e}[/red]")
-            return None, None, None
+            try:
+                # Try to parse JSON normally
+                raw_json = json.loads(text)
+            except Exception as e:
+                ndjson_records = _parse_ndjson_record_list(text)
+                if ndjson_records is not None:
+                    if verbose:
+                        console.print(
+                            "[cyan]↪ Rerouting to orchestrator NDJSON record-list pipeline[/cyan]"
+                        )
+
+                    df, _, table_dict, _ = run_record_list_json_pipeline(
+                        records=ndjson_records,
+                        file_path=path_obj,
+                        metadata={"json_mode": "ndjson"},
+                        show_treeview=bool(getattr(args, "treeview", False)),
+                        verbose=verbose,
+                    )
+                    if df is None or df.empty:
+                        return None, None, None
+
+                    try:
+                        df_stats = df.describe(include="all", datetime_is_numeric=True)
+                    except Exception:
+                        df_stats = None
+
+                    return df, df_stats, table_dict
+
+                if verbose:
+                    console.print(f"[red]❌ Invalid JSON format: {e}[/red]")
+                return None, None, None
 
         # Convert to DataFrame
-        data, df = load_json_as_dataframe(str(path_obj))
+        data, df = load_json_as_dataframe(str(path_obj), raw_json=raw_json)
 
         if df is not None:
             setattr(df, "_from_orchestrator", True)

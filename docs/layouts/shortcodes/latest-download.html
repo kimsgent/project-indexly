@@ -1,0 +1,16 @@
+{{ $scratch := newScratch }}
+{{ range site.Data.changelog.versions }}
+  {{ $version := printf "%v" .version }}
+  {{ if and (not ($scratch.Get "latest")) (eq (len (findRE "(?i)(alpha|beta|rc|test)" $version)) 0) }}
+    {{ $scratch.Set "latest" . }}
+  {{ end }}
+{{ end }}
+
+{{ with ($scratch.Get "latest") }}
+<ul>
+  <li><a href="https://github.com/kimsgent/project-indexly/archive/refs/tags/v{{ .version }}.zip">Download v{{ .version }} ZIP</a></li>
+  <li><a href="{{ (printf "/releases/v%s/" .version) | relLangURL }}">View v{{ .version }} Release Notes</a></li>
+</ul>
+{{ else }}
+<p>No stable release is available yet.</p>
+{{ end }}

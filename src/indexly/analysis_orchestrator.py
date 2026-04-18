@@ -12,7 +12,7 @@ from .csv_pipeline import run_csv_pipeline
 from .json_pipeline import (
     run_json_pipeline,
     run_json_generic_pipeline,
-    flatten_nested_json,
+    run_record_list_json_pipeline,
 )
 from .db_pipeline import run_db_pipeline
 from .xml_pipeline import run_xml_pipeline
@@ -20,9 +20,6 @@ from .parquet_pipeline import run_parquet_pipeline
 from .excel_pipeline import run_excel_pipeline
 from .visualize_json import (
     json_build_tree,
-    json_preview,
-    build_json_table_output,
-    summarize_json_dataframe,
 )
 from .csv_analyzer import export_results
 from .analyze_utils import (
@@ -34,6 +31,8 @@ from indexly.json_cache_normalizer import (
     normalize_search_cache_json,
     _print_search_summary,
 )
+from indexly.compare.hash_utils import sha256
+from indexly.observers.runner import run_observers
 
 from indexly.universal_loader import (
     detect_and_load,
@@ -90,6 +89,7 @@ def _persist_analysis(
     try:
         summary_records = getattr(df, "_summary_records", None)
         derived_map = derived_map or getattr(df, "_derived_map", None)
+        raw_df = getattr(df, "_raw_df", None) if df is not None else None
 
         # Serialize summary safely
         summary_safe = _serialize_timestamps(summary_records or table_output or {})
@@ -102,8 +102,20 @@ def _persist_analysis(
             metadata=derived_map or {},
             row_count=len(data_to_save),
             col_count=len(data_to_save.columns),
-            raw_df=getattr(df, "_raw_df", None),
+            raw_df=raw_df,
         )
+
+        # CSV observers depend on persisted cleaned_data state.
+        if file_type == "csv":
+            run_observers(
+                file_path,
+                metadata={
+                    "profile": "csv",
+                    "hash": sha256(file_path) if file_path else None,
+                    "row_count": len(data_to_save),
+                    "col_count": len(data_to_save.columns),
+                },
+            )
 
         # Mark as persisted
         if df is not None:
@@ -112,7 +124,12 @@ def _persist_analysis(
             df_preview._persisted = True
 
         if verbose:
-            console.print(f"[green]✔ Persisted cleaned data for {file_path.name}[/green]")
+            if isinstance(raw_df, pd.DataFrame) and not raw_df.empty:
+                console.print(
+                    f"[green]✔ Persisted cleaned + raw data for {file_path.name}[/green]"
+                )
+            else:
+                console.print(f"[green]✔ Persisted cleaned data for {file_path.name}[/green]")
 
         return True
 
@@ -276,80 +293,13 @@ def analyze_file(args) -> Optional[AnalysisResult]:
             elif isinstance(loader_raw, list) and all(
                 isinstance(x, dict) for x in loader_raw
             ):
-                console.print(
-                    f"[cyan]📄 Detected record-list JSON (NDJSON style) — using record-list fallback[/cyan]"
+                df, summary_dict, table_output, tree_dict = run_record_list_json_pipeline(
+                    records=loader_raw,
+                    file_path=file_path,
+                    metadata=metadata,
+                    show_treeview=show_treeview,
+                    verbose=True,
                 )
-
-                # ----- Upgrade: promote single-key dicts (e.g., {"employee": {...}}) -----
-                promoted_raw = []
-                for item in loader_raw:
-                    if len(item) == 1 and isinstance(list(item.values())[0], dict):
-                        promoted_raw.append(list(item.values())[0])
-                    else:
-                        promoted_raw.append(item)
-
-                # ----- Flatten nested dicts/lists into flat records -----
-                flattened_records = flatten_nested_json(promoted_raw)
-                df = (
-                    pd.DataFrame(flattened_records)
-                    if flattened_records
-                    else pd.DataFrame()
-                )
-                df_preview = df.head(5).to_dict(orient="records")
-
-                # ----- Robustly coerce numeric-like strings to numbers -----
-                for col in df.columns:
-                    coerced = pd.to_numeric(df[col], errors="coerce")
-                    if coerced.notna().sum() > 0:
-                        df[col] = coerced
-
-                # ----- Compute full numeric + non-numeric summaries -----
-                if not df.empty and df.shape[1] > 0:
-                    try:
-                        numeric_summary, non_numeric_summary = summarize_json_dataframe(
-                            df
-                        )
-                        table_output = build_json_table_output(df)
-                    except Exception:
-                        numeric_summary = {}
-                        non_numeric_summary = {}
-                        table_output = {
-                            "numeric_summary": {},
-                            "non_numeric_summary": {},
-                            "rows": len(df),
-                            "cols": len(df.columns),
-                        }
-                else:
-                    numeric_summary = {}
-                    non_numeric_summary = {}
-                    table_output = {
-                        "numeric_summary": {},
-                        "non_numeric_summary": {},
-                        "rows": len(df),
-                        "cols": len(df.columns),
-                    }
-
-                summary_dict = {
-                    "detected_type": "ndjson",
-                    "rows": len(promoted_raw),
-                    "columns": list(df.columns),
-                    "preview": df_preview if show_treeview else None,
-                    "numeric_summary": numeric_summary,
-                    "non_numeric_summary": non_numeric_summary,
-                    **table_output,
-                }
-
-                tree_dict = {}  # tree handled below if requested
-                if show_treeview:
-                    try:
-                        tree_obj = json_build_tree(
-                            promoted_raw, root_name=file_path.name
-                        )
-                        tree_dict = {"tree": tree_obj}
-                        summary_dict["metadata"] = metadata
-                        summary_dict["preview"] = json_preview(promoted_raw)
-                    except Exception as e:
-                        tree_dict = {"note": f"Failed to build tree: {e}"}
 
             # ======================================================
             # 4) GENERIC JSON (fallback to nested JSON handler)
@@ -419,17 +369,22 @@ def analyze_file(args) -> Optional[AnalysisResult]:
                 _print_search_summary(df, console)
 
             # ======================================================
-            # Persist using unified save (unchanged)
+            # Persist JSON summary unless disabled via --no-persist
             # ======================================================
-            save_analysis_result(
-                file_path=file_path,
-                file_type="json",
-                summary=summary_dict,
-                sample_data=df,
-                metadata=metadata,
-                row_count=len(df) if df is not None else 0,
-                col_count=len(df.columns) if df is not None else 0,
-            )
+            if getattr(args, "no_persist", False):
+                console.print(
+                    f"[dim]💤 Skipping persistence (--no-persist) for {file_path.name}[/dim]"
+                )
+            else:
+                save_analysis_result(
+                    file_path=file_path,
+                    file_type="json",
+                    summary=summary_dict,
+                    sample_data=df,
+                    metadata=metadata,
+                    row_count=len(df) if df is not None else 0,
+                    col_count=len(df.columns) if df is not None else 0,
+                )
 
         except Exception as e:
             console.print(f"[red]❌ JSON pipeline failed: {e}[/red]")

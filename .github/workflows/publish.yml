@@ -28,6 +28,16 @@ jobs:
           python -m pip install --upgrade pip
           pip install build twine
 
+      - name: Verify tag matches package version on main
+        run: |
+          PACKAGE_VERSION="$(python scripts/read_pyproject_version.py)"
+
+          if [ "${GITHUB_REF_NAME#v}" != "${PACKAGE_VERSION}" ]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match pyproject.toml version ${PACKAGE_VERSION} on main"
+            echo "Merge release-prep changes to main before creating the tag."
+            exit 1
+          fi
+
       - name: Build artifacts
         run: python -m build
 

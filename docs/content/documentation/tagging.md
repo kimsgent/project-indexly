@@ -10,6 +10,8 @@ description: "Learn how to use Indexly's powerful file tagging system to categor
 keywords: ["Indexly", "file tagging", "file organization", "tagging system", "search files", "folder tagging", "data indexing", "productivity tools"]
 cta: "Learn how to manage tags"
 canonicalURL: "/en/documentation/tagging/"
+aliases:
+  - "/en/documentation/file-tagging/"
 categories:
     - Core Features
 tags:

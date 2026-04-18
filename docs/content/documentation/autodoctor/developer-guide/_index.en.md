@@ -3,7 +3,6 @@ title: "Developer Guide"
 linkTitle: "Developer Guide"
 description: "Developer documentation for AutoDoctor architecture, module contracts, telemetry flow, and SQLite persistence design."
 slug: "developer-guide"
-type: docs
 aliases:
   - "/docs/autodoctor/dev/"
 keywords:

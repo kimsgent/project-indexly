@@ -1,13 +1,20 @@
 {
   "project": "FTS5 File Search Tool",
   "latest": {
-    "version": "2.0.1",
-    "date": "2026-04-05",
-    "link": "/en/releases/v2.0.1/",
-    "summary": "fix(workflow): update publish pipeline to create a PR for Homebrew formula updates instead of pushing directly to main | fix(workflow): add pull-requests write permission for the publish workflow token",
+    "version": "2.0.2",
+    "date": "2026-04-18",
+    "link": "/en/releases/v2.0.2/",
+    "summary": "fix(search): prevent duplicated locale prefix in Pagefind links | fix(csv): persist cleaned and raw data through a single write path",
     "prerelease": false
   },
   "recent": [
+    {
+      "version": "2.0.1",
+      "date": "2026-04-05",
+      "link": "/en/releases/v2.0.1/",
+      "summary": "fix(workflow): update publish pipeline to create a PR for Homebrew formula updates instead of pushing directly to main | fix(workflow): add pull-requests write permission for the publish workflow token",
+      "prerelease": false
+    },
     {
       "version": "2.0.0",
       "date": "2026-04-05",
@@ -34,18 +41,18 @@
       "date": "2026-02-15",
       "link": "/en/releases/v1.2.2/",
       "summary": "feat(rename): introduce business-rule based renaming with heuristic keyword detection (invoice, tax, receipt, payroll, contract) | feat(rename): add --business-naming mode with interactive category and prefix selection",
-      "prerelease": false
-    },
-    {
-      "version": "1.2.1",
-      "date": "2026-02-07",
-      "link": "/en/releases/v1.2.1/",
-      "summary": "feat(observers): implement core observer framework with user-friendly logging, CSV & health observers, and organizer_exec integration | feat(organize): integrate lister caching with fallback log generation and optional hash-based duplicate detection",
       "prerelease": false
     }
   ],
   "archive": [
     {
+      "version": "2.0.1",
+      "date": "2026-04-05",
+      "link": "/en/releases/v2.0.1/",
+      "summary": "fix(workflow): update publish pipeline to create a PR for Homebrew formula updates instead of pushing directly to main | fix(workflow): add pull-requests write permission for the publish workflow token",
+      "prerelease": false
+    },
+    {
       "version": "2.0.0",
       "date": "2026-04-05",
       "link": "/en/releases/v2.0.0/",
@@ -72,17 +79,10 @@
       "link": "/en/releases/v1.2.2/",
       "summary": "feat(rename): introduce business-rule based renaming with heuristic keyword detection (invoice, tax, receipt, payroll, contract) | feat(rename): add --business-naming mode with interactive category and prefix selection",
       "prerelease": false
-    },
-    {
-      "version": "1.2.1",
-      "date": "2026-02-07",
-      "link": "/en/releases/v1.2.1/",
-      "summary": "feat(observers): implement core observer framework with user-friendly logging, CSV & health observers, and organizer_exec integration | feat(organize): integrate lister caching with fallback log generation and optional hash-based duplicate detection",
-      "prerelease": false
     }
   ],
   "archived": {
-    "count": 28,
+    "count": 29,
     "link": "/en/releases/Archive/"
   },
   "retention": {

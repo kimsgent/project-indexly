@@ -1,9 +1,8 @@
 ---
 title: "Generate and Share Support Bundle"
 linkTitle: "Support Bundle"
-description: "Collect AutoDoctor reports, logs, telemetry, and metadata for troubleshooting and support handoff without losing execution context."
+description: "Collect AutoDoctor reports, logs, telemetry, metadata, and optional PDF output for troubleshooting and support handoff without losing execution context."
 slug: "support-bundle"
-type: docs
 aliases:
   - "/docs/autodoctor/getting-started/support/"
 keywords:
@@ -18,7 +17,7 @@ categories:
   - "autodoctor"
 weight: 15
 date: "2026-03-15"
-lastmod: "2026-03-15"
+lastmod: "2026-04-17"
 draft: false
 params:
   summary: "Collect all relevant AutoDoctor artifacts for support escalation or offline analysis."
@@ -35,6 +34,8 @@ params:
 
 - `reports/AutoDoctor_Report.html`
 - `reports/AutoDoctor_Report.json`
+- `reports/AutoDoctor_Report.md`
+- `reports/AutoDoctor_Report.pdf` if present
 - `logs/autodoctor.log`
 - `logs/autodoctor_api.log` (if service/API used)
 - `server/latest_run.json`
@@ -53,6 +54,8 @@ New-Item -ItemType Directory -Path $out -Force | Out-Null
 
 Copy-Item "$root\reports\AutoDoctor_Report.html" $out -ErrorAction SilentlyContinue
 Copy-Item "$root\reports\AutoDoctor_Report.json" $out -ErrorAction SilentlyContinue
+Copy-Item "$root\reports\AutoDoctor_Report.md" $out -ErrorAction SilentlyContinue
+Copy-Item "$root\reports\AutoDoctor_Report.pdf" $out -ErrorAction SilentlyContinue
 Copy-Item "$root\logs\autodoctor.log" $out -ErrorAction SilentlyContinue
 Copy-Item "$root\logs\autodoctor_api.log" $out -ErrorAction SilentlyContinue
 Copy-Item "$root\server\latest_run.json" $out -ErrorAction SilentlyContinue
@@ -68,9 +71,11 @@ Before sharing externally:
 
 - Review hostnames and usernames in telemetry/JSON files
 - Remove sensitive local paths if required by policy
+- Review installed software and driver inventory in HTML, Markdown, and PDF reports
 - Share DB only when deeper SQL analysis is required
 
 ## Next Steps
 
 - See [Troubleshooting Playbook](../troubleshooting/playbook/)
+- For print-friendly sharing, review [Print and Export Reports](../user-guide/report-printing-export/)
 - For API-specific issues, see [Service Startup Issues](../troubleshooting/service-startup-issues/)

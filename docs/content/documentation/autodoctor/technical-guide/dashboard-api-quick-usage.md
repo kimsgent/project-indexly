@@ -1,9 +1,8 @@
 ---
 title: "Dashboard and API Quick Usage"
 linkTitle: "Dashboard + API"
-description: "Quick operational guide for using the AutoDoctor dashboard and API endpoints for monitoring, scripting, and validation workflows."
+description: "Quick operational guide for using the AutoDoctor dashboard and API endpoints for monitoring, scripting, validation workflows, and summary-driven automation."
 slug: "dashboard-api-quick-usage"
-type: docs
 aliases:
   - "/docs/autodoctor/technical-guide/api-dashboard/"
 keywords:
@@ -18,7 +17,7 @@ categories:
   - "autodoctor"
 weight: 34
 date: "2026-03-15"
-lastmod: "2026-03-15"
+lastmod: "2026-04-17"
 draft: false
 params:
   summary: "Use API and dashboard endpoints quickly for health checks, automation, and monitoring."
@@ -48,6 +47,7 @@ http://127.0.0.1:8000
 - `GET /api/health`
 - `GET /api/modules`
 - `GET /api/dashboard/meta`
+- `GET /api/dashboard/summary`
 
 ## PowerShell Examples
 
@@ -56,7 +56,15 @@ Invoke-RestMethod http://127.0.0.1:8000/health
 Invoke-RestMethod http://127.0.0.1:8000/api/system/latest
 Invoke-RestMethod http://127.0.0.1:8000/api/alerts
 Invoke-RestMethod http://127.0.0.1:8000/api/dashboard/meta
+Invoke-RestMethod http://127.0.0.1:8000/api/dashboard/summary
 ```
+
+## When to Use Which Endpoint
+
+- Use `/health` for simple liveness checks.
+- Use `/api/system/latest` and `/api/system/history` for metric pipelines.
+- Use `/api/dashboard/meta` to confirm the latest run was written.
+- Use `/api/dashboard/summary` when you want one payload that already includes health display, main concern, metric states, and grouped findings.
 
 ## Optional API Key Security
 
@@ -80,4 +88,5 @@ Useful in proxy or split-host debugging.
 ## Next Steps
 
 - Full endpoint details: [API Reference](../reference/api-reference/)
+- For interactive and printable output, see [Print and Export Reports](../user-guide/report-printing-export/)
 - If endpoint calls fail: [Troubleshooting Playbook](../troubleshooting/playbook/)

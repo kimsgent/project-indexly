@@ -3,7 +3,6 @@ title: "Troubleshooting"
 linkTitle: "Troubleshooting"
 description: "Step-by-step troubleshooting for AutoDoctor installation, service startup, API availability, dashboard loading, and telemetry/database issues."
 slug: "troubleshooting"
-type: docs
 aliases:
   - "/docs/autodoctor/help/"
 keywords:
@@ -23,7 +22,7 @@ draft: false
 params:
   summary: "Diagnose and fix common AutoDoctor failures using repeatable playbooks."
   robots: "index,follow"
-  social_image: "/images/autodoctor-social-placeholder.png"
+  social_image: "/images/autodoctor-social.png"
 ---
 
 ## In This Section

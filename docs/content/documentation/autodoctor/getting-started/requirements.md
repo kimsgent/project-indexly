@@ -1,15 +1,15 @@
 ---
 title: "Requirements"
 linkTitle: "Requirements"
-description: "System and software requirements for AutoDoctor installation and operation, including installer mode, system-Python mode, and development .venv mode."
+description: "System and software requirements for AutoDoctor installation and operation, including installer mode, system-Python mode, development .venv mode, and optional PDF export support."
 slug: "requirements"
-type: docs
 aliases:
   - "/docs/autodoctor/getting-started/prerequisites/"
 keywords:
   - "AutoDoctor requirements"
   - "Windows prerequisites"
   - "pywin32 fastapi uvicorn"
+  - "Chrome PDF export"
 tags:
   - "requirements"
   - "installation"
@@ -18,7 +18,7 @@ categories:
   - "autodoctor"
 weight: 11
 date: "2026-03-15"
-lastmod: "2026-03-15"
+lastmod: "2026-04-17"
 draft: false
 params:
   summary: "Check these prerequisites before installing AutoDoctor to avoid startup and service issues."
@@ -36,7 +36,7 @@ params:
 - Windows 10 or Windows 11 (x64)
 - Local administrator permissions for install, service registration, and diagnostics/remediation
 - PowerShell 5.1+
-- Network access for optional connectivity checks and package installation
+- Network access for optional connectivity checks, update checks, and package installation
 
 ## Runtime Requirements by Installation Mode
 
@@ -57,6 +57,15 @@ python -m pip install pywin32 fastapi uvicorn
 {{< alert title="Note" color="info" >}}
 Installer validation checks both Python availability and package imports before using system-Python service mode.
 {{< /alert >}}
+
+## Optional Report Export Requirement
+
+AutoDoctor always creates HTML, JSON, and Markdown reports. PDF generation is optional and depends on a Chromium-based browser being available.
+
+- Google Chrome or Chromium installed locally
+- Optional override with `AUTO_DOCTOR_CHROMIUM_PATH` if Chrome is not in a standard path
+
+If Chrome is missing, the scan still completes. Only automatic PDF export is skipped.
 
 ## Build-Time Requirements (for Developers)
 
@@ -85,14 +94,19 @@ $PSVersionTable.PSVersion
 py -3 --version
 python --version
 python -c "import win32serviceutil,servicemanager,fastapi,uvicorn; print('ok')"
+
+# Optional PDF export check
+Get-Command chrome.exe -ErrorAction SilentlyContinue
 ```
 
 Expected outcome:
 
 - Admin check returns `True`
 - Python checks succeed only if you plan to use system-Python service mode
+- Chrome check resolves only if you want automatic PDF output during scans
 
 ## Next Steps
 
 - Continue to [Install with Inno Setup](./install-inno/)
 - For developers, review [Development Install with `.venv`](./install-dev-venv/)
+- After install, run [First Scan and Health Score](./first-scan-health-score/)

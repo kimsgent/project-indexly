@@ -2,6 +2,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 
 # Paths
 BASE_DIR = Path(__file__).parent.parent / "docs"
@@ -46,6 +47,31 @@ def _release_url(version: str, archived: bool = False) -> str:
     if archived:
         return f"/releases/Archive/v{version}/"
     return f"/releases/v{version}/"
+
+
+def move_release_page(source: Path, target: Path) -> bool:
+    """Move a generated release page safely across platforms."""
+    if not source.exists():
+        return True
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+
+    try:
+        source.replace(target)
+        return True
+    except OSError:
+        pass
+
+    try:
+        if target.exists():
+            target.unlink()
+
+        shutil.copy2(source, target)
+        source.unlink()
+        return True
+    except OSError as exc:
+        print(f"WARNING: Could not move {source} to {target}: {exc}")
+        return False
 
 
 def write_release_page(filepath: Path, version: str, date: str, changes: list[str]):
@@ -116,15 +142,22 @@ def main():
         archive_path = _release_path(version, archived=True)
 
         if version in active_versions:
+            moved_to_active = True
             if archive_path.exists() and not active_path.exists():
-                archive_path.rename(active_path)
-            write_release_page(active_path, version, v["date"], v["changes"])
+                moved_to_active = move_release_page(archive_path, active_path)
+            if moved_to_active or active_path.exists():
+                write_release_page(active_path, version, v["date"], v["changes"])
             if archive_path.exists() and active_path.exists():
-                archive_path.unlink()
+                try:
+                    archive_path.unlink()
+                except OSError as exc:
+                    print(f"WARNING: Could not remove archived page {archive_path}: {exc}")
         else:
+            moved_to_archive = True
             if active_path.exists() and not archive_path.exists():
-                active_path.rename(archive_path)
-            write_release_page(archive_path, version, v["date"], v["changes"])
+                moved_to_archive = move_release_page(active_path, archive_path)
+            if moved_to_archive or archive_path.exists():
+                write_release_page(archive_path, version, v["date"], v["changes"])
 
     # Generate master index
     index_content = [

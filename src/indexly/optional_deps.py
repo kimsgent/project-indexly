@@ -17,5 +17,5 @@ def require_extra_dependency(module_name: str, package_name: str, extra: str):
         raise RuntimeError(
             f"Feature requires optional dependency '{package_name}'. "
             f"Install with: pip install {package_name} "
-            f"(or install extras group '{extra}' via pip install indexly[{extra}])."
+            f"(or install Indexly with extras group '{extra}')."
         ) from exc

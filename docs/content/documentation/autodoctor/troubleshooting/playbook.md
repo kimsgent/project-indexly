@@ -3,7 +3,6 @@ title: "Troubleshooting Playbook"
 linkTitle: "Playbook"
 description: "Operational troubleshooting playbook for AutoDoctor covering API health, dashboard visibility, database writes, telemetry metadata, and common runtime drift."
 slug: "playbook"
-type: docs
 aliases:
   - "/docs/autodoctor/troubleshooting/guide/"
 keywords:
@@ -23,7 +22,7 @@ draft: false
 params:
   summary: "Follow this runbook to isolate failures quickly from service startup through DB writes and dashboard rendering."
   robots: "index,follow"
-  social_image: "/images/autodoctor-social-placeholder.png"
+  social_image: "/images/autodoctor-social.png"
 ---
 
 ## Who This Is For

@@ -3,7 +3,6 @@ title: "Remediation Catalog"
 linkTitle: "Remediation Catalog"
 description: "Reference catalog of AutoDoctor self-healing actions, execution context, side effects, and validation checks after remediation."
 slug: "remediation-catalog"
-type: docs
 aliases:
   - "/docs/autodoctor/reference/remediation/"
 keywords:

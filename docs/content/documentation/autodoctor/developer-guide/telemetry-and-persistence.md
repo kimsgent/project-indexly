@@ -1,9 +1,8 @@
 ---
 title: "Telemetry and Persistence"
 linkTitle: "Telemetry + DB"
-description: "How AutoDoctor builds telemetry, writes SQLite rows, stores metadata, and keeps API/dashboard reads consistent with current run context."
+description: "How AutoDoctor builds telemetry, writes SQLite rows, stores metadata, generates report artifacts, and keeps API/dashboard reads consistent with current run context."
 slug: "telemetry-and-persistence"
-type: docs
 aliases:
   - "/docs/autodoctor/developer-guide/persistence/"
 keywords:
@@ -18,7 +17,7 @@ categories:
   - "autodoctor"
 weight: 43
 date: "2026-03-15"
-lastmod: "2026-03-15"
+lastmod: "2026-04-17"
 draft: false
 params:
   summary: "Trace data from module output to telemetry JSON, SQLite tables, and dashboard/API endpoints."
@@ -36,6 +35,8 @@ params:
 1. `Invoke-AutoDoctorTelemetryCollection` builds telemetry object.
 2. JSON file is written as UTF-8 without BOM.
 3. `Write-AutoDoctorTelemetry` inserts module and system snapshot rows into SQLite.
+4. Baseline and trend tables are updated from the current snapshot.
+5. Report generation writes HTML, JSON, and Markdown outputs, plus PDF when Chromium is available.
 
 Key telemetry object sections:
 
@@ -60,10 +61,26 @@ Key telemetry object sections:
 
 - module-level status and keys into `telemetry_modules`
 - derived system snapshot into `system_info`
+- current trend snapshot into `telemetry_trends`
+- rolling baseline aggregates into `telemetry_baselines`
 
 ### Alerts
 
 `Write-AutoDoctorAlerts` maps root-cause detected issues into `alerts` with severity.
+
+## Report Read Models
+
+AutoDoctor writes multiple report artifacts that act as read-friendly views over the same run:
+
+- `AutoDoctor_Report.html`: interactive operational report
+- `AutoDoctor_Report.json`: structured summary used by `/api/dashboard/summary`
+- `AutoDoctor_Report.md`: lightweight text export
+- `AutoDoctor_Report.pdf`: optional print-friendly export
+
+This means the dashboard can combine:
+
+- SQLite for historical charts and counts
+- report JSON for high-level reasoning and grouped findings
 
 ## Metadata File for Dashboard
 
@@ -78,6 +95,8 @@ Fields:
 - `generated_time`
 
 The API endpoint `/api/dashboard/meta` reads this file and provides fallbacks if missing/corrupt.
+
+The endpoint `/api/dashboard/summary` combines this metadata with `AutoDoctor_Report.json`.
 
 ## Concurrency Notes
 
@@ -95,6 +114,8 @@ SELECT COUNT(*) FROM diagnostics;
 SELECT COUNT(*) FROM alerts;
 SELECT COUNT(*) FROM telemetry_modules;
 SELECT * FROM system_info ORDER BY timestamp DESC LIMIT 5;
+SELECT * FROM telemetry_trends ORDER BY timestamp DESC LIMIT 5;
+SELECT * FROM telemetry_baselines ORDER BY updated_at DESC LIMIT 8;
 ```
 
 ## Next Steps

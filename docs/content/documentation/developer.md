@@ -17,6 +17,8 @@ keywords: [
 ]
 cta: "Start building with Indexly"
 canonicalURL: "/en/documentation/developer-guide/"
+aliases:
+  - "/en/documentation/developer/"
 type: docs
 categories:
     - Development

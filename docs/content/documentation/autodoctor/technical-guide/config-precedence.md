@@ -3,7 +3,6 @@ title: "Configuration Precedence"
 linkTitle: "Config Precedence"
 description: "Detailed precedence rules for AutoDoctor settings across registry, INI files, environment variables, and defaults for both agent and API runtime."
 slug: "config-precedence"
-type: docs
 aliases:
   - "/docs/autodoctor/technical-guide/precedence/"
 keywords:

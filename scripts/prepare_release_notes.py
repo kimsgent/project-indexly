@@ -33,15 +33,14 @@ def main():
     release_file = Path(f"docs/content/releases/{version}.md")
     notes_file = Path("RELEASE_NOTES.md")
 
-    # Skip if release already exists
     if release_exists(version):
         print(
-            f"⚠️ Release {version} already exists on GitHub, skipping NOTES generation"
+            f"INFO: Release {version} already exists on GitHub; regenerating local "
+            "RELEASE_NOTES.md from repository content."
         )
-        return
 
     if release_file.exists():
-        print(f"✅ Using {release_file} for notes")
+        print(f"Using {release_file} for notes")
         lines = release_file.read_text(encoding="utf-8").splitlines()
         # Strip Hugo front matter
         in_frontmatter = False
@@ -53,9 +52,10 @@ def main():
             if not in_frontmatter:
                 filtered.append(line)
         notes_file.write_text("\n".join(filtered), encoding="utf-8")
+        print(f"Wrote {notes_file} from release page content")
         return
 
-    print("⚠️ Release file not found, fallback to changelog.json")
+    print("Release file not found, falling back to changelog.json")
     data_file = Path("docs/data/changelog.json")
     data = json.loads(data_file.read_text(encoding="utf-8"))
 
@@ -64,6 +64,7 @@ def main():
             content = [f"## Release {version} ({v['date']})", "### Changes"]
             content += [f"- {c}" for c in v["changes"]]
             notes_file.write_text("\n".join(content), encoding="utf-8")
+            print(f"Wrote {notes_file} from changelog.json")
             return
 
     # Fallback for dry-run or pre-release
@@ -76,10 +77,13 @@ def main():
             "- No real changes included",
         ]
         notes_file.write_text("\n".join(dummy_content), encoding="utf-8")
-        print(f"ℹ️ Dummy release notes created for {version}")
-    else:
-        notes_file.write_text(f"No release notes found for {version}", encoding="utf-8")
-        print(f"⚠️ No release notes found for {version}")
+        print(f"INFO: Dummy release notes created for {version}")
+        return
+
+    raise SystemExit(
+        f"ERROR: No release notes found for stable release {version}. "
+        "Add the version to docs/data/changelog.json before tagging."
+    )
 
 
 if __name__ == "__main__":

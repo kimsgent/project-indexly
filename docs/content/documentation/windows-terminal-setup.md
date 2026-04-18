@@ -20,6 +20,8 @@ keywords: [
 ]
 cta: "Transform your terminal experience"
 canonicalURL: "/en/documentation/customizing-windows-terminal/"
+aliases:
+  - "/en/documentation/windows-terminal-setup/"
 type: docs
 categories:
     - Platform Setup 

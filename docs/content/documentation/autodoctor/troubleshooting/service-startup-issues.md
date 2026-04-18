@@ -3,7 +3,6 @@ title: "Service Startup Issues"
 linkTitle: "Service Startup"
 description: "Troubleshooting guide for AutoDoctorAPI Windows service startup failures, timeouts, runtime mode mismatch, and interpreter-related install behavior."
 slug: "service-startup-issues"
-type: docs
 aliases:
   - "/docs/autodoctor/troubleshooting/service/"
 keywords:
@@ -23,7 +22,7 @@ draft: false
 params:
   summary: "Resolve startup timeouts and service-mode runtime mismatches with repeatable diagnostic checks."
   robots: "index,follow"
-  social_image: "/images/autodoctor-social-placeholder.png"
+  social_image: "/images/autodoctor-social.png"
 ---
 
 ## Who This Is For
