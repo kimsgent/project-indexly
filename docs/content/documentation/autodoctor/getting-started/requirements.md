@@ -3,6 +3,7 @@ title: "Requirements"
 linkTitle: "Requirements"
 description: "System and software requirements for AutoDoctor installation and operation, including installer mode, system-Python mode, development .venv mode, and optional PDF export support."
 slug: "requirements"
+type: docs
 aliases:
   - "/docs/autodoctor/getting-started/prerequisites/"
 keywords:

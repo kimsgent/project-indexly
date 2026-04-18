@@ -3,6 +3,7 @@ title: "Service Runtime Modes"
 linkTitle: "Service Modes"
 description: "Understand AutoDoctor API service runtime modes (bundled vs system Python), selection criteria, validation checks, and operational tradeoffs."
 slug: "service-runtime-modes"
+type: docs
 aliases:
   - "/docs/autodoctor/technical-guide/service-modes/"
 keywords:

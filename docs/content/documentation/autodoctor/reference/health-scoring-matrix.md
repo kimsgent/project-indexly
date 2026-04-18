@@ -3,6 +3,7 @@ title: "Health Scoring Matrix"
 linkTitle: "Scoring Matrix"
 description: "Detailed AutoDoctor health scoring reference showing direct rule thresholds, weighted finding penalties, historical-state inputs, and summary generation."
 slug: "health-scoring-matrix"
+type: docs
 aliases:
   - "/docs/autodoctor/reference/scoring/"
 keywords:

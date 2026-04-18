@@ -3,6 +3,7 @@ title: "API Reference"
 linkTitle: "API Reference"
 description: "Complete AutoDoctor API endpoint reference with paths, methods, purpose, and request/response examples for health, system, alerts, module telemetry, and dashboard summary data."
 slug: "api-reference"
+type: docs
 aliases:
   - "/docs/autodoctor/reference/api/"
 keywords:

@@ -3,6 +3,7 @@ title: "Getting Started"
 linkTitle: "Getting Started"
 description: "Installation and first-run guides for AutoDoctor, including requirements, installer modes, .venv development setup, and first health scan interpretation."
 slug: "getting-started"
+type: docs
 aliases:
   - "/docs/autodoctor/quickstart/"
 keywords:

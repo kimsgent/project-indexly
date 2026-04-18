@@ -3,6 +3,7 @@ title: "Telemetry and Persistence"
 linkTitle: "Telemetry + DB"
 description: "How AutoDoctor builds telemetry, writes SQLite rows, stores metadata, generates report artifacts, and keeps API/dashboard reads consistent with current run context."
 slug: "telemetry-and-persistence"
+type: docs
 aliases:
   - "/docs/autodoctor/developer-guide/persistence/"
 keywords:

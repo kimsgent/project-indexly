@@ -3,6 +3,7 @@ title: "Common Alerts and What to Do"
 linkTitle: "Common Alerts"
 description: "Interpret current AutoDoctor finding messages and severities quickly, then apply practical follow-up actions for each common issue pattern."
 slug: "common-alerts"
+type: docs
 aliases:
   - "/docs/autodoctor/user-guide/alerts/"
 keywords:

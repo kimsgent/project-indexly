@@ -3,6 +3,7 @@ title: "Configuration Reference"
 linkTitle: "Configuration"
 description: "Complete AutoDoctor configuration reference for environment variables, registry keys, INI settings, browser-based PDF export, and precedence rules across agent, API, dashboard, and installer."
 slug: "configuration-reference"
+type: docs
 aliases:
   - "/docs/autodoctor/reference/config/"
 keywords:

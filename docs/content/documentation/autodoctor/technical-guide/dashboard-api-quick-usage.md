@@ -3,6 +3,7 @@ title: "Dashboard and API Quick Usage"
 linkTitle: "Dashboard + API"
 description: "Quick operational guide for using the AutoDoctor dashboard and API endpoints for monitoring, scripting, validation workflows, and summary-driven automation."
 slug: "dashboard-api-quick-usage"
+type: docs
 aliases:
   - "/docs/autodoctor/technical-guide/api-dashboard/"
 keywords:

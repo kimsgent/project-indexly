@@ -3,6 +3,7 @@ title: "Generate and Share Support Bundle"
 linkTitle: "Support Bundle"
 description: "Collect AutoDoctor reports, logs, telemetry, metadata, and optional PDF output for troubleshooting and support handoff without losing execution context."
 slug: "support-bundle"
+type: docs
 aliases:
   - "/docs/autodoctor/getting-started/support/"
 keywords:

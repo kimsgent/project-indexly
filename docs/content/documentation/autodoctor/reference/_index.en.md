@@ -3,6 +3,7 @@ title: "Reference"
 linkTitle: "Reference"
 description: "Reference documentation for AutoDoctor APIs, environment variables, INI and registry settings, SQLite schema, remediation catalog, and health scoring."
 slug: "reference"
+type: docs
 aliases:
   - "/docs/autodoctor/reference-guide/"
 keywords:

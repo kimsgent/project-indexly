@@ -3,6 +3,7 @@ title: "First Scan and Health Score"
 linkTitle: "First Scan"
 description: "Run your first AutoDoctor scan, understand the current weighted health score model, and interpret findings, trends, and generated reports quickly."
 slug: "first-scan-health-score"
+type: docs
 aliases:
   - "/docs/autodoctor/getting-started/first-run/"
 keywords:

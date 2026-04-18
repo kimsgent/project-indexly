@@ -3,6 +3,7 @@ title: "Runtime Paths and Overrides"
 linkTitle: "Runtime Paths"
 description: "Understand where AutoDoctor stores DB, logs, reports, telemetry, metadata, and PDF/Markdown exports in development and installed modes, and how environment overrides change behavior."
 slug: "runtime-paths-and-overrides"
+type: docs
 aliases:
   - "/docs/autodoctor/technical-guide/paths/"
 keywords:

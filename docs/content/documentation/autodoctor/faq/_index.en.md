@@ -3,6 +3,7 @@ title: "FAQ"
 linkTitle: "FAQ"
 description: "Frequently asked questions for AutoDoctor installation paths, service behavior, API connectivity, dashboard access, and data location."
 slug: "faq"
+type: docs
 aliases:
   - "/docs/autodoctor/questions/"
 keywords:

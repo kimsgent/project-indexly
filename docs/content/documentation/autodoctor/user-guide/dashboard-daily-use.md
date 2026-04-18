@@ -3,6 +3,7 @@ title: "Dashboard Daily Use"
 linkTitle: "Dashboard Use"
 description: "Use the AutoDoctor dashboard effectively for daily monitoring of health trends, system metrics, alert counts, and summary reasoning with 5-second refresh intervals."
 slug: "dashboard-daily-use"
+type: docs
 aliases:
   - "/docs/autodoctor/user-guide/dashboard/"
 keywords:

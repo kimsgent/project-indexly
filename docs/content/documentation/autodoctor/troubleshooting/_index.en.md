@@ -3,6 +3,7 @@ title: "Troubleshooting"
 linkTitle: "Troubleshooting"
 description: "Step-by-step troubleshooting for AutoDoctor installation, service startup, API availability, dashboard loading, and telemetry/database issues."
 slug: "troubleshooting"
+type: docs
 aliases:
   - "/docs/autodoctor/help/"
 keywords:

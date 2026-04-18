@@ -3,6 +3,7 @@ title: "User Guide"
 linkTitle: "User Guide"
 description: "Daily usage documentation for AutoDoctor dashboard interpretation, alert handling, report printing, and practical decision-making after scans."
 slug: "user-guide"
+type: docs
 aliases:
   - "/docs/autodoctor/guide/"
 keywords:

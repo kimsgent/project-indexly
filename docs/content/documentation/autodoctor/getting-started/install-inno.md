@@ -3,6 +3,7 @@ title: "Install with Inno Setup"
 linkTitle: "Install with Inno"
 description: "Step-by-step AutoDoctor installation guide using the generated Inno Setup installer, including service mode selection and first-run validation."
 slug: "install-inno"
+type: docs
 aliases:
   - "/docs/autodoctor/getting-started/install/"
 keywords:

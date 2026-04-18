@@ -3,6 +3,7 @@ title: "Print and Export Reports"
 linkTitle: "Print + Export"
 description: "Use the AutoDoctor HTML report toolbar to print the full report, a summary view, or a single category, and understand how Markdown and PDF exports are produced."
 slug: "report-printing-export"
+type: docs
 aliases:
   - "/docs/autodoctor/user-guide/printing/"
 keywords:

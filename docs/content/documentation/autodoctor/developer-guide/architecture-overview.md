@@ -3,6 +3,7 @@ title: "Architecture Overview"
 linkTitle: "Architecture"
 description: "Technical architecture of AutoDoctor across agent, persistence, reporting, API service, and dashboard layers, including runtime boundaries and data flow."
 slug: "architecture-overview"
+type: docs
 aliases:
   - "/docs/autodoctor/developer-guide/architecture/"
 keywords:

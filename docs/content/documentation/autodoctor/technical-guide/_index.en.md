@@ -3,6 +3,7 @@ title: "Technical Guide"
 linkTitle: "Technical Guide"
 description: "Technical operations guide for runtime paths, config precedence, service modes, and API/dashboard integration in AutoDoctor."
 slug: "technical-guide"
+type: docs
 aliases:
   - "/docs/autodoctor/ops/"
 keywords:

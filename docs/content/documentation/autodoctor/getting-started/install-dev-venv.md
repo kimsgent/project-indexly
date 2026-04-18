@@ -3,6 +3,7 @@ title: "Development Install with .venv"
 linkTitle: "Dev Install (.venv)"
 description: "Set up AutoDoctor in a cloned repository using a Python virtual environment, build binaries, and understand development-mode file locations."
 slug: "install-dev-venv"
+type: docs
 aliases:
   - "/docs/autodoctor/getting-started/dev-install/"
 keywords:

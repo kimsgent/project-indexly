@@ -3,6 +3,7 @@ title: "Module Engine and Data Contracts"
 linkTitle: "Module Contracts"
 description: "Define and extend AutoDoctor PowerShell modules safely using the module engine contract, standardized result shape, and inter-module parameter model."
 slug: "module-engine-contracts"
+type: docs
 aliases:
   - "/docs/autodoctor/developer-guide/modules/"
 keywords:
