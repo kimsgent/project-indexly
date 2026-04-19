@@ -3,8 +3,8 @@ class Indexly < Formula
 
   desc "Local file indexing and search CLI with FTS5 and regex support"
   homepage "https://github.com/kimsgent/project-indexly"
-  url "https://github.com/kimsgent/project-indexly/archive/refs/tags/v2.0.1.tar.gz"
-  sha256 "1c44b75c810d8747c6558383a2b25379e08ed5ba736e045e63617a7b98bfd837"
+  url "https://github.com/kimsgent/project-indexly/archive/refs/tags/v2.0.2.tar.gz"
+  sha256 "b113916209eb6cbeac1a144c8c359bfa6cf66e3ef6a4acd8ca191ea4f50f713a"
   license "MIT"
 
   depends_on "libyaml"
@@ -61,8 +61,8 @@ class Indexly < Formula
   end
 
   resource "rapidfuzz" do
-    url "https://files.pythonhosted.org/packages/d3/28/9d808fe62375b9aab5ba92fa9b29371297b067c2790b2d7cda648b1e2f8d/rapidfuzz-3.14.3.tar.gz"
-    sha256 "2491937177868bc4b1e469087601d53f925e8d270ccc21e07404b4b5814b7b5f"
+    url "https://files.pythonhosted.org/packages/2c/21/ef6157213316e85790041254259907eb722e00b03480256c0545d98acd33/rapidfuzz-3.14.5.tar.gz"
+    sha256 "ba10ac57884ce82112f7ed910b67e7fb6072d8ef2c06e30dc63c0f604a112e0e"
   end
 
   resource "requests" do
