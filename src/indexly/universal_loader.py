@@ -22,6 +22,7 @@ from rich.console import Console
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, Callable, List
 from datetime import datetime
+from indexly.time_utils import utc_now_iso_z
 
 console = Console()
 
@@ -806,7 +807,7 @@ def detect_and_load(file_path: str | Path, args=None) -> Dict[str, Any]:
             "loader_used": "passthrough",
             "rows": 0,
             "cols": 0,
-            "loaded_at": datetime.utcnow().isoformat() + "Z",
+            "loaded_at": utc_now_iso_z(),
         }
         return {
             "file_type": file_type,
@@ -855,7 +856,7 @@ def detect_and_load(file_path: str | Path, args=None) -> Dict[str, Any]:
                 "loader_used": "loader:search_cache_detector",
                 "rows": len(raw),
                 "cols": 0,
-                "loaded_at": datetime.utcnow().isoformat() + "Z",
+                "loaded_at": utc_now_iso_z(),
                 "json_structure": "indexly_search_cache",
                 "json_mode": "search_cache",
             }
@@ -886,7 +887,7 @@ def detect_and_load(file_path: str | Path, args=None) -> Dict[str, Any]:
                 else (1 if isinstance(raw, dict) else 0)
             ),
             "cols": 0,
-            "loaded_at": datetime.utcnow().isoformat() + "Z",
+            "loaded_at": utc_now_iso_z(),
             "json_structure": struct_meta,
         }
 
@@ -920,7 +921,7 @@ def detect_and_load(file_path: str | Path, args=None) -> Dict[str, Any]:
             "loader_used": f"loader:{loader_fn.__name__}" if loader_fn else None,
             "rows": sum(tdf.shape[0] for tdf in dfs.values()) if dfs else 0,
             "cols": max(tdf.shape[1] for tdf in dfs.values()) if dfs else 0,
-            "loaded_at": datetime.utcnow().isoformat() + "Z",
+            "loaded_at": utc_now_iso_z(),
             "tables": list(dfs.keys()) if dfs else [],
         }
 
@@ -1007,7 +1008,7 @@ def detect_and_load(file_path: str | Path, args=None) -> Dict[str, Any]:
     except Exception:
         pass
 
-    metadata["loaded_at"] = datetime.utcnow().isoformat() + "Z"
+    metadata["loaded_at"] = utc_now_iso_z()
 
     return {
         "file_type": file_type,
@@ -1034,7 +1035,7 @@ def load_xml(path: Path) -> dict:
         "df": df_preview,
         "metadata": {
             "validated": df_preview is not None,
-            "loaded_at": datetime.utcnow().isoformat() + "Z",
+            "loaded_at": utc_now_iso_z(),
         },
     }
 

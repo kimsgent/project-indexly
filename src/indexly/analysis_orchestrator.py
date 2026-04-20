@@ -146,11 +146,14 @@ def analyze_file(args) -> Optional[AnalysisResult]:
     legacy_mode = False
 
     # --- Legacy passthrough
-    cmd = getattr(args, "command", "")
-    if cmd in {"analyze-csv", "analyze-json"}:
-        pipeline = run_csv_pipeline if cmd == "analyze-csv" else run_json_pipeline
-        df, df_stats, table_output = pipeline(file_path, args)
-        file_type = "csv" if cmd == "analyze-csv" else "json"
+    cmd = getattr(args, "subcommand", "") or getattr(args, "command", "")
+    # Keep CSV on the legacy shortcut because it already prepares tabular
+    # persistence metadata for the generic saver. JSON intentionally falls
+    # through to the orchestrator path below so NDJSON/record-list reroutes
+    # and JSON-aware persistence stay in one place.
+    if cmd == "analyze-csv":
+        df, df_stats, table_output = run_csv_pipeline(file_path, args)
+        file_type = "csv"
         legacy_mode = True
 
         # --- Persist legacy data

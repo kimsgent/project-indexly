@@ -4,8 +4,8 @@ from typing import Any, Dict, Tuple, Optional
 import pandas as pd
 import json
 import re
-from datetime import datetime
 from rich.console import Console
+from indexly.time_utils import utc_now_iso_z
 
 console = Console()
 
@@ -104,7 +104,7 @@ def _generate_yaml_md(data: Any, name: str = "YAML Data") -> str:
     else:
         lines.append(f"- Value: {data}")
 
-    lines.append(f"\n🕓 *Generated at:* {datetime.utcnow().isoformat()}Z")
+    lines.append(f"\n🕓 *Generated at:* {utc_now_iso_z()}")
     return "\n".join(lines)
 
 
@@ -161,7 +161,7 @@ def run_yaml_pipeline(
         metadata = {
             "rows": len(df),
             "cols": len(df.columns),
-            "loaded_at": datetime.utcnow().isoformat() + "Z",
+            "loaded_at": utc_now_iso_z(),
             "column_types": inferred_types,
         }
 

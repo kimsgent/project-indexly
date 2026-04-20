@@ -3,6 +3,7 @@ from datetime import datetime
 import re
 
 from indexly.filetype_utils import SUPPORTED_EXTENSIONS
+from indexly.time_utils import utc_now_iso_z
 from indexly.organize.log_schema import (
     empty_meta,
     empty_summary,
@@ -88,7 +89,7 @@ def organize_folder(
     dry_run: bool = False,
     precomputed_entries: list | None = None,
 ):
-    now = datetime.utcnow().isoformat() + "Z"
+    now = utc_now_iso_z()
 
     meta = empty_meta(
         root=str(root),
