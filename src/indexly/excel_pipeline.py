@@ -3,11 +3,11 @@ from pathlib import Path
 from typing import Tuple, Dict, Any, Optional, List
 import pandas as pd
 from rich.console import Console
-from datetime import datetime
 from io import StringIO
 
 from .datetime_utils import normalize_datetime_columns
 from .cleaning.auto_clean import auto_clean_csv
+from .time_utils import utc_now_iso_z
 
 
 console = Console()
@@ -37,7 +37,7 @@ def _generate_markdown_summary(df: pd.DataFrame, meta: Dict[str, Any]) -> str:
         "# 🧾 Excel File Summary",
         f"- **Rows:** {meta['rows']}",
         f"- **Columns:** {meta['cols']}",
-        f"- **Generated:** {datetime.utcnow().isoformat()}Z",
+        f"- **Generated:** {utc_now_iso_z()}",
         f"- **Sheets Loaded:** {', '.join(meta.get('sheets', []))}",
         "",
         "## 🧩 Columns Overview:",

@@ -1,6 +1,6 @@
 from pathlib import Path
 import re
-from datetime import datetime
+from indexly.time_utils import utc_now
 
 # -----------------------------
 # Heuristic keyword sets
@@ -83,7 +83,7 @@ def get_destination(
     ext = file_path.suffix.lower()
     variant = _extract_variant(profile)
 
-    year = _extract_year(fname) or str(datetime.utcnow().year)
+    year = _extract_year(fname) or str(utc_now().year)
 
     base = root / "Business"
 

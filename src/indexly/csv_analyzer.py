@@ -14,6 +14,7 @@ from fractions import Fraction
 from rich.console import Console
 from rich.progress import Progress
 from .optional_deps import require_extra_dependency
+from .time_utils import utc_now_iso_z
 
 console = Console()
 _ANALYSIS_RUNTIME = None
@@ -468,7 +469,7 @@ def export_results(
 
     elif export_format == "json":
         metadata = {
-            "analyzed_at": datetime.utcnow().isoformat() + "Z",
+            "analyzed_at": utc_now_iso_z(),
             "source_file": str(source_file) if source_file else None,
             "export_format": "json",
             "rows": len(df) if df is not None else None,
@@ -539,7 +540,7 @@ def export_results(
             )
 
         metadata = {
-            "analyzed_at": datetime.utcnow().isoformat() + "Z",
+            "analyzed_at": utc_now_iso_z(),
             "source_file": str(source_file) if source_file else None,
             "rows": len(df),
             "columns": len(df.columns),
@@ -656,7 +657,7 @@ def export_results(
             # 🧩 Prepare metadata
             table_name = Path(source_file).stem.replace("-", "_").replace(" ", "_")
             metadata = {
-                "analyzed_at": datetime.utcnow().isoformat() + "Z",
+                "analyzed_at": utc_now_iso_z(),
                 "source_file": str(source_file) if source_file else None,
                 "rows": len(df),
                 "columns": len(df.columns),
