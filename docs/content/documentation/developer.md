@@ -130,7 +130,7 @@ project-indexly/
 | CLI entry | `__main__.py`, `indexly.py`, `cli_utils.py` | Parses commands and routes to feature handlers |
 | Indexing/search | `fts_core.py`, `search_core.py`, `db_utils.py`, `db_pipeline.py` | FTS5 indexing, query execution, and persistence |
 | File extraction | `filetype_utils.py`, `extract_utils.py`, `optional_deps.py` | File-type routing and lazy optional imports |
-| Analysis | `csv_analyzer.py`, `analysis_orchestrator.py`, `analyze_json.py`, `analyze_db.py`, `inference/` | CSV/data profiling, structured-data analysis, and statistical inference |
+| Analysis | `csv_analyzer.py`, `analysis_orchestrator.py`, `analyze_json.py`, `analyze_db.py`, `autodoctor_*.py`, `inference/` | CSV/data profiling, structured-data analysis, AutoDoctor-aware summaries, and statistical inference |
 | Organization | `organize/organizer.py`, `organize/lister.py`, `organize/cli_wrapper.py` | Folder structuring, logs, lister views |
 | Compare | `compare/compare_engine.py`, `compare/file_compare.py`, `compare/folder_compare.py` | File/folder diff and similarity checks |
 | Backup/restore | `backup/cli.py`, `backup/restore.py`, `backup/compress.py` | Full/incremental backup and restore workflows |
@@ -254,6 +254,13 @@ When behavior changes, update docs in the same PR:
 - Packaging behavior: `scripts/generate_brew_formula.py` docs and examples
 
 Keep examples copy-paste ready and aligned with `indexly --help`.
+
+When you change AutoDoctor-related analysis behavior, update both sides of the documentation boundary:
+
+- Indexly-side operational usage: `docs/content/documentation/analyze-autodoctor-artifacts.md`
+- AutoDoctor-side artifact meaning: `docs/content/documentation/autodoctor/`
+
+This keeps “how to analyze the artifact” separate from “what the artifact means inside AutoDoctor,” which mirrors the current code separation.
 
 ---
 
