@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, Callable, List
 from datetime import datetime
 from indexly.time_utils import utc_now_iso_z
+from indexly.autodoctor_detect import detect_autodoctor_db, detect_autodoctor_json
 
 console = Console()
 
@@ -64,6 +65,27 @@ def _safe_read_text(path: str | Path, max_lines: int | None = None) -> Optional[
                         break
                     lines.append(line)
                 return "".join(lines)
+    except Exception:
+        return None
+
+
+def _safe_read_json_text(path: str | Path, max_lines: int | None = None) -> Optional[str]:
+    """
+    Safely read JSON text while tolerating optional UTF-8 BOM markers.
+    """
+    path_str = str(path)
+    opener = gzip.open if path_str.endswith(".gz") else open
+    try:
+        with opener(path_str, "rt", encoding="utf-8-sig") as fh:
+            if max_lines is None:
+                return fh.read()
+            lines = []
+            for _ in range(max_lines):
+                line = fh.readline()
+                if not line:
+                    break
+                lines.append(line)
+            return "".join(lines)
     except Exception:
         return None
 
@@ -122,7 +144,7 @@ def load_json_or_ndjson(
     path = Path(path)
     try:
         text_head = path.read_text(
-            encoding="utf-8",
+            encoding="utf-8-sig",
             errors="ignore",
         )
     except Exception:
@@ -266,7 +288,7 @@ def load_json_or_ndjson(
                     # try safe full parse
                     try:
                         full = json.loads(
-                            path.read_text(encoding="utf-8", errors="ignore")
+                            path.read_text(encoding="utf-8-sig", errors="ignore")
                         )
                         if (
                             isinstance(full, dict)
@@ -305,7 +327,7 @@ def load_json_or_ndjson(
         if file_size is not None and file_size <= size_threshold:
             # safe to fully parse
             try:
-                full = json.loads(path.read_text(encoding="utf-8", errors="ignore"))
+                full = json.loads(path.read_text(encoding="utf-8-sig", errors="ignore"))
                 if isinstance(full, dict) and "data" in full and "columns" in full:
                     data_len = (
                         len(full.get("data", []))
@@ -338,7 +360,7 @@ def load_json_or_ndjson(
         if columns is None:
             # extraction failed — fall back to standard full parse attempt (may fail)
             try:
-                parsed = json.loads(path.read_text(encoding="utf-8", errors="ignore"))
+                parsed = json.loads(path.read_text(encoding="utf-8-sig", errors="ignore"))
                 # continue to usual classification below
                 parsed_obj = parsed
             except Exception:
@@ -370,7 +392,7 @@ def load_json_or_ndjson(
     # --- Not Socrata hint or extraction failed: try regular full parse / classify ---
     # Try to fully parse (this is the previous behavior)
     try:
-        parsed = json.loads(path.read_text(encoding="utf-8", errors="ignore"))
+        parsed = json.loads(path.read_text(encoding="utf-8-sig", errors="ignore"))
     except json.JSONDecodeError:
         # try NDJSON fallback
         lines = [line.strip() for line in text_head.splitlines() if line.strip()]
@@ -758,7 +780,7 @@ def detect_file_type(path: Path) -> str:
     # JSON / NDJSON / generic JSON detection
 
     if ext == ".json" or name.endswith(".json.gz") or ext == ".ndjson":
-        text_sample = _safe_read_text(path, max_lines=10)  # optional sample
+        text_sample = _safe_read_json_text(path, max_lines=10)  # optional sample
         if not text_sample:
             return "json"
 
@@ -890,6 +912,9 @@ def detect_and_load(file_path: str | Path, args=None) -> Dict[str, Any]:
             "loaded_at": utc_now_iso_z(),
             "json_structure": struct_meta,
         }
+        # Keep generic JSON metadata intact and add a domain hint only when the
+        # payload matches the AutoDoctor report fingerprint.
+        metadata.update(detect_autodoctor_json(raw) or {})
 
         return {
             "file_type": "json",
@@ -924,6 +949,9 @@ def detect_and_load(file_path: str | Path, args=None) -> Dict[str, Any]:
             "loaded_at": utc_now_iso_z(),
             "tables": list(dfs.keys()) if dfs else [],
         }
+        # SQLite detection stays schema-based so the loader remains generic and
+        # reusable for non-AutoDoctor databases.
+        metadata.update(detect_autodoctor_db(raw) or {})
 
         return {
             "file_type": file_type,
