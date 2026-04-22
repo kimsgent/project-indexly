@@ -143,6 +143,14 @@ def _lazy_analyze_db(args):
     return analyze_db(args)
 
 
+def _lazy_analyze_autodoctor(args):
+    try:
+        from .autodoctor_analyzer import analyze_autodoctor
+    except ModuleNotFoundError as exc:
+        raise SystemExit(_missing_dependency_message(exc, "analysis")) from exc
+    return analyze_autodoctor(args)
+
+
 def _lazy_clear_cleaned_data(args):
     try:
         from .clean_csv import clear_cleaned_data
@@ -826,6 +834,74 @@ def build_parser():
         "--all", action="store_true", help="Remove all cleaned datasets"
     )
     clear_parser.set_defaults(func=_lazy_clear_cleaned_data)
+
+    # -------------------------------
+    # Analyze AutoDoctor artifacts
+    # -------------------------------
+    analyze_autodoctor_parser = subparsers.add_parser(
+        "analyze-autodoctor",
+        help="Analyze AutoDoctor JSON reports or SQLite databases",
+    )
+    analyze_autodoctor_parser.add_argument(
+        "path",
+        help="Path to AutoDoctor_Report.json or autodoctor.db",
+    )
+    analyze_autodoctor_parser.add_argument(
+        "--source",
+        choices=["auto", "json", "db"],
+        default="auto",
+        help="Force the input type instead of auto-detecting it",
+    )
+    analyze_autodoctor_parser.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Render only the compact operational summary",
+    )
+    analyze_autodoctor_parser.add_argument(
+        "--full",
+        action="store_true",
+        help="Render all supported AutoDoctor summary sections",
+    )
+    analyze_autodoctor_parser.add_argument(
+        "--sections",
+        nargs="+",
+        choices=[
+            "overview",
+            "system",
+            "findings",
+            "inventory",
+            "trends",
+            "remediation",
+            "data_quality",
+        ],
+        help="Limit JSON analysis to selected sections",
+    )
+    analyze_autodoctor_parser.add_argument(
+        "--top-n",
+        type=int,
+        default=5,
+        help="Maximum number of rows/items per rendered summary section",
+    )
+    analyze_autodoctor_parser.add_argument(
+        "--history-limit",
+        type=int,
+        default=100,
+        help="Maximum number of historical DB rows to inspect for trends",
+    )
+    analyze_autodoctor_parser.add_argument(
+        "--show-summary",
+        action="store_true",
+        help="Render the summary to the terminal",
+    )
+    analyze_autodoctor_parser.add_argument(
+        "--no-persist",
+        action="store_true",
+        help="Disable saving AutoDoctor summaries to the database",
+    )
+    analyze_autodoctor_parser.set_defaults(
+        func=_lazy_analyze_autodoctor,
+        show_summary=True,
+    )
 
     # -------------------------------
     # Analyze JSON

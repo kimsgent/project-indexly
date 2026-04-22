@@ -14,6 +14,7 @@ from .export_utils import save_json, save_markdown, save_html
 from .relation_detector import build_relation_graph
 from .table_profiler import _profile_table_worker
 from .indexly_detector import build_indexly_block
+from .autodoctor_detect import detect_autodoctor_db
 
 console = Console()
 
@@ -63,6 +64,20 @@ def analyze_db(args):
     # 1) Inspect DB
     # --------------------------------------------------------------
     inspect_res = inspect_db(db_path)
+    autodoctor_meta = detect_autodoctor_db(
+        {
+            "tables": inspect_res.get("tables", []),
+            "schemas": inspect_res.get("schemas", {}),
+        }
+    )
+    if autodoctor_meta:
+        console.print(
+            "[cyan]🩺 Detected AutoDoctor SQLite database — using specialized AutoDoctor analysis.[/cyan]"
+        )
+        from .autodoctor_db_pipeline import analyze_autodoctor_db_file
+
+        analyze_autodoctor_db_file(Path(db_path), args=args, verbose=True)
+        return
 
     normalized_schemas = {
         tbl: normalize_schema(raw_schema, table_name=tbl)

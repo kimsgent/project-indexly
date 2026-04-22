@@ -5,7 +5,7 @@ from typing import Tuple, Dict, Any, Optional
 import pandas as pd
 import json
 from rich.console import Console
-from .universal_loader import _safe_read_text
+from .universal_loader import _safe_read_json_text
 from .visualize_json import (
     summarize_json_dataframe,
     json_preview,
@@ -162,7 +162,7 @@ def run_json_pipeline(
     prefetched_raw_json = None
     if df is None:
         try:
-            with open(path_obj, "r", encoding="utf-8") as f:
+            with open(path_obj, "r", encoding="utf-8-sig") as f:
                 raw_json = json.load(f)
             prefetched_raw_json = raw_json
 
@@ -200,7 +200,7 @@ def run_json_pipeline(
             raw_json = prefetched_raw_json
         else:
             # IMPORTANT: use safe-read with max_lines=None to fully read JSON files
-            text = _safe_read_text(path_obj, max_lines=None)
+            text = _safe_read_json_text(path_obj, max_lines=None)
             if text is None:
                 if verbose:
                     console.print(f"[red]❌ Could not read JSON: {path_obj}[/red]")
@@ -362,7 +362,7 @@ def run_json_generic_pipeline(
     # -------------------------------------------------------------------------
     if df is None and raw is None:
         try:
-            with open(path_obj, "r", encoding="utf-8") as f:
+            with open(path_obj, "r", encoding="utf-8-sig") as f:
                 raw_json = json.load(f)
             if is_search_cache_json(raw_json):
                 if verbose:
@@ -383,7 +383,7 @@ def run_json_generic_pipeline(
     should_load = df is None or getattr(df, "_from_orchestrator", False) is False
     raw_json = raw  # <-- use raw if provided
     if should_load and raw_json is None:
-        text = _safe_read_text(path_obj, max_lines=None)
+        text = _safe_read_json_text(path_obj, max_lines=None)
         if text is None:
             console.print(f"[red]❌ Could not read JSON: {path_obj}[/red]")
             return None, None, None
