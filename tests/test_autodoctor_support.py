@@ -8,8 +8,9 @@ from types import SimpleNamespace
 import pandas as pd
 
 from indexly.analyze_utils import validate_json_content
-from indexly.autodoctor_detect import detect_autodoctor_db
+from indexly.autodoctor_detect import detect_autodoctor_db, detect_autodoctor_json
 from indexly.autodoctor_analyzer import analyze_autodoctor
+from indexly.autodoctor_summary import build_autodoctor_json_summary
 from indexly.cli_utils import build_parser
 from indexly.universal_loader import detect_and_load
 
@@ -23,6 +24,64 @@ AUTODOCTOR_JSON_SAMPLE = {
     "HealthScore": {"Numeric": 92, "Display": "92 / 100"},
     "AutomaticRemediation": {"Status": "Completed"},
     "ExecutionStats": {"ScriptRuntimeSeconds": 12.5},
+}
+
+AUTODOCTOR_TELEMETRY_SAMPLE = {
+    "RunID": "20260416-081258-BTNB05",
+    "GeneratedAt": "2026-04-16T08:32:47.8857104+02:00",
+    "Hostname": "BTNB05",
+    "User": "Nango Franklin",
+    "AutoDoctorVersion": "1.2.0",
+    "ExecutionStats": {
+        "ModuleCount": 17,
+        "ScriptRuntimeSeconds": 1188.56,
+        "ModulesSucceeded": 17,
+        "ModulesFailed": 0,
+    },
+    "DatabaseSync": {
+        "LastWriteUTC": "2026-04-16T06:32:47.9557223Z",
+        "Error": None,
+        "DiagnosticsWritten": True,
+        "AlertsWritten": True,
+        "Enabled": True,
+    },
+    "System": {
+        "Timestamp": "2026-04-16T08:32:47.8857104+02:00",
+        "OS": {
+            "Caption": "Microsoft Windows 11 Pro",
+            "LastBootUp": "/Date(1775543269500)/",
+            "Architecture": "64-Bit",
+            "Build": "26100",
+            "Version": "10.0.26100",
+        },
+        "Environment": {
+            "Manufacturer": "LENOVO",
+            "Model": "20E2001JGE",
+            "Type": "PhysicalMachine",
+        },
+        "CPU": {"CurrentLoad": 26},
+        "Memory": {"TotalGB": 31.7, "FreeGB": 17.09},
+        "Disk": [
+            {
+                "DeviceID": "C:",
+                "SizeGB": 416.42,
+                "FreeSpaceGB": 198.77,
+                "PercentFree": 47.7,
+            }
+        ],
+        "Network": {
+            "Description": "Intel(R) Ethernet Connection",
+            "DHCPEnabled": False,
+            "IPAddresses": ["192.168.77.194"],
+        },
+    },
+    "Modules": [
+        {
+            "ModuleName": "CPU Analysis",
+            "Status": "Success",
+            "ResultKeys": ["CurrentCPULoadPercent"],
+        }
+    ],
 }
 
 
@@ -59,6 +118,14 @@ def test_detect_and_load_marks_autodoctor_json(tmp_path):
     assert result is not None
     assert result["metadata"]["analysis_profile"] == "autodoctor"
     assert result["metadata"]["autodoctor_kind"] == "json"
+
+
+def test_detect_autodoctor_json_marks_telemetry_variant():
+    detection = detect_autodoctor_json(AUTODOCTOR_TELEMETRY_SAMPLE)
+
+    assert detection is not None
+    assert detection["analysis_profile"] == "autodoctor"
+    assert detection["autodoctor_variant"] == "telemetry"
 
 
 def test_detect_autodoctor_db_supports_tuple_schema():
@@ -236,6 +303,34 @@ def test_build_parser_supports_analyze_autodoctor():
     assert args.path == "AutoDoctor_Report.json"
     assert args.source == "auto"
     assert args.top_n == 5
+
+
+def test_build_autodoctor_json_summary_uses_fallback_identity_and_formats_timestamp():
+    report = {
+        **AUTODOCTOR_JSON_SAMPLE,
+        "AutomaticRemediation": {
+            "Status": "Completed",
+            "Timestamp": "/Date(1776321167385)/",
+        },
+    }
+
+    summary = build_autodoctor_json_summary(report)
+
+    assert summary["autodoctor_variant"] == "report"
+    assert summary["host_name"] is None
+    assert summary["identity"] == "Windows 11 Pro"
+    assert summary["generated_time"] != "/Date(1776321167385)/"
+    assert "2026" in str(summary["generated_time"])
+
+
+def test_build_autodoctor_json_summary_prefers_telemetry_hostname():
+    summary = build_autodoctor_json_summary(AUTODOCTOR_TELEMETRY_SAMPLE)
+
+    assert summary["autodoctor_variant"] == "telemetry"
+    assert summary["host_name"] == "BTNB05"
+    assert summary["identity"] == "BTNB05"
+    assert summary["generated_time"] != AUTODOCTOR_TELEMETRY_SAMPLE["GeneratedAt"]
+    assert summary["overview"]["module_count"] == 17
 
 
 def test_analyze_autodoctor_persists_json_by_default(monkeypatch, tmp_path):

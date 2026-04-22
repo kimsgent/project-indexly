@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 
-AUTODOCTOR_JSON_KEY_WEIGHTS = {
+AUTODOCTOR_REPORT_JSON_KEY_WEIGHTS = {
     "RootCauseDetails": 3,
     "HealthScore": 3,
     "AutomaticRemediation": 2,
@@ -15,6 +15,17 @@ AUTODOCTOR_JSON_KEY_WEIGHTS = {
     "Network": 1,
     "InstalledSoftware": 1,
     "Drivers": 1,
+}
+
+AUTODOCTOR_TELEMETRY_JSON_KEY_WEIGHTS = {
+    "RunID": 3,
+    "GeneratedAt": 3,
+    "Hostname": 2,
+    "ExecutionStats": 2,
+    "DatabaseSync": 2,
+    "System": 2,
+    "Modules": 2,
+    "AutoDoctorVersion": 1,
 }
 
 AUTODOCTOR_DB_SIGNATURE = {
@@ -33,23 +44,39 @@ AUTODOCTOR_DB_SIGNATURE = {
 
 def detect_autodoctor_json(raw: Any) -> dict[str, Any] | None:
     """
-    Detect AutoDoctor's structured report JSON using a weighted top-level key
-    fingerprint rather than a brittle exact schema match.
+    Detect AutoDoctor's structured JSON outputs using weighted top-level key
+    fingerprints for both report JSON and telemetry JSON.
     """
     if not isinstance(raw, dict):
         return None
 
     keys = set(raw.keys())
-    matched_keys = sorted(k for k in AUTODOCTOR_JSON_KEY_WEIGHTS if k in keys)
-    score = sum(AUTODOCTOR_JSON_KEY_WEIGHTS[k] for k in matched_keys)
+    report_matches = sorted(k for k in AUTODOCTOR_REPORT_JSON_KEY_WEIGHTS if k in keys)
+    telemetry_matches = sorted(
+        k for k in AUTODOCTOR_TELEMETRY_JSON_KEY_WEIGHTS if k in keys
+    )
+    report_score = sum(AUTODOCTOR_REPORT_JSON_KEY_WEIGHTS[k] for k in report_matches)
+    telemetry_score = sum(
+        AUTODOCTOR_TELEMETRY_JSON_KEY_WEIGHTS[k] for k in telemetry_matches
+    )
 
-    if score < 7:
+    if report_score < 7 and telemetry_score < 8:
         return None
+
+    if telemetry_score > report_score:
+        variant = "telemetry"
+        matched_keys = telemetry_matches
+        score = telemetry_score
+    else:
+        variant = "report"
+        matched_keys = report_matches
+        score = report_score
 
     confidence = "high" if score >= 10 else "medium"
     return {
         "analysis_profile": "autodoctor",
         "autodoctor_kind": "json",
+        "autodoctor_variant": variant,
         "autodoctor_confidence": confidence,
         "autodoctor_score": score,
         "matched_keys": matched_keys,
