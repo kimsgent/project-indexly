@@ -58,6 +58,7 @@ This documentation works best when you enter through the path that matches your 
 
 - New user: [Install Indexly](indexly-installation.md)
 - Daily workflows: [Usage Guide](usage.md)
+- Quick answers: [FAQ](faq.md)
 - Structured files and databases: [Data Analysis Overview](data-analysis-overview.md)
 - Configuration and filtering: [Configuration](config.md)
 - Engineering and contributions: [Developer Guide](developer.md)
@@ -80,6 +81,7 @@ flowchart LR
 | --- | --- |
 | Install and verify on Windows, macOS, Linux | [Install Indexly](indexly-installation.md) |
 | Learn command workflows end-to-end | [Usage Guide](usage.md) |
+| Get short answers for setup, paths, file support, and troubleshooting | [FAQ](faq.md) |
 | Choose the right analysis command and pipeline | [Data Analysis Overview](data-analysis-overview.md) |
 | Analyze AutoDoctor report JSON, telemetry JSON, or SQLite output | [Analyze AutoDoctor Artifacts](analyze-autodoctor-artifacts.md) |
 | Improve indexing quality and ignore rules | [Ignore Rules & Index Hygiene](ignore-rules-index-hygiene.md) |

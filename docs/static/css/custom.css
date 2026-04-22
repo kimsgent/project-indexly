@@ -538,3 +538,203 @@ body.modal-open {
   text-align: left;
 }
 
+/* -------------------------
+   FAQ and Docs Callouts
+---------------------------- */
+
+:root {
+  --indexly-faq-surface: var(--bs-body-bg);
+  --indexly-faq-surface-muted: var(--bs-tertiary-bg, #f8f9fa);
+  --indexly-faq-border: var(--bs-border-color, rgba(0, 0, 0, 0.15));
+  --indexly-faq-text: var(--bs-body-color);
+  --indexly-faq-text-muted: var(--bs-secondary-color, #6c757d);
+  --indexly-faq-heading: var(--bs-emphasis-color, var(--bs-body-color));
+  --indexly-faq-link: var(--bs-link-color, #0d6efd);
+  --indexly-faq-link-hover: var(--bs-link-hover-color, #0a58ca);
+  --indexly-faq-shadow: 0 14px 32px rgba(15, 23, 42, 0.08);
+}
+
+.indexly-faq {
+  margin: 2rem 0 3rem;
+  color: var(--indexly-faq-text);
+}
+
+.indexly-faq__hero,
+.indexly-doc-callout {
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  padding: 1.25rem;
+  margin-bottom: 1.5rem;
+  border: 1px solid var(--indexly-faq-border);
+  border-radius: 1rem;
+  background: linear-gradient(180deg, var(--indexly-faq-surface), var(--indexly-faq-surface-muted));
+  box-shadow: var(--indexly-faq-shadow);
+}
+
+.indexly-faq__eyebrow,
+.indexly-doc-callout__eyebrow {
+  margin: 0 0 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--indexly-faq-text-muted);
+}
+
+.indexly-faq__title,
+.indexly-doc-callout__title,
+.indexly-faq__section-title,
+.indexly-faq__toc-title {
+  color: var(--indexly-faq-heading);
+}
+
+.indexly-faq__title,
+.indexly-doc-callout__title {
+  margin: 0 0 0.5rem;
+}
+
+.indexly-faq__lede,
+.indexly-doc-callout__copy,
+.indexly-faq__section-copy {
+  margin: 0;
+  color: var(--indexly-faq-text-muted);
+  max-width: 68ch;
+}
+
+.indexly-faq__actions,
+.indexly-doc-callout__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.indexly-faq__toc {
+  margin-bottom: 1.5rem;
+  padding: 1rem 1.25rem;
+  border-left: 4px solid var(--bs-primary, #0d6efd);
+  border-radius: 0.75rem;
+  background: var(--indexly-faq-surface-muted);
+}
+
+.indexly-faq__toc-title {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+}
+
+.indexly-faq__toc-list,
+.indexly-faq__links-list {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.indexly-faq__toc-list li,
+.indexly-faq__links-list li {
+  margin-bottom: 0.35rem;
+}
+
+.indexly-faq__toc-link,
+.indexly-faq__links a {
+  color: var(--indexly-faq-link);
+  text-decoration: none;
+}
+
+.indexly-faq__toc-link:hover,
+.indexly-faq__toc-link:focus,
+.indexly-faq__links a:hover,
+.indexly-faq__links a:focus {
+  color: var(--indexly-faq-link-hover);
+  text-decoration: underline;
+}
+
+.indexly-faq__section {
+  margin-bottom: 1.75rem;
+}
+
+.indexly-faq__section-header {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 0.9rem;
+}
+
+.indexly-faq__section-title {
+  margin: 0 0 0.25rem;
+}
+
+.indexly-faq__count {
+  flex-shrink: 0;
+  padding: 0.3rem 0.65rem;
+  border-radius: 999px;
+  background: var(--indexly-faq-surface-muted);
+  color: var(--indexly-faq-text-muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.indexly-faq__accordion .accordion-item {
+  overflow: hidden;
+  margin-bottom: 0.85rem;
+  border: 1px solid var(--indexly-faq-border);
+  border-radius: 0.85rem;
+  background: var(--indexly-faq-surface);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.04);
+}
+
+.indexly-faq__accordion .accordion-button {
+  color: var(--indexly-faq-heading);
+  background: var(--indexly-faq-surface);
+  font-weight: 600;
+}
+
+.indexly-faq__accordion .accordion-button:not(.collapsed) {
+  color: var(--indexly-faq-heading);
+  background: var(--indexly-faq-surface-muted);
+  box-shadow: inset 0 -1px 0 var(--indexly-faq-border);
+}
+
+.indexly-faq__accordion .accordion-button:focus {
+  box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.2);
+}
+
+.indexly-faq__accordion .accordion-body {
+  color: var(--indexly-faq-text);
+  background: var(--indexly-faq-surface);
+}
+
+.indexly-faq__answer > :last-child,
+.indexly-faq__links > :last-child {
+  margin-bottom: 0;
+}
+
+.indexly-faq__links {
+  margin-top: 1rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--indexly-faq-border);
+}
+
+.indexly-faq__links-label {
+  margin: 0 0 0.45rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--indexly-faq-text-muted);
+}
+
+@media (max-width: 767.98px) {
+  .indexly-faq__hero,
+  .indexly-doc-callout,
+  .indexly-faq__section-header {
+    flex-direction: column;
+  }
+
+  .indexly-faq__actions,
+  .indexly-doc-callout__actions {
+    width: 100%;
+  }
+}
+

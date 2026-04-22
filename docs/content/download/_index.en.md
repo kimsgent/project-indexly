@@ -36,4 +36,16 @@ Get the latest version of Project Indexly:
 
 ## FAQ
 
-{{< faq >}}
+<div class="indexly-doc-callout">
+  <div>
+    <p class="indexly-doc-callout__eyebrow">Support</p>
+    <h3 class="indexly-doc-callout__title">Need help before or after installing?</h3>
+    <p class="indexly-doc-callout__copy">
+      The full FAQ covers installation issues, runtime file locations, supported formats, troubleshooting, and performance guidance.
+    </p>
+  </div>
+  <div class="indexly-doc-callout__actions">
+    <a href="/en/documentation/faq/" class="btn btn-primary btn-sm">Open FAQ</a>
+    <a href="/en/documentation/indexly-installation/" class="btn btn-outline-secondary btn-sm">Installation Guide</a>
+  </div>
+</div>
