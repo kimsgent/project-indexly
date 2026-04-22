@@ -9,12 +9,14 @@ from rich.console import Console
 from rich.table import Table
 
 from .autodoctor_summary import build_autodoctor_json_summary
+from .universal_loader import _safe_read_json_text
 
 console = Console()
 
 
 def _summary_preview_dataframe(summary: dict[str, Any]) -> pd.DataFrame:
     rows = [
+        {"section": "identity", "metric": "display", "value": summary.get("identity")},
         {"section": "health", "metric": "numeric", "value": summary.get("health", {}).get("numeric")},
         {"section": "health", "metric": "display", "value": summary.get("health", {}).get("display")},
         {"section": "health", "metric": "main_concern", "value": summary.get("health", {}).get("main_concern")},
@@ -27,7 +29,13 @@ def _summary_preview_dataframe(summary: dict[str, Any]) -> pd.DataFrame:
 
 
 def render_autodoctor_json_summary(summary: dict[str, Any], *, top_n: int = 5) -> None:
-    console.print("\n[bold cyan]🩺 AutoDoctor Report Summary[/bold cyan]")
+    variant = summary.get("autodoctor_variant") or "report"
+    title = (
+        "🩺 AutoDoctor Telemetry Summary"
+        if variant == "telemetry"
+        else "🩺 AutoDoctor Report Summary"
+    )
+    console.print(f"\n[bold cyan]{title}[/bold cyan]")
 
     health = summary.get("health", {})
     overview = summary.get("overview", {})
@@ -36,16 +44,21 @@ def render_autodoctor_json_summary(summary: dict[str, Any], *, top_n: int = 5) -
     inventory = summary.get("inventory", {})
     trends = summary.get("trends", {})
     remediation = summary.get("remediation", {})
+    database_sync = summary.get("database_sync", {})
 
     header = Table(show_header=False, box=None)
     header.add_column("field", style="bold cyan")
     header.add_column("value")
-    header.add_row("Host", str(summary.get("host_name") or "Unknown"))
+    header.add_row("Identity", str(summary.get("identity") or summary.get("host_name") or "Unknown"))
     header.add_row("Health", str(health.get("display") or health.get("numeric") or "Unknown"))
     header.add_row("Main concern", str(health.get("main_concern") or "Unknown"))
     header.add_row("Root cause", str(health.get("summary") or "No summary available"))
     header.add_row("Generated", str(summary.get("generated_time") or "Unknown"))
     header.add_row("Runtime (s)", str(overview.get("runtime_seconds") or "Unknown"))
+    if overview.get("module_success_text"):
+        header.add_row("Modules", str(overview.get("module_success_text")))
+    if database_sync.get("status"):
+        header.add_row("DB sync", str(database_sync.get("status")))
     console.print(header)
 
     summary_only = bool(summary.get("render_options", {}).get("summary_only"))
@@ -57,7 +70,10 @@ def render_autodoctor_json_summary(summary: dict[str, Any], *, top_n: int = 5) -
     system_table.add_row("Version", str(overview.get("windows_version") or "Unknown"))
     system_table.add_row("CPU load %", str(system.get("cpu_load_percent") or "Unknown"))
     system_table.add_row("Memory used %", str(system.get("memory_used_percent") or "Unknown"))
-    system_table.add_row("Network latency ms", str(system.get("network_latency_ms") or "Unknown"))
+    if system.get("network_latency_ms") is not None:
+        system_table.add_row("Network latency ms", str(system.get("network_latency_ms")))
+    elif system.get("network_status"):
+        system_table.add_row("Network", str(system.get("network_status")))
     fullest_disk = system.get("fullest_disk") or {}
     if fullest_disk:
         disk_text = (
@@ -81,6 +97,42 @@ def render_autodoctor_json_summary(summary: dict[str, Any], *, top_n: int = 5) -
             )
         console.print(finding_table)
 
+    if overview.get("run_id") or overview.get("user") or overview.get("autodoctor_version"):
+        execution_table = Table(title="Execution Context", show_lines=False)
+        execution_table.add_column("Field")
+        execution_table.add_column("Value")
+        if overview.get("run_id"):
+            execution_table.add_row("Run ID", str(overview.get("run_id")))
+        if overview.get("user"):
+            execution_table.add_row("User", str(overview.get("user")))
+        if overview.get("autodoctor_version"):
+            execution_table.add_row("Version", str(overview.get("autodoctor_version")))
+        if overview.get("module_count") is not None:
+            execution_table.add_row("Module count", str(overview.get("module_count")))
+        if overview.get("modules_failed") is not None:
+            execution_table.add_row("Modules failed", str(overview.get("modules_failed")))
+        console.print(execution_table)
+
+    if database_sync:
+        sync_table = Table(title="Database Sync", show_lines=False)
+        sync_table.add_column("Field")
+        sync_table.add_column("Value")
+        sync_table.add_row("Status", str(database_sync.get("status") or "Unknown"))
+        sync_table.add_row("Enabled", str(database_sync.get("enabled") or "Unknown"))
+        sync_table.add_row(
+            "Diagnostics written",
+            str(database_sync.get("diagnostics_written") or False),
+        )
+        sync_table.add_row(
+            "Alerts written",
+            str(database_sync.get("alerts_written") or False),
+        )
+        if database_sync.get("last_write"):
+            sync_table.add_row("Last write", str(database_sync.get("last_write")))
+        if database_sync.get("error"):
+            sync_table.add_row("Error", str(database_sync.get("error")))
+        console.print(sync_table)
+
     if summary_only:
         return
 
@@ -93,34 +145,54 @@ def render_autodoctor_json_summary(summary: dict[str, Any], *, top_n: int = 5) -
             process_table.add_row(str(proc.get("ProcessName") or "Unknown"), str(proc.get("CPU") or ""))
         console.print(process_table)
 
-    inventory_table = Table(title="Inventory Highlights", show_lines=False)
-    inventory_table.add_column("Metric")
-    inventory_table.add_column("Value")
-    inventory_table.add_row(
-        "Installed software",
-        str(inventory.get("software", {}).get("count") or 0),
+    has_report_inventory = any(
+        [
+            inventory.get("software", {}).get("count"),
+            inventory.get("drivers", {}).get("count"),
+            inventory.get("startup_program_count"),
+            inventory.get("network_adapter_count"),
+        ]
     )
-    inventory_table.add_row(
-        "Software blank rows",
-        str(inventory.get("software", {}).get("blank_rows") or 0),
-    )
-    inventory_table.add_row(
-        "Drivers",
-        str(inventory.get("drivers", {}).get("count") or 0),
-    )
-    inventory_table.add_row(
-        "Incomplete drivers",
-        str(inventory.get("drivers", {}).get("incomplete_rows") or 0),
-    )
-    inventory_table.add_row(
-        "Startup programs",
-        str(inventory.get("startup_program_count") or 0),
-    )
-    inventory_table.add_row(
-        "Network adapters",
-        str(inventory.get("network_adapter_count") or 0),
-    )
-    console.print(inventory_table)
+    has_telemetry_inventory = inventory.get("module_count") is not None
+    if has_report_inventory or has_telemetry_inventory:
+        inventory_table = Table(title="Inventory Highlights", show_lines=False)
+        inventory_table.add_column("Metric")
+        inventory_table.add_column("Value")
+        if has_report_inventory:
+            inventory_table.add_row(
+                "Installed software",
+                str(inventory.get("software", {}).get("count") or 0),
+            )
+            inventory_table.add_row(
+                "Software blank rows",
+                str(inventory.get("software", {}).get("blank_rows") or 0),
+            )
+            inventory_table.add_row(
+                "Drivers",
+                str(inventory.get("drivers", {}).get("count") or 0),
+            )
+            inventory_table.add_row(
+                "Incomplete drivers",
+                str(inventory.get("drivers", {}).get("incomplete_rows") or 0),
+            )
+            inventory_table.add_row(
+                "Startup programs",
+                str(inventory.get("startup_program_count") or 0),
+            )
+            inventory_table.add_row(
+                "Network adapters",
+                str(inventory.get("network_adapter_count") or 0),
+            )
+        else:
+            inventory_table.add_row(
+                "Recorded modules",
+                str(inventory.get("module_count") or 0),
+            )
+            inventory_table.add_row(
+                "Failed modules",
+                str(inventory.get("failed_module_count") or 0),
+            )
+        console.print(inventory_table)
 
     trend_window = trends.get("window") or {}
     metric_states = trends.get("metric_states") or []
@@ -164,7 +236,8 @@ def analyze_autodoctor_json_file(
     verbose: bool = True,
 ) -> tuple[pd.DataFrame, dict[str, Any], dict[str, Any]]:
     if raw is None:
-        raw = json.loads(file_path.read_text(encoding="utf-8-sig"))
+        raw_text = _safe_read_json_text(file_path)
+        raw = json.loads(raw_text) if raw_text else {}
 
     section_filter = set(getattr(args, "sections", []) or [])
     summary = build_autodoctor_json_summary(

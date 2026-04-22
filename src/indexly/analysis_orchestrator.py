@@ -235,8 +235,12 @@ def analyze_file(args) -> Optional[AnalysisResult]:
                 # AutoDoctor reports are operational summaries with multiple
                 # semantically distinct sections, so flattening them into one
                 # synthetic table loses meaning and breaks persistence.
+                variant = metadata.get("autodoctor_variant") or "report"
+                variant_label = (
+                    "telemetry JSON" if variant == "telemetry" else "report JSON"
+                )
                 console.print(
-                    f"[cyan]🩺 Detected AutoDoctor report JSON — using specialized summary pipeline[/cyan]"
+                    f"[cyan]🩺 Detected AutoDoctor {variant_label} — using specialized summary pipeline[/cyan]"
                 )
                 df, summary_dict, table_output = analyze_autodoctor_json_file(
                     file_path=file_path,
