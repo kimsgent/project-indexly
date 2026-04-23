@@ -1,13 +1,14 @@
 ---
 title: "Documentation"
 linkTitle: "Documentation"
-subtitle: "Start here for installation, usage, and developer workflows"
-description: "Official Indexly documentation hub for installation, search, structured-data analysis, AutoDoctor artifact workflows, backup, and developer setup."
+subtitle: "Start here for installation, usage, environment setup, and developer workflows"
+description: "Official Indexly documentation hub for installation, environment setup, search, structured-data analysis, AutoDoctor artifact workflows, backup, and developer setup."
 keywords:
   - indexly documentation
   - local file indexing
   - sqlite fts5 search
   - indexly install guide
+  - indexly development environment
   - indexly cli commands
   - indexly data analysis
   - indexly autodoctor
@@ -15,7 +16,7 @@ weight: 5
 type: docs
 toc: true
 date: "2026-04-22"
-lastmod: "2026-04-22"
+lastmod: "2026-04-23"
 draft: false
 categories:
   - Overview
@@ -38,6 +39,7 @@ This documentation works best when you enter through the path that matches your 
 - Everyday CLI path: install, index, search, tag, organize, and back up local content
 - Structured data path: analyze CSV, JSON, NDJSON, SQLite, and AutoDoctor artifacts
 - Developer path: understand architecture, command wiring, and optional dependency boundaries
+- Contributor environment path: prepare a Windows-first workstation or review the current Linux setup status
 
 ## What Is New
 
@@ -57,6 +59,8 @@ This documentation works best when you enter through the path that matches your 
 ## Start Here
 
 - New user: [Install Indexly](indexly-installation.md)
+- Contributor workstation: [Windows Development Environment Setup](windows-terminal-setup.md)
+- Current Linux setup status: [Linux Development Environment Setup](linux-development-environment.md)
 - Daily workflows: [Usage Guide](usage.md)
 - Quick answers: [FAQ](faq.md)
 - Structured files and databases: [Data Analysis Overview](data-analysis-overview.md)
@@ -80,6 +84,7 @@ flowchart LR
 | Goal | Recommended Page |
 | --- | --- |
 | Install and verify on Windows, macOS, Linux | [Install Indexly](indexly-installation.md) |
+| Prepare the maintained contributor workstation | [Windows Development Environment Setup](windows-terminal-setup.md), [Linux Development Environment Setup](linux-development-environment.md) |
 | Learn command workflows end-to-end | [Usage Guide](usage.md) |
 | Get short answers for setup, paths, file support, and troubleshooting | [FAQ](faq.md) |
 | Choose the right analysis command and pipeline | [Data Analysis Overview](data-analysis-overview.md) |

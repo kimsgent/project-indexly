@@ -4,6 +4,7 @@ slug: "developer-guide"
 icon: "mdi:code-braces"
 weight: 5
 date: 2026-04-01
+lastmod: 2026-04-23
 summary: "Production-grade developer guide for Indexly: architecture, dependency policy, local setup, testing, packaging, and contribution workflow."
 description: "Learn how to develop Indexly safely and efficiently. Covers project structure, optional dependency design, command wiring, quality checks, and Homebrew-friendly packaging practices."
 keywords: [
@@ -49,6 +50,15 @@ Indexly is maintained with these priorities:
 
 ## Local Setup
 
+{{< alert title="Platform Setup Notes" color="info" >}}
+If you want the maintained contributor workstation flow, start with:
+
+- [Windows Development Environment Setup](windows-terminal-setup.md) for the primary Windows workflow
+- [Linux Development Environment Setup](linux-development-environment.md) for the current Linux status and manual path
+
+This page focuses on repo-local development once your shell and workstation are ready.
+{{< /alert >}}
+
 Clone and create a virtual environment:
 
 ```bash
@@ -88,7 +98,23 @@ python -m indexly --help
 indexly --version
 ```
 
-For platform install notes, see [Install Indexly](indexly-installation.md).
+### Windows Contributor Shortcut
+
+On Windows, this repository also ships a repo-native setup script:
+
+```powershell
+.\setup.ps1 -CheckOnly
+.\setup.ps1
+```
+
+That script currently:
+
+- validates `winget`, Python, and expected repo files
+- applies system dependencies from `winget.yaml`
+- creates or reuses `.venv`
+- installs both `requirements.txt` and `requirements-dev.txt`
+
+For platform install notes, see [Install Indexly](indexly-installation.md). For the maintained workstation setup, see [Windows Development Environment Setup](windows-terminal-setup.md).
 
 ---
 

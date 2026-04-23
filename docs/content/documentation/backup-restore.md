@@ -3,6 +3,7 @@ title: "Backup & Restore"
 description: "Incremental, encrypted backups with automatic scheduling and reliable restore chains in Indexly."
 slug: "backup-restore"
 weight: 30
+lastmod: "2026-04-23"
 type: docs
 draft: false
 keywords: [
@@ -314,11 +315,10 @@ type backup_2026-01-04_020000.log | jq
 To install `jq` on Windows:
 
 ```shell
-choco install jq
+scoop install jq
 ```
 
-If Chocolatey is not installed, see:
-[https://learn.microsoft.com/windows/terminal/](https://learn.microsoft.com/windows/terminal/) or my guide on [🔧 Customizing Windows Terminal – Setup and optimization](customizing-windows-terminal)
+If your Windows shell environment is not ready yet, use the maintained [Windows Development Environment Setup](windows-terminal-setup.md) guide instead of the old Windows Terminal customization flow.
 
 ----
 
