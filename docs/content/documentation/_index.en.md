@@ -16,7 +16,7 @@ weight: 5
 type: docs
 toc: true
 date: "2026-04-22"
-lastmod: "2026-04-23"
+lastmod: "2026-04-25"
 draft: false
 categories:
   - Overview
@@ -39,7 +39,7 @@ This documentation works best when you enter through the path that matches your 
 - Everyday CLI path: install, index, search, tag, organize, and back up local content
 - Structured data path: analyze CSV, JSON, NDJSON, SQLite, and AutoDoctor artifacts
 - Developer path: understand architecture, command wiring, and optional dependency boundaries
-- Contributor environment path: prepare a Windows-first workstation or review the current Linux setup status
+- Contributor environment path: prepare a maintained Windows or Linux workstation for Indexly development
 
 ## What Is New
 
@@ -60,7 +60,7 @@ This documentation works best when you enter through the path that matches your 
 
 - New user: [Install Indexly](indexly-installation.md)
 - Contributor workstation: [Windows Development Environment Setup](windows-terminal-setup.md)
-- Current Linux setup status: [Linux Development Environment Setup](linux-development-environment.md)
+- Linux contributor workstation: [Linux Development Environment Setup](linux-development-environment.md)
 - Daily workflows: [Usage Guide](usage.md)
 - Quick answers: [FAQ](faq.md)
 - Structured files and databases: [Data Analysis Overview](data-analysis-overview.md)

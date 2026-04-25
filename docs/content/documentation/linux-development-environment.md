@@ -5,14 +5,15 @@ slug: "linux-development-environment-setup"
 icon: "mdi:linux"
 weight: 12
 date: "2026-04-23"
-lastmod: "2026-04-23"
+lastmod: "2026-04-25"
 draft: false
-summary: "Current-state Linux setup notes for Indexly contributors based on the existing dotfiles repository. Documents what is available today and what is still incomplete."
-description: "Reality-based Linux contributor environment guide for Indexly. Covers the current status of the dotfiles repo on Linux, the supported manual setup path, Homebrew-based package parity, and limitations you should account for."
+summary: "Set up the maintained Indexly contributor environment on Ubuntu/Linux using dotfiles-linux, Bash, Homebrew for Linux, Neovim, Starship, and Project-Indexly docs helpers."
+description: "Production-ready Linux contributor environment guide for Indexly. Covers the standalone dotfiles-linux bootstrap flow, full dotfiles repo mode, Homebrew/Linuxbrew tooling, Project-Indexly docs commands, verification, rollback, and known Ubuntu support notes."
 keywords:
   - indexly linux development environment
   - indexly contributor setup linux
-  - dotfiles linux status
+  - dotfiles-linux bootstrap
+  - ubuntu developer setup
   - homebrew linux indexly
   - linuxbrew developer setup
 type: docs
@@ -27,48 +28,133 @@ tags:
   - developer
 ---
 
-This page documents the current Linux state of the maintained contributor environment.
+This guide documents the maintained Linux contributor workflow for Indexly.
 
-{{< alert title="Current Status" color="warning" >}}
-The `dotfiles` repository does **not** currently provide a supported automated Linux bootstrap.
+Use it when your goal is: "I want an Ubuntu/Linux workstation that can develop Project-Indexly, build the Hugo/Docsy docs, and use the same shell/editor conventions as the maintained dotfiles workflow."
 
-The top-level `bootstrap` script detects Linux, then exits with `Linux bootstrap is not implemented yet.`
+{{< alert title="Current Status" color="success" >}}
+Linux setup is now implemented through `dotfiles-linux` in the `dotfiles` repository.
 
-Use this page as an honest guide to the current manual path, not as a claim of full Linux parity with Windows.
+The top-level `dotfiles/bootstrap` dispatcher detects Linux and routes to `dotfiles-linux/bootstrap.sh`. The Linux bundle can also be copied to `~/dotfiles-linux` and run without the full dotfiles repo present.
 {{< /alert >}}
 
-## What Exists Today
+## Supported Setup Modes
 
-The current `dotfiles` repository still provides useful Linux-relevant assets:
+There are two supported ways to run the Linux bootstrap.
 
-- `.zshrc`
-- `nvim/init.lua`
-- `.config/starship/starship.toml`
-- `tmux/.tmux.conf`
-- `tools/bootstrap_project.sh`
-- `Brewfile`
+| Mode | Best for | Command shape |
+| --- | --- | --- |
+| Standalone bundle | New machines, machines without the full dotfiles repo, or your normal Linux runtime flow | `cd ~/dotfiles-linux && ./bootstrap.sh` |
+| Full repo mode | Maintaining the dotfiles repo itself or testing shared repo changes | `cd ~/dev/configs/dotfiles && ./bootstrap` |
 
-What does **not** exist today:
+The standard/default Linux workflow is the standalone bundle:
 
-- a supported Linux automation path in `./bootstrap`
-- a Linux equivalent of `dotfiles-windows/bootstrap.ps1`
-- a finalized Linux contributor workflow with the same level of integration as Windows
+```bash
+cp -a ~/dev/configs/dotfiles/dotfiles-linux ~/dotfiles-linux
+cd ~/dotfiles-linux
+./bootstrap.sh
+```
 
-## Recommended Linux Approach Today
+If a new machine does not have the full dotfiles repo, copy or download the `dotfiles-linux` directory to `~/dotfiles-linux` first, then run the same bootstrap command.
 
-For Linux contributors, the current reliable path is:
+## What The Linux Bootstrap Sets Up
 
-1. install the core shell and CLI tooling manually
-2. optionally use the existing dotfiles files as configuration references
-3. set up `project-indexly` manually using Python virtual environments
+The Linux suite is Bash-first and keeps Homebrew for Linux as the shared package layer.
 
-This keeps the workflow honest and aligned with the codebase as it exists now.
+It manages:
 
-## Package And Tooling Reference
+- `~/.bashrc`
+- `~/.gitconfig`
+- `~/.tmux.conf`
+- `~/.config/nvim`
+- `~/.config/starship/starship.toml`
+- `~/dev/tools/indexly-docs`
+- `~/bin/dev`
+- `~/bin/dev-new`
 
-The current `Brewfile` in `dotfiles` is the clearest package parity reference. It includes:
+It backs up existing non-symlink targets before replacing them. Backup files use names such as:
+
+```text
+~/.bashrc.backup.20260424-213000
+```
+
+## Fresh Ubuntu Flow
+
+On a clean Ubuntu machine, install the minimum bootstrap prerequisites first:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y git curl ca-certificates
+```
+
+Then get the Linux bundle onto the machine and run it:
+
+```bash
+cd ~
+# Copy dotfiles-linux here by git checkout, archive, scp, rsync, or your preferred transfer method.
+cd ~/dotfiles-linux
+./bootstrap.sh
+```
+
+After bootstrap, restart the terminal or run:
+
+```bash
+source ~/.bashrc
+```
+
+Then inspect the available helper commands:
+
+```bash
+show-help
+```
+
+## Full Dotfiles Repo Flow
+
+If the full dotfiles repo is present:
+
+```bash
+mkdir -p ~/dev/configs
+cd ~/dev/configs
+git clone git@github.com:kimsgent/dotfiles.git
+cd dotfiles
+./bootstrap
+```
+
+This mode is useful when you are editing shared dotfiles files such as the Neovim config, Starship config, or project helper scripts.
+
+## How Symlink Priority Works
+
+The symlink script is designed for both workflows.
+
+When run from `~/dotfiles-linux`, it prefers bundled files inside:
+
+```text
+~/dotfiles-linux/config/
+~/dotfiles-linux/tools/
+```
+
+When run from the full dotfiles repo, it prefers shared repo files such as:
+
+```text
+~/dev/configs/dotfiles/nvim
+~/dev/configs/dotfiles/.config/starship/starship.toml
+~/dev/configs/dotfiles/git/.gitconfig
+```
+
+To force shared repo mode from a standalone location, set `DOTFILES_ROOT` explicitly:
+
+```bash
+DOTFILES_ROOT=~/dev/configs/dotfiles ~/dotfiles-linux/bootstrap.sh
+```
+
+## Installed Tooling
+
+The bootstrap installs apt prerequisites, Homebrew for Linux when needed, and Homebrew packages from `dotfiles-linux/Brewfile`.
+
+Core CLI/global tooling includes:
 
 - `git`
+- `gh`
 - `neovim`
 - `tmux`
 - `fzf`
@@ -77,55 +163,69 @@ The current `Brewfile` in `dotfiles` is the clearest package parity reference. I
 - `bat`
 - `eza`
 - `fd`
-- `pyenv`
-- `nvm`
 - `direnv`
 - `starship`
-- `zsh-autosuggestions`
-- `zsh-syntax-highlighting`
-- `powershell`
+- `jq`
+- `shellcheck`
+- `shfmt`
+- `pyenv`
+- `nvm`
+- `rbenv`
+- `ruby-build`
 
-If you already use [Homebrew on Linux](https://docs.brew.sh/Homebrew-on-Linux), you can use the `Brewfile` as a package reference.
+Project-Indexly docs tooling includes:
 
-If you use a distro-native package manager instead, install the closest equivalents from your distro repositories.
+- Hugo Extended
+- Go
+- Node LTS through `nvm`
+- npm
+- local PostCSS/Pagefind dependencies from `docs/package.json`
+- Pandoc/ImageMagick-related utilities for docs and asset workflows
 
-## Manual Linux Bootstrap Pattern
+## Project-Indexly Docs Helper
 
-### 1. Install Core Tooling
-
-Example with Homebrew on Linux:
+After bootstrap, use `idxdocs` from any shell where the managed `.bashrc` is loaded:
 
 ```bash
-brew install git neovim tmux fzf zoxide ripgrep bat eza fd pyenv nvm direnv starship zsh-autosuggestions zsh-syntax-highlighting
+idxdocs verify
+idxdocs serve
+idxdocs build-local
+idxdocs build-prod
+idxdocs smoke
+idxdocs update-modules
+idxdocs brew-test
 ```
 
-This is not yet wrapped in a supported automation script for Linux.
+The commands do the following:
 
-### 2. Apply Dotfiles Manually If You Want Parity
+| Command | Purpose |
+| --- | --- |
+| `idxdocs verify` | Checks Hugo Extended, Go, Node, npm, local PostCSS, and local Pagefind |
+| `idxdocs serve` | Runs the local Hugo docs server through `npm run dev` |
+| `idxdocs build-local` | Runs the existing docs build script |
+| `idxdocs build-prod` | Runs a production-style Hugo build plus local Pagefind |
+| `idxdocs smoke` | Confirms `docs/public` and Pagefind output exist after a build |
+| `idxdocs update-modules` | Runs Hugo module update, tidy, and vendor flow |
+| `idxdocs brew-test` | Tests `brew tap kimsgent/indexly`, installs/reinstalls `indexly`, and runs `indexly --version` |
 
-The Linux-compatible parts of the repo can be wired manually with symlinks such as:
+Direct path equivalent:
 
 ```bash
-ln -sf /path/to/dotfiles/.zshrc ~/.zshrc
-mkdir -p ~/.config/starship ~/.config/nvim
-ln -sf /path/to/dotfiles/.config/starship/starship.toml ~/.config/starship/starship.toml
-ln -sf /path/to/dotfiles/nvim/init.lua ~/.config/nvim/init.lua
-ln -sf /path/to/dotfiles/tmux/.tmux.conf ~/.tmux.conf
+~/dev/tools/indexly-docs verify
 ```
 
-Do this only if you actively want the shared shell and editor conventions. It is not currently presented as a finalized Linux bootstrap contract.
+## Project-Indexly Repo Setup
 
-### 3. Use Indexly's Manual Developer Setup
-
-Once your shell and toolchain are ready:
+Once the workstation is ready:
 
 ```bash
-git clone https://github.com/kimsgent/project-indexly.git
+mkdir -p ~/dev/projects
+cd ~/dev/projects
+git clone git@github.com:kimsgent/project-indexly.git
 cd project-indexly
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install -e .
 python -m pip install -e ".[documents,analysis,visualization,pdf_export]"
 python -m pip install pytest pytest-cov flake8 black isort mypy build twine hatch
 ```
@@ -139,38 +239,93 @@ indexly doctor
 pytest -q
 ```
 
-## What Is Linux-Safe To Rely On Today
+## Updating The Linux Environment
 
-Reasonable assumptions based on the current repos:
+Use the managed update helper:
 
-- Indexly itself supports Linux as a runtime platform.
-- The documented install path via Homebrew or `pip` remains valid. See [Install Indexly](indexly-installation.md).
-- The `dotfiles` repo provides useful config and package references.
-- The project bootstrap helper `tools/bootstrap_project.sh` is shell-based and Linux-friendly in style.
+```bash
+update-system
+```
 
-What you should **not** rely on yet:
+Dry run:
 
-- `./bootstrap` as a supported Linux setup command
-- a fully automated Linux workstation bootstrap
-- Linux behavior matching Windows package manager automation one-to-one
+```bash
+update-system --dry-run
+```
 
-## Linux Gaps To Keep In Mind
+You can also relink profile/config files without reinstalling packages:
 
-### No Supported Automated Bootstrap
+```bash
+update-profile
+```
 
-The top-level `bootstrap` script explicitly aborts on Linux today. That is the clearest indicator that Linux remains a partial workflow.
+## Useful Shell Commands
 
-### `bootstrap.sh` Is macOS-Oriented
+The Linux profile exposes a small discoverable command surface:
 
-The current `bootstrap.sh` assumes a macOS-style Homebrew layout and macOS shell setup flow. It is not positioned as a Linux script even though some individual commands may look portable.
+```bash
+show-help
+```
 
-### Repo-Specific Windows Automation Does Not Carry Over
+Common helpers include:
 
-`project-indexly/setup.ps1` is Windows-specific. On Linux, use the manual developer setup path from [Indexly Developer Guide](developer.md) instead.
+- `idxdocs` for Project-Indexly documentation tasks
+- `gstatus` / `gst` for Git status
+- `gbranch` / `gbr` for Git branches without opening a pager
+- `gcheckout` / `gco` for branch checkout
+- `gpull` / `gpl` for fast-forward pulls
+- `reload-profile` to reload `~/.bashrc`
+- `bootstrap-linux` to call the Linux bootstrap directly
 
-## When To Use This Page vs Other Setup Docs
+The profile intentionally leaves `gs` available for Ghostscript on Linux.
 
-- Use this page when your question is: "What is the current Linux state of the maintained contributor environment?"
-- Use [Windows Development Environment Setup](windows-terminal-setup.md) when you want the primary, maintained contributor workflow.
-- Use [Install Indexly](indexly-installation.md) when you only need to install or run Indexly, not replicate the contributor workstation.
-- Use [Indexly Developer Guide](developer.md) when you are already inside the repo and need packaging, testing, and architecture guidance.
+## Ubuntu Support Notes
+
+Validated environment:
+
+- Ubuntu 24.04.4 LTS
+- Bash
+- GNOME on Wayland
+- Homebrew for Linux
+
+Expected support:
+
+- Ubuntu 22.04 or newer
+- closely related Debian-based systems with `apt-get`, Bash, sudo, and network access to GitHub, Homebrew, and npm registries
+
+Wayland note: the shell setup does not force Wayland-only environment variables. It should also work from SSH, TTY, and X11 sessions.
+
+## Known Limits
+
+- GUI app installation is documented in the dotfiles README but is not forced by bootstrap.
+- SSH config is not bundled into standalone `dotfiles-linux`; this avoids copying machine-specific credentials or host policy.
+- Netlify still runs its configured production command. `idxdocs build-prod` uses local Pagefind for repeatable local validation.
+- `project-indexly/setup.ps1` remains Windows-specific. Linux contributors should use the Bash/bootstrap and Python virtual environment flow above.
+
+## Rollback
+
+For any replaced file, find the timestamped backup next to it:
+
+```bash
+ls -la ~ | grep backup
+```
+
+Restore example:
+
+```bash
+rm ~/.bashrc
+mv ~/.bashrc.backup.YYYYMMDD-HHMMSS ~/.bashrc
+```
+
+For symlinked config directories, remove the symlink and restore the backup directory if one was created:
+
+```bash
+rm ~/.config/nvim
+mv ~/.config/nvim.backup.YYYYMMDD-HHMMSS ~/.config/nvim
+```
+
+## Related Pages
+
+- [Windows Development Environment Setup](windows-terminal-setup.md)
+- [Install Indexly](indexly-installation.md)
+- [Indexly Developer Guide](developer.md)

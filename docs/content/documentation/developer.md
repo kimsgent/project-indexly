@@ -4,7 +4,7 @@ slug: "developer-guide"
 icon: "mdi:code-braces"
 weight: 5
 date: 2026-04-01
-lastmod: 2026-04-23
+lastmod: 2026-04-25
 summary: "Production-grade developer guide for Indexly: architecture, dependency policy, local setup, testing, packaging, and contribution workflow."
 description: "Learn how to develop Indexly safely and efficiently. Covers project structure, optional dependency design, command wiring, quality checks, and Homebrew-friendly packaging practices."
 keywords: [
@@ -53,8 +53,8 @@ Indexly is maintained with these priorities:
 {{< alert title="Platform Setup Notes" color="info" >}}
 If you want the maintained contributor workstation flow, start with:
 
-- [Windows Development Environment Setup](windows-terminal-setup.md) for the primary Windows workflow
-- [Linux Development Environment Setup](linux-development-environment.md) for the current Linux status and manual path
+- [Windows Development Environment Setup](windows-terminal-setup.md) for the maintained Windows workflow
+- [Linux Development Environment Setup](linux-development-environment.md) for the maintained Ubuntu/Linux workflow
 
 This page focuses on repo-local development once your shell and workstation are ready.
 {{< /alert >}}
@@ -114,7 +114,7 @@ That script currently:
 - creates or reuses `.venv`
 - installs both `requirements.txt` and `requirements-dev.txt`
 
-For platform install notes, see [Install Indexly](indexly-installation.md). For the maintained workstation setup, see [Windows Development Environment Setup](windows-terminal-setup.md).
+For platform install notes, see [Install Indexly](indexly-installation.md). For maintained workstation setup, see [Windows Development Environment Setup](windows-terminal-setup.md) and [Linux Development Environment Setup](linux-development-environment.md).
 
 ---
 

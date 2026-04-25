@@ -6,18 +6,29 @@
     "items": [
       {
         "question": "How do I install Indexly on Windows, macOS, or Linux?",
-        "answer": "On Windows, the recommended path is `py -m pip install indexly`. On macOS and Linux, Homebrew is the most convenient path, while `python -m pip install indexly` remains a cross-platform fallback. Always verify with `indexly --version` and `indexly --help` after installation.",
+        "answer": "On Windows, the recommended product install path is `py -m pip install indexly`. On macOS and Linux, Homebrew is the most convenient product install path, while `python -m pip install indexly` remains a cross-platform fallback. If you are preparing a contributor workstation, use the maintained Windows or Linux environment setup guide instead of only installing the CLI. Always verify with `indexly --version` and `indexly --help` after installation.",
         "links": [
           { "label": "Install Indexly", "href": "/en/documentation/indexly-installation/" },
-          { "label": "Usage Guide", "href": "/en/documentation/usage-guide/" }
+          { "label": "Windows Setup", "href": "/en/documentation/windows-terminal-setup/" },
+          { "label": "Linux Setup", "href": "/en/documentation/linux-development-environment-setup/" }
         ]
       },
       {
         "question": "Why does the terminal say `indexly` is not recognized after installation?",
-        "answer": "That usually means the current terminal session does not yet see the Python or Homebrew scripts directory. Open a fresh terminal first. If it still fails, verify that the package is installed, then review the platform-specific setup notes for Windows Terminal or shell initialization.",
+        "answer": "That usually means the current terminal session does not yet see the Python or Homebrew scripts directory. Open a fresh terminal first. If it still fails, verify that the package is installed, then review the platform-specific setup notes for Windows Terminal or Linux shell initialization.",
         "links": [
           { "label": "Install Indexly", "href": "/en/documentation/indexly-installation/" },
-          { "label": "Windows Terminal Setup", "href": "/en/documentation/windows-terminal-setup/" }
+          { "label": "Windows Terminal Setup", "href": "/en/documentation/windows-terminal-setup/" },
+          { "label": "Linux Setup", "href": "/en/documentation/linux-development-environment-setup/" }
+        ]
+      },
+      {
+        "question": "How do I prepare a contributor workstation on Linux?",
+        "answer": "Use the maintained `dotfiles-linux` workflow from the dotfiles repository. The default Linux path is to copy the bundle to `~/dotfiles-linux`, run `./bootstrap.sh`, reload Bash, then use `show-help` and `idxdocs verify` to confirm the shell and Project-Indexly docs toolchain. The same Linux bootstrap can also run from the full dotfiles repo when you are maintaining dotfiles directly.",
+        "links": [
+          { "label": "Linux Development Environment Setup", "href": "/en/documentation/linux-development-environment-setup/" },
+          { "label": "Developer Guide", "href": "/en/documentation/developer-guide/" },
+          { "label": "Install Indexly", "href": "/en/documentation/indexly-installation/" }
         ]
       },
       {

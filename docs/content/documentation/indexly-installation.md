@@ -13,7 +13,7 @@ keywords:
   - windows install indexly
   - linux install indexly
 weight: 10
-lastmod: "2026-04-23"
+lastmod: "2026-04-25"
 type: docs
 toc: true
 aliases:
@@ -53,7 +53,7 @@ indexly --help
 
 No manual `PYTHONPATH` wrapper is required for current Homebrew releases.
 
-If `brew` is not available yet on Linux, initialize Homebrew in your shell first:
+If `brew` is already installed on Linux but not available in the current shell, initialize Homebrew first:
 
 ```bash
 eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
