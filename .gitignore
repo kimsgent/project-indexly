@@ -64,6 +64,12 @@ docs/node_modules/
 docs/package-lock.json
 
 # ----------------
+# Local tooling
+# ----------------
+# Codex local workspace state
+.codex
+
+# ----------------
 # OS / Editors
 # ----------------
 .DS_Store
