@@ -24,7 +24,7 @@
       },
       {
         "question": "How do I prepare a contributor workstation on Linux?",
-        "answer": "Use the maintained `dotfiles-linux` workflow from the dotfiles repository. The default Linux path is to copy the bundle to `~/dotfiles-linux`, run `./bootstrap.sh`, reload Bash, then use `show-help` and `idxdocs verify` to confirm the shell and Project-Indexly docs toolchain. The same Linux bootstrap can also run from the full dotfiles repo when you are maintaining dotfiles directly.",
+        "answer": "Use the maintained `dotfiles-linux` workflow from the dotfiles repository. The default Linux path is to copy the bundle to `~/dotfiles-linux`, run `./bootstrap.sh`, reload Bash, then use `show-help` and `idxdocs verify` to confirm the shell and Project-Indexly docs toolchain. On development machines, use `update-lp` after changing the repo bundle so the live `~/dotfiles-linux` profile is refreshed; use `update-profile` only when you need to relink an already-synced local bundle.",
         "links": [
           { "label": "Linux Development Environment Setup", "href": "/en/documentation/linux-development-environment-setup/" },
           { "label": "Developer Guide", "href": "/en/documentation/developer-guide/" },

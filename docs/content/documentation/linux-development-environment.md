@@ -8,7 +8,7 @@ date: "2026-04-23"
 lastmod: "2026-04-25"
 draft: false
 summary: "Set up the maintained Indexly contributor environment on Ubuntu/Linux using dotfiles-linux, Bash, Homebrew for Linux, Neovim, Starship, and Project-Indexly docs helpers."
-description: "Production-ready Linux contributor environment guide for Indexly. Covers the standalone dotfiles-linux bootstrap flow, full dotfiles repo mode, Homebrew/Linuxbrew tooling, Project-Indexly docs commands, verification, rollback, and known Ubuntu support notes."
+description: "Production-ready Linux contributor environment guide for Indexly. Covers the standalone dotfiles-linux bootstrap flow, full dotfiles repo mode, local profile sync with update-lp, Homebrew/Linuxbrew tooling, Project-Indexly docs commands, verification, rollback, and known Ubuntu support notes."
 keywords:
   - indexly linux development environment
   - indexly contributor setup linux
@@ -126,14 +126,24 @@ This mode is useful when you are editing shared dotfiles files such as the Neovi
 
 The symlink script is designed for both workflows.
 
-When run from `~/dotfiles-linux`, it prefers bundled files inside:
+The active local profile normally points at the standalone bundle:
+
+```text
+~/.bashrc -> ~/dotfiles-linux/.bashrc
+~/.config/starship/starship.toml -> ~/dotfiles-linux/config/starship/starship.toml
+~/.config/nvim -> ~/dotfiles-linux/config/nvim
+```
+
+That keeps day-to-day shells stable even while the source repo is being edited.
+
+When run from `~/dotfiles-linux`, the symlink script prefers bundled files inside:
 
 ```text
 ~/dotfiles-linux/config/
 ~/dotfiles-linux/tools/
 ```
 
-When run from the full dotfiles repo, it prefers shared repo files such as:
+When run from the full dotfiles repo, it can prefer shared repo files such as:
 
 ```text
 ~/dev/configs/dotfiles/nvim
@@ -146,6 +156,8 @@ To force shared repo mode from a standalone location, set `DOTFILES_ROOT` explic
 ```bash
 DOTFILES_ROOT=~/dev/configs/dotfiles ~/dotfiles-linux/bootstrap.sh
 ```
+
+For normal Linux use, keep the live profile linked to `~/dotfiles-linux` and use `update-lp` when repo changes need to be copied into that local bundle.
 
 ## Installed Tooling
 
@@ -241,7 +253,45 @@ pytest -q
 
 ## Updating The Linux Environment
 
-Use the managed update helper:
+There are three update paths, and they intentionally do different jobs.
+
+### Sync Repo Changes Into The Local Profile
+
+On a development machine, the full repo is the source of truth and `~/dotfiles-linux` is the live local profile bundle. After changing files in:
+
+```text
+~/dev/configs/dotfiles/dotfiles-linux
+```
+
+run:
+
+```bash
+update-lp
+```
+
+`update-lp` copies the repo bundle into `~/dotfiles-linux`, then relinks managed files from the local bundle. This is the command to use after editing the repo version of Bash, Starship, Neovim, Git, tmux, or helper scripts.
+
+Dry run:
+
+```bash
+update-lp --dry-run
+```
+
+On a non-development machine where `~/dev/configs/dotfiles` is absent, `update-lp` exits with a friendly "nothing changed" message.
+
+### Relink The Already-Synced Local Bundle
+
+Use this when the local bundle is already correct and you only need to recreate symlinks:
+
+```bash
+update-profile
+```
+
+This relinks from `~/dotfiles-linux`. It does not copy from the source repo.
+
+### Update Packages And Tooling
+
+Use the managed package update helper:
 
 ```bash
 update-system
@@ -253,11 +303,15 @@ Dry run:
 update-system --dry-run
 ```
 
-You can also relink profile/config files without reinstalling packages:
+### Reload Current Shells
+
+Existing terminal sessions do not automatically reload a changed `.bashrc`. After `update-lp` or `update-profile`, run:
 
 ```bash
-update-profile
+reload-profile
 ```
+
+New terminal windows pick up the updated profile automatically.
 
 ## Useful Shell Commands
 
@@ -270,6 +324,8 @@ show-help
 Common helpers include:
 
 - `idxdocs` for Project-Indexly documentation tasks
+- `update-lp` to sync repo `dotfiles-linux` changes into the live `~/dotfiles-linux` bundle
+- `update-profile` to relink managed files from the already-synced local bundle
 - `gstatus` / `gst` for Git status
 - `gbranch` / `gbr` for Git branches without opening a pager
 - `gcheckout` / `gco` for branch checkout
@@ -299,6 +355,7 @@ Wayland note: the shell setup does not force Wayland-only environment variables.
 
 - GUI app installation is documented in the dotfiles README but is not forced by bootstrap.
 - SSH config is not bundled into standalone `dotfiles-linux`; this avoids copying machine-specific credentials or host policy.
+- `update-lp` is mainly for development machines with `~/dev/configs/dotfiles`; standalone machines can keep using `update-profile` and `update-system`.
 - Netlify still runs its configured production command. `idxdocs build-prod` uses local Pagefind for repeatable local validation.
 - `project-indexly/setup.ps1` remains Windows-specific. Linux contributors should use the Bash/bootstrap and Python virtual environment flow above.
 
