@@ -725,6 +725,198 @@ body.modal-open {
   color: var(--indexly-faq-text-muted);
 }
 
+/* -------------------------
+   Documentation Alerts
+---------------------------- */
+.td-content .alert {
+  border-width: 1px;
+  border-radius: 0.85rem;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+}
+
+.td-content .alert > :last-child {
+  margin-bottom: 0;
+}
+
+.td-content .alert .alert-heading {
+  color: inherit;
+}
+
+.td-content .alert .p-3.rounded {
+  border: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+[data-bs-theme="dark"] .td-content .alert,
+body.dark .td-content .alert {
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.28);
+}
+
+[data-bs-theme="dark"] .td-content .alert-primary,
+body.dark .td-content .alert-primary {
+  color: #dbeafe;
+  background-color: #172554;
+  border-color: #3b82f6;
+}
+
+[data-bs-theme="dark"] .td-content .alert-success,
+body.dark .td-content .alert-success {
+  color: #d1fae5;
+  background-color: #052e2b;
+  border-color: #34d399;
+}
+
+[data-bs-theme="dark"] .td-content .alert-info,
+body.dark .td-content .alert-info {
+  color: #e0f2fe;
+  background-color: #0f2f3f;
+  border-color: #38bdf8;
+}
+
+[data-bs-theme="dark"] .td-content .alert-warning,
+body.dark .td-content .alert-warning {
+  color: #fef3c7;
+  background-color: #3b2f08;
+  border-color: #f59e0b;
+}
+
+[data-bs-theme="dark"] .td-content .alert-danger,
+body.dark .td-content .alert-danger {
+  color: #fee2e2;
+  background-color: #3f1111;
+  border-color: #f87171;
+}
+
+[data-bs-theme="dark"] .td-content .alert h1,
+[data-bs-theme="dark"] .td-content .alert h2,
+[data-bs-theme="dark"] .td-content .alert h3,
+[data-bs-theme="dark"] .td-content .alert h4,
+[data-bs-theme="dark"] .td-content .alert h5,
+[data-bs-theme="dark"] .td-content .alert h6,
+[data-bs-theme="dark"] .td-content .alert p,
+[data-bs-theme="dark"] .td-content .alert li,
+body.dark .td-content .alert h1,
+body.dark .td-content .alert h2,
+body.dark .td-content .alert h3,
+body.dark .td-content .alert h4,
+body.dark .td-content .alert h5,
+body.dark .td-content .alert h6,
+body.dark .td-content .alert p,
+body.dark .td-content .alert li {
+  color: inherit !important;
+}
+
+[data-bs-theme="dark"] .td-content .alert .p-3.rounded,
+[data-bs-theme="dark"] .td-content .alert [style*="background"],
+body.dark .td-content .alert .p-3.rounded,
+body.dark .td-content .alert [style*="background"] {
+  color: inherit !important;
+  background: rgba(15, 23, 42, 0.58) !important;
+  border-color: rgba(226, 232, 240, 0.16);
+}
+
+[data-bs-theme="dark"] .td-content .alert a:not(.btn),
+body.dark .td-content .alert a:not(.btn) {
+  color: #bfdbfe;
+}
+
+[data-bs-theme="dark"] .td-content .alert .btn-outline-secondary,
+body.dark .td-content .alert .btn-outline-secondary {
+  color: #e2e8f0;
+  border-color: rgba(226, 232, 240, 0.55);
+}
+
+[data-bs-theme="dark"] .td-content .alert .btn-outline-secondary:hover,
+[data-bs-theme="dark"] .td-content .alert .btn-outline-secondary:focus,
+body.dark .td-content .alert .btn-outline-secondary:hover,
+body.dark .td-content .alert .btn-outline-secondary:focus {
+  color: #0f172a;
+  background-color: #e2e8f0;
+  border-color: #e2e8f0;
+}
+
+[data-bs-theme="dark"] .td-content .alert code,
+body.dark .td-content .alert code {
+  color: #f8fafc;
+  background-color: rgba(15, 23, 42, 0.72);
+  border-color: rgba(226, 232, 240, 0.18);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-bs-theme="light"]) .td-content .alert {
+    box-shadow: 0 16px 34px rgba(0, 0, 0, 0.28);
+  }
+
+  :root:not([data-bs-theme="light"]) .td-content .alert-primary {
+    color: #dbeafe;
+    background-color: #172554;
+    border-color: #3b82f6;
+  }
+
+  :root:not([data-bs-theme="light"]) .td-content .alert-success {
+    color: #d1fae5;
+    background-color: #052e2b;
+    border-color: #34d399;
+  }
+
+  :root:not([data-bs-theme="light"]) .td-content .alert-info {
+    color: #e0f2fe;
+    background-color: #0f2f3f;
+    border-color: #38bdf8;
+  }
+
+  :root:not([data-bs-theme="light"]) .td-content .alert-warning {
+    color: #fef3c7;
+    background-color: #3b2f08;
+    border-color: #f59e0b;
+  }
+
+  :root:not([data-bs-theme="light"]) .td-content .alert-danger {
+    color: #fee2e2;
+    background-color: #3f1111;
+    border-color: #f87171;
+  }
+
+  :root:not([data-bs-theme="light"]) .td-content .alert h1,
+  :root:not([data-bs-theme="light"]) .td-content .alert h2,
+  :root:not([data-bs-theme="light"]) .td-content .alert h3,
+  :root:not([data-bs-theme="light"]) .td-content .alert h4,
+  :root:not([data-bs-theme="light"]) .td-content .alert h5,
+  :root:not([data-bs-theme="light"]) .td-content .alert h6,
+  :root:not([data-bs-theme="light"]) .td-content .alert p,
+  :root:not([data-bs-theme="light"]) .td-content .alert li {
+    color: inherit !important;
+  }
+
+  :root:not([data-bs-theme="light"]) .td-content .alert .p-3.rounded,
+  :root:not([data-bs-theme="light"]) .td-content .alert [style*="background"] {
+    color: inherit !important;
+    background: rgba(15, 23, 42, 0.58) !important;
+    border-color: rgba(226, 232, 240, 0.16);
+  }
+
+  :root:not([data-bs-theme="light"]) .td-content .alert a:not(.btn) {
+    color: #bfdbfe;
+  }
+
+  :root:not([data-bs-theme="light"]) .td-content .alert .btn-outline-secondary {
+    color: #e2e8f0;
+    border-color: rgba(226, 232, 240, 0.55);
+  }
+
+  :root:not([data-bs-theme="light"]) .td-content .alert .btn-outline-secondary:hover,
+  :root:not([data-bs-theme="light"]) .td-content .alert .btn-outline-secondary:focus {
+    color: #0f172a;
+    background-color: #e2e8f0;
+    border-color: #e2e8f0;
+  }
+
+  :root:not([data-bs-theme="light"]) .td-content .alert code {
+    color: #f8fafc;
+    background-color: rgba(15, 23, 42, 0.72);
+    border-color: rgba(226, 232, 240, 0.18);
+  }
+}
+
 @media (max-width: 767.98px) {
   .indexly-faq__hero,
   .indexly-doc-callout,
