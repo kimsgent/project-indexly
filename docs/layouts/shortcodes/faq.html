@@ -1,5 +1,5 @@
 {{/* Normalize old flat FAQ entries into grouped sections so shortcode usage stays stable. */}}
-{{ $faqData := site.Data.faq }}
+{{ $faqData := hugo.Data.faq }}
 {{ $faqSections := slice }}
 
 {{ if gt (len $faqData) 0 }}
