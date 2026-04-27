@@ -10,7 +10,7 @@ keywords:
   - FTS5 file search
   - document management cli
 slug: "index-files-and-folders"
-weight: 10
+weight: 20
 type: docs
 images:
   - "images/indexly_indexing.png"
@@ -22,12 +22,13 @@ tags:
   - cli
   - search
   - file-management
+lastmod: 2026-04-27
 ---
 
 
 ---
 
-## 📂 Getting Started with Indexing
+## Getting Started with Indexing
 
 To begin, index a folder once to make everything searchable. This is the foundation of your file management system.
 
@@ -37,15 +38,28 @@ indexly index ./docs
 
 ### Filtering by File Type
 
-Next, if you want to be more selective, you can index only specific file types. This helps you focus on the files that matter most.
+Index one file type at a time when you want a smaller, targeted refresh.
 
 ```bash
-indexly index ./docs --filetype .pdf .docx
+indexly index ./docs --filetype .pdf
+indexly index ./docs --filetype .docx
 ```
+
+Search can filter multiple file types later with `--filetype .pdf .docx`.
 
 ### Advanced Extraction
 
-Furthermore, for more detailed content extraction, you can enable extended MTW extraction. This option is particularly useful when working with archives or complex documents.
+For more detailed content extraction, install the document extras and choose the PDF OCR behavior intentionally.
+
+```bash
+python -m pip install "indexly[documents]"
+indexly index ./docs --ocr
+indexly index ./docs --no-ocr
+```
+
+`--ocr` forces OCR for PDFs. `--no-ocr` disables OCR for PDFs. Without either flag, Indexly uses the default PDF extraction policy.
+
+You can also enable extended MTW extraction when working with Minitab archives or complex MTW inputs.
 
 ```bash
 indexly index ./archives --mtw-extended
@@ -71,6 +85,6 @@ indexly stats
 ---
 ## Next Steps
 
-* [Search](/searching/) and [tag](tagging.md) with indexly.
+* [Search](/searching/) and [tag](tagging.md) with Indexly.
 
-👉 For a deeper dive into how this process works, check out [Semantic Indexing](semantic-indexing-vocab.md).
+For a deeper dive into how this process works, check out [Semantic Indexing](semantic-indexing-vocab.md).

@@ -1,275 +1,149 @@
 ---
-title: "Search – Deep Content Discovery with FTS & Regex"
+title: "Search Files with Indexly"
 linkTitle: "Search"
-description: "Indexly Search combines SQLite FTS5, logical operators, fuzzy fallback, and regex scanning to surface deep insights from indexed files."
-weight: 15
-type: docs
-layout: list
+description: "Use Indexly search and regex commands to query indexed files with SQLite FTS5, filters, tags, fuzzy matching, profiles, and cache controls."
+slug: "search"
+aliases:
+  - "/en/searching/"
 keywords:
   - indexly search
   - full text search
-  - fts5 search
+  - sqlite fts5
   - regex file search
-  - semantic file search
-  - indexed filesystem search
+  - semantic indexing
+  - local file search
+tags:
+  - search
+  - indexing
+  - fts5
+  - regex
+categories:
+  - Documentation
+  - Search
+weight: 30
+type: docs
+layout: list
+date: 2026-04-27
+lastmod: 2026-04-27
+draft: false
 ---
 
+Indexly searches the local index that was created by `indexly index`. It does not scan every file again during a search, so result quality depends on what was extracted, filtered, and stored during indexing.
 
----
-## 🔍 Search
+Use search when you want ranked, high-signal discovery across documents, emails, source files, and structured text. Use regex when you need exact pattern matching.
 
-Search is one of Indexly’s **core capabilities**.
+## Before You Search
 
-Once your environment is organized, ignored correctly via `.indexlyignore`, and indexed using Indexly’s [semantic indexer](/documentation/semantic-indexing-vocab.md), **Search becomes a high-signal inspection and discovery tool** — not just a keyword matcher.
+Create or refresh the index first:
 
-Indexly provides **two complementary search engines**:
+```bash
+indexly index ./docs
+```
 
-• **FTS Search** — fast, ranked, logical, semantic
-• **Regex Search** — precise, pattern-based, forensic
+For document-heavy folders, install the document extras and choose the OCR behavior intentionally:
 
-Both operate **entirely on the index** — no live filesystem scanning.
+```bash
+python -m pip install "indexly[documents]"
+indexly index ./docs --filetype .pdf
+indexly index ./docs --ocr
+indexly index ./docs --no-ocr
+```
 
-> 🛡️ Search never modifies files. It reads indexed content only.
+`--ocr` forces OCR for PDFs. `--no-ocr` disables PDF OCR entirely. Without either flag, Indexly uses the default PDF extraction policy.
 
----
+## Full-Text Search
 
-## 🧠 How Search Works (Behind the Scenes)
-
-1. Files are indexed into a **SQLite FTS5 database**
-2. Content, metadata, and tags are normalized
-3. Queries are compiled into optimized SQL
-4. Results are:
-
-   * ranked
-   * snippet-extracted
-   * tag-enriched
-   * cached for reuse
-
-Search performance scales with **index size**, not filesystem size.
-
----
-
-## ⚡ Full-Text Search (FTS)
-
-FTS search is the **default and recommended mode**.
-
-It is powered by **SQLite FTS5**, extended with:
-• logical operators
-• NEAR queries
-• fuzzy fallback
-• metadata filtering
-
-### Basic Usage
+The `search` command uses SQLite FTS5 over indexed content.
 
 ```bash
 indexly search "error handling"
+indexly search "invoice AND 2026"
+indexly search "docker OR kubernetes"
+indexly search "cache NOT redis"
+indexly search "authentication NEAR/5 failure"
 ```
 
-This performs:
-• phrase normalization
-• ranking by relevance
-• contextual snippet extraction
+When a query does not contain FTS operators, Indexly normalizes it as a safer literal phrase. This keeps broad multi-word searches from becoming noisy.
 
----
+## Filters
 
-### Logical Operators
-
-Indexly fully supports FTS5 logic:
+Use filters to narrow the indexed result set before ranking:
 
 ```bash
-indexly search 'error AND timeout'
-indexly search 'docker OR kubernetes'
-indexly search 'cache NOT redis'
+indexly search "invoice" --filetype .pdf .docx
+indexly search "meeting" --path-contains "projects/client-a"
+indexly search "contract" --date-from 2026-01-01 --date-to 2026-03-31
+indexly search "budget" --filter-tag finance
 ```
 
-Operators are automatically normalized and validated.
-
----
-
-### Phrase & Proximity Search (NEAR)
+Search also supports metadata filters populated during extraction:
 
 ```bash
-indexly search 'authentication NEAR/5 failure'
+indexly search "ticket" --author "Mario Heidt"
+indexly search "manual" --format PDF
+indexly search "photo" --camera Canon
+indexly search "inspection" --image-created 2026-03
 ```
 
-Behind the scenes:
-• Indexly detects SQLite NEAR support
-• Automatically downgrades if unsupported
-• Ensures cross-platform safety
+## Context, Cache, and Profiles
 
----
-
-### Prefix & Wildcard Matching
+Increase or reduce the snippet window with `--context`:
 
 ```bash
-indexly search 'config*'
+indexly search "quarterly report" --context 80
 ```
 
-Useful for:
-• variable names
-• partial identifiers
-• evolving terminology
-
----
-
-### Automatic Query Normalization
-
-If no operators are detected:
-
-```bash
-indexly search error handling
-```
-
-Indexly safely converts this to:
-
-```text
-"error handling"
-```
-
-This avoids accidental OR explosions and improves relevance.
-
----
-
-## 🧩 Metadata & Path Filters
-
-FTS queries can be **narrowed surgically**:
-
-```bash
-indexly search "invoice" --ext pdf
-indexly search "meeting" --path reports/2025
-indexly search "deployment" --date-from 2025-01
-```
-
-Supported filters include:
-• file extension
-• path substring
-• modification date range
-• tags
-• document metadata (author, format)
-• image metadata (camera, creation date)
-
-All filters are compiled into **safe SQL predicates**.
-
----
-
-## 🏷️ Tag-Aware Search
-
-If files are tagged:
-
-```bash
-indexly search "backup" --tag infra
-```
-
-Indexly resolves tags → file paths → filtered search space.
-
-This enables **semantic slicing** of large environments.
-
----
-
-## 🔁 Fuzzy Search (Fallback Mode)
-
-When enabled:
-
-```bash
-indexly search "authentcation" --fuzzy
-```
-
-If no direct hits are found:
-
-1. Indexly queries the **FTS vocabulary table**
-2. Expands the query using fuzzy ratios
-3. Executes a refined MATCH query
-4. Builds approximate snippets
-
-This is **not a blind Levenshtein scan** — it is vocabulary-aware.
-
----
-
-## 🧪 Regex Search
-
-Regex search is designed for **precision and audits**.
-
-Use it when:
-• structure matters
-• syntax must match exactly
-• investigating legacy or generated content
-
-### Basic Usage
-
-```bash
-indexly regex '(?i)password\s*='
-```
-
-Regex search:
-• runs against indexed content
-• uses Python `re`
-• extracts contextual snippets
-
----
-
-### Optimized Execution Strategy
-
-Indexly automatically optimizes regex queries:
-
-• Multiple literal words → `LIKE` batching
-• Single complex pattern → `REGEXP`
-• Early narrowing via tags, paths, dates
-
-This avoids full table scans whenever possible.
-
----
-
-## 💾 Smart Caching & Refresh
-
-Both FTS and regex searches are cached.
-
-Cache behavior:
-• keyed by query + filters
-• automatically refreshed if files change
-• bypassable via `--no-cache`
+By default, Indexly can reuse cached search results when they are still valid. Bypass cache reads and writes for a fresh query:
 
 ```bash
 indexly search "policy" --no-cache
 ```
 
-Stale entries are selectively reloaded — not discarded wholesale.
+Save repeat searches as profiles:
 
----
+```bash
+indexly search "invoice" --filetype .pdf --save-profile invoice_pdf
+indexly search "invoice" --profile invoice_pdf
+```
 
-## 📌 Choosing the Right Search Mode
+Profiles store the search parameters and make repeated workflows easier to reproduce.
 
-| Use Case           | Recommended |
-| ------------------ | ----------- |
-| Concept discovery  | FTS         |
-| Logical queries    | FTS         |
-| Large environments | FTS         |
-| Exact syntax       | Regex       |
-| Security audits    | Regex       |
-| Config validation  | Regex       |
+## Fuzzy Search
 
----
+Use fuzzy search when spelling or terminology may vary:
 
-## 🛡️ Safety & Guarantees
+```bash
+indexly search "authentcation" --fuzzy
+indexly search "projetc plan" --fuzzy --fuzzy-threshold 85
+```
 
-* ❌ No filesystem writes
-* ❌ No file reads at runtime
-* ✅ Index-only access
-* ✅ Deterministic results
+Fuzzy search expands against the FTS vocabulary table. It is vocabulary-aware, not a raw filesystem scan.
 
-Search is safe for:
-• production systems
-• mounted backups
-• network shares
+## Regex Search
 
----
+Use `regex` for exact patterns:
 
-## 🧠 Design Philosophy
+```bash
+indexly regex "(?i)password\s*="
+indexly regex "\bINV-\d{6}\b" --filetype .txt .md
+indexly regex "(?m)^timeout\s*=\s*\d+" --path-contains config
+```
 
-Indexly Search follows three principles:
+Regex search runs against indexed content and supports the same common filters as full-text search, including `--filetype`, `--date-from`, `--date-to`, `--path-contains`, `--filter-tag`, `--context`, `--no-cache`, `--save-profile`, and `--profile`.
 
-1. **Relevance first** – ranking beats brute force
-2. **Transparency** – normalized queries are visible
-3. **Zero risk** – inspection, never mutation
+## Choosing a Mode
 
-Search is not a bolt-on feature —
-it is **the primary interface to your indexed knowledge base**.
+| Need | Command |
+| --- | --- |
+| Ranked concept discovery | `indexly search` |
+| FTS operators such as `AND`, `OR`, `NOT`, `NEAR` | `indexly search` |
+| Misspelling-tolerant lookup | `indexly search --fuzzy` |
+| Exact syntax or identifiers | `indexly regex` |
+| Security or config audits | `indexly regex` with filters |
+
+## Next Steps
+
+- Learn how content gets into the index: [Index Files and Folders](/documentation/index-files-and-folders/)
+- Understand the semantic filter: [Semantic Indexing Overview](/documentation/semantic-indexing-overview/)
+- See implementation details: [Search Internals](search-internals/)
+- Use tags to slice results: [Tagging](/documentation/tagging/)

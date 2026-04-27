@@ -1,123 +1,122 @@
 ---
-title: "Indexly Configuration & Features"
+title: "Configuration and Runtime Files"
+linkTitle: "Configuration"
+description: "Configure Indexly runtime paths, search profiles, cache behavior, tags, OCR choices, and maintenance commands without changing the indexing pipeline."
 slug: "configuration"
-icon: "mdi:cog-outline"
-weight: 4
-date: 2025-10-12
-summary: "Explore how Indexly profiles, filters, tagging, and watchdog features boost search speed, accuracy, and workflow efficiency."
-description: "Learn how to configure Indexly for optimal performance. Discover search profiles, real-time indexing, tagging, caching, and CSV analysis to streamline data management."
-keywords: [
-  "Indexly configuration",
-  "Indexly search filters",
-  "file tagging",
-  "real-time indexing",
-  "smart caching",
-  "CSV analysis",
-  "search optimization",
-  "productivity tools",
-  "Indexly watchdog"
-]
-cta: "Optimize your Indexly setup"
-canonicalURL: "/en/documentation/configuration/"
 aliases:
   - "/en/documentation/config/"
-type: docs
-categories:
-    - Features 
-    - Advanced Usage
+keywords:
+  - indexly configuration
+  - indexly runtime files
+  - search profiles
+  - search cache
+  - indexly tags
+  - indexly ocr
 tags:
-    - configuration
-    - indexing
-    - tagging
-    - performance
-    - usage
+  - configuration
+  - indexing
+  - search
+  - tagging
+  - performance
+categories:
+  - Documentation
+  - Reference
+weight: 35
+type: docs
+date: 2025-10-12
+lastmod: 2026-04-27
+draft: false
 ---
 
-Explore how profiles, filters, tagging, and watchdog enhance search efficiency.
+Indexly stores runtime state outside the source tree by default. The main files are resolved from `INDEXLY_HOME` when set, otherwise from the platform-specific user data directory.
 
----
+## Runtime Files
+
+| File | Purpose |
+| --- | --- |
+| `fts_index.db` | SQLite database for indexed files, FTS content, tags, and metadata |
+| `profiles.json` | Saved search profiles |
+| `search_cache.json` | Cached search results |
+| `log/` | Runtime logs |
+
+Set a custom location when you want a portable or isolated environment:
+
+```bash
+set INDEXLY_HOME=D:\indexly-state
+indexly stats
+```
+
+On PowerShell, use `$env:INDEXLY_HOME = "D:\indexly-state"` for the current session.
 
 ## Search Profiles
 
-Save and reuse filters:
+Profiles save repeatable search parameters:
 
 ```bash
-indexly search "project plan" --save-profile q3_plans
-indexly search "budget" --profile q3_plans
-````
-
-Profiles stored in `profiles.json`.
-
-> ![Profiles placeholder](/images/profiles-sample.png)
-
----
-
-## Tagging System
-
-
-### Add or Remove Tags Later
-
-```bash
-indexly tag add --files "." --tags notes.txt important
-indexly tag remove --files "." --tags notes.txt draft
+indexly search "project plan" --filetype .pdf .docx --save-profile project_docs
+indexly search "project plan" --profile project_docs
 ```
 
-### Search by Tag
+Profiles are useful when you repeatedly combine a term with the same filters, such as file type, path, tag, or date range.
+
+## Search Cache
+
+Indexly can reuse cached results when the indexed files have not changed.
 
 ```bash
-indexly search "keyword" --filter-tag urgent
+indexly search "policy"
+indexly search "policy" --no-cache
+indexly search "policy" --no-refresh-write
 ```
 
-> ![Sample Tags after search](/images/search-tags.png)
+Use `--no-cache` when validating fresh behavior. Use `--no-refresh-write` when you want to read without updating the cache file.
 
-For more information on tagging please see [Indexly Tagging System](tagging.md)
+## Tags
 
----
-
-## Watchdog (Real-Time Indexing)
+Tags are stored separately from extracted file content and can be used as search filters.
 
 ```bash
-indexly watch "C:/Users/Me/Documents"
+indexly tag add --files "notes.txt" --tags important
+indexly tag add --files "./docs" --tags archive --recursive
+indexly tag list --file "notes.txt"
+indexly tag remove --files "notes.txt" --tags important
+indexly search "keyword" --filter-tag important
 ```
 
-> Note: Optional, resource intensive for large datasets.
+For the full tagging workflow, see [Tagging](tagging.md).
 
----
+## OCR and Document Extraction
 
-## Performance & Smart Caching
-
-* Each search query hashed (`calculate_query_hash()`)
-* Cached results reused if valid
-* Only reindex changed files
-* Optional control with `--no-cache`
-
-
-> ![Sample cache results](/images/search_cache_json.png)
-
----
-
-## CSV Summary Analysis
+PDF OCR behavior is controlled during indexing:
 
 ```bash
-indexly analyze-csv --file data.csv --format md --output summary.md
+indexly index ./docs --filetype .pdf
+indexly index ./docs --ocr
+indexly index ./docs --no-ocr
 ```
 
-* Auto-detect delimiters
-* Computes stats: mean, median, min, max, stddev, IQR
-* Outputs in Markdown or TXT
-* [Cleaning CSV Data →](clean-csv-data.md)
-* [Analyze CSV →](data-analysis.md)
-* Analyse [Minitab MTW files](mtw-parser.md) after extraction
+`--ocr` forces OCR for PDFs. `--no-ocr` disables PDF OCR. Without either flag, Indexly uses its default PDF extraction policy.
 
-> ![CSV stats placeholder](/images/csv-stats.png)
+Install document extras before indexing PDFs, Word documents, Outlook messages, or other rich document formats:
 
+```bash
+python -m pip install "indexly[documents]"
+```
 
----
+## Maintenance Commands
 
-## Advanced Options
+Use these commands when behavior differs between machines or after upgrades:
 
-* [`DB Update & Migration Utilities →`](db-migration-utility.md)
-* `indexly stats` → DB overview
-* `fts_index.db` → full-text index
-* `profiles.json` → saved searches
-* `search_cache.json` → recent content
+```bash
+indexly stats
+indexly doctor
+indexly update-db
+indexly migrate check
+```
+
+## Related Pages
+
+- [Search Files with Indexly](/searching/)
+- [Index Files and Folders](indexing.md)
+- [Ignore Rules and Index Hygiene](ignore-rules-index-hygiene.md)
+- [DB Migration Utility](db-migration-utility.md)
