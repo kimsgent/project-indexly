@@ -17,7 +17,8 @@ def extract_text(path: Path) -> str:
 
     try:
         if ext == ".docx":
-            return _extract_docx(path)
+            result = _extract_docx(path)
+            return result.get("text", "") if isinstance(result, dict) else result
         if ext == ".pdf":
             result = _extract_pdf(path)
             return result.get("text", "") if isinstance(result, dict) else result

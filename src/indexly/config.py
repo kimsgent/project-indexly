@@ -145,3 +145,36 @@ FTS_ALLOWED_TIERS = {
     TIER1_HUMAN,
     TIER2_SEMANTIC,
 }
+
+
+# -------------------------
+# Extraction cleanup
+# -------------------------
+
+# Regex patterns that mark the start of low-value email boilerplate.
+# Keep these conservative: extraction stops at the first matching line.
+EMAIL_BOILERPLATE_CUTOFFS = [
+    r"^\s*mit freundlichen gr[üu]ßen\b",
+    r"^\s*freundliche gr[üu]ße\b",
+    r"^\s*viele gr[üu]ße\b",
+    r"^\s*best regards\b",
+    r"^\s*kind regards\b",
+    r"^\s*regards\b",
+    r"^\s*yours sincerely\b",
+    r"^\s*_{5,}\s*$",
+    r"^\s*-{5,}\s*$",
+    r"^\s*von:\s",
+    r"^\s*from:\s",
+    r"^\s*gesendet:\s",
+    r"^\s*sent:\s",
+    r"^\s*betreff:\s",
+    r"^\s*subject:\s",
+    r"^\s*this email and any attachments are confidential\b",
+    r"^\s*diese e-?mail und (?:alle )?anh[äa]nge sind vertraulich\b",
+    r"^\s*please consider the environment before printing\b",
+    r"^\s*bitte denken sie an die umwelt\b",
+    r"^\s*company disclaimer\b",
+    r"^\s*confidentiality notice\b",
+    r"^\s*auto-?generated ticket\b",
+    r"^\s*automatisch generierte ticket\b",
+]
