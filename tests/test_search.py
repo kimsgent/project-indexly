@@ -49,6 +49,38 @@ def seed_sort_data(db_path: str):
     conn.close()
 
 
+def seed_logical_operator_data(db_path: str):
+    base_dir = str(Path(db_path).parent)
+    conn = search_core.connect_db(db_path)
+    cur = conn.cursor()
+    cur.execute("DELETE FROM file_index")
+    rows = [
+        (
+            f"{base_dir}/literal_phrase.txt",
+            "This guide explains search and replace workflows.",
+            "This guide explains search and replace workflows.",
+            "2026-01-01T00:00:00",
+            "hash-literal",
+        ),
+        (
+            f"{base_dir}/separate_terms.txt",
+            "This guide explains search workflows and replace commands.",
+            "This guide explains search workflows and replace commands.",
+            "2026-01-02T00:00:00",
+            "hash-separate",
+        ),
+    ]
+    cur.executemany(
+        """
+        INSERT INTO file_index (path, content, clean_content, modified, hash)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        rows,
+    )
+    conn.commit()
+    conn.close()
+
+
 def test_simple_search(tmp_path):
     # Arrange
     test_db_path = tmp_path / "test_index.db"
@@ -77,6 +109,57 @@ def test_simple_search(tmp_path):
     # Assert
     assert results, "Expected at least one result"
     assert any("hello world" in r.get("snippet", "") for r in results)
+
+
+def test_lowercase_logical_words_stay_literal():
+    assert (
+        search_core.normalize_logical_expression("search and replace")
+        == '"search and replace"'
+    )
+    assert (
+        search_core.normalize_logical_expression("install or setup")
+        == '"install or setup"'
+    )
+    assert search_core.normalize_logical_expression("near future") == '"near future"'
+
+
+def test_uppercase_logical_words_stay_operators():
+    assert (
+        search_core.normalize_logical_expression("search AND replace")
+        == "search AND replace"
+    )
+    assert (
+        search_core.normalize_logical_expression("install OR setup")
+        == "install OR setup"
+    )
+    assert (
+        search_core.normalize_logical_expression("error NOT warning")
+        == "error NOT warning"
+    )
+
+
+def test_lowercase_and_searches_literal_english_phrase(tmp_path):
+    test_db_path = tmp_path / "test_index.db"
+    seed_logical_operator_data(str(test_db_path))
+    literal = search_core.normalize_path(str(tmp_path / "literal_phrase.txt"))
+    separate = search_core.normalize_path(str(tmp_path / "separate_terms.txt"))
+
+    lowercase_results = search_core.search_fts5(
+        term="search and replace",
+        query=None,
+        db_path=str(test_db_path),
+        no_cache=True,
+    )
+    uppercase_results = search_core.search_fts5(
+        term="search AND replace",
+        query=None,
+        db_path=str(test_db_path),
+        no_cache=True,
+        sort_by="path",
+    )
+
+    assert [r["path"] for r in lowercase_results] == [literal]
+    assert [r["path"] for r in uppercase_results] == [literal, separate]
 
 
 def test_search_can_sort_by_modified_and_path(tmp_path):

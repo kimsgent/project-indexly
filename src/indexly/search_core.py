@@ -245,6 +245,9 @@ _RE_TOKENIZER = re.compile(
     flags=re.IGNORECASE,
 )
 _RE_SAFE = re.compile(r'^[\w\s"\'()*+:\-~<>/]+$', re.IGNORECASE)
+_RE_EXPLICIT_FTS_SYNTAX = re.compile(
+    r'\b(?:AND|OR|NOT|NEAR(?:/\d+)?)\b|\bNEAR\s*\(\s*\d*\s*\)|["()*]'
+)
 
 
 def sanitize_fts_term(term: str) -> str:
@@ -293,13 +296,14 @@ def normalize_near_term(expr: str, near_distance: int = 5) -> str:
 
 def contains_fts_operators(term: str) -> bool:
     """Detect FTS5 logical operators and NEAR constructs."""
-    term_upper = term.upper()
-    return bool(re.search(r'\b(AND|OR|NOT|NEAR/?\d*)\b|\*|\(|\)|"', term_upper))
+    return bool(_RE_EXPLICIT_FTS_SYNTAX.search(term or ""))
 
 
 def normalize_logical_expression(query: str, near_distance: int = 5) -> str:
     """
     Normalize FTS5 logical query and safely apply NEAR where possible.
+    Logical operators are opt-in and case-sensitive: AND/OR/NOT/NEAR are
+    operators, while natural English words like "and" stay literal.
     Falls back gracefully if NEAR/N not supported.
     """
     import re, sqlite3
@@ -313,8 +317,11 @@ def normalize_logical_expression(query: str, near_distance: int = 5) -> str:
 
     q = re.sub(r"\s+", " ", query.strip())
 
+    has_explicit_fts_syntax = contains_fts_operators(q)
+
     # Try to detect if NEAR/N is supported in this SQLite build
     supports_near_n = False
+    conn = None
     try:
         conn = sqlite3.connect(":memory:")
         conn.execute("CREATE VIRTUAL TABLE t USING fts5(x);")
@@ -324,23 +331,21 @@ def normalize_logical_expression(query: str, near_distance: int = 5) -> str:
     except sqlite3.OperationalError:
         supports_near_n = False
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
-    if supports_near_n:
-        q = re.sub(r"\bNEAR\b(?!/\d+)", f"NEAR/{near_distance}", q, flags=re.IGNORECASE)
-    else:
-        q = re.sub(r"\bNEAR\b(?!/\d+)", "NEAR", q, flags=re.IGNORECASE)
+    if has_explicit_fts_syntax:
+        def _near_paren_repl(match):
+            distance = match.group(1) or str(near_distance)
+            return f"NEAR/{distance}" if supports_near_n else "NEAR"
 
-    q = re.sub(
-        r"\b(and|or|not|near(?:/\d+)?)\b",
-        lambda m: m.group(1).upper(),
-        q,
-        flags=re.IGNORECASE,
-    )
+        q = re.sub(r"\bNEAR\s*\(\s*(\d+)?\s*\)", _near_paren_repl, q)
+        if supports_near_n:
+            q = re.sub(r"\bNEAR\b(?!/\d+)", f"NEAR/{near_distance}", q)
+        else:
+            q = re.sub(r"\bNEAR/\d+\b", "NEAR", q)
 
-    if not any(
-        op in q.upper() for op in ("AND", "OR", "NOT", "NEAR")
-    ) and not re.search(r'["()]', q):
+    if not has_explicit_fts_syntax:
         q = f'"{q}"'
 
     return q
