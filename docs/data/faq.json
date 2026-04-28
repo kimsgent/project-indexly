@@ -1,38 +1,199 @@
 [
   {
-    "category": "general",
-    "question": "How do I install Indexly on Windows, macOS, or Linux?",
-    "answer": "You can install Indexly by running pip install indexly in your terminal. On Windows, macOS, and Linux, Python 3.10+ is required. For developers, clone the GitHub repo and run the indexing command from the project folder."
+    "category": "installation",
+    "title": "Installation",
+    "description": "Start here when you are setting up Indexly or enabling optional feature groups.",
+    "items": [
+      {
+        "question": "How do I install Indexly on Windows, macOS, or Linux?",
+        "answer": "On Windows, the recommended product install path is `py -m pip install indexly`. On macOS and Linux, Homebrew is the most convenient product install path, while `python -m pip install indexly` remains a cross-platform fallback. If you are preparing a contributor workstation, use the maintained Windows or Linux environment setup guide instead of only installing the CLI. Always verify with `indexly --version` and `indexly --help` after installation.",
+        "links": [
+          { "label": "Install Indexly", "href": "/en/documentation/indexly-installation/" },
+          { "label": "Windows Setup", "href": "/en/documentation/windows-terminal-setup/" },
+          { "label": "Linux Setup", "href": "/en/documentation/linux-development-environment-setup/" }
+        ]
+      },
+      {
+        "question": "Why does the terminal say `indexly` is not recognized after installation?",
+        "answer": "That usually means the current terminal session does not yet see the Python or Homebrew scripts directory. Open a fresh terminal first. If it still fails, verify that the package is installed, then review the platform-specific setup notes for Windows Terminal or Linux shell initialization.",
+        "links": [
+          { "label": "Install Indexly", "href": "/en/documentation/indexly-installation/" },
+          { "label": "Windows Terminal Setup", "href": "/en/documentation/windows-terminal-setup/" },
+          { "label": "Linux Setup", "href": "/en/documentation/linux-development-environment-setup/" }
+        ]
+      },
+      {
+        "question": "How do I prepare a contributor workstation on Linux?",
+        "answer": "Use the maintained `dotfiles-linux` workflow from the dotfiles repository. The default Linux path is to copy the bundle to `~/dotfiles-linux`, run `./bootstrap.sh`, reload Bash, then use `show-help` and `idxdocs verify` to confirm the shell and Project-Indexly docs toolchain. On development machines, use `update-lp` after changing the repo bundle so the live `~/dotfiles-linux` profile is refreshed; use `update-profile` only when you need to relink an already-synced local bundle.",
+        "links": [
+          { "label": "Linux Development Environment Setup", "href": "/en/documentation/linux-development-environment-setup/" },
+          { "label": "Developer Guide", "href": "/en/documentation/developer-guide/" },
+          { "label": "Install Indexly", "href": "/en/documentation/indexly-installation/" }
+        ]
+      },
+      {
+        "question": "Why do some commands mention missing features such as analysis or document support?",
+        "answer": "Indexly keeps the base install lightweight, so some commands depend on optional extras. Install only the pack you need, such as `indexly[analysis]`, `indexly[documents]`, `indexly[visualization]`, or `indexly[pdf_export]`. This avoids pulling in heavy dependencies when you only need the core search workflow.",
+        "links": [
+          { "label": "Install Indexly", "href": "/en/documentation/indexly-installation/" },
+          { "label": "Data Analysis Overview", "href": "/en/documentation/data-analysis-overview/" }
+        ]
+      }
+    ]
   },
   {
-    "category": "general",
-    "question": "What file types are supported by Indexly search?",
-    "answer": "Indexly supports text, PDF, Word (.docx), Excel (.xlsx), CSV, EPUB, ODT, PPTX, images (JPG, PNG, TIFF), and more. Check the documentation for the latest list of supported file types."
+    "category": "usage-basics",
+    "title": "Usage Basics",
+    "description": "These answers help you choose the right command and get productive quickly.",
+    "items": [
+      {
+        "question": "What should I run first after installing Indexly?",
+        "answer": "A practical first session is: check `indexly --help`, index a folder, run a simple search, then try one structured-data command. That sequence confirms the CLI is available, indexing works, and your environment is ready for the workflows you care about.",
+        "links": [
+          { "label": "Usage Guide", "href": "/en/documentation/usage-guide/" },
+          { "label": "Indexing", "href": "/en/documentation/indexing/" }
+        ]
+      },
+      {
+        "question": "When should I use `analyze-file` instead of a format-specific command?",
+        "answer": "Use `analyze-file` when you want Indexly to detect the best route automatically, especially for mixed structured formats or operational artifacts such as AutoDoctor JSON and SQLite outputs. Use `analyze-json`, `analyze-csv`, or `analyze-db` when you already know the file type and want a more direct route.",
+        "links": [
+          { "label": "Data Analysis Overview", "href": "/en/documentation/data-analysis-overview/" },
+          { "label": "Analyze AutoDoctor Artifacts", "href": "/en/documentation/analyze-autodoctor-artifacts/" }
+        ]
+      },
+      {
+        "question": "Does Indexly work offline?",
+        "answer": "Yes. Indexly is designed for local-first workflows. Search, indexing, and most analysis operations run against local files and local SQLite state, so you can work without sending content to an external service.",
+        "links": [
+          { "label": "Usage Guide", "href": "/en/documentation/usage-guide/" },
+          { "label": "Configuration", "href": "/en/documentation/config/" }
+        ]
+      }
+    ]
   },
   {
-    "category": "general",
-    "question": "Where is the Indexly database stored after indexing?",
-    "answer": "The Indexly database (fts_index.db) is created automatically when you run indexing. If installed with pip, it’s stored in your Python site-packages/indexly folder. If cloned from GitHub, it’s located under project-indexly/src/indexly."
+    "category": "file-locations",
+    "title": "File Locations",
+    "description": "These paths matter when you need to inspect state files, logs, or runtime storage directly.",
+    "items": [
+      {
+        "question": "Where is the main Indexly database stored?",
+        "answer": "Indexly stores its main SQLite database as `fts_index.db` inside its user-writable runtime base directory. By default that base is `%APPDATA%\\\\indexly` on Windows, `~/Library/Application Support/indexly` on macOS, and `$XDG_DATA_HOME/indexly` or `~/.local/share/indexly` on Linux. If `INDEXLY_HOME` is set, that override becomes the base directory instead.",
+        "links": [
+          { "label": "Indexly Doctor", "href": "/en/documentation/indexly-doctor/" },
+          { "label": "Developer Guide", "href": "/en/documentation/developer/" }
+        ]
+      },
+      {
+        "question": "Where are cache files stored?",
+        "answer": "The primary search cache file is `search_cache.json` in the same runtime base directory as the database. Some command-specific caches can also live closer to the working data, such as organizer or lister cache files created under a local `.indexly` folder when those workflows are used.",
+        "links": [
+          { "label": "Indexly Doctor", "href": "/en/documentation/indexly-doctor/" },
+          { "label": "Usage Guide", "href": "/en/documentation/usage-guide/" }
+        ]
+      },
+      {
+        "question": "Where do Indexly logs live?",
+        "answer": "Core runtime logs are written under the runtime base directory in the `log/` folder. Organizer workflows can also write JSON logs to a custom `--log-dir`, which is useful when you want audit trails stored beside the files you are organizing.",
+        "links": [
+          { "label": "Indexly Logging System", "href": "/en/documentation/indexly-logging-system/" },
+          { "label": "Organizer", "href": "/en/documentation/organizer/" }
+        ]
+      }
+    ]
   },
   {
-    "category": "general",
-    "question": "Can I use regex and advanced search operators in Indexly?",
-    "answer": "Yes, Indexly supports regex searches and logical operators like AND, OR, NOT, and NEAR. This lets you run advanced queries, match patterns, and refine results easily."
-  },
-  {
-    "category": "general",
-    "question": "Does Indexly work offline for local file search?",
-    "answer": "Yes, Indexly is fully offline and works without internet. Once you’ve indexed your files, searches are fast and private, powered by the local SQLite FTS5 database."
+    "category": "supported-file-types",
+    "title": "Supported File Types",
+    "description": "Use these answers to understand both search-oriented and analysis-oriented format support.",
+    "items": [
+      {
+        "question": "What file types can Indexly search or extract?",
+        "answer": "Indexly supports a broad set of local file formats, including text files, Office documents, PDFs, spreadsheets, markdown, logs, and several image workflows when the matching extras are installed. Exact extraction depth depends on the file type and the optional dependency groups you have enabled.",
+        "links": [
+          { "label": "Usage Guide", "href": "/en/documentation/usage-guide/" },
+          { "label": "Install Indexly", "href": "/en/documentation/indexly-installation/" }
+        ]
+      },
+      {
+        "question": "Can Indexly analyze JSON, NDJSON, CSV, Excel, Parquet, and SQLite files?",
+        "answer": "Yes. Indexly’s analysis stack supports common tabular and semi-structured formats such as CSV, JSON, NDJSON, Excel, Parquet, and SQLite. The generic `analyze-file` command is often the safest starting point when you are not fully sure which route will preserve the most meaning.",
+        "links": [
+          { "label": "Data Analysis Overview", "href": "/en/documentation/data-analysis-overview/" },
+          { "label": "Analyze SQLite Databases", "href": "/en/documentation/analyze-sqlite-databases/" }
+        ]
+      },
+      {
+        "question": "Are NDJSON logs first-class inputs in Indexly?",
+        "answer": "Yes. NDJSON is the preferred structured logging format in current Indexly workflows and can be summarized through the analysis pipeline. This makes it a good fit for machine-generated event streams and operational logs that would be awkward to manage as plain text.",
+        "links": [
+          { "label": "Indexly Logging System", "href": "/en/documentation/indexly-logging-system/" },
+          { "label": "Data Analysis Overview", "href": "/en/documentation/data-analysis-overview/" }
+        ]
+      }
+    ]
   },
   {
     "category": "troubleshooting",
-    "question": "How can I refresh or update the Indexly database?",
-    "answer": "Run the indexing command again to refresh the Indexly database with new or updated files. If searches feel outdated, clear the cache to ensure fresh results."
+    "title": "Troubleshooting",
+    "description": "These are the fastest checks when behavior looks wrong or a command seems to stop short.",
+    "items": [
+      {
+        "question": "Why does Indexly search return no results?",
+        "answer": "The most common causes are: indexing has not been run yet, the database is stale, the query is too narrow, or the file type was never extracted the way you expected. Re-index the relevant folder, retry with a simpler query, and run `indexly doctor` if the environment still feels inconsistent.",
+        "links": [
+          { "label": "Usage Guide", "href": "/en/documentation/usage-guide/" },
+          { "label": "Indexly Doctor", "href": "/en/documentation/indexly-doctor/" }
+        ]
+      },
+      {
+        "question": "What should I do when JSON or NDJSON analysis fails because of encoding or file structure?",
+        "answer": "First confirm the file encoding and whether the input is really standard JSON, NDJSON, or an application-specific report format. Files with a UTF-8 BOM, mixed records, or operational report structures often work better through `analyze-file` or a dedicated route such as `analyze-autodoctor`, because those paths can choose a better interpretation strategy than a strict JSON-first flow.",
+        "links": [
+          { "label": "Data Analysis Overview", "href": "/en/documentation/data-analysis-overview/" },
+          { "label": "Analyze AutoDoctor Artifacts", "href": "/en/documentation/analyze-autodoctor-artifacts/" }
+        ]
+      },
+      {
+        "question": "How do I handle database or schema warnings?",
+        "answer": "Use `indexly doctor` to inspect the environment and database state. If the tool reports missing columns or schema drift, follow up with `indexly doctor --fix-db` after reviewing the message. That route is designed to surface problems before you try more invasive troubleshooting.",
+        "links": [
+          { "label": "Indexly Doctor", "href": "/en/documentation/indexly-doctor/" },
+          { "label": "DB Migration Utility", "href": "/en/documentation/db-migration-utility/" }
+        ]
+      }
+    ]
   },
   {
-    "category": "troubleshooting",
-    "question": "Why does Indexly search return no results?",
-    "answer": "No results usually mean: 1) Indexing hasn’t been run, 2) The database is outdated, 3) The file type isn’t supported, or 4) The cache is stale. Try re-indexing, clearing cache, or using simpler search queries."
+    "category": "performance",
+    "title": "Performance Tips",
+    "description": "Use these suggestions when data volume grows and you want Indexly to stay responsive.",
+    "items": [
+      {
+        "question": "How can I keep indexing and analysis fast on large datasets?",
+        "answer": "Scope the work intentionally. Index only the folders you actually need, apply ignore rules for generated or temporary files, and use file-type filters when your workflow targets a known subset. On the analysis side, prefer routes that stream or summarize instead of flattening everything into one big in-memory table.",
+        "links": [
+          { "label": "Ignore Rules & Index Hygiene", "href": "/en/documentation/ignore-rules-index-hygiene/" },
+          { "label": "Data Analysis Overview", "href": "/en/documentation/data-analysis-overview/" }
+        ]
+      },
+      {
+        "question": "What is the safest way to inspect large operational artifacts or mixed datasets?",
+        "answer": "Start with the command that can make the best routing choice. For example, `analyze-file` is often better than forcing a JSON-only route when the input may actually be NDJSON, a report document, or an application-specific export. That keeps the analysis path closer to the file’s real structure and avoids unnecessary reshaping work.",
+        "links": [
+          { "label": "Data Analysis Overview", "href": "/en/documentation/data-analysis-overview/" },
+          { "label": "Analyze AutoDoctor Artifacts", "href": "/en/documentation/analyze-autodoctor-artifacts/" }
+        ]
+      },
+      {
+        "question": "How do I reduce repeat work during audits or organizer reviews?",
+        "answer": "Keep your index and your organizer audit workflow separate, and let the generated logs or caches work for you instead of rescanning everything manually. When you revisit the same tree often, consistent log and cache placement can save a lot of time.",
+        "links": [
+          { "label": "Organizer", "href": "/en/documentation/organizer/" },
+          { "label": "Lister", "href": "/en/documentation/lister/" }
+        ]
+      }
+    ]
   }
 ]
-

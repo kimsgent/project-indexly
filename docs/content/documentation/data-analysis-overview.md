@@ -1,281 +1,235 @@
 ---
 title: "Indexly Data Analysis & File Pipeline Overview"
-description: "Learn how Indexly analyzes CSV, JSON, NDJSON, XLSX, XML, YAML, and Parquet files using its universal loader, orchestrator, and smart pipelines."
-summary: "Deep dive into Indexly’s data analysis engine, supported formats, pipelines, and CLI commands."
+linkTitle: "Data Analysis Overview"
+description: "Understand how Indexly analyzes CSV, JSON, NDJSON, SQLite, Excel, XML, YAML, and Parquet files through its universal loader and specialized pipelines."
+summary: "A practical map of Indexly’s analysis commands, supported formats, routing behavior, and AutoDoctor-aware workflows."
 type: docs
-keywords:
-  - indexly
-  - file analysis
-  - data pipelines
-  - ndjson
-  - universal loader
-  - json analysis
-  - csv analysis
-categories:
-  - Architecture
-  - Core Engine
-  - Data Processing
-tags:
-  - pipelines
-  - file-support
-  - analysis
-  - loaders
-  - cli
 slug: "data-analysis-pipeline"
-type: docs
 weight: 18
+date: "2026-04-22"
+lastmod: "2026-04-22"
+draft: false
 toc: true
 canonicalURL: "/en/documentation/data-analysis-pipeline/"
+aliases:
+  - "/en/documentation/data-analysis-overview/"
+keywords:
+  - "indexly data analysis"
+  - "indexly analyze-file"
+  - "indexly analyze-json"
+  - "indexly analyze-db"
+  - "indexly analyze-autodoctor"
+  - "ndjson analysis"
+  - "sqlite analysis"
+tags:
+  - analysis
+  - pipelines
+  - json
+  - sqlite
+  - autodoctor
+categories:
+  - architecture
+  - data processing
+  - documentation
+params:
+  summary: "Choose the right analysis command and understand how Indexly routes structured files, including AutoDoctor artifacts."
 ---
 
----
-# Introduction to analysis tools
+## Who This Page Is For
 
+- Users deciding between `analyze-file`, `analyze-json`, `analyze-db`, and `analyze-autodoctor`
+- Developers tracing how Indexly routes structured files through the loader and orchestrator
+- Operators analyzing AutoDoctor report JSON, telemetry JSON, or SQLite output with Indexly
 
-## 1. Supported File Formats
+{{< alert title="What changed recently" color="info" >}}
+Since `v2.0.2`, Indexly’s JSON analysis path has become more reliable for NDJSON-style inputs. Current staging builds also add dedicated AutoDoctor-aware analysis for report JSON, telemetry JSON, and SQLite databases.
+{{< /alert >}}
 
-Indexly provides unified analysis and summarization for the following formats:
+## Supported Formats
 
-### **CSV**
+Indexly provides analysis and summarization for these structured formats:
 
-- Auto-detected delimiters (`,`, `;`, `\t`, etc.)
-- Summary statistics, validation, preview, and full analysis with `analyze-csv`
-- Structured statistical inference including correlation, t-tests, ANOVA, regression, and nonparametric testing via the [infer-csv](/inference/) pipeline.
-### **JSON**
+### CSV
 
-- Generic JSON (list, dict, mixed)
-- Indexly JSON structures
-- NDJSON support (newline‑delimited JSON)
-- JSON search-cache detection and summarization
+- Delimiter detection
+- Summary statistics and cleaning workflows via `analyze-csv`
+- Statistical inference through the [Inference Docs](/inference/)
 
-### **XLSX**
+### JSON and NDJSON
 
-- Automatic sheet selection
-- Table preview and type inference
+- Standard list and dictionary JSON
+- NDJSON / record-list JSON
+- Indexly search cache JSON
+- AutoDoctor report JSON
+- AutoDoctor telemetry JSON
 
-### **Parquet**
+### SQLite
 
-- Efficient columnar loading
-- Preview + deep stats
+- Generic SQLite profiling
+- Specialized AutoDoctor DB summaries when the schema matches AutoDoctor tables
 
-### **XML**
+### Excel, Parquet, XML, YAML
 
-- Generic XML tree
-- XRechnung (3 formats supported)
-- Structural extraction and summarization
+- Sheet-aware Excel loading
+- Efficient Parquet previews
+- XML structure analysis and tree rendering
+- Safe YAML loading into JSON-like structures
 
-### **YAML**
+## Choose The Right Command
 
-- Auto-load with safe YAML loader
-- Converted internally to dict/list for analysis
+| Scenario | Best command | Why |
+| --- | --- | --- |
+| Unknown structured file | `indexly analyze-file <file>` | Lets the universal loader detect the file and route it automatically |
+| Large JSON or NDJSON file | `indexly analyze-json <file>` | Uses JSON-specific validation and fallback handling |
+| Generic SQLite inspection | `indexly analyze-db <db>` | Focused on schema, table profiling, and export |
+| AutoDoctor report JSON, telemetry JSON, or `autodoctor.db` | `indexly analyze-autodoctor <path>` | Produces an operational summary instead of a generic table dump |
+| AutoDoctor artifact, but you want auto-detection through the generic path | `indexly analyze-file <path>` | The orchestrator detects AutoDoctor and switches to the specialized path |
 
-### **SQLite DB files**
+## Command Behaviors
 
-- Any `.db` or `.sqlite` file
-- Generic table analysis: row counts, column types, unique values
-- Numerical statistics: mean, median, min/max, std
-- Basic sample preview of tables
-- Summarizes tables, columns, numeric/non-numeric stats, relations, and provides Mermaid diagrams
+### `indexly analyze-file <file>`
 
-> Indexly can [analyze SQLite DB](analyze-sqlite-databases.md) files via `analyze-file `or `analyze-db`
+This is the universal dispatcher.
 
-----
+It:
 
-## 2. CLI Commands for Analysis
+- detects file type through `universal_loader`
+- adds metadata hints for special formats such as AutoDoctor
+- routes into the correct pipeline through the orchestrator
 
-Indexly offers two primary analysis commands:
+Use this when you want one command for mixed datasets.
 
-### **`indexly analyze-json <file>`**
+### `indexly analyze-json <file>`
 
-- Optimized for JSON + NDJSON (*only for generic ndjson extensions*)
-- Handles extremely large NDJSON files efficiently (stream-friendly)
-- Recommended when NDJSON uses a `.json` extension on very large files
+This is the JSON-focused route.
 
-### **`indexly analyze-file <file>`**
+It is best for:
 
-- Universal dispatcher
-- Detects format via `universal_loader`
-- Routes to the correct pipeline via the **analysis orchestrator**
+- plain JSON
+- NDJSON
+- JSON files that may need structural fallback logic
 
-Use case comparison:
+It now shares more routing behavior with the orchestrator, which helps prevent the old failure mode where NDJSON-style `.json` files summarized correctly but could not persist cleanly.
 
-- **Use `analyze-file`** → general file analysis, metadata extraction, or [SQLite DB](analyze-sqlite-databases.md) summary
-- **Use `analyze-json`** → very large or complex NDJSON/JSON only
-- **Use `analyze-db`** → advanced SQLite DB analysis with full schema, relationships, FTS, and metadata awareness
+### `indexly analyze-db <db>`
 
-----
+This is the database-focused route.
 
-## 3. Universal Loader + Orchestrator + Pipelines
+It is best for:
 
-Indexly’s analysis engine is composed of three layers:
+- unknown SQLite databases
+- table-by-table profiling
+- relationship discovery
+- schema exports and diagrams
 
-```bash
-            +-------------------------+
-            |      analyze-file       |
-            +-------------------------+
-                        |
-                        v
-            +-------------------------+
-            |   Universal Loader      |
-            |  (format detection)     |
-            +-------------------------+
-                        |
-                        v
-            +-------------------------+
-            |   Analysis Orchestrator |
-            |  (routes based on type) |
-            +-------------------------+
-                        |
-                        v
-            +-------------------------+
-            |      Pipelines          |
-            | (CSV/JSON/XML/etc.)     |
-            +-------------------------+
+When the database matches AutoDoctor’s schema, Indexly switches to an operational summary instead of staying in the generic inspection path.
+
+### `indexly analyze-autodoctor <path>`
+
+This is the dedicated operational route for AutoDoctor artifacts.
+
+It supports:
+
+- `AutoDoctor_Report.json`
+- `Telemetry_*.json`
+- `autodoctor.db`
+
+Use it when you want human-readable summaries first, not raw structure exploration.
+
+See [Analyze AutoDoctor Artifacts](analyze-autodoctor-artifacts.md).
+
+## How Routing Works
+
+Indexly’s structured-data analysis has three layers:
+
+```text
+analyze-file / analyze-json / analyze-db / analyze-autodoctor
+        |
+        v
+Universal Loader
+        |
+        v
+Analysis Orchestrator
+        |
+        v
+Specialized Pipelines
 ```
 
-### **Universal Loader – responsibilities**
+### Universal Loader Responsibilities
 
-- Detect file type by extension + content sniffing
-- Distinguish JSON, NDJSON, Indexly JSON, XRechnung XML
-- Extract structural metadata
-- Deliver a normalized representation to the orchestrator
+- detect file type from extension and content
+- distinguish JSON, NDJSON, SQLite, Excel, XML, YAML, and Parquet
+- attach metadata hints such as AutoDoctor schema fingerprints
 
-### **Analysis Orchestrator – responsibilities**
+### Analysis Orchestrator Responsibilities
 
-- Based on `file_type` and metadata → selects the correct pipeline
-- Delegates processing
-- Ensures consistent summary output
+- decide which analysis pipeline should run
+- preserve JSON-aware persistence behavior
+- reroute special formats such as AutoDoctor into dedicated summaries
 
-### **Pipelines – responsibilities**
+### Pipeline Responsibilities
 
-Each pipeline contains:
+Each specialized pipeline handles:
 
-- Validator
-- Statistics builder
-- Summary generator
-- Preview generator
-- Optional DB profiling for SQLite files
+- validation
+- normalization
+- preview generation
+- summary generation
+- persistence/export handoff
 
-----
+## AutoDoctor-Aware Analysis
 
-## 4. Analyze a SQLite DB file via `analyze-file`
+Indexly now recognizes two AutoDoctor JSON families plus the AutoDoctor SQLite schema:
+
+| Artifact | What Indexly shows |
+| --- | --- |
+| `AutoDoctor_Report.json` | Root cause, health score, operational findings, inventory highlights |
+| `Telemetry_*.json` | Run metadata, identity, module success, database sync, system snapshot |
+| `autodoctor.db` | Latest system snapshot, alert summary, module status, baselines, remediation |
+
+This avoids flattening operational documents into one synthetic table when a domain-specific summary is more useful.
+
+For operational examples and artifact selection guidance, see:
+
+- [Analyze AutoDoctor Artifacts](analyze-autodoctor-artifacts.md)
+- [Telemetry and Persistence](autodoctor/developer-guide/telemetry-and-persistence.md)
+- [Generate and Share Support Bundle](autodoctor/getting-started/support-bundle.md)
+
+## Practical Examples
+
+### Generic structured-file analysis
 
 ```bash
-indexly analyze-file .\chinook.db --show-summary
+indexly analyze-file data.json --show-summary
+indexly analyze-file metrics.parquet --show-summary
+indexly analyze-file workbook.xlsx --sheet-name Sheet1 --show-summary
 ```
 
-**Sample Output:**
+### JSON and NDJSON analysis
 
-📊 Dataset Summary Preview
+```bash
+indexly analyze-json iris.json --show-summary
+indexly analyze-json events.ndjson --show-summary
+```
 
-| **Table** | **Rows** | **Columns** | **Sample Columns**              |
-| --------- | -------- | ----------- | ------------------------------- |
-| albums    | 347      | 3           | AlbumId, Title, ArtistId        |
-| artists   | 275      | 2           | ArtistId, Name                  |
-| customers | 59       | 13          | CustomerId, FirstName, LastName |
+### SQLite analysis
 
-**Numeric Summary for `albums` table:**
+```bash
+indexly analyze-db chinook.db --show-summary --all-tables
+indexly analyze-file chinook.db --show-summary
+```
 
-| **Column** | **Count** | **Mean** | **Min** | **Max** | **Std** |
-| ---------- | --------- | -------- | ------- | ------- | ------- |
-| AlbumId    | 347       | 174.0    | 1       | 347     | 100.3   |
-| ArtistId   | 347       | 121.9    | 1       | 275     | 77.8    |
+### AutoDoctor analysis
 
-> ⚠️ Note: This summary is **generic**. For more advanced insights, including full schema, relationships, FTS tables, and Indexly-specific metadata, use `analyze-db`
+```bash
+indexly analyze-autodoctor .\AutoDoctor_Report.json --show-summary
+indexly analyze-autodoctor .\Telemetry_20260416-081258-BTNB05.json --summary-only
+indexly analyze-autodoctor .\autodoctor.db --show-summary
+```
 
-----
+## Related Pages
 
-## 5. JSON & NDJSON Structure Handling
-
-Indexly supports multiple JSON structures:
-
-### **1. Dictionary-style JSON**
-
-Used in many Indexly exports. Analyzer treats keys as rows or metadata.
-
-### **2. List-style JSON**
-
-Standard row-like records.
-
-### **3. NDJSON**
-
-- Recommended export format for large merged logs
-- Most memory-efficient
-- Fully supported by `analyze-json` and `analyze-file`
-
-### **Choosing which command for NDJSON**
-
-| **Scenario**                                        | **Recommended Command** |
-| --------------------------------------------------- | ----------------------- |
-| NDJSON with `.ndjson` extension                     | `analyze-file`          |
-| NDJSON masked as `.json` but file is **very large** | `analyze-json`          |
-| NDJSON masked as `.json` and system has enough RAM  | `analyze-file`          |
-
-### **Merged Indexly logs**
-
-- Export as **NDJSON** → smallest file + best performance
-- Fully analyzable using Indexly
-
-----
-
-## 6. Search Cache Analysis
-
-Indexly’s universal loader detects search-cache JSON automatically:
-
-- Looks for objects containing `timestamp` + `results`
-- Then `summarize-search` can be used to generate:
-    - Query statistics
-    - Result distribution
-    - Snippets
-    - Timestamps timeline
-
-----
-
-## 7. Visualization Layer
-
-- CSV timestamped data
-- Index logs
-- Search-cache timelines
-
-Plot types:
-
-- Event distribution
-- Frequency over time
-- Trend lines
-
-These [visualizations](data-analysis.md#visual-exploration) are generated programmatically using the data returned by pipelines.
-
-----
-
-8. Cleaning & Exporting Index Logs
-
-`index.log` from the watcher can be:
-
-- Cleaned
-- Normalized
-- Exported to **JSON**, **CSV**, or **NDJSON**
-
-Export recommendations:
-
-- **NDJSON** → best for analysis and size reduction
-- **CSV** → best for spreadsheets or BI tools
-- **JSON** → human-readable, but large for many records
-
-All exported formats can be re-analyzed with Indexly.
-
-----
-
-### ⚡ Summary of SQLite DB Analysis via `analyze-file`
-
-- Can profile DB tables generically
-- Displays table names, row counts, column types, unique values, numeric stats
-- Provides a small sample of rows
-- Does **not** detect Indexly-specific metadata, FTS tables, or table relationships
-- Recommended for quick inspection of unknown DB files
-- Use **`analyze-db`** for **full-featured DB inspection**
-
----
-**Next Steps for Users:**
-
-- For general files or SQLite DBs: `analyze-file`
-- For advanced DB insights (relationships, FTS, Indexly metadata): [analyze-db](analyze-sqlite-databases.md)
+- [Usage Guide](usage.md)
+- [Analyze SQLite Databases](analyze-sqlite-databases.md)
+- [Analyze AutoDoctor Artifacts](analyze-autodoctor-artifacts.md)
+- [Developer Guide](developer.md)

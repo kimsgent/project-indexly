@@ -13,6 +13,7 @@ keywords:
   - windows install indexly
   - linux install indexly
 weight: 10
+lastmod: "2026-04-25"
 type: docs
 toc: true
 aliases:
@@ -25,6 +26,16 @@ Indexly runs on Windows, macOS, and Linux.
 For most users:
 - Use **Homebrew** on macOS/Linux
 - Use **pip** on Windows
+
+{{< alert title="Contributor Note" color="info" >}}
+This page covers product installation.
+
+If you are preparing a contributor workstation rather than just installing the CLI, use:
+
+- [Windows Development Environment Setup](windows-terminal-setup.md)
+- [Linux Development Environment Setup](linux-development-environment.md)
+- [Indexly Developer Guide](developer.md)
+{{< /alert >}}
 
 ## 1. Install on macOS/Linux with Homebrew (Recommended)
 
@@ -42,7 +53,7 @@ indexly --help
 
 No manual `PYTHONPATH` wrapper is required for current Homebrew releases.
 
-If `brew` is not available yet on Linux, initialize Homebrew in your shell first:
+If `brew` is already installed on Linux but not available in the current shell, initialize Homebrew first:
 
 ```bash
 eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
@@ -151,6 +162,13 @@ Verify:
 indexly --help
 ```
 
+On Windows, contributors can also use the repo-native bootstrap script:
+
+```powershell
+.\setup.ps1 -CheckOnly
+.\setup.ps1
+```
+
 ## 8. Troubleshooting
 
 - `indexly: command not found`
@@ -165,4 +183,4 @@ indexly --help
 
 Indexly is now ready to use.
 
-See also [Customizing Windows Terminal](windows-terminal-setup.md).
+See also [Windows Development Environment Setup](windows-terminal-setup.md), [Linux Development Environment Setup](linux-development-environment.md), and [Indexly Developer Guide](developer.md).

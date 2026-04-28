@@ -4,6 +4,7 @@ slug: "developer-guide"
 icon: "mdi:code-braces"
 weight: 5
 date: 2026-04-01
+lastmod: 2026-04-25
 summary: "Production-grade developer guide for Indexly: architecture, dependency policy, local setup, testing, packaging, and contribution workflow."
 description: "Learn how to develop Indexly safely and efficiently. Covers project structure, optional dependency design, command wiring, quality checks, and Homebrew-friendly packaging practices."
 keywords: [
@@ -49,6 +50,15 @@ Indexly is maintained with these priorities:
 
 ## Local Setup
 
+{{< alert title="Platform Setup Notes" color="info" >}}
+If you want the maintained contributor workstation flow, start with:
+
+- [Windows Development Environment Setup](windows-terminal-setup.md) for the maintained Windows workflow
+- [Linux Development Environment Setup](linux-development-environment.md) for the maintained Ubuntu/Linux workflow
+
+This page focuses on repo-local development once your shell and workstation are ready.
+{{< /alert >}}
+
 Clone and create a virtual environment:
 
 ```bash
@@ -88,7 +98,23 @@ python -m indexly --help
 indexly --version
 ```
 
-For platform install notes, see [Install Indexly](indexly-installation.md).
+### Windows Contributor Shortcut
+
+On Windows, this repository also ships a repo-native setup script:
+
+```powershell
+.\setup.ps1 -CheckOnly
+.\setup.ps1
+```
+
+That script currently:
+
+- validates `winget`, Python, and expected repo files
+- applies system dependencies from `winget.yaml`
+- creates or reuses `.venv`
+- installs both `requirements.txt` and `requirements-dev.txt`
+
+For platform install notes, see [Install Indexly](indexly-installation.md). For maintained workstation setup, see [Windows Development Environment Setup](windows-terminal-setup.md) and [Linux Development Environment Setup](linux-development-environment.md).
 
 ---
 
@@ -130,7 +156,7 @@ project-indexly/
 | CLI entry | `__main__.py`, `indexly.py`, `cli_utils.py` | Parses commands and routes to feature handlers |
 | Indexing/search | `fts_core.py`, `search_core.py`, `db_utils.py`, `db_pipeline.py` | FTS5 indexing, query execution, and persistence |
 | File extraction | `filetype_utils.py`, `extract_utils.py`, `optional_deps.py` | File-type routing and lazy optional imports |
-| Analysis | `csv_analyzer.py`, `analysis_orchestrator.py`, `analyze_json.py`, `analyze_db.py`, `inference/` | CSV/data profiling, structured-data analysis, and statistical inference |
+| Analysis | `csv_analyzer.py`, `analysis_orchestrator.py`, `analyze_json.py`, `analyze_db.py`, `autodoctor_*.py`, `inference/` | CSV/data profiling, structured-data analysis, AutoDoctor-aware summaries, and statistical inference |
 | Organization | `organize/organizer.py`, `organize/lister.py`, `organize/cli_wrapper.py` | Folder structuring, logs, lister views |
 | Compare | `compare/compare_engine.py`, `compare/file_compare.py`, `compare/folder_compare.py` | File/folder diff and similarity checks |
 | Backup/restore | `backup/cli.py`, `backup/restore.py`, `backup/compress.py` | Full/incremental backup and restore workflows |
@@ -254,6 +280,13 @@ When behavior changes, update docs in the same PR:
 - Packaging behavior: `scripts/generate_brew_formula.py` docs and examples
 
 Keep examples copy-paste ready and aligned with `indexly --help`.
+
+When you change AutoDoctor-related analysis behavior, update both sides of the documentation boundary:
+
+- Indexly-side operational usage: `docs/content/documentation/analyze-autodoctor-artifacts.md`
+- AutoDoctor-side artifact meaning: `docs/content/documentation/autodoctor/`
+
+This keeps “how to analyze the artifact” separate from “what the artifact means inside AutoDoctor,” which mirrors the current code separation.
 
 ---
 

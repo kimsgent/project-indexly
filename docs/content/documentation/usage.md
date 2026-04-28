@@ -205,8 +205,31 @@ Analyze other formats with one command:
 
 ```bash
 indexly analyze-file data.json --show-summary
+indexly analyze-json events.ndjson --show-summary
 indexly analyze-file dataset.xlsx --sheet-name Sheet1 --show-summary
 indexly analyze-file metrics.parquet --show-summary
+```
+
+Analyze SQLite directly when you want schema-aware inspection:
+
+```bash
+indexly analyze-db chinook.db --show-summary
+indexly analyze-db chinook.db --all-tables --export md
+```
+
+Analyze AutoDoctor artifacts with the dedicated operational route:
+
+```bash
+indexly analyze-autodoctor .\AutoDoctor_Report.json --show-summary
+indexly analyze-autodoctor .\Telemetry_20260416-081258-BTNB05.json --summary-only
+indexly analyze-autodoctor .\autodoctor.db --show-summary
+```
+
+If you prefer one generic command, `analyze-file` can also auto-detect AutoDoctor JSON and AutoDoctor SQLite databases:
+
+```bash
+indexly analyze-file .\AutoDoctor_Report.json --show-summary
+indexly analyze-file .\autodoctor.db --show-summary
 ```
 
 Run statistical inference on indexed CSV datasets:
@@ -216,6 +239,8 @@ indexly infer-csv sales_q1.csv sales_q2.csv --merge-on customer_id --test ttest 
 ```
 
 See [Data Analysis Overview](data-analysis-overview.md) and [Time-Series Visualization](time-series-visualization.md).
+
+For AutoDoctor-specific guidance, see [Analyze AutoDoctor Artifacts](analyze-autodoctor-artifacts.md).
 
 ---
 
