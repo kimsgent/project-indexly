@@ -360,23 +360,42 @@ def run_stats(args):
 
     ripple = Ripple(command_titles["stats"], speed="fast", rainbow=True)
     ripple.start()
+    conn = None
 
     try:
         conn = connect_db()
         cursor = conn.cursor()
 
         total_files = cursor.execute("SELECT COUNT(*) FROM file_index").fetchone()[0]
-        total_tagged = cursor.execute("SELECT COUNT(*) FROM file_tags").fetchone()[0]
-        db_size = os.path.getsize(DB_FILE) / 1024
+        total_tagged = cursor.execute(
+            """
+            SELECT COUNT(DISTINCT ft.path)
+            FROM file_tags ft
+            JOIN file_index fi ON fi.path = ft.path
+            WHERE ft.tags IS NOT NULL AND TRIM(ft.tags) != ''
+            """
+        ).fetchone()[0]
+        untagged_files = max(total_files - total_tagged, 0)
+        tag_coverage = (total_tagged / total_files * 100) if total_files else 0
+        db_size = os.path.getsize(DB_FILE) / 1024 if os.path.exists(DB_FILE) else 0
 
         ripple.stop()
         print("\n📊 Database Stats:")
         print(f"- Total Indexed Files: {total_files}")
         print(f"- Total Tagged Files: {total_tagged}")
+        print(f"- Untagged Files: {untagged_files}")
+        print(f"- Tag Coverage: {tag_coverage:.1f}%")
         print(f"- DB Size: {db_size:.1f} KB")
 
         print("\n🏷️ Top Tags:")
-        rows = cursor.execute("SELECT tags FROM file_tags").fetchall()
+        rows = cursor.execute(
+            """
+            SELECT DISTINCT ft.path, ft.tags
+            FROM file_tags ft
+            JOIN file_index fi ON fi.path = ft.path
+            WHERE ft.tags IS NOT NULL AND TRIM(ft.tags) != ''
+            """
+        ).fetchall()
         all_tags = []
 
         for row in rows:
@@ -385,12 +404,19 @@ def run_stats(args):
                 all_tags.extend(t.strip() for t in tag_string.split(",") if t.strip())
 
         tag_counter = Counter(all_tags)
-        for tag, count in tag_counter.most_common(10):
-            print(f"  • {tag}: {count}")
+        print(f"- Unique Tags: {len(tag_counter)}")
+        print(f"- Total Tag Assignments: {sum(tag_counter.values())}")
+
+        if tag_counter:
+            for tag, count in tag_counter.most_common(10):
+                print(f"  • {tag}: {count}")
+        else:
+            print("  No tags found yet.")
 
     finally:
         ripple.stop()
-        conn.close()
+        if conn:
+            conn.close()
 
 
 # Configure logging
