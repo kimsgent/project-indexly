@@ -32,6 +32,8 @@ def normalize_results(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         out.append({
             "path": r.get("path"),
             "snippet": r.get("snippet") or r.get("content", "") or "",
+            "modified": r.get("modified"),
+            "score": r.get("score"),
             # you can add more lightweight fields if you store them
         })
     return out
@@ -53,6 +55,7 @@ def save_profile(name: str, args, results: Optional[List[Dict[str, Any]]] = None
         "path_contains": getattr(args, "path_contains", None),
         "tag_filter": getattr(args, "filter_tag", None),
         "context": getattr(args, "context", None),
+        "sort_by": getattr(args, "sort_by", None),
     }
 
     if results is not None:

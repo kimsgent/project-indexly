@@ -423,6 +423,12 @@ def build_parser():
         default=5,
         help="Maximum distance for NEAR operator (default: 5)",
     )
+    search_parser.add_argument(
+        "--sort-by",
+        choices=["relevance", "newest", "oldest", "path"],
+        default="relevance",
+        help="Sort results by relevance, newest modified date, oldest modified date, or path",
+    )
     search_parser.add_argument("--author", help="Filter by author metadata")
     search_parser.add_argument("--camera", help="Filter by camera metadata")
     search_parser.add_argument(
