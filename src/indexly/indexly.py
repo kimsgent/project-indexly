@@ -36,7 +36,7 @@ from .filetype_utils import (
     get_missing_documents_dependencies,
 )
 from .db_utils import connect_db, get_tags_for_file, _sync_path_in_db
-from .search_core import search_fts5, search_regex
+from .search_core import search_fts5, search_regex, sort_search_results
 from .extract_utils import update_file_metadata
 from .rename_utils import (
     rename_file,
@@ -611,7 +611,10 @@ def handle_search(args):
     if getattr(args, "profile", None):
         prof = load_profile(args.profile)
         if prof and prof.get("results"):
-            results = filter_saved_results(prof["results"], term_cli)
+            results = sort_search_results(
+                filter_saved_results(prof["results"], term_cli),
+                getattr(args, "sort_by", "relevance"),
+            )
             print(
                 f"Searching '{term_cli or prof.get('term')}' (profile-only: {args.profile})"
             )
@@ -653,6 +656,7 @@ def handle_search(args):
             format=getattr(args, "format", None),
             no_cache=args.no_cache,
             near_distance=args.near_distance,
+            sort_by=getattr(args, "sort_by", "relevance"),
         )
     finally:
         ripple.stop()

@@ -37,6 +37,8 @@ from .config import DB_FILE, PROFILE_FILE
 
 user_interrupted = False
 
+SEARCH_SORT_CHOICES = ("relevance", "newest", "oldest", "path")
+
 
 def handle_sigint(signum, frame):
     global user_interrupted
@@ -45,6 +47,39 @@ def handle_sigint(signum, frame):
 
 
 signal.signal(signal.SIGINT, handle_sigint)
+
+
+def normalize_search_sort(sort_by: str | None) -> str:
+    if sort_by in SEARCH_SORT_CHOICES:
+        return sort_by
+    return "relevance"
+
+
+def _search_order_clause(sort_by: str | None, table_alias: str | None = "fi") -> str:
+    sort_by = normalize_search_sort(sort_by)
+    prefix = f"{table_alias}." if table_alias else ""
+
+    if sort_by == "newest":
+        return f"ORDER BY {prefix}modified DESC, rank"
+    if sort_by == "oldest":
+        return f"ORDER BY {prefix}modified ASC, rank"
+    if sort_by == "path":
+        return f"ORDER BY {prefix}path COLLATE NOCASE ASC, rank"
+    return "ORDER BY rank"
+
+
+def sort_search_results(results, sort_by: str | None):
+    results = results or []
+    sort_by = normalize_search_sort(sort_by)
+    if sort_by == "newest":
+        return sorted(results, key=lambda r: r.get("modified") or "", reverse=True)
+    if sort_by == "oldest":
+        return sorted(results, key=lambda r: r.get("modified") or "")
+    if sort_by == "path":
+        return sorted(results, key=lambda r: (r.get("path") or "").lower())
+    return sorted(
+        results, key=lambda r: r.get("score") if r.get("score") is not None else 0
+    )
 
 
 def refresh_cache_if_stale(cache_key, cache_entry, no_write=False):
@@ -106,7 +141,14 @@ def refresh_cache_if_stale(cache_key, cache_entry, no_write=False):
 
 
 # --- Hybrid fuzzy fallback (vocab expansion + refined snippets) ---
-def fuzzy_fallback(term, threshold=80, topn=5, context_chars=150, max_snippets=3):
+def fuzzy_fallback(
+    term,
+    threshold=80,
+    topn=5,
+    context_chars=150,
+    max_snippets=3,
+    sort_by="relevance",
+):
     """
     Hybrid fuzzy fallback:
     - Expands query using vocab tokens + fuzzy ratio.
@@ -148,7 +190,12 @@ def fuzzy_fallback(term, threshold=80, topn=5, context_chars=150, max_snippets=3
     print(f"🔁 Fuzzy expanded query: {expanded}")
 
     cursor.execute(
-        "SELECT path, content FROM file_index WHERE file_index MATCH ?",
+        f"""
+        SELECT path, content, modified, rank AS score
+        FROM file_index
+        WHERE file_index MATCH ?
+        {_search_order_clause(sort_by, table_alias=None)}
+        """,
         (expanded,),
     )
     rows = cursor.fetchall()
@@ -174,6 +221,8 @@ def fuzzy_fallback(term, threshold=80, topn=5, context_chars=150, max_snippets=3
             {
                 "path": path,
                 "snippet": snippet_text,
+                "modified": row["modified"],
+                "score": row["score"],
                 "tags": get_tags_for_file(path),
                 "source": "fuzzy",
             }
@@ -181,7 +230,7 @@ def fuzzy_fallback(term, threshold=80, topn=5, context_chars=150, max_snippets=3
 
     # Deduplicate by normalized path
     dedup = {r["path"]: r for r in results}
-    return list(dedup.values())
+    return sort_search_results(list(dedup.values()), sort_by)
 
 
 # ---------------------------------------------------------------------
@@ -320,6 +369,7 @@ def search_fts5(
     camera=None,
     image_created=None,
     format=None,
+    sort_by="relevance",
 ):
     import re, sqlite3, time
     from rich.console import Console
@@ -344,6 +394,7 @@ def search_fts5(
         "camera": camera,
         "image_created": image_created,
         "format": format,
+        "sort_by": normalize_search_sort(sort_by),
     }
 
     key = calculate_query_hash(term, args_dict)
@@ -372,7 +423,9 @@ def search_fts5(
     console.print(f"[cyan]Normalized FTS expression:[/cyan] [white]{fts_expr}[/white]")
 
     # --- Build base query ---
-    query_parts = ["SELECT fi.path, fi.content FROM file_index fi"]
+    query_parts = [
+        "SELECT fi.path, fi.content, fi.modified, rank AS score FROM file_index fi"
+    ]
     if any([author, camera, image_created, format]):
         query_parts.append("JOIN file_metadata fm ON fi.path = fm.path")
 
@@ -427,7 +480,7 @@ def search_fts5(
         query_parts.append("AND fm.format LIKE ?")
         params.append(f"%{format}%")
 
-    query_parts.append("ORDER BY rank")
+    query_parts.append(_search_order_clause(sort_by))
     query_str = "\n".join(query_parts)
 
     # --- Execute query safely ---
@@ -443,7 +496,12 @@ def search_fts5(
         console.print(
             f"[yellow]Retrying with fallback literal query:[/yellow] {literal_query}"
         )
-        fallback_query = "SELECT fi.path, fi.content FROM file_index fi WHERE fi.content MATCH ? ORDER BY rank"
+        fallback_query = f"""
+            SELECT fi.path, fi.content, fi.modified, rank AS score
+            FROM file_index fi
+            WHERE fi.content MATCH ?
+            {_search_order_clause(sort_by)}
+        """
         try:
             cursor.execute(fallback_query, [literal_query])
             rows = cursor.fetchall()
@@ -461,7 +519,10 @@ def search_fts5(
                 "[yellow]🔁 No results, attempting fuzzy fallback...[/yellow]"
             )
             return fuzzy_fallback(
-                term, threshold=fuzzy_threshold, context_chars=context_chars
+                term,
+                threshold=fuzzy_threshold,
+                context_chars=context_chars,
+                sort_by=sort_by,
             )
         console.print("[red]❌ No results found, nothing cached.[/red]")
         return []
@@ -481,6 +542,8 @@ def search_fts5(
             "snippet": build_snippet(
                 row["content"], search_terms, context_chars=context_chars
             ),
+            "modified": row["modified"],
+            "score": row["score"],
             "tags": get_tags_for_file(row["path"]),
         }
         for row in rows
@@ -488,9 +551,10 @@ def search_fts5(
     serializable_results = enrich_results_with_tags(serializable_results)
 
     # --- Cache results ---
-    cache[key] = {"timestamp": time.time(), "results": serializable_results}
-    save_cache(cache)
-    console.print("[green]💾 Cached results successfully.[/green]")
+    if not no_cache:
+        cache[key] = {"timestamp": time.time(), "results": serializable_results}
+        save_cache(cache)
+        console.print("[green]💾 Cached results successfully.[/green]")
 
     return serializable_results
 
