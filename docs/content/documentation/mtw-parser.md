@@ -4,9 +4,9 @@ slug: "extract-mtw"
 date: 2025-10-11
 version: "1.0.3"
 weight: 7
-description: "Learn how to extract, decode, and analyze Minitab MTW files using Indexly’s extract-mtw feature — including optional extended metadata extraction from WorksheetInfo streams."
+description: "Learn how to extract, decode, and analyze Minitab MTW files using Indexly’s extract-mtw feature — including cleaner worksheet CSV output, notes files, and optional diagnostic streams."
 keywords: ["indexly", "extract-mtw", "mtw", "minitab", "data extraction", "worksheetinfo", "metadata", "cli"]
-summary: "The extract-mtw feature in Indexly introduces native support for Minitab (.MTW) files — decoding worksheets, handling binary streams, and optionally extracting independent WorksheetInfo metadata for extended insight."
+summary: "The extract-mtw feature in Indexly introduces native support for Minitab (.MTW) files — decoding worksheet columns, preserving readable notes, and optionally extracting diagnostic WorksheetInfo or binary streams."
 canonicalURL: /en/documentation/extract-mtw/
 categories:
     - Advance Usage
@@ -17,7 +17,7 @@ tags:
 # Extract-MTW Command — Minitab File Extraction Made Simple
 
 The `extract-mtw` command allows Indexly to directly read, extract, and process **Minitab MTW files**.  
-With it, you can access embedded worksheet data, decode textual content, and optionally extract **extended metadata** from the internal `WorksheetInfo` section — all while maintaining clarity and structure.
+With it, you can access embedded worksheet data, decode textual content, and optionally extract **extended metadata** from internal `WorksheetInfo` sections — all while keeping the generated files readable.
 
 This feature bridges the gap between data science tools and practical search/indexing pipelines, making `.mtw` files fully searchable, indexable, and analyzable.
 
@@ -26,11 +26,13 @@ This feature bridges the gap between data science tools and practical search/ind
 ## Key Features
 
 - 🧮 **Native MTW support** for `.mtw` (Minitab) project files  
-- 🧩 **Automatic stream decoding** — detects and decodes text streams from binary content  
-- 🗂 **Independent WorksheetInfo extraction** for extended metadata (`--mtw-extended`)  
-- 🧹 **Intelligent cleaning** removes noise (`G`, `@`, control characters, and unreadable symbols)  
-- 💾 **CSV output** for each worksheet and metadata file  
--⚙️ **Graceful fallback** for unknown or binary-only streams  
+- 🧩 **Automatic stream decoding** — detects worksheet streams, text notes, and binary fallbacks
+- 🧮 **Cleaner worksheet CSVs** — extracts contiguous numeric worksheet columns instead of dumping raw binary text
+- 📝 **Notes files** — preserves readable worksheet descriptions separately from numeric data
+- 🗂 **Optional WorksheetInfo extraction** for diagnostic metadata (`--mtw-extended`)
+- 🧹 **Intelligent cleaning** removes control characters and internal stream markers
+- 💾 **CSV output** for decoded worksheets
+- ⚙️ **Graceful fallback** for compressed, unknown, or binary-only streams
 - 📑 **Metadata storage integration** with Indexly’s core database  
 - 🚀 **Resource-aware mode** — extended extraction only triggered when explicitly requested  
 
@@ -43,7 +45,7 @@ To view all options and parameters for this feature, run:
 
 ```bash
 indexly extract-mtw --help
-````
+```
 
 This displays all available flags, including the `--mtw-extended` option and output configuration parameters.
 
@@ -54,20 +56,19 @@ This displays all available flags, including the `--mtw-extended` option and out
 To extract all readable worksheets and streams from a Minitab file, simply run:
 
 ```bash
-indexly extract-mtw path/to/datafile.mtw
+indexly extract-mtw path/to/datafile.mtw --output ./mtw-output
 ```
 
-After processing, Indexly automatically generates clean `.csv` and `.txt` outputs in the same directory.
+After processing, Indexly generates clean `.csv`, `.txt`, or `.bin` outputs in the selected output directory.
 
 Example output:
 
 ```
-datafile_Worksheet.csv
-datafile_Text.txt
+datafile_worksheet.csv
+datafile_worksheet_notes.txt
 ```
 
-Each worksheet or text stream within the `.mtw` file is extracted independently.
-Binary or non-decodable data is safely written as `.bin` files for later inspection.
+The worksheet CSV contains decoded numeric columns. The notes file contains readable descriptions, citations, or column explanations found in the MTW stream. Binary or non-decodable data is safely written as `.bin` files for later inspection.
 
 ---
 
@@ -82,25 +83,27 @@ To enable it, simply pass the `--mtw-extended` flag:
 indexly extract-mtw --mtw-extended path/to/statistics-report.mtw
 ```
 
-You’ll then see additional output files such as:
+You may then see additional output files such as:
 
 ```
-statistics-report_WorksheetInfo.csv
+statistics-report_worksheetinfo.csv
+statistics-report_worksheetinfo.bin
 ```
 
-Each extracted `WorksheetInfo` file is automatically cleaned of redundant `G` or `@` characters, ensuring human-readable output while retaining all meaningful data.
+Readable `WorksheetInfo` content is cleaned and saved as text-like CSV output. Unreadable WorksheetInfo or compressed streams are preserved as `.bin` files instead of being forced into noisy text.
 
 ---
 
 ## Text Cleaning and Normalization
 
-When the extractor encounters text under `WorksheetInfo`, Indexly applies a **consistent cleaning process**:
+When the extractor encounters readable worksheet text or `WorksheetInfo`, Indexly applies a **consistent cleaning process**:
 
-* Removes stray `G`, `@`, and control symbols
+* Removes control symbols and internal stream markers
 * Normalizes spacing and punctuation
-* Preserves readable sections like titles, timestamps, or data fields
+* Preserves readable sections like source notes, titles, timestamps, or column descriptions
+* Writes notes separately from worksheet numeric data
 
-This ensures that your resulting `.csv` files are lightweight, structured, and easy to inspect or analyze.
+This keeps worksheet CSVs lightweight, structured, and easy to inspect or analyze.
 
 For example, a raw block like:
 
@@ -118,15 +121,15 @@ Data from Iceland in figures 1999 - 2000
 
 ## Output Structure
 
-After extraction, Indexly organizes all files in the same directory as the source `.mtw`.
+After extraction, Indexly organizes generated files in the selected output directory.
 Depending on your flags and file content, you might see outputs such as:
 
-| Output Type       | Example Filename             | Description                  |
-| ----------------- | ---------------------------- | ---------------------------- |
-| Worksheet CSV     | `analysis_Worksheet.csv`     | Primary worksheet data       |
-| WorksheetInfo CSV | `analysis_WorksheetInfo.csv` | Extended metadata (optional) |
-| Text file         | `analysis_Text.txt`          | Decoded text content         |
-| Binary file       | `analysis_Stream.bin`        | Raw binary stream (fallback) |
+| Output Type       | Example Filename                | Description                            |
+| ----------------- | ------------------------------- | -------------------------------------- |
+| Worksheet CSV     | `analysis_worksheet.csv`        | Decoded numeric worksheet columns      |
+| Notes text        | `analysis_worksheet_notes.txt`  | Readable worksheet descriptions/notes  |
+| WorksheetInfo CSV | `analysis_worksheetinfo.csv`    | Cleaned extended metadata, when text   |
+| Binary file       | `analysis_worksheetdata.bin`    | Raw binary stream fallback             |
 
 All generated files are **normalized paths** to ensure cross-platform compatibility and consistency.
 
@@ -134,8 +137,8 @@ All generated files are **normalized paths** to ensure cross-platform compatibil
 
 ## Performance & Resource Control
 
-Extracting WorksheetInfo can be **resource-intensive** for large MTW archives.
-That’s why the extractor only processes these sections when `--mtw-extended` is used.
+Extracting diagnostic streams can be **resource-intensive** for large MTW archives.
+That’s why unreadable `WorksheetInfo` and binary fallback streams are most useful when `--mtw-extended` is used.
 
 If omitted, Indexly will skip WorksheetInfo processing — improving speed while still extracting worksheet data and text streams.
 
@@ -152,10 +155,10 @@ indexly extract-mtw --mtw-extended ./datasets/lab-results.mtw
 Output:
 
 ```
-lab-results_Worksheet.csv
-lab-results_WorksheetInfo.csv
-lab-results_Text.txt
-📑 Independent worksheetinfo metadata saved for lab-results_WorksheetInfo.csv
+lab-results_worksheet.csv
+lab-results_worksheet_notes.txt
+lab-results_worksheetinfo.csv
+lab-results_worksheetdata.bin
 ```
 
 ---
@@ -164,7 +167,9 @@ lab-results_Text.txt
 
 * Start without `--mtw-extended` if processing many files at once.
 * Use the flag only for deep data inspection or metadata analysis.
-* Review extracted CSVs with a spreadsheet editor or pandas for quick inspection.
+* Review extracted worksheet CSVs with a spreadsheet editor or pandas for quick inspection.
+* Use notes files to understand source descriptions and column meaning.
+* Treat `.bin` files as diagnostic fallbacks for compressed/newer MTW layouts.
 * Combine with Indexly’s `analyze-csv` to summarize and visualize extracted data.
 * When unsure about parameters, use:
 

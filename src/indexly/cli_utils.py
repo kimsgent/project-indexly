@@ -1440,6 +1440,11 @@ def build_parser():
         default=".",
         help="Directory to extract files into (default: current folder)",
     )
+    extract_mtw_parser.add_argument(
+        "--mtw-extended",
+        action="store_true",
+        help="Also extract diagnostic WorksheetInfo and binary fallback streams",
+    )
     extract_mtw_parser.set_defaults(func=handle_extract_mtw)
 
     # Rename File(s)
