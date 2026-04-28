@@ -100,6 +100,7 @@ flowchart LR
 ## Popular Deep Dives
 
 - [Indexing](indexing.md)
+- [Search](/searching/)
 - [Tagging](tagging.md)
 - [Analyze AutoDoctor Artifacts](analyze-autodoctor-artifacts.md)
 - [Semantic Indexing Overview](semantic-indexing-overview.md)

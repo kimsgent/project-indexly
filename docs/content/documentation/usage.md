@@ -120,9 +120,20 @@ See [Indexing](indexing.md) and [Ignore Rules & Index Hygiene](ignore-rules-inde
 Full-text search:
 
 ```bash
+indexly search "quarterly report"
 indexly search "invoice AND 2026"
 indexly search "\"quarterly report\"" --context 80
 ```
+
+Use uppercase logical operators only when you mean FTS logic:
+
+```bash
+indexly search "docker OR kubernetes"
+indexly search "cache NOT redis"
+indexly search "authentication NEAR failure" --near-distance 8
+```
+
+Lowercase English words such as `and`, `or`, `not`, and `near` are treated as normal text. For example, `indexly search "search and replace"` searches for that literal phrase.
 
 Filter search results:
 
@@ -131,6 +142,17 @@ indexly search "report" --filetype .pdf .md --filter-tag finance
 indexly search "contract" --date-from 2026-01-01 --date-to 2026-03-31
 indexly search "meeting" --path-contains "/projects/client-a"
 ```
+
+Sort returned results:
+
+```bash
+indexly search "invoice" --sort-by relevance
+indexly search "invoice" --sort-by newest
+indexly search "invoice" --sort-by oldest
+indexly search "invoice" --sort-by path
+```
+
+`relevance` is the default. Date sorting uses the indexed file `modified` timestamp.
 
 Fuzzy search:
 
@@ -143,6 +165,8 @@ Regex search:
 ```bash
 indexly regex "\\bINV-\\d{6}\\b"
 ```
+
+Regex search uses Python regular expressions over indexed content. It does not use the FTS logical operators from `indexly search`.
 
 Save and reuse profiles:
 
@@ -280,9 +304,12 @@ Environment and database health checks:
 ```bash
 indexly doctor
 indexly doctor --json
+indexly stats
 indexly update-db
 indexly migrate check
 ```
+
+`indexly stats` gives a quick database summary: indexed files, tagged files, untagged files, tag coverage, database size, unique tags, total tag assignments, and top tags.
 
 Semantic observers:
 
@@ -329,6 +356,7 @@ This lets core commands like `indexly --help` and `indexly --version` remain usa
 
 - [Install Indexly](indexly-installation.md)
 - [Configuration](config.md)
+- [Search](/searching/)
 - [Tagging](tagging.md)
 - [Organizer](organizer.md)
 - [Developer Guide](developer.md)
