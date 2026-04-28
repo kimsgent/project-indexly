@@ -74,7 +74,7 @@ indexly search "invoice" --filetype .pdf .docx
 indexly search "invoice" --date-from 2026-01-01 --date-to 2026-03-31
 indexly search "invoice" --path-contains "customers/acme"
 indexly search "invoice" --filter-tag finance
-indexly search "manual" --author "Mario Heidt" --format PDF
+indexly search "manual" --author "Mustermann" --format PDF
 ```
 
 Tag filters are resolved to matching file paths first, then applied to the query. Metadata filters join against `file_metadata` when needed.
