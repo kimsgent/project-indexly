@@ -161,6 +161,26 @@ def _lazy_clear_cleaned_data(args):
     )
 
 
+def _lazy_clear_search_results(args):
+    from .delete_search import clear_search_results
+
+    if getattr(args, "all", False) and not getattr(args, "dry_run", False):
+        if not getattr(args, "yes", False):
+            confirmation = input(
+                "This will delete all search index entries. Type DELETE to continue: "
+            )
+            if confirmation != "DELETE":
+                print("Cancelled.")
+                return None
+
+    return clear_search_results(
+        path=getattr(args, "path", None),
+        tag=getattr(args, "tag", None),
+        remove_all=getattr(args, "all", False),
+        dry_run=getattr(args, "dry_run", False),
+    )
+
+
 def _lazy_handle_organize(args):
     from indexly.organize.cli_wrapper import handle_organize
 
@@ -438,6 +458,40 @@ def build_parser():
     search_parser.add_argument("--save-profile", help="Save search profile name")
     search_parser.add_argument("--profile", help="Load search profile name")
     search_parser.set_defaults(func=handle_search)
+
+    # Clear search index results
+    clear_search_parser = subparsers.add_parser(
+        "clear-search",
+        help="Safely remove entries from the FTS search index",
+    )
+    clear_search_group = clear_search_parser.add_mutually_exclusive_group(
+        required=True
+    )
+    clear_search_group.add_argument(
+        "--path",
+        help="Delete a matching file path, directory-like prefix, or basename",
+    )
+    clear_search_group.add_argument(
+        "--tag",
+        nargs="+",
+        help="Delete files matching any of the provided tags",
+    )
+    clear_search_group.add_argument(
+        "--all",
+        action="store_true",
+        help="Delete all search index entries",
+    )
+    clear_search_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview affected files without deleting anything",
+    )
+    clear_search_parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="Skip the confirmation prompt for --all",
+    )
+    clear_search_parser.set_defaults(func=_lazy_clear_search_results)
 
     # Regex
     regex_parser = subparsers.add_parser("regex", help="Regex search mode")

@@ -1016,7 +1016,14 @@ def handle_show_help(args):
         summary_lookup[choice_action.dest] = (choice_action.help or "").strip()
 
     categories = {
-        "Search & Index Workflow": ["index", "search", "regex", "watch", "tag"],
+        "Search & Index Workflow": [
+            "index",
+            "search",
+            "clear-search",
+            "regex",
+            "watch",
+            "tag",
+        ],
         "Analysis & Data Inspection": [
             "analyze-csv",
             "infer-csv",
