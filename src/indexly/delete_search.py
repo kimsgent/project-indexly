@@ -211,22 +211,9 @@ def _invalidate_cache_for_paths(paths: Iterable[str], clear_all: bool = False) -
 
 
 def _log_deletions(paths: Iterable[str], reason: str) -> None:
-    from .log_utils import _default_logger, _unified_log_entry
+    from .log_utils import log_search_delete_events
 
-    paths = list(paths)
-    for path in paths:
-        entry = _unified_log_entry("SEARCH_RESULT_DELETED", path)
-        entry["reason"] = reason
-        _default_logger.log(entry)
-
-    summary = {
-        "event": "SEARCH_DELETE_SUMMARY",
-        "count": len(paths),
-        "reason": reason,
-    }
-    _default_logger.log(summary)
-    if hasattr(_default_logger, "flush"):
-        _default_logger.flush(timeout=1.5)
+    log_search_delete_events(paths, reason)
 
 
 def _select_paths_by_sql(conn, where_sql: str, params: tuple[str, ...]) -> list[str]:
@@ -315,3 +302,9 @@ def _print_summary(result: dict[str, Any]) -> None:
         f"{'y' if result['deleted_entries'] == 1 else 'ies'} "
         f"from {result['matched_files']} file(s)."
     )
+    invalidated_cache_entries = result.get("invalidated_cache_entries", 0)
+    if invalidated_cache_entries > 0:
+        print(
+            f"🗂️ Cleared {invalidated_cache_entries} cache entr"
+            f"{'y' if invalidated_cache_entries == 1 else 'ies'}."
+        )

@@ -1,4 +1,7 @@
 import importlib
+import json
+from datetime import date
+from pathlib import Path
 
 from indexly import config
 
@@ -107,7 +110,7 @@ def test_clear_search_by_tag_matches_exact_comma_separated_tags(tmp_path, monkey
     conn.close()
 
 
-def test_clear_search_invalidates_cache_entries_for_deleted_paths(tmp_path, monkeypatch):
+def test_clear_search_invalidates_cache_entries_for_deleted_paths(tmp_path, monkeypatch, capsys):
     db_utils, delete_search = configure_indexly_home(tmp_path, monkeypatch)
     monkeypatch.setattr(delete_search, "_log_deletions", lambda paths, reason: None)
 
@@ -133,6 +136,7 @@ def test_clear_search_invalidates_cache_entries_for_deleted_paths(tmp_path, monk
     cache = load_cache(config.CACHE_FILE)
     assert "remove-me" not in cache
     assert "keep-me" in cache
+    assert "Cleared 1 cache entry." in capsys.readouterr().out
 
 
 def test_clear_search_all_clears_entire_search_cache(tmp_path, monkeypatch):
@@ -158,6 +162,45 @@ def test_clear_search_all_clears_entire_search_cache(tmp_path, monkeypatch):
     assert result["matched_files"] == 1
     assert result["invalidated_cache_entries"] == 2
     assert load_cache(config.CACHE_FILE) == {}
+
+
+def test_clear_search_logs_small_deletion_batch_to_ndjson(tmp_path, monkeypatch):
+    db_utils, delete_search = configure_indexly_home(tmp_path, monkeypatch)
+
+    import indexly.log_utils as log_utils
+
+    importlib.reload(log_utils)
+
+    target = "C:/data/delete.txt"
+    conn = db_utils.connect_db()
+    seed_search_row(conn, target)
+    conn.close()
+
+    result = delete_search.clear_search_results(path=target)
+
+    today = date.today()
+    log_file = (
+        Path(config.BASE_DIR)
+        / "log"
+        / today.strftime("%Y")
+        / today.strftime("%m")
+        / f"{today.isoformat()}_index_events.ndjson"
+    )
+    assert result["matched_files"] == 1
+    assert log_file.exists()
+
+    entries = [
+        json.loads(line)
+        for line in log_file.read_text(encoding="utf-8").splitlines()
+    ]
+    assert [entry["event"] for entry in entries] == [
+        "SEARCH_RESULT_DELETED",
+        "SEARCH_DELETE_SUMMARY",
+    ]
+    assert entries[0]["path"] == target
+    assert entries[0]["reason"] == f"path:{target}"
+    assert entries[1]["timestamp"]
+    assert entries[1]["count"] == 1
 
 
 def test_clear_search_parser_accepts_supported_modes(tmp_path, monkeypatch):
