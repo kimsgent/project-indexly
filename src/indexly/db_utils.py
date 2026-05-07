@@ -51,26 +51,16 @@ def connect_db(db_path: str | None = None):
     """
     Connect to the SQLite database.
 
-    - In production, always uses config.DB_FILE.
-    - In tests, pytest fixtures may override config.DB_FILE or pass a temporary db_path.
-    - Prevents accidental fallback to wrong database file.
+    - Uses explicit db_path when provided.
+    - Falls back to config.DB_FILE otherwise.
+    - Creates the parent directory for file-backed DB paths.
     """
-    import importlib
-    import os
     from . import config
 
-    # Only reload config in pytest to pick up monkeypatched DB_FILE
-    if "PYTEST_CURRENT_TEST" in os.environ:
-        importlib.reload(config)
-
-    # ✅ Production always uses config.DB_FILE
-    # Only respect db_path if we’re in a test or explicitly told to
-    if "PYTEST_CURRENT_TEST" in os.environ and db_path:
-        path = db_path
-    else:
-        path = config.DB_FILE
-
-    # print(f"[debug] Using DB: {path}")
+    path = db_path or config.DB_FILE
+    db_dir = os.path.dirname(path) if path else ""
+    if db_dir and path != ":memory:":
+        os.makedirs(db_dir, exist_ok=True)
 
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row

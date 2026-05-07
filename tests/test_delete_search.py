@@ -74,6 +74,35 @@ def test_clear_search_by_exact_path_deletes_all_search_tables(tmp_path, monkeypa
     conn.close()
 
 
+def test_clear_search_by_path_with_backslashes_deletes_entries(tmp_path, monkeypatch):
+    db_utils, delete_search = configure_indexly_home(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        delete_search, "_log_deletions", lambda paths, reason, operation_id: None
+    )
+
+    target = r"C:\data\report.txt"
+    conn = db_utils.connect_db()
+    seed_search_row(conn, target, tag="review")
+    conn.close()
+
+    result = delete_search.clear_search_results(path=target)
+
+    assert result["matched_files"] == 1
+    assert result["deleted_entries"] == 3
+
+    conn = db_utils.connect_db()
+    assert conn.execute(
+        "SELECT COUNT(*) FROM file_index WHERE path = ?", (target,)
+    ).fetchone()[0] == 0
+    assert conn.execute(
+        "SELECT COUNT(*) FROM file_tags WHERE path = ?", (target,)
+    ).fetchone()[0] == 0
+    assert conn.execute(
+        "SELECT COUNT(*) FROM file_metadata WHERE path = ?", (target,)
+    ).fetchone()[0] == 0
+    conn.close()
+
+
 def test_clear_search_by_directory_like_path_supports_dry_run(tmp_path, monkeypatch):
     db_utils, delete_search = configure_indexly_home(tmp_path, monkeypatch)
     monkeypatch.setattr(
