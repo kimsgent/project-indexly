@@ -7,36 +7,33 @@ from indexly.extract_utils import (
 
 def test_normalize_email_party_removes_duplicate_address_noise():
     assert (
-        _normalize_email_party("'Mario Heidt' <m.heidt@bletec.de>")
-        == "Mario Heidt <m.heidt@bletec.de>"
+        _normalize_email_party("'John Doe' <john.doe@example.com>")
+        == "John Doe <john.doe@example.com>"
     )
     assert (
-        _normalize_email_party(
-            "'buchhaltung@bbp-blechbearbeitung.de' "
-            "<buchhaltung@bbp-blechbearbeitung.de>"
-        )
-        == "buchhaltung@bbp-blechbearbeitung.de"
+        _normalize_email_party("'accounting@example.com' " "<accounting@example.com>")
+        == "accounting@example.com"
     )
 
 
 def test_clean_email_body_trims_signature_and_quoted_reply():
     body = """
-Hallo Herr Heidt,
-hat geklappt, danke.
+Hello Mr. Smith,
+it worked, thanks.
 
-Mit freundlichen Grüßen
-Ulrich Peinemann
-Telefon: +49 123
+Best regards
+Jane Smith
+Phone: +1 234 567 890
 
-Von: Mario Heidt
-Gesendet: Montag, 23. März
+From: John Doe
+Sent: Monday, March 23
 """
 
     cleaned = _clean_email_body(body)
 
-    assert cleaned == "Hallo Herr Heidt, hat geklappt, danke."
-    assert "Telefon" not in cleaned
-    assert "Von:" not in cleaned
+    assert cleaned == "Hello Mr. Smith, it worked, thanks."
+    assert "Phone" not in cleaned
+    assert "From:" not in cleaned
 
 
 def test_clean_email_body_trims_configured_disclaimer():

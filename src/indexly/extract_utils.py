@@ -29,6 +29,7 @@ from difflib import SequenceMatcher
 from bs4 import BeautifulSoup
 from .optional_deps import require_extra_dependency
 
+
 # ---------------------------------------------------------------------
 # External tool checks (boolean-returning for doctor / programmatic use)
 # ---------------------------------------------------------------------
@@ -61,7 +62,6 @@ def print_external_tools_info():
 # --- internal imports (unchanged) ---
 from .config import DB_FILE, SEMANTIC_METADATA_KEYS
 from .path_utils import normalize_path
-
 
 _EMAIL_BOILERPLATE_FALLBACKS = [
     r"^\s*mit freundlichen gr[üu]ßen\b",
@@ -222,7 +222,9 @@ def _extract_docx_table_metadata(doc) -> OrderedDict[str, str]:
 
     for table in doc.tables:
         for row in table.rows:
-            cells = _dedupe_consecutive([_clean_docx_text(cell.text) for cell in row.cells])
+            cells = _dedupe_consecutive(
+                [_clean_docx_text(cell.text) for cell in row.cells]
+            )
 
             for index, cell_text in enumerate(cells[:-1]):
                 if not _is_docx_table_key(cell_text):
@@ -262,6 +264,8 @@ def _is_noisy_docx_line(line: str) -> bool:
         return True
     if re.fullmatch(r"seite\s+\d+\s+(von|/)\s+\d+", normalized, re.IGNORECASE):
         return True
+    if re.fullmatch(r"page\s+\d+\s+(of|/)\s+\d+", normalized, re.IGNORECASE):
+        return True
     return False
 
 
@@ -281,6 +285,7 @@ def _dedupe_repeated_docx_lines(lines: list[str]) -> list[str]:
 
 def _extract_docx(path):
     from .fts_core import extract_virtual_tags
+
     docx = require_extra_dependency("docx", "python-docx", "documents")
 
     doc = docx.Document(path)
@@ -299,9 +304,7 @@ def _extract_docx(path):
         if _normalize_docx_key(key) in _DOCX_BODY_TABLE_KEYS and value:
             table_body_lines.append(value)
 
-    full_text = "\n".join(
-        _dedupe_repeated_docx_lines([*table_body_lines, *paragraphs])
-    )
+    full_text = "\n".join(_dedupe_repeated_docx_lines([*table_body_lines, *paragraphs]))
 
     tag_meta = {
         key: value
@@ -364,6 +367,7 @@ def _normalize_email_party(value) -> str:
 def _email_cutoff_patterns() -> list[re.Pattern]:
     try:
         from .config import EMAIL_BOILERPLATE_CUTOFFS
+
         patterns = EMAIL_BOILERPLATE_CUTOFFS or _EMAIL_BOILERPLATE_FALLBACKS
     except Exception:
         patterns = _EMAIL_BOILERPLATE_FALLBACKS
@@ -460,12 +464,17 @@ def _extract_eml_body(parsed: dict) -> str:
                 parts.append(str(item))
         return "\n".join(part for part in parts if part)
     if isinstance(body, dict):
-        return safe_get(body, "content") or safe_get(body, "body") or safe_get(body, "text")
+        return (
+            safe_get(body, "content")
+            or safe_get(body, "body")
+            or safe_get(body, "text")
+        )
     return safe_get(parsed, "body", "")
 
 
 def _extract_eml(path):
     from .fts_core import extract_virtual_tags
+
     eml_parser = require_extra_dependency("eml_parser", "eml-parser", "documents")
 
     try:
@@ -799,7 +808,9 @@ def _extract_pdf(
                             "pytesseract", "pytesseract", "documents"
                         )
                     if Image is None:
-                        Image = require_extra_dependency("PIL.Image", "Pillow", "documents")
+                        Image = require_extra_dependency(
+                            "PIL.Image", "Pillow", "documents"
+                        )
 
                     reason = "forced" if force_ocr else "fallback"
                     print(f"OCR page {page_num}/{num_pages} ({reason}): {path}")

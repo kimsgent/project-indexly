@@ -840,7 +840,11 @@ def handle_extract_mtw(args):
     print(f"📂 Extracting MTW file: {file_path}")
 
     try:
-        extracted_files = _extract_mtw(file_path, output_dir)
+        extracted_files = _extract_mtw(
+            file_path,
+            output_dir,
+            extended=getattr(args, "mtw_extended", False),
+        )
     except Exception as e:
         print(f"❌ Error extracting MTW file: {e}")
         return
@@ -1012,7 +1016,14 @@ def handle_show_help(args):
         summary_lookup[choice_action.dest] = (choice_action.help or "").strip()
 
     categories = {
-        "Search & Index Workflow": ["index", "search", "regex", "watch", "tag"],
+        "Search & Index Workflow": [
+            "index",
+            "search",
+            "clear-search",
+            "regex",
+            "watch",
+            "tag",
+        ],
         "Analysis & Data Inspection": [
             "analyze-csv",
             "infer-csv",
