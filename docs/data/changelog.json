@@ -2,6 +2,30 @@
   "project": "FTS5 File Search Tool",
   "versions": [
     {
+      "version": "2.1.0",
+      "date": "2026-05-07",
+      "contributors": [
+        "N. K. Franklin-Gent",
+        "OpenAI Codex"
+      ],
+      "changes": [
+        "feat(search): add clear-search for safe deletion from fts_index.db by path, tag, or the full search index",
+        "feat(search): add dry-run previews, confirmation prompts, --yes automation, operation IDs, and per-table deletion summaries",
+        "fix(search): make clear-search cache invalidation best-effort so database deletions are not reported as failed when cache cleanup cannot be saved",
+        "fix(search): add clearer diagnostics for missing tags, existing paths with no indexed files, locked databases, and FTS5 database errors",
+        "fix(search): treat lowercase logical words such as and/or/near as literal search text unless explicit uppercase FTS operators are used",
+        "feat(search): add result sorting options for relevance, newest, oldest, and path order",
+        "feat(mtw): improve Minitab worksheet extraction output and metadata cleanup",
+        "feat(stats): improve tag usage summary and coverage reporting",
+        "fix(debug): repair cleaned data table inspection and database connection handling",
+        "fix(extraction): improve document OCR and metadata cleanup behavior",
+        "docs(search): align search guidance with current CLI behavior and prepare clear-search documentation",
+        "chore(release): bump package metadata to 2.1.0",
+        "breaking: none"
+      ]
+    },
+
+    {
       "version": "2.0.2",
       "date": "2026-04-18",
       "changes": [
