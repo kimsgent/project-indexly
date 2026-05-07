@@ -17,9 +17,6 @@ from pathlib import PurePosixPath
 from typing import Any
 
 from .db_utils import connect_db
-from .path_utils import normalize_path
-
-
 SEARCH_TABLES = ("file_index", "file_tags", "file_metadata")
 DELETE_CHUNK_SIZE = 400
 PROGRESS_THRESHOLD = 50
@@ -36,12 +33,12 @@ def clear_search_results(
     input_func=input,
 ) -> dict[str, Any]:
     """
-    Delete search index entries by normalized path, tag, or all entries.
+    Delete search index entries by path, tag, or all entries.
 
     Returns structured operation details:
     - matched_files: number of distinct matching paths
     - deleted_entries: total rows removed across file_index, file_tags, file_metadata
-    - paths: affected normalized paths
+    - paths: affected stored paths
     - dry_run: whether changes were skipped
     """
     _validate_criteria(path=path, tag=tag, remove_all=remove_all)
@@ -56,7 +53,7 @@ def clear_search_results(
             no_match_message = "ℹ️ Search index is already empty."
         elif path:
             paths = _get_matching_paths_by_path(path, conn)
-            reason = f"path:{normalize_path(path)}"
+            reason = f"path:{_display_path(path) or path}"
             no_match_message = _path_no_match_message(path)
         else:
             tags = _normalize_tags(tag)
@@ -177,33 +174,44 @@ def _get_all_index_paths(conn) -> list[str]:
     paths: set[str] = set()
     for table in SEARCH_TABLES:
         for row in conn.execute(f"SELECT path FROM {table} WHERE path IS NOT NULL"):
-            norm = normalize_path(row["path"])
-            if norm:
-                paths.add(norm)
+            stored = _coerce_stored_path(row["path"])
+            if stored:
+                paths.add(stored)
     return sorted(paths, key=str.lower)
 
 
 def _get_matching_paths_by_path(search_path: str, conn) -> list[str]:
-    normalized = normalize_path(search_path)
-    if not normalized:
+    display_path = _display_path(search_path)
+    lookup_key = _path_key(search_path)
+    if not display_path or not lookup_key:
         raise ValueError("Path must be a non-empty value.")
 
-    exact = _select_paths_by_sql(conn, "LOWER(path) = LOWER(?)", (normalized,))
+    exact = _select_paths_by_sql(
+        conn,
+        "LOWER(REPLACE(path, char(92), '/')) = ?",
+        (lookup_key,),
+    )
     if exact:
         return exact
 
-    if _looks_directory_like(search_path, normalized):
-        prefix = normalized.rstrip("/") + "/%"
-        prefix_matches = _select_paths_by_sql(conn, "LOWER(path) LIKE LOWER(?)", (prefix,))
+    if _looks_directory_like(search_path, display_path):
+        prefix = lookup_key.rstrip("/") + "/%"
+        prefix_matches = _select_paths_by_sql(
+            conn,
+            "LOWER(REPLACE(path, char(92), '/')) LIKE ?",
+            (prefix,),
+        )
         if prefix_matches:
             return prefix_matches
 
-    basename = PurePosixPath(normalized).name
-    if basename and basename != normalized:
+    basename = PurePosixPath(display_path).name
+    if basename and basename != display_path:
+        basename_key = basename.lower()
         return _select_paths_by_sql(
             conn,
-            "LOWER(path) = LOWER(?) OR LOWER(path) LIKE LOWER(?)",
-            (basename, f"%/{basename}"),
+            "LOWER(REPLACE(path, char(92), '/')) = ? OR "
+            "LOWER(REPLACE(path, char(92), '/')) LIKE ?",
+            (basename_key, f"%/{basename_key}"),
         )
 
     return []
@@ -224,9 +232,9 @@ def _get_matching_paths_by_tag(search_tag: str | Iterable[str], conn) -> list[st
         ):
             row_tags = _split_tags(row["tags"])
             if expected.intersection(row_tags):
-                norm = normalize_path(row["path"])
-                if norm:
-                    matches.add(norm)
+                stored = _coerce_stored_path(row["path"])
+                if stored:
+                    matches.add(stored)
 
     return sorted(matches, key=str.lower)
 
@@ -296,10 +304,8 @@ def _invalidate_cache_for_paths(
                 save_cache({}, config.CACHE_FILE)
             return {"removed": removed, "error": None}
 
-        normalized_paths = {
-            normalize_path(path) for path in paths if normalize_path(path)
-        }
-        if not normalized_paths:
+        lookup_keys = {_path_key(path) for path in paths if _path_key(path)}
+        if not lookup_keys:
             return {"removed": 0, "error": None}
 
         for key, entry in list(cache.items()):
@@ -307,7 +313,7 @@ def _invalidate_cache_for_paths(
             for result in results or []:
                 if not isinstance(result, dict):
                     continue
-                if normalize_path(result.get("path")) in normalized_paths:
+                if _path_key(result.get("path")) in lookup_keys:
                     del cache[key]
                     removed += 1
                     break
@@ -354,10 +360,11 @@ def _log_deletions(paths: Iterable[str], reason: str, operation_id: str) -> None
 
     paths = list(paths)
     for path in paths:
+        display_path = _display_path(path) or str(path)
         entry = {
             "event": "SEARCH_RESULT_DELETED",
             "timestamp": datetime.now().isoformat(timespec="seconds"),
-            "path": normalize_path(path),
+            "path": display_path,
             "reason": reason,
             "operation_id": operation_id,
         }
@@ -392,9 +399,9 @@ def _select_paths_by_sql(conn, where_sql: str, params: tuple[str, ...]) -> list[
             f"SELECT path FROM {table} WHERE path IS NOT NULL AND ({where_sql})",
             params,
         ):
-            norm = normalize_path(row["path"])
-            if norm:
-                paths.add(norm)
+            stored = _coerce_stored_path(row["path"])
+            if stored:
+                paths.add(stored)
     return sorted(paths, key=str.lower)
 
 
@@ -475,6 +482,28 @@ def _split_tags(tag_value: str | None) -> set[str]:
         for tag in (tag_value or "").split(",")
         if tag.strip()
     }
+
+
+def _coerce_stored_path(path: Any) -> str | None:
+    if path is None:
+        return None
+    value = str(path).strip()
+    return value or None
+
+
+def _display_path(path: Any) -> str | None:
+    value = _coerce_stored_path(path)
+    if value is None:
+        return None
+    value = value.replace("\\", "/")
+    if len(value) > 1 and value.endswith("/"):
+        value = value.rstrip("/")
+    return value
+
+
+def _path_key(path: Any) -> str | None:
+    display = _display_path(path)
+    return display.lower() if display else None
 
 
 def _looks_directory_like(raw_path: str, normalized_path: str) -> bool:
