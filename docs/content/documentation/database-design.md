@@ -71,6 +71,20 @@ This design provides:
 
 ----
 
+## Search index deletion scope
+
+`indexly clear-search` is a maintenance command for the search database only.
+It removes matching paths from:
+
+- `file_index`
+- `file_tags`
+- `file_metadata`
+
+The command does not delete source files and does not touch the separate `cleaned_data` database used by analysis persistence.
+For full behavior and recovery steps, see [Clear Search Results Safely](clear-search.md).
+
+----
+
 ### 🏷️ Related Topics
 
 * [Semantic Indexing & Vocabulary Quality](semantic-indexing-vocab.md) The technical model, measured results, and why a database update is required.

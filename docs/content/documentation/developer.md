@@ -154,7 +154,7 @@ project-indexly/
 | Area | Main modules | Purpose |
 | --- | --- | --- |
 | CLI entry | `__main__.py`, `indexly.py`, `cli_utils.py` | Parses commands and routes to feature handlers |
-| Indexing/search | `fts_core.py`, `search_core.py`, `db_utils.py`, `db_pipeline.py` | FTS5 indexing, query execution, and persistence |
+| Indexing/search | `fts_core.py`, `search_core.py`, `delete_search.py`, `db_utils.py`, `db_pipeline.py` | FTS5 indexing, query execution, safe index deletion, and persistence |
 | File extraction | `filetype_utils.py`, `extract_utils.py`, `optional_deps.py` | File-type routing and lazy optional imports |
 | Analysis | `csv_analyzer.py`, `analysis_orchestrator.py`, `analyze_json.py`, `analyze_db.py`, `autodoctor_*.py`, `inference/` | CSV/data profiling, structured-data analysis, AutoDoctor-aware summaries, and statistical inference |
 | Organization | `organize/organizer.py`, `organize/lister.py`, `organize/cli_wrapper.py` | Folder structuring, logs, lister views |
@@ -209,11 +209,84 @@ When adding a command:
 ## Common Extension Points
 
 - New file type extraction: `filetype_utils.py`, `extract_utils.py`
-- Search behavior: `fts_core.py`, `search_core.py`
+- Search behavior: `fts_core.py`, `search_core.py`, `delete_search.py`
 - CSV/data features: `csv_analyzer.py`, `analysis_orchestrator.py`, `inference/`
 - Export and rendering: `output_utils.py`, `export_utils.py`, `visualization/`
 - Ignore behavior: `ignore/` and `ignore_defaults/`
 - Backup behavior: `backup/`
+
+---
+
+## Clear Search Internals
+
+The `clear-search` command is implemented in `src/indexly/delete_search.py` and wired through `cli_utils.py`.
+It is intentionally separate from `fts_core.py` because deletion has different safety requirements than indexing.
+
+### Responsibility Boundary
+
+`delete_search.py` only operates on the FTS search database configured by `config.DB_FILE`, normally `fts_index.db`.
+It does not delete source files and does not modify the separate cleaned-data stats database used by analysis commands.
+
+The deletion surface is limited to:
+
+- `file_index`: FTS5 virtual table rows
+- `file_tags`: tag rows for deleted paths
+- `file_metadata`: structured metadata rows for deleted paths
+- `search_cache.json`: cache entries referencing deleted paths
+
+### Control Flow
+
+The high-level flow is:
+
+1. Validate that exactly one criterion is supplied: path, tag, or all.
+2. Resolve matching paths using normalized path, prefix, basename, or exact tag semantics.
+3. Build a deletion plan with per-table counts and an operation ID.
+4. Print the plan and, in CLI mode, request confirmation unless `--yes` is set.
+5. Log `SEARCH_DELETE_INITIATED` before changing the database.
+6. Delete rows inside one SQLite transaction.
+7. Verify deleted counts against the plan.
+8. Invalidate search cache entries on a best-effort basis.
+9. Log completion events and print the final summary.
+
+### Safety Guarantees
+
+Destructive behavior should stay conservative:
+
+- Keep `--dry-run` read-only.
+- Keep `--yes` as the only way to skip confirmation in non-dry-run CLI use.
+- Keep path and tag deletion inside a transaction.
+- Treat cache and logging failures as warnings after database success, not as rollback triggers.
+- Preserve operation IDs in user output and logs for auditability.
+
+### Path And Tag Semantics
+
+Path matching uses normalized strings from `path_utils.normalize_path()`:
+
+- exact path first
+- directory-like prefix next
+- basename fallback for legacy compatibility
+
+Tag matching reads comma-separated values from both `file_tags.tags` and `file_index.tag`.
+Multiple tags are OR logic. Do not change this to AND logic without a CLI flag and migration note because existing help and tests document OR behavior.
+
+### Testing Requirements
+
+When changing `delete_search.py`, update or run:
+
+```bash
+python -m pytest tests/test_delete_search.py -q
+python -m pytest tests/test_search.py tests/test_tagging.py -q
+```
+
+Add tests for:
+
+- confirmation and cancellation
+- dry-run read-only behavior
+- cache save failures
+- database lock or corruption diagnostics
+- transaction rollback when a table delete fails
+- large batch progress output
+- path normalization edge cases
 
 ---
 

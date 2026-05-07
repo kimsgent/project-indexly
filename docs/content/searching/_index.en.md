@@ -128,6 +128,30 @@ indexly search "invoice" --profile invoice_pdf
 
 Profiles store the search parameters and make repeated workflows easier to reproduce.
 
+## Search Index Maintenance
+
+Use `clear-search` when stale paths or tagged batches should be removed from the local FTS5 search index without deleting source files.
+
+Preview stale results under a moved folder:
+
+```bash
+indexly clear-search --path "V:/Hotline/OldCustomerFolder" --dry-run
+```
+
+Remove them after reviewing the plan:
+
+```bash
+indexly clear-search --path "V:/Hotline/OldCustomerFolder"
+```
+
+Remove all files matching any cleanup tag:
+
+```bash
+indexly clear-search --tag archive stale-index --dry-run
+```
+
+See [Clear Search Results Safely](/documentation/clear-search/) for confirmation behavior, path and tag semantics, cache invalidation, and recovery steps.
+
 ## Fuzzy Search
 
 Use fuzzy search when spelling or terminology may vary:
@@ -167,4 +191,5 @@ Regex search runs against indexed content and supports the same common filters a
 - Learn how content gets into the index: [Index Files and Folders](/documentation/index-files-and-folders/)
 - Understand the semantic filter: [Semantic Indexing Overview](/documentation/semantic-indexing-overview/)
 - See implementation details: [Search Internals](search-internals/)
+- Remove stale index entries: [Clear Search Results Safely](/documentation/clear-search/)
 - Use tags to slice results: [Tagging](/documentation/tagging/)
