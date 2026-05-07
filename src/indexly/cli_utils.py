@@ -164,20 +164,13 @@ def _lazy_clear_cleaned_data(args):
 def _lazy_clear_search_results(args):
     from .delete_search import clear_search_results
 
-    if getattr(args, "all", False) and not getattr(args, "dry_run", False):
-        if not getattr(args, "yes", False):
-            confirmation = input(
-                "This will delete all search index entries. Type DELETE to continue: "
-            )
-            if confirmation != "DELETE":
-                print("Cancelled.")
-                return None
-
     return clear_search_results(
         path=getattr(args, "path", None),
         tag=getattr(args, "tag", None),
         remove_all=getattr(args, "all", False),
         dry_run=getattr(args, "dry_run", False),
+        require_confirmation=True,
+        yes=getattr(args, "yes", False),
     )
 
 
@@ -474,7 +467,7 @@ def build_parser():
     clear_search_group.add_argument(
         "--tag",
         nargs="+",
-        help="Delete files matching any of the provided tags",
+        help="Delete files matching ANY of the provided tags (OR logic)",
     )
     clear_search_group.add_argument(
         "--all",
@@ -489,7 +482,7 @@ def build_parser():
     clear_search_parser.add_argument(
         "--yes",
         action="store_true",
-        help="Skip the confirmation prompt for --all",
+        help="Skip the confirmation prompt for --path, --tag, or --all",
     )
     clear_search_parser.set_defaults(func=_lazy_clear_search_results)
 
