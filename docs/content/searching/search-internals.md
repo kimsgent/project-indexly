@@ -47,10 +47,17 @@ The important boundary is that search reads the index. It does not re-extract do
 indexly search "invoice AND paid"
 indexly search "ticket OR incident"
 indexly search "cache NOT redis"
-indexly search "failure NEAR/5 authentication"
+indexly search "failure NEAR authentication" --near-distance 8
 ```
 
-Internally, Indexly normalizes logical expressions before passing them to FTS5. If a query is unsafe or too ambiguous, the search path falls back to a safer literal expression where possible.
+Internally, Indexly normalizes logical expressions before passing them to FTS5. Logical operators are intentionally case-sensitive: uppercase `AND`, `OR`, `NOT`, and `NEAR` are treated as operators, while lowercase English words such as `and`, `or`, `not`, and `near` remain literal search text.
+
+```bash
+indexly search "search and replace"
+indexly search "search AND replace"
+```
+
+The first query becomes a literal phrase search. The second query remains a boolean FTS query.
 
 Use `--near-distance` to adjust proximity handling:
 
@@ -67,10 +74,23 @@ indexly search "invoice" --filetype .pdf .docx
 indexly search "invoice" --date-from 2026-01-01 --date-to 2026-03-31
 indexly search "invoice" --path-contains "customers/acme"
 indexly search "invoice" --filter-tag finance
-indexly search "manual" --author "Mario Heidt" --format PDF
+indexly search "manual" --author "Mustermann" --format PDF
 ```
 
 Tag filters are resolved to matching file paths first, then applied to the query. Metadata filters join against `file_metadata` when needed.
+
+## Result Ordering
+
+Full-text search results are relevance-ranked by default with SQLite FTS5 `rank`. The CLI also exposes explicit result ordering:
+
+```bash
+indexly search "invoice" --sort-by relevance
+indexly search "invoice" --sort-by newest
+indexly search "invoice" --sort-by oldest
+indexly search "invoice" --sort-by path
+```
+
+`newest` and `oldest` use `file_index.modified`, which is written when files are indexed. `path` uses a case-insensitive path sort. The chosen sort mode is included in the search cache key, so cached results do not cross between different sort orders.
 
 ## Fuzzy Search
 

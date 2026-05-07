@@ -2,11 +2,40 @@ import pytest
 import asyncio
 import threading
 import time
-from indexly.log_utils import _default_logger, shutdown_logger
+import importlib
+
+
+def _load_log_utils_with_home(tmp_path, monkeypatch):
+    monkeypatch.setenv("INDEXLY_HOME", str(tmp_path))
+
+    import indexly.config as config
+    import indexly.log_utils as log_utils
+
+    importlib.reload(config)
+    importlib.reload(log_utils)
+    return log_utils
+
+
+def test_flush_does_not_force_small_batch_to_disk(tmp_path, monkeypatch):
+    log_utils = _load_log_utils_with_home(tmp_path, monkeypatch)
+    logger = log_utils.LogManager(
+        log_dir=tmp_path / "log",
+        batch_size=50,
+        flush_interval=60,
+    )
+
+    logger.log({"event": "SMALL_BATCH", "path": "/tmp/file.txt"})
+    logger.flush(timeout=1.5)
+
+    assert list((tmp_path / "log").rglob("*.ndjson")) == []
+    logger.stop(timeout=2.0)
+
 
 @pytest.mark.asyncio
-async def test_async_logger_stress():
-    logger = _default_logger  # <-- do not call, it's an instance
+async def test_async_logger_stress(tmp_path, monkeypatch):
+    log_utils = _load_log_utils_with_home(tmp_path, monkeypatch)
+
+    logger = log_utils.LogManager(log_dir=tmp_path / "log")
 
     # -----------------------------
     # async spam
@@ -44,7 +73,7 @@ async def test_async_logger_stress():
         t.join()
 
     # shutdown logger cleanly
-    shutdown_logger(timeout=5.0)
+    logger.stop(timeout=5.0)
 
     # simple check: reached here without exceptions
     assert True

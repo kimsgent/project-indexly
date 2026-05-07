@@ -162,6 +162,15 @@
           { "label": "Indexly Doctor", "href": "/en/documentation/indexly-doctor/" },
           { "label": "DB Migration Utility", "href": "/en/documentation/db-migration-utility/" }
         ]
+      },
+      {
+        "question": "How do I recover search results removed with `clear-search`?",
+        "answer": "`clear-search` removes rows from the local FTS5 search index only; it does not delete source files. To recover search results, re-run `indexly index` on the folder that contains the files. If you used `--all`, re-index every folder you expect to search. If cache invalidation failed, remove `search_cache.json` from the Indexly runtime directory so future searches rebuild fresh cache entries.",
+        "links": [
+          { "label": "Clear Search Results Safely", "href": "/en/documentation/clear-search/" },
+          { "label": "Indexing", "href": "/en/documentation/indexing/" },
+          { "label": "Indexly Doctor", "href": "/en/documentation/indexly-doctor/" }
+        ]
       }
     ]
   },

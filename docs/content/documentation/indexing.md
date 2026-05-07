@@ -77,7 +77,7 @@ indexly watch ./docs
 
 ## Quick Tip
 
-In addition to basic indexing, you can view database statistics to get a quick overview of your index. This shows you the total files, tags, database size, and top tags at a glance.
+In addition to basic indexing, you can view database statistics to get a quick overview of your index. This shows indexed files, tagged files, untagged files, tag coverage, database size, unique tags, total tag assignments, and top tags at a glance.
 
 ```bash
 indexly stats

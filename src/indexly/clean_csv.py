@@ -17,6 +17,7 @@ import numpy as np
 from datetime import datetime
 from pathlib import Path
 from .db_utils import _get_db_connection
+from .path_utils import normalize_path
 from rich.table import Table
 from rich.console import Console
 
@@ -219,8 +220,9 @@ def clear_cleaned_data(file_path: str = None, remove_all: bool = False):
     Behavior:
     - If remove_all=True, deletes all records.
     - If file_path is provided, deletes the record by matching either:
-      1. Full absolute path (case-insensitive)
-      2. Basename only (case-insensitive)
+      1. Full absolute path in file_name or source_path (case-insensitive)
+      2. Normalized forward-slash path in file_name or source_path
+      3. Basename only (case-insensitive)
     
     This ensures it works across OSes and mixed case file names.
     """
@@ -240,23 +242,35 @@ def clear_cleaned_data(file_path: str = None, remove_all: bool = False):
         conn.close()
         return
 
-    abs_path = str(Path(file_path).resolve())
+    abs_path = str(Path(file_path).expanduser().resolve())
+    normalized_path = normalize_path(file_path)
+    normalized_abs_path = normalize_path(abs_path)
     file_name = Path(file_path).name
+    candidates = {
+        value.lower()
+        for value in (
+            str(file_path),
+            abs_path,
+            normalized_path,
+            normalized_abs_path,
+            file_name,
+        )
+        if value
+    }
 
-    # First try: absolute path (case-insensitive)
+    placeholders = ",".join("?" for _ in candidates)
+    params = tuple(candidates)
     cur.execute(
-        "DELETE FROM cleaned_data WHERE LOWER(file_name) = LOWER(?)",
-        (abs_path,),
+        f"""
+        DELETE FROM cleaned_data
+        WHERE LOWER(file_name) IN ({placeholders})
+           OR LOWER(COALESCE(source_path, '')) IN ({placeholders})
+           OR LOWER(REPLACE(file_name, '\\', '/')) IN ({placeholders})
+           OR LOWER(REPLACE(COALESCE(source_path, ''), '\\', '/')) IN ({placeholders})
+        """,
+        params * 4,
     )
     deleted_rows = cur.rowcount
-
-    # Fallback: basename only (case-insensitive)
-    if deleted_rows == 0:
-        cur.execute(
-            "DELETE FROM cleaned_data WHERE LOWER(file_name) = LOWER(?)",
-            (file_name,),
-        )
-        deleted_rows = cur.rowcount
 
     conn.commit()
     conn.close()

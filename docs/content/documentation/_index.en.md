@@ -47,7 +47,8 @@ This documentation works best when you enter through the path that matches your 
 <div class="p-3 rounded" style="background:#ffffff; color:#1f2937;">
   <h4 class="mb-2" style="color:#0f172a;">What changed recently</h4>
   <ul class="mb-3">
-    <li>Since `v2.0.2`, NDJSON-style JSON handling and JSON persistence have become more reliable.</li>
+    <li>`v2.1.0` adds `indexly clear-search` for safe search-index cleanup by path, tag, or full index.</li>
+    <li>Search maintenance now includes dry-run previews, confirmation prompts, operation IDs, cache invalidation warnings, and audit logging.</li>
     <li>The current analysis stack now documents dedicated AutoDoctor workflows for report JSON, telemetry JSON, and SQLite artifacts.</li>
     <li>`indexly show-help` remains the fastest way to discover command categories before reading deeper guides.</li>
   </ul>
@@ -86,6 +87,7 @@ flowchart LR
 | Install and verify on Windows, macOS, Linux | [Install Indexly](indexly-installation.md) |
 | Prepare the maintained contributor workstation | [Windows Development Environment Setup](windows-terminal-setup.md), [Linux Development Environment Setup](linux-development-environment.md) |
 | Learn command workflows end-to-end | [Usage Guide](usage.md) |
+| Remove stale search results without deleting files | [Clear Search Results Safely](clear-search.md) |
 | Get short answers for setup, paths, file support, and troubleshooting | [FAQ](faq.md) |
 | Choose the right analysis command and pipeline | [Data Analysis Overview](data-analysis-overview.md) |
 | Analyze AutoDoctor report JSON, telemetry JSON, or SQLite output | [Analyze AutoDoctor Artifacts](analyze-autodoctor-artifacts.md) |
@@ -100,6 +102,8 @@ flowchart LR
 ## Popular Deep Dives
 
 - [Indexing](indexing.md)
+- [Search](/searching/)
+- [Clear Search Results Safely](clear-search.md)
 - [Tagging](tagging.md)
 - [Analyze AutoDoctor Artifacts](analyze-autodoctor-artifacts.md)
 - [Semantic Indexing Overview](semantic-indexing-overview.md)

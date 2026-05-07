@@ -60,10 +60,17 @@ indexly search "error handling"
 indexly search "invoice AND 2026"
 indexly search "docker OR kubernetes"
 indexly search "cache NOT redis"
-indexly search "authentication NEAR/5 failure"
+indexly search "authentication NEAR failure" --near-distance 8
 ```
 
-When a query does not contain FTS operators, Indexly normalizes it as a safer literal phrase. This keeps broad multi-word searches from becoming noisy.
+When a query does not contain explicit FTS operators, Indexly normalizes it as a safer literal phrase. Logical operators are opt-in and case-sensitive: use uppercase `AND`, `OR`, `NOT`, and `NEAR` when you want boolean search behavior. Lowercase English words such as `and`, `or`, `not`, and `near` stay part of the literal search text.
+
+```bash
+indexly search "search and replace"
+indexly search "search AND replace"
+```
+
+The first command searches for the phrase `search and replace`. The second command searches for indexed content containing both `search` and `replace`.
 
 ## Filters
 
@@ -84,6 +91,19 @@ indexly search "manual" --format PDF
 indexly search "photo" --camera Canon
 indexly search "inspection" --image-created 2026-03
 ```
+
+## Sorting Results
+
+By default, full-text search results are sorted by SQLite FTS relevance. You can choose another ordering:
+
+```bash
+indexly search "invoice" --sort-by relevance
+indexly search "invoice" --sort-by newest
+indexly search "invoice" --sort-by oldest
+indexly search "invoice" --sort-by path
+```
+
+`newest` and `oldest` use the indexed file `modified` timestamp. `path` sorts case-insensitively by file path. Sorting is available for `indexly search`; regex search remains pattern-focused and does not use FTS ranking.
 
 ## Context, Cache, and Profiles
 
@@ -107,6 +127,30 @@ indexly search "invoice" --profile invoice_pdf
 ```
 
 Profiles store the search parameters and make repeated workflows easier to reproduce.
+
+## Search Index Maintenance
+
+Use `clear-search` when stale paths or tagged batches should be removed from the local FTS5 search index without deleting source files.
+
+Preview stale results under a moved folder:
+
+```bash
+indexly clear-search --path "V:/Hotline/OldCustomerFolder" --dry-run
+```
+
+Remove them after reviewing the plan:
+
+```bash
+indexly clear-search --path "V:/Hotline/OldCustomerFolder"
+```
+
+Remove all files matching any cleanup tag:
+
+```bash
+indexly clear-search --tag archive stale-index --dry-run
+```
+
+See [Clear Search Results Safely](/documentation/clear-search/) for confirmation behavior, path and tag semantics, cache invalidation, and recovery steps.
 
 ## Fuzzy Search
 
@@ -136,7 +180,8 @@ Regex search runs against indexed content and supports the same common filters a
 | Need | Command |
 | --- | --- |
 | Ranked concept discovery | `indexly search` |
-| FTS operators such as `AND`, `OR`, `NOT`, `NEAR` | `indexly search` |
+| FTS operators such as uppercase `AND`, `OR`, `NOT`, `NEAR` | `indexly search` |
+| Newest or oldest indexed matches first | `indexly search --sort-by newest` |
 | Misspelling-tolerant lookup | `indexly search --fuzzy` |
 | Exact syntax or identifiers | `indexly regex` |
 | Security or config audits | `indexly regex` with filters |
@@ -146,4 +191,5 @@ Regex search runs against indexed content and supports the same common filters a
 - Learn how content gets into the index: [Index Files and Folders](/documentation/index-files-and-folders/)
 - Understand the semantic filter: [Semantic Indexing Overview](/documentation/semantic-indexing-overview/)
 - See implementation details: [Search Internals](search-internals/)
+- Remove stale index entries: [Clear Search Results Safely](/documentation/clear-search/)
 - Use tags to slice results: [Tagging](/documentation/tagging/)

@@ -62,6 +62,13 @@ NDJSON_LOG_DIR.mkdir(parents=True, exist_ok=True)
 _log_lock = Lock()
 
 
+class _StopRequest:
+    """Private queue message used to shut down the worker after queued entries."""
+
+    def __init__(self):
+        self.done = threading.Event()
+
+
 # ---------------- PATH HELPERS ----------------
 def _choose_today_ndjson_filename():
     today = date.today().isoformat()
@@ -187,7 +194,7 @@ class LogManager:
             self._start_background_worker()
             
     def flush(self, timeout: float = 1.0):
-        """Ensure all queued log entries are written without stopping the worker."""
+        """Wait for queued log entries to reach the async worker."""
         if not self.async_mode or not self._queue or not self._thread:
             return
 
@@ -288,13 +295,22 @@ class LogManager:
         batch = []
         last_flush = asyncio.get_running_loop().time()
 
-        while not self._stop_event.is_set():
+        while True:
             try:
-                entry = await asyncio.wait_for(self._queue.get(), timeout=self.flush_interval)
-                batch.append(entry)
-                self._queue.task_done()
+                item = await asyncio.wait_for(self._queue.get(), timeout=self.flush_interval)
             except asyncio.TimeoutError:
-                pass
+                item = None
+
+            if isinstance(item, _StopRequest):
+                if batch:
+                    self._flush_batch(batch)
+                    batch.clear()
+                item.done.set()
+                self._queue.task_done()
+                break
+            elif item is not None:
+                batch.append(item)
+                self._queue.task_done()
 
             now = asyncio.get_running_loop().time()
             if batch and (len(batch) >= self.batch_size or now - last_flush >= self.flush_interval):
@@ -324,6 +340,9 @@ class LogManager:
         else:
             self._write_sync(entry)
 
+    def log_sync(self, entry: dict):
+        self._write_sync(entry)
+
     async def alog(self, entry: dict):
         if self._queue:
             await self._queue.put(entry)
@@ -334,24 +353,38 @@ class LogManager:
     def stop(self, timeout: float = 2.0):
         if not self.async_mode:
             return
+        if self._stopped:
+            return
 
         self._stop_event.set()
 
         try:
-            if self._queue:
-                asyncio.run_coroutine_threadsafe(self._queue.join(), self._loop).result(timeout=timeout)
+            if self._queue and self._loop and self._loop.is_running():
+                request = _StopRequest()
+                asyncio.run_coroutine_threadsafe(self._queue.put(request), self._loop).result(timeout=timeout)
+                request.done.wait(timeout=timeout)
         except:
             pass
 
         try:
-            self._loop.call_soon_threadsafe(self._loop.stop)
+            if self._worker_task:
+                self._worker_task.result(timeout=timeout)
         except:
             pass
 
         try:
-            self._thread.join(timeout=timeout)
+            if self._loop and self._loop.is_running():
+                self._loop.call_soon_threadsafe(self._loop.stop)
         except:
             pass
+
+        try:
+            if self._thread:
+                self._thread.join(timeout=timeout)
+        except:
+            pass
+
+        self._stopped = True
 
 
 # ---------------- SINGLETON LOGGER ----------------
@@ -361,6 +394,32 @@ _default_logger = LogManager(async_mode=True)
 # ---------------- TOP-LEVEL FUNCTIONS ----------------
 def log_index_event_dict(entry: dict):
     _default_logger.log(entry)
+
+
+def log_index_event_dict_sync(entry: dict):
+    logger = _default_logger
+    if logger is not None:
+        logger.log_sync(entry)
+        return
+
+    LogManager(async_mode=False).log_sync(entry)
+
+
+def log_search_delete_events(paths: Iterable[str], reason: str):
+    paths = list(paths)
+    for path in paths:
+        entry = _unified_log_entry("SEARCH_RESULT_DELETED", path)
+        entry["reason"] = reason
+        log_index_event_dict_sync(entry)
+
+    log_index_event_dict_sync(
+        {
+            "event": "SEARCH_DELETE_SUMMARY",
+            "timestamp": datetime.now().isoformat(timespec="seconds"),
+            "count": len(paths),
+            "reason": reason,
+        }
+    )
 
 
 def log_index_event(event_type: str, path: str):
@@ -378,15 +437,7 @@ def shutdown_logger(timeout: float = 2.0):
     _default_logger = None
 
     try:
-        # signal async worker to stop
-        logger._stop_event.set()
-
-        # wake the event loop so it notices the stop event
-        if logger._loop and logger._loop.is_running():
-            logger._loop.call_soon_threadsafe(lambda: None)
-
-        # wait for worker thread to finish
-        logger._thread.join(timeout=timeout)
+        logger.stop(timeout=timeout)
     except Exception as e:
         logging.error(f"Logger shutdown error: {e}")
 

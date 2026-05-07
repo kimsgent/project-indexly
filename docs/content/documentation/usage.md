@@ -42,6 +42,7 @@ You will learn the most common workflows:
 
 - Index and re-index files quickly
 - Search with full-text and regex
+- Safely remove stale search index entries
 - Tag and organize content
 - Analyze CSV and other structured files
 - Compare, back up, and restore safely
@@ -56,6 +57,7 @@ If you have not installed Indexly yet, start with [Install Indexly](indexly-inst
 indexly --help
 indexly index /path/to/folder
 indexly search "invoice"
+indexly clear-search --path /path/to/old-folder --dry-run
 indexly regex "[A-Z]{3}-\\d{4}"
 ```
 
@@ -120,9 +122,20 @@ See [Indexing](indexing.md) and [Ignore Rules & Index Hygiene](ignore-rules-inde
 Full-text search:
 
 ```bash
+indexly search "quarterly report"
 indexly search "invoice AND 2026"
 indexly search "\"quarterly report\"" --context 80
 ```
+
+Use uppercase logical operators only when you mean FTS logic:
+
+```bash
+indexly search "docker OR kubernetes"
+indexly search "cache NOT redis"
+indexly search "authentication NEAR failure" --near-distance 8
+```
+
+Lowercase English words such as `and`, `or`, `not`, and `near` are treated as normal text. For example, `indexly search "search and replace"` searches for that literal phrase.
 
 Filter search results:
 
@@ -131,6 +144,17 @@ indexly search "report" --filetype .pdf .md --filter-tag finance
 indexly search "contract" --date-from 2026-01-01 --date-to 2026-03-31
 indexly search "meeting" --path-contains "/projects/client-a"
 ```
+
+Sort returned results:
+
+```bash
+indexly search "invoice" --sort-by relevance
+indexly search "invoice" --sort-by newest
+indexly search "invoice" --sort-by oldest
+indexly search "invoice" --sort-by path
+```
+
+`relevance` is the default. Date sorting uses the indexed file `modified` timestamp.
 
 Fuzzy search:
 
@@ -143,6 +167,8 @@ Regex search:
 ```bash
 indexly regex "\\bINV-\\d{6}\\b"
 ```
+
+Regex search uses Python regular expressions over indexed content. It does not use the FTS logical operators from `indexly search`.
 
 Save and reuse profiles:
 
@@ -162,7 +188,44 @@ See [Configuration](config.md) and [Tagging](tagging.md).
 
 ---
 
-## 3) Tag And Organize
+## 3) Clear Search Results Safely
+
+Use `clear-search` when search results should be removed from `fts_index.db` without deleting source files.
+
+Preview by path:
+
+```bash
+indexly clear-search --path "/path/to/old-folder" --dry-run
+```
+
+Delete after reviewing the plan:
+
+```bash
+indexly clear-search --path "/path/to/old-folder"
+```
+
+Delete all files matching any listed tag:
+
+```bash
+indexly clear-search --tag archive stale --dry-run
+indexly clear-search --tag archive stale
+```
+
+Clear the full search index before a rebuild:
+
+```bash
+indexly clear-search --all --dry-run
+indexly clear-search --all
+indexly index /path/to/folder
+```
+
+`clear-search` shows a pre-deletion report, asks for confirmation unless `--yes` is used, invalidates affected search cache entries, and logs the operation with an operation ID.
+
+See [Clear Search Results Safely](clear-search.md).
+
+---
+
+## 4) Tag And Organize
 
 Tag files and folders:
 
@@ -191,7 +254,7 @@ See [Organizer](organizer.md), [Organizer Profiler](organizer-profiler.md), and 
 
 ---
 
-## 4) Analyze Data
+## 5) Analyze Data
 
 CSV analysis:
 
@@ -244,7 +307,7 @@ For AutoDoctor-specific guidance, see [Analyze AutoDoctor Artifacts](analyze-aut
 
 ---
 
-## 5) Compare, Back Up, And Restore
+## 6) Compare, Back Up, And Restore
 
 Compare files or folders:
 
@@ -273,16 +336,20 @@ See [Backup & Restore](backup-restore.md) and [File/Folder Comparison](file-fold
 
 ---
 
-## 6) Health, Maintenance, And Monitoring
+## 7) Health, Maintenance, And Monitoring
 
 Environment and database health checks:
 
 ```bash
 indexly doctor
 indexly doctor --json
+indexly stats
+indexly clear-search --tag stale-index --dry-run
 indexly update-db
 indexly migrate check
 ```
+
+`indexly stats` gives a quick database summary: indexed files, tagged files, untagged files, tag coverage, database size, unique tags, total tag assignments, and top tags.
 
 Semantic observers:
 
@@ -329,6 +396,8 @@ This lets core commands like `indexly --help` and `indexly --version` remain usa
 
 - [Install Indexly](indexly-installation.md)
 - [Configuration](config.md)
+- [Search](/searching/)
+- [Clear Search Results Safely](clear-search.md)
 - [Tagging](tagging.md)
 - [Organizer](organizer.md)
 - [Developer Guide](developer.md)
