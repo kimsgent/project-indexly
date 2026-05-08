@@ -2,7 +2,7 @@
 title: "Database Update & Migration Utilities"
 slug: "update-db-migration-utilities"
 date: 2025-10-14
-lastmod: 2026-05-08
+lastmod: 2026-05-09
 type: docs
 description: "Learn how to safely update, migrate, and manage your Indexly database schema and FTS5 tables without losing data. Includes full CLI examples and explanations of key differences between normal and FTS5 tables."
 summary: "A comprehensive guide to Indexly’s database management tools — update-db, migrate-db, and migration manager — explaining when and how to use them effectively."

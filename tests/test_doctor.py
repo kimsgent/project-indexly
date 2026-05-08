@@ -89,6 +89,34 @@ def test_run_doctor_full_integrity_checks_explicit_db(
     assert report["search_database"]["integrity"]["integrity_check"] == "ok"
 
 
+def test_run_doctor_profile_db_respects_full_integrity(
+    tmp_path, monkeypatch, capsys
+):
+    monkeypatch.chdir(tmp_path)
+    seed_search_db(tmp_path / "index.db")
+    (tmp_path / "log").mkdir()
+    cache_file = tmp_path / "search_cache.json"
+    cache_file.write_text("{}", encoding="utf-8")
+
+    monkeypatch.setattr(doctor, "BASE_DIR", str(tmp_path))
+    monkeypatch.setattr(doctor, "CACHE_FILE", str(cache_file))
+    monkeypatch.setattr(doctor, "LOG_DIR", str(tmp_path / "log"))
+    monkeypatch.setattr(doctor, "ANALYSIS_DB_FILE", str(tmp_path / "indexly.db"))
+
+    exit_code = doctor.run_doctor(
+        json_output=True,
+        profile_db=True,
+        db_path="index.db",
+        full_integrity=True,
+    )
+    output = capsys.readouterr().out
+    report = json.loads(output)
+
+    assert exit_code == 0
+    assert report["integrity"]["quick_check"] == "ok"
+    assert report["integrity"]["integrity_check"] == "ok"
+
+
 def test_doctor_clear_cache_is_explicit(tmp_path, monkeypatch):
     db_path = tmp_path / "fts_index.db"
     seed_search_db(db_path)
@@ -106,6 +134,53 @@ def test_doctor_clear_cache_is_explicit(tmp_path, monkeypatch):
 
     assert exit_code == 1
     assert json.loads(cache_file.read_text(encoding="utf-8")) == {}
+
+
+def test_doctor_missing_db_recommendation_is_actionable(tmp_path, monkeypatch, capsys):
+    missing_db = tmp_path / "missing.db"
+    (tmp_path / "log").mkdir()
+    cache_file = tmp_path / "search_cache.json"
+    cache_file.write_text("{}", encoding="utf-8")
+
+    monkeypatch.setattr(doctor, "BASE_DIR", str(tmp_path))
+    monkeypatch.setattr(doctor, "CACHE_FILE", str(cache_file))
+    monkeypatch.setattr(doctor, "LOG_DIR", str(tmp_path / "log"))
+    monkeypatch.setattr(doctor, "ANALYSIS_DB_FILE", str(tmp_path / "indexly.db"))
+
+    exit_code = doctor.run_doctor(json_output=True, db_path=str(missing_db))
+    report = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 2
+    assert "No immediate action required." not in report["recommendations"]
+    assert any(
+        "Search database not found." in rec for rec in report["recommendations"]
+    )
+
+
+def test_render_search_db_report_marks_missing_readiness_values(monkeypatch):
+    captured: dict[str, object] = {}
+
+    def fake_render_table(title, rows):
+        captured["title"] = title
+        captured["rows"] = rows
+
+    monkeypatch.setattr(doctor, "_render_table", fake_render_table)
+
+    doctor._render_search_db_report(
+        {
+            "path": "/tmp/missing.db",
+            "exists": False,
+            "is_indexly": False,
+            "readiness": {},
+            "integrity": {},
+        }
+    )
+
+    rows = captured["rows"]
+    status_by_check = {name: status for name, _value, status in rows}
+    assert status_by_check["Documents"] == "error"
+    assert status_by_check["Vocabulary terms"] == "error"
+    assert status_by_check["Sample MATCH rows"] == "error"
 
 
 def test_apply_migrations_skips_fts_rebuild_without_explicit_flag(tmp_path):

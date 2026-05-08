@@ -8,7 +8,7 @@ weight: 10
 
 _Retention policy: latest release + 5 previous releases are shown here. Older releases are moved to Archive._
 
-## Latest Release: v2.1.0 (2026-05-07)
+## Latest Release: v2.1.0 (2026-05-09)
 
 ### Changes
 - feat(search): add `clear-search` for safe FTS5 search-index deletion by path, tag, or full index
