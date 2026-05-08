@@ -3,6 +3,7 @@ import pytest
 import sqlite3
 from pathlib import Path
 from indexly import search_core, config
+from indexly.cli_utils import build_parser
 
 def seed_test_data(db_path: str):
     """Create schema + insert one test record into a fresh DB."""
@@ -214,3 +215,15 @@ def test_no_cache_skips_fts_cache_write(tmp_path, monkeypatch):
     )
 
     assert len(results) == 2
+
+
+def test_search_cli_defaults_to_runtime_db_unless_db_is_explicit():
+    parser = build_parser()
+
+    default_args = parser.parse_args(["search", "mobile"])
+    explicit_args = parser.parse_args(["search", "mobile", "--db", "index.db"])
+    regex_default_args = parser.parse_args(["regex", "mobile"])
+
+    assert default_args.db is None
+    assert explicit_args.db == "index.db"
+    assert regex_default_args.db is None

@@ -422,7 +422,11 @@ def build_parser():
     # Search
     search_parser = subparsers.add_parser("search", help="Perform FTS search")
     search_parser.add_argument("term", type=str, help="Search term (FTS5 syntax)")
-    search_parser.add_argument("--db", default="index.db", help="Database path")
+    search_parser.add_argument(
+        "--db",
+        default=None,
+        help="Database path (defaults to Indexly runtime database)",
+    )
     add_common_arguments(search_parser)
     search_parser.add_argument(
         "--fuzzy", action="store_true", help="Enable fuzzy search"
@@ -489,7 +493,11 @@ def build_parser():
     # Regex
     regex_parser = subparsers.add_parser("regex", help="Regex search mode")
     regex_parser.add_argument("pattern", help="Regex pattern")
-    regex_parser.add_argument("--db", default="index.db", help="Database path")
+    regex_parser.add_argument(
+        "--db",
+        default=None,
+        help="Database path (defaults to Indexly runtime database)",
+    )
     add_common_arguments(regex_parser)
 
     # Add profile save/load support
