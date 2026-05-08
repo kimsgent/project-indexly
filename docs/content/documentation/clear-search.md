@@ -25,8 +25,8 @@ categories:
   - Maintenance
 weight: 7
 type: docs
-date: "2026-05-07"
-lastmod: "2026-05-07"
+date: "2026-05-09"
+lastmod: "2026-05-09"
 draft: false
 toc: true
 params:
@@ -281,10 +281,12 @@ If you see a database error:
 
 ```bash
 indexly doctor
+indexly doctor --full-integrity
 indexly update-db
 ```
 
 Close other Indexly processes, watchers, or editors that may be holding the SQLite database open, then retry.
+Use `--full-integrity` when you need the slower read-only SQLite `integrity_check`, because the normal Doctor run may skip deep integrity scans on large databases.
 
 ## Recovery
 

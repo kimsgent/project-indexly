@@ -1825,6 +1825,16 @@ def build_parser():
         help="Output health report as JSON.",
     )
     doctor.add_argument(
+        "--db",
+        default=None,
+        help="Inspect a specific search database path instead of the runtime DB.",
+    )
+    doctor.add_argument(
+        "--analysis-db",
+        action="store_true",
+        help="Include the persisted analysis database (~/.indexly/indexly.db).",
+    )
+    doctor.add_argument(
         "--profile-db",
         action="store_true",
         help="Run read-only database profiling (Phase 3).",
@@ -1838,6 +1848,21 @@ def build_parser():
         "--auto-fix",
         action="store_true",
         help="Automatically apply schema fixes without prompting",
+    )
+    doctor.add_argument(
+        "--clear-cache",
+        action="store_true",
+        help="Clear the search cache after reporting cache diagnostics.",
+    )
+    doctor.add_argument(
+        "--rebuild-fts",
+        action="store_true",
+        help="Explicitly allow risky FTS5 virtual table rebuilds during --fix-db.",
+    )
+    doctor.add_argument(
+        "--full-integrity",
+        action="store_true",
+        help="Run full SQLite integrity_check for inspected databases; slower but read-only.",
     )
 
     doctor.set_defaults(func=lambda args: handle_doctor(args))

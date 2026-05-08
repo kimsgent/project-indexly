@@ -808,21 +808,16 @@ def clear_cleaned_data_handler(args):
 def handle_doctor(args):
     from indexly.doctor import run_doctor
 
-    # Only pass auto_fix if --profile-db is active
-    if getattr(args, "profile_db", False):
-        auto_fix = getattr(args, "auto_fix", False)
-    else:
-        if getattr(args, "auto_fix", False):
-            console.print(
-                "[yellow]Warning: --auto-fix only works with --profile-db. Ignoring.[/yellow]"
-            )
-        auto_fix = False
-
     exit_code = run_doctor(
         json_output=getattr(args, "json", False),
         profile_db=getattr(args, "profile_db", False),
         fix_db=getattr(args, "fix_db", False),
-        auto_fix=auto_fix,  # <-- now properly forwarded
+        auto_fix=getattr(args, "auto_fix", False),
+        db_path=getattr(args, "db", None),
+        include_analysis_db=getattr(args, "analysis_db", False),
+        clear_cache=getattr(args, "clear_cache", False),
+        rebuild_fts=getattr(args, "rebuild_fts", False),
+        full_integrity=getattr(args, "full_integrity", False),
     )
 
     sys.exit(exit_code)
@@ -1061,6 +1056,9 @@ def handle_show_help(args):
         "analyze-file": "Core command; extras depend on input file type",
         "analyze-db": "Requires optional extras: analysis",
         "extract-mtw": "Requires optional extras: analysis",
+        "doctor": "Core diagnostics; --analysis-db inspects persisted analysis state",
+        "update-db": "Critical schema maintenance; use after backup",
+        "migrate": "Critical schema maintenance; backups recommended",
     }
 
     all_commands = list(command_parsers.keys())
@@ -1182,7 +1180,8 @@ def handle_show_help(args):
                 if getattr(args, "details", False):
                     scope = _markdown_escape(_scope_for(command))
                     usage = _markdown_escape(_command_usage(subparser))
-                    options = ", ".join(_extract_key_options(subparser, limit=6)) or "—"
+                    option_limit = 9 if command == "doctor" else 6
+                    options = ", ".join(_extract_key_options(subparser, limit=option_limit)) or "—"
                     options = _markdown_escape(options)
                     print(
                         f"| `{command}` | {summary} | {scope} | {modes} | "
@@ -1217,7 +1216,8 @@ def handle_show_help(args):
                 summary = _command_summary(command, subparser)
                 modes = ", ".join(_extract_modes(subparser)) or "—"
                 usage = _command_usage(subparser)
-                key_flags = ", ".join(_extract_key_options(subparser, limit=6)) or "—"
+                option_limit = 9 if command == "doctor" else 6
+                key_flags = ", ".join(_extract_key_options(subparser, limit=option_limit)) or "—"
 
                 body = Text()
                 body.append("What it does: ", style="bold")

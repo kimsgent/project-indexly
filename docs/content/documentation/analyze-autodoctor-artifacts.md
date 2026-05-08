@@ -7,7 +7,7 @@ type: docs
 slug: "analyze-autodoctor-artifacts"
 weight: 19
 date: "2026-04-22"
-lastmod: "2026-04-22"
+lastmod: "2026-05-09"
 draft: false
 toc: true
 aliases:
@@ -196,9 +196,27 @@ Use the companion AutoDoctor docs to understand what the artifacts represent:
 - [Telemetry and Persistence](autodoctor/developer-guide/telemetry-and-persistence.md)
 - [Generate and Share Support Bundle](autodoctor/getting-started/support-bundle.md)
 
+### Analysis output does not appear in persisted results
+
+Indexly stores cleaned analysis persistence separately from the search index.
+Check the analysis database with:
+
+```bash
+indexly doctor --analysis-db
+```
+
+For a slower read-only SQLite corruption check:
+
+```bash
+indexly doctor --analysis-db --full-integrity
+```
+
+Doctor reports the `~/.indexly/indexly.db` path, whether the `cleaned_data` table exists, row count, and invalid JSON payload counts.
+
 ## Next Steps
 
 - [Data Analysis Overview](data-analysis-overview.md)
 - [Analyze SQLite Databases](analyze-sqlite-databases.md)
+- [Indexly Doctor](indexly-doctor.md)
 - [Telemetry and Persistence](autodoctor/developer-guide/telemetry-and-persistence.md)
 - [Generate and Share Support Bundle](autodoctor/getting-started/support-bundle.md)

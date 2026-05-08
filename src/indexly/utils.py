@@ -13,12 +13,20 @@ Used by:
     - All search modes and export utilities.
 """
 import re
+import warnings
 from textwrap import wrap
 from rich.text import Text
 from .db_utils import get_tags_for_file
 
 try:
-    from fpdf.errors import FPDFException
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message="Pillow could not be imported.*",
+            category=UserWarning,
+            module=r"fpdf\.fpdf",
+        )
+        from fpdf.errors import FPDFException
 except Exception:  # pragma: no cover - optional dependency
     class FPDFException(Exception):
         pass
