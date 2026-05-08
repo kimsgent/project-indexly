@@ -74,6 +74,7 @@ docs/package-lock.json
 # Local pytest scratch directories
 test-tmp/
 pytest-cache-files-*/
+tmp-doctor-*/
 
 # ----------------
 # OS / Editors

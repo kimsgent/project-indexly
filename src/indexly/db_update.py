@@ -65,7 +65,20 @@ def _extract_columns_from_sql(sql: str):
     if not sql:
         return []
 
-    inner = re.sub(r"(?is)^create\s+(virtual\s+)?table\s+\w+\s+(using\s+\w+\s*)?\(", "", sql)
+    inner = sql.strip()
+    inner = re.sub(
+        r"""^create\s+
+            (?:virtual\s+)?
+            table\s+
+            (?:if\s+not\s+exists\s+)?
+            ["'`\[]?[\w.]+["'`\]]?\s+
+            (?:using\s+\w+\s*)?
+            \(
+        """,
+        "",
+        inner,
+        flags=re.IGNORECASE | re.DOTALL | re.VERBOSE,
+    )
     inner = re.sub(r"\)\s*;?\s*$", "", inner)
     inner = re.sub(r"PRIMARY\s+KEY\s*\([^)]+\)", "", inner, flags=re.IGNORECASE)
 
@@ -148,12 +161,19 @@ def check_schema(conn, verbose=True):
 # Migration Apply
 # -------------------------------------------------------------------
 
-def apply_migrations(conn, dry_run=False, auto_fix=False):
+def apply_migrations(
+    conn,
+    dry_run=False,
+    auto_fix=False,
+    allow_fts_rebuild=False,
+):
     """
     Apply schema migrations automatically.
     - Creates backup before altering DB.
     - In dry-run mode, only prints actions.
     - If auto_fix=True, from doctor.py bypass all interactive prompts.
+    - FTS5 rebuilds are skipped unless allow_fts_rebuild=True because
+      virtual table reconstruction can lose path values and should be explicit.
     """
     diffs = check_schema(conn, verbose=False)
 
@@ -176,6 +196,17 @@ def apply_migrations(conn, dry_run=False, auto_fix=False):
 
         # ---- FTS5-specific warning before rebuild ----
         if "FTS5" in msg:
+            if not allow_fts_rebuild:
+                print(
+                    "\n⏭️ Skipping FTS5 rebuild. Virtual FTS tables are not "
+                    "reconstructed unless --rebuild-fts is explicitly supplied."
+                )
+                print(
+                    "   Recommended safe path: re-run `indexly index <folder>` "
+                    "or restore from a backup if the FTS table is damaged."
+                )
+                continue
+
             if not auto_fix:
                 print("\n⚠️ WARNING: Rebuilding FTS5 tables will overwrite all existing `path` values with `None`.")
                 print("   Searches will still function, but file paths will be lost until re-indexed.")
