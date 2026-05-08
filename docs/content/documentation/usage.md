@@ -5,7 +5,7 @@ icon: "mdi:play-circle"
 weight: 2
 type: docs
 date: 2026-04-01
-lastmod: 2026-05-08
+lastmod: 2026-05-09
 summary: "Learn the day-to-day Indexly workflow: install, index, search, tag, analyze, compare, and back up with practical command examples."
 description: "Practical Indexly usage guide for Windows, macOS, and Linux. Covers indexing, search, regex, tagging, analysis, organizing, backup/restore, and common troubleshooting."
 keywords: [

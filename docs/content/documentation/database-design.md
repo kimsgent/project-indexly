@@ -2,7 +2,7 @@
 title: "Database Design"
 weight: 20
 type: docs
-lastmod: "2026-05-08"
+lastmod: "2026-05-09"
 ---
 
 ## Database responsibilities by design

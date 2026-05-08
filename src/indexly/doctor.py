@@ -520,6 +520,20 @@ def _recommendations(report: dict[str, Any]) -> list[str]:
     analysis = report.get("analysis_database", {})
     cache = report.get("cache", {})
     local = report.get("local_index_db", {})
+    has_errors = bool(report.get("errors"))
+
+    if "db_missing" in search.get("errors", []):
+        recs.append(
+            "Search database not found. Re-index with `indexly index <folder>` or pass `--db <path>` to inspect a specific copy."
+        )
+    if any(err in search.get("errors", []) for err in ("db_open_failed", "db_error")):
+        recs.append(
+            "Search database could not be read. Verify file permissions and run `indexly doctor --full-integrity --db <path>`."
+        )
+    if "analysis_db_error" in analysis.get("errors", []):
+        recs.append(
+            "Analysis database inspection failed. Verify `~/.indexly/indexly.db` accessibility and re-run `indexly doctor --analysis-db --full-integrity`."
+        )
 
     if local.get("exists") and search.get("path") != local.get("path"):
         recs.append(
@@ -539,7 +553,9 @@ def _recommendations(report: dict[str, Any]) -> list[str]:
         recs.append("Search cache contains stale paths. Consider `indexly doctor --clear-cache`.")
     if analysis.get("exists") and "analysis_invalid_json" in analysis.get("warnings", []):
         recs.append("Analysis database has invalid JSON payloads. Re-run affected analysis with --no-persist first if investigating.")
-    if not recs:
+    if has_errors and not recs:
+        recs.append("Doctor found blocking errors. Resolve reported errors and re-run `indexly doctor --json`.")
+    if not recs and not has_errors:
         recs.append("No immediate action required.")
     return recs
 
@@ -638,10 +654,11 @@ def run_doctor_profile_db(
     json_output: bool = False,
     auto_fix: bool = False,
     rebuild_fts: bool = False,
+    full_integrity: bool = False,
 ):
     _set_console_enabled(not json_output)
     resolved = _resolve_doctor_db_path(db_path)
-    report = _inspect_search_db(resolved)
+    report = _inspect_search_db(resolved, full_integrity=full_integrity)
 
     if report["exists"]:
         try:
@@ -678,12 +695,32 @@ def run_doctor_profile_db(
 
 
 def _render_search_db_report(report: dict[str, Any]) -> None:
+    readiness = report.get("readiness", {})
+    db_exists = bool(report.get("exists"))
+    file_index_rows = readiness.get("file_index_rows")
+    vocab_rows = readiness.get("vocab_rows")
+    sample_match_rows = readiness.get("sample_match_rows")
+
+    documents_status = "ok"
+    vocab_status = "ok"
+    sample_match_status = "ok"
+    if not db_exists:
+        documents_status = "error"
+        vocab_status = "error"
+        sample_match_status = "error"
+    if db_exists and (readiness.get("file_index_error") or file_index_rows is None):
+        documents_status = "warn"
+    if db_exists and (readiness.get("vocab_error") or vocab_rows is None):
+        vocab_status = "warn"
+    if db_exists and (readiness.get("sample_match_error") or sample_match_rows is None):
+        sample_match_status = "warn"
+
     rows = [
         ("Path", report.get("path"), "ok" if report.get("exists") else "error"),
         ("Indexly schema", report.get("is_indexly"), "ok" if report.get("is_indexly") else "warn"),
-        ("Documents", report.get("readiness", {}).get("file_index_rows"), "ok"),
-        ("Vocabulary terms", report.get("readiness", {}).get("vocab_rows"), "ok"),
-        ("Sample MATCH rows", report.get("readiness", {}).get("sample_match_rows"), "ok"),
+        ("Documents", file_index_rows, documents_status),
+        ("Vocabulary terms", vocab_rows, vocab_status),
+        ("Sample MATCH rows", sample_match_rows, sample_match_status),
         ("Quick check", report.get("integrity", {}).get("quick_check"), "ok" if report.get("integrity", {}).get("ok") else "warn"),
         ("Integrity", report.get("integrity", {}).get("integrity_check"), "ok" if report.get("integrity", {}).get("ok") else "warn"),
     ]
@@ -733,6 +770,7 @@ def run_doctor(
             json_output=json_output,
             auto_fix=auto_fix,
             rebuild_fts=rebuild_fts,
+            full_integrity=full_integrity,
         )
         return exit_code
 
