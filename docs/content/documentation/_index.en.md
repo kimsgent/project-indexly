@@ -16,7 +16,7 @@ weight: 5
 type: docs
 toc: true
 date: "2026-04-22"
-lastmod: "2026-04-25"
+lastmod: "2026-05-08"
 draft: false
 categories:
   - Overview
@@ -49,6 +49,7 @@ This documentation works best when you enter through the path that matches your 
   <ul class="mb-3">
     <li>`v2.1.0` adds `indexly clear-search` for safe search-index cleanup by path, tag, or full index.</li>
     <li>Search maintenance now includes dry-run previews, confirmation prompts, operation IDs, cache invalidation warnings, and audit logging.</li>
+    <li>`indexly doctor` now reports search DB readiness, analysis DB health, cache state, optional feature packs, and read-only full integrity checks.</li>
     <li>The current analysis stack now documents dedicated AutoDoctor workflows for report JSON, telemetry JSON, and SQLite artifacts.</li>
     <li>`indexly show-help` remains the fastest way to discover command categories before reading deeper guides.</li>
   </ul>
@@ -88,6 +89,7 @@ flowchart LR
 | Prepare the maintained contributor workstation | [Windows Development Environment Setup](windows-terminal-setup.md), [Linux Development Environment Setup](linux-development-environment.md) |
 | Learn command workflows end-to-end | [Usage Guide](usage.md) |
 | Remove stale search results without deleting files | [Clear Search Results Safely](clear-search.md) |
+| Diagnose search, cache, analysis DB, and integrity issues | [Indexly Doctor](indexly-doctor.md) |
 | Get short answers for setup, paths, file support, and troubleshooting | [FAQ](faq.md) |
 | Choose the right analysis command and pipeline | [Data Analysis Overview](data-analysis-overview.md) |
 | Analyze AutoDoctor report JSON, telemetry JSON, or SQLite output | [Analyze AutoDoctor Artifacts](analyze-autodoctor-artifacts.md) |

@@ -2,6 +2,7 @@
 title: "Database Design"
 weight: 20
 type: docs
+lastmod: "2026-05-08"
 ---
 
 ## Database responsibilities by design
@@ -85,6 +86,28 @@ For full behavior and recovery steps, see [Clear Search Results Safely](clear-se
 
 ----
 
+## Runtime and analysis databases
+
+Indexly keeps search indexing and analysis persistence separate:
+
+| Database | Default purpose | Typical location |
+| --- | --- | --- |
+| `fts_index.db` | FTS5 search index, tags, and file metadata used by search workflows | Indexly runtime directory, such as `%APPDATA%/indexly` on Windows |
+| `indexly.db` | Persisted cleaned analysis data in `cleaned_data` | `~/.indexly/indexly.db` |
+
+This separation matters for maintenance:
+
+- `indexly clear-search` affects only search-index tables.
+- analysis commands persist cleaned data separately.
+- `indexly doctor` can inspect both databases and reports them as separate sections.
+- `indexly doctor --full-integrity` runs a read-only SQLite integrity check when a deeper scan is needed.
+
+FTS5 virtual tables are also different from ordinary SQLite tables.
+Schema repairs can add normal-table columns safely, but FTS5 rebuilds require explicit operator intent because damaged virtual tables may not preserve enough information to reconstruct path values safely.
+
+----
+
 ### 🏷️ Related Topics
 
 * [Semantic Indexing & Vocabulary Quality](semantic-indexing-vocab.md) The technical model, measured results, and why a database update is required.
+* [Indexly Doctor](indexly-doctor.md)

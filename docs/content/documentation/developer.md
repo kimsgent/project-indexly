@@ -4,7 +4,7 @@ slug: "developer-guide"
 icon: "mdi:code-braces"
 weight: 5
 date: 2026-04-01
-lastmod: 2026-04-25
+lastmod: 2026-05-08
 summary: "Production-grade developer guide for Indexly: architecture, dependency policy, local setup, testing, packaging, and contribution workflow."
 description: "Learn how to develop Indexly safely and efficiently. Covers project structure, optional dependency design, command wiring, quality checks, and Homebrew-friendly packaging practices."
 keywords: [
@@ -161,6 +161,7 @@ project-indexly/
 | Compare | `compare/compare_engine.py`, `compare/file_compare.py`, `compare/folder_compare.py` | File/folder diff and similarity checks |
 | Backup/restore | `backup/cli.py`, `backup/restore.py`, `backup/compress.py` | Full/incremental backup and restore workflows |
 | Monitoring | `watcher.py`, `observers/runner.py` | Live folder watch and observer-based audits |
+| Health diagnostics | `doctor.py`, `db_update.py`, `db_schema_utils.py` | Runtime health checks, search/analysis DB diagnostics, guarded repair flow |
 
 ---
 
@@ -287,6 +288,72 @@ Add tests for:
 - transaction rollback when a table delete fails
 - large batch progress output
 - path normalization edge cases
+
+---
+
+## Doctor Internals
+
+The `indexly doctor` command is implemented in `src/indexly/doctor.py`.
+It is a health and maintenance orchestration layer, not a replacement for search, indexing, analysis, or migration modules.
+
+### Responsibility Boundary
+
+Plain `indexly doctor` must stay read-only.
+It may inspect:
+
+- runtime paths from `config.py`
+- search database health for `fts_index.db` or an explicit `--db`
+- analysis persistence at `~/.indexly/indexly.db`
+- `search_cache.json`
+- optional dependency availability
+- external tools such as ExifTool and Tesseract
+
+State-changing actions require explicit flags:
+
+- `--clear-cache` writes `{}` to the search cache file
+- `--fix-db` applies schema migrations after preflight checks and confirmation unless `--auto-fix` is used
+- `--rebuild-fts` allows FTS5 virtual table rebuilds during repair
+
+`--full-integrity` is intentionally read-only. It enables SQLite `PRAGMA integrity_check` for inspected databases and should not imply repair.
+
+### Command Wiring
+
+Doctor flags are declared in `cli_utils.py` and forwarded by `handle_doctor()` in `indexly.py`.
+When adding or renaming a Doctor flag:
+
+1. update the parser in `cli_utils.py`
+2. forward the value in `indexly.py`
+3. include the flag in `show-help --details` if it is high-signal
+4. update `docs/content/documentation/indexly-doctor.md`
+5. add or update `tests/test_doctor.py`
+
+### FTS5 Safety Rule
+
+Do not silently rebuild FTS5 virtual tables.
+FTS5 table definitions do not guarantee that all path values can be reconstructed safely from a damaged or legacy virtual table.
+The repair layer in `db_update.py` therefore skips FTS5 rebuilds unless `allow_fts_rebuild=True`, which is exposed through:
+
+```bash
+indexly doctor --fix-db --rebuild-fts
+```
+
+Prefer re-indexing source folders or restoring a known-good backup when FTS data is suspect.
+
+### Testing Requirements
+
+Run the focused Doctor suite after changes:
+
+```bash
+python -m pytest tests/test_doctor.py tests/test_search.py::test_search_cli_defaults_to_runtime_db_unless_db_is_explicit
+```
+
+For path deletion or cache-adjacent changes, also run:
+
+```bash
+python -m pytest tests/test_delete_search.py
+```
+
+On Windows, use an explicit writable `--basetemp` when local ACLs make default pytest temp folders unreadable.
 
 ---
 

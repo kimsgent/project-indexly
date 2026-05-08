@@ -5,6 +5,7 @@ icon: "mdi:play-circle"
 weight: 2
 type: docs
 date: 2026-04-01
+lastmod: 2026-05-08
 summary: "Learn the day-to-day Indexly workflow: install, index, search, tag, analyze, compare, and back up with practical command examples."
 description: "Practical Indexly usage guide for Windows, macOS, and Linux. Covers indexing, search, regex, tagging, analysis, organizing, backup/restore, and common troubleshooting."
 keywords: [
@@ -343,11 +344,14 @@ Environment and database health checks:
 ```bash
 indexly doctor
 indexly doctor --json
+indexly doctor --full-integrity
 indexly stats
 indexly clear-search --tag stale-index --dry-run
 indexly update-db
 indexly migrate check
 ```
+
+`indexly doctor --full-integrity` runs the slower read-only SQLite integrity check when the normal health check reports skipped integrity on a large database.
 
 `indexly stats` gives a quick database summary: indexed files, tagged files, untagged files, tag coverage, database size, unique tags, total tag assignments, and top tags.
 

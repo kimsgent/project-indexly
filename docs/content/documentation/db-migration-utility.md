@@ -2,7 +2,7 @@
 title: "Database Update & Migration Utilities"
 slug: "update-db-migration-utilities"
 date: 2025-10-14
-lastmod: 2026-01-12
+lastmod: 2026-05-08
 type: docs
 description: "Learn how to safely update, migrate, and manage your Indexly database schema and FTS5 tables without losing data. Includes full CLI examples and explanations of key differences between normal and FTS5 tables."
 summary: "A comprehensive guide to Indexly’s database management tools — update-db, migrate-db, and migration manager — explaining when and how to use them effectively."
@@ -41,7 +41,7 @@ Together, these tools let you modify schema definitions, rebuild FTS5 indexes wh
 - **Schema auto-alignment:** Adds missing columns automatically.
 - **Dry-run mode:** Preview all changes without applying them.
 - **Migration history tracking:** Each migration is recorded with a timestamp.
-- **Automatic FTS5 rebuilds:** Detects prefix/tokenizer mismatches and recreates tables when necessary.
+- **Guarded FTS5 rebuilds:** Detects prefix/tokenizer mismatches, but repair commands require explicit FTS rebuild intent.
 - **Safe backups:** Creates versioned `.bak_YYYYMMDD_HHMMSS` copies before modifying any DB.
 - **Interactive confirmation:** Prompts you before irreversible operations.
 - **Path normalization & data validation:** Ensures consistent entries across tables.
@@ -54,11 +54,17 @@ Together, these tools let you modify schema definitions, rebuild FTS5 indexes wh
 ### Overview
 
 The **update-db** script aligns your existing database schema with the latest Indexly definitions.
-It compares your tables against the expected schema and adds or rebuilds as necessary.
+It compares your tables against the expected schema, adds safe missing normal-table columns, and reports FTS5 rebuild needs separately.
 
 ### Why This Matters
 
 SQLite’s FTS5 tables behave differently from regular tables — updating them requires a **total rebuild**, whereas normal tables can be extended easily with `ALTER TABLE`.
+
+{{< alert title="FTS5 repair is explicit" color="warning" >}}
+FTS5 virtual tables can contain path and content state that cannot always be reconstructed safely from the table definition alone.
+Use `indexly doctor --fix-db` for ordinary schema fixes.
+Use `indexly doctor --fix-db --rebuild-fts` only after backup or when you are prepared to re-index source folders.
+{{< /alert >}}
 
 ### CLI Usage
 
@@ -208,10 +214,11 @@ Answer `y` to continue or `N` to abort.
 | **Situation**                                                 | **Recommended Tool**  | **Notes**                              |
 | ------------------------------------------------------------- | --------------------- | -------------------------------------- |
 | You changed metadata or tags schema                           | **update-db**         | Safely adds or adjusts columns         |
-| You updated FTS5 prefix or tokenizer                          | **migration-manager** | Handles full FTS5 rebuilds             |
+| You updated FTS5 prefix or tokenizer                          | **doctor / migration-manager** | Rebuilds are guarded; backup or prepare to re-index first |
 | You want to merge data from another DB                        | **migrate-db**        | Safely imports data without reindexing |
 | You just upgraded Indexly and need to sync DB structure       | **update-db**         | Aligns schema automatically            |
 | You want to backfill missing migrations or ensure consistency | **migration-manager** | Maintains historical schema records    |
+| You want a read-only corruption check                         | **doctor**            | Run `indexly doctor --full-integrity`  |
 
 ----
 
@@ -234,3 +241,4 @@ Each utility serves a clear purpose — from simple updates to complex merges �
 * [Why Semantic Filtering Matters](developers-why-semantic-filtering-matters.md)
 * [Database Design](database-design.md)
 * [Semantic Indexing & Vocabulary Quality](semantic-indexing-vocab.md)
+* [Indexly Doctor](indexly-doctor.md)
