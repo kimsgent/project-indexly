@@ -5,7 +5,7 @@ ui_read_more: Lue lisää
 ui_search: Hae sivustolta...
 
 # Used in sentences such as "Posted in News"
-ui_in:
+ui_in: ""
 
 # Used in sentences such as "All Tags"
 ui_all: kaikki
