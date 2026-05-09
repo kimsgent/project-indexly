@@ -1,5 +1,5 @@
 {{ $scratch := newScratch }}
-{{ range hugo.Data.changelog.versions }}
+{{ range site.Data.changelog.versions }}
   {{ $version := printf "%v" .version }}
   {{ if and (not ($scratch.Get "latest")) (eq (len (findRE "(?i)(alpha|beta|rc|test)" $version)) 0) }}
     {{ $scratch.Set "latest" . }}
