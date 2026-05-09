@@ -1,5 +1,6 @@
 ---
 title: "Database Analysis – Analyze SQLite Databases"
+linkTitle: "Analyze SQLite DBs"
 description: "Analyze SQLite databases with Indexly to extract table summaries, detect relationships, generate ER diagrams, and export structured insights in JSON, Markdown, or HTML."
 keywords:
   - SQLite database analysis
@@ -12,6 +13,9 @@ keywords:
 slug: "database-analysis-sqlite"
 weight: 20
 type: docs
+date: "2026-04-22"
+lastmod: "2026-04-22"
+draft: false
 images:
   - "images/database-analysis-overview.png"
 categories:
@@ -24,10 +28,11 @@ tags:
   - cli
   - data-profiling
 ---
-
-
----
 Indexly provides a powerful pipeline for inspecting SQLite databases, allowing you to extract meaningful insights and visualize table relationships efficiently. Whether you're exploring your own datasets or working with sample DBs such as [Chinook](https://github.com/lerocha/chinook-database), `analyze-db` gives you the ability to summarize, profile, and export your data.
+
+{{< alert title="AutoDoctor-aware behavior" color="info" >}}
+If the SQLite schema matches AutoDoctor’s persistence tables, Indexly switches from generic DB inspection to a specialized operational summary. Use [Analyze AutoDoctor Artifacts](analyze-autodoctor-artifacts.md) when your input is `autodoctor.db`.
+{{< /alert >}}
 
 ## Key Features
 
@@ -45,7 +50,7 @@ Indexly provides a powerful pipeline for inspecting SQLite databases, allowing y
 ```bash
 indexly analyze-db <db_path> [--show-summary] [--table <table_name>] [--all-tables]
                      [--sample-size N]
-                     [--persist-level {none,summary,detailed,raw}]
+                     [--persist-level {minimal,full,none}]
                      [--no-persist]
                      [--export {json,md,html}]
                      [--max-preview ROWS]
@@ -195,4 +200,17 @@ Even for very large tables, accurate summary statistics can often be derived fro
 
 ----
 
-For an example analysis  into Chinook's ecosystem, see the [Chinook DB Analysis](chinook-real-world-database-examples.md)
+## When To Use `analyze-db` vs `analyze-file`
+
+| Goal | Recommended command |
+| --- | --- |
+| Quick inspection of an unknown SQLite file | `indexly analyze-file <db> --show-summary` |
+| Deep schema and profiling work on a generic SQLite DB | `indexly analyze-db <db> ...` |
+| Operational summary of `autodoctor.db` | `indexly analyze-autodoctor <db>` or `indexly analyze-db <db>` |
+
+For an example analysis into Chinook's ecosystem, see [Chinook DB Analysis](chinook-real-world-database-examples.md).
+
+Related pages:
+
+- [Data Analysis Overview](data-analysis-overview.md)
+- [Analyze AutoDoctor Artifacts](analyze-autodoctor-artifacts.md)

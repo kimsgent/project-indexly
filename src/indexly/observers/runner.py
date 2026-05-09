@@ -1,18 +1,18 @@
 import json
 from pathlib import Path
 from typing import Any
-from datetime import datetime
 from typing import Optional
 
 from indexly.db_utils import connect_db
 from .snapshot_store import ensure_snapshot_table
 from indexly.compare.hash_utils import sha256
 from indexly.backup.logging_utils import get_logger, OBSERVER_EVENT, OBSERVER_ERROR
+from indexly.time_utils import utc_now
 
 from .registry import get_observers
 from .snapshot_store import load_snapshot, save_snapshot
 
-_TS = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+_TS = utc_now().strftime("%Y%m%dT%H%M%SZ")
 
 observer_logger = get_logger(
     name="indexly.observers",
@@ -137,7 +137,7 @@ def handle_observe_run(
     global observer_logger
     if log_dir:
 
-        _TS = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+        _TS = utc_now().strftime("%Y%m%dT%H%M%SZ")
         observer_logger = get_logger(
             name="indexly.observers",
             log_dir=Path(log_dir),

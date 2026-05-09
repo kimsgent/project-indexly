@@ -13,6 +13,7 @@ from .csv_analyzer import detect_delimiter
 from .db_utils import _migrate_cleaned_data_schema, _get_db_connection
 from .csv_analyzer import _json_safe
 from datetime import datetime, date
+from .universal_loader import _safe_read_json_text
 
 
 from .db_utils import _get_db_connection
@@ -34,29 +35,27 @@ def validate_json_content(file_path: Path) -> bool:
     Validate standard JSON, NDJSON, or indexly-style JSON.
     Returns True if valid, False otherwise.
     """
-    opener = gzip.open if str(file_path).endswith(".gz") else open
     try:
-        with opener(file_path, "rt", encoding="utf-8") as f:
-            text = f.read().strip()
-            if not text:
-                console.print(f"[red]❌ JSON file is empty[/red]")
+        text = (_safe_read_json_text(file_path) or "").strip()
+        if not text:
+            console.print(f"[red]❌ JSON file is empty[/red]")
+            return False
+        # Try standard JSON
+        try:
+            json.loads(text)
+            return True
+        except json.JSONDecodeError:
+            # Fallback: NDJSON (line-wise JSON objects)
+            lines = [line.strip() for line in text.splitlines() if line.strip()]
+            if not lines:
                 return False
-            # Try standard JSON
-            try:
-                json.loads(text)
-                return True
-            except json.JSONDecodeError:
-                # Fallback: NDJSON (line-wise JSON objects)
-                lines = [line.strip() for line in text.splitlines() if line.strip()]
-                if not lines:
+            for i, line in enumerate(lines[:10]):  # inspect first 10 lines
+                try:
+                    json.loads(line)
+                except Exception as e:
+                    console.print(f"[red]❌ Invalid NDJSON line {i+1}: {e}[/red]")
                     return False
-                for i, line in enumerate(lines[:10]):  # inspect first 10 lines
-                    try:
-                        json.loads(line)
-                    except Exception as e:
-                        console.print(f"[red]❌ Invalid NDJSON line {i+1}: {e}[/red]")
-                        return False
-                return True
+            return True
     except Exception as e:
         console.print(f"[red]❌ Cannot read JSON file: {e}[/red]")
         return False

@@ -111,6 +111,7 @@ indexly compare path_a path_b
 indexly backup /path/to/folder
 indexly restore backup_name --target /restore/path
 indexly doctor
+indexly doctor --full-integrity
 ```
 
 ## Supported Content (Highlights)
@@ -157,6 +158,7 @@ pytest -q
 - If a feature is missing, install its extra group, for example `indexly[analysis]` or `indexly[documents]`.
 - If Homebrew commands are unavailable on Linux, initialize brew shell environment first.
 - Run `indexly doctor` for a quick environment health check.
+- Run `indexly doctor --full-integrity` when you need the slower read-only SQLite integrity check.
 
 ## Documentation and Links
 

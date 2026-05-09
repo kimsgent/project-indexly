@@ -3,7 +3,6 @@ from pathlib import Path
 from typing import Tuple, Dict, Any, Optional, List
 import pandas as pd
 import xml.etree.ElementTree as ET
-from datetime import datetime
 from .analyze_xml import (
     _sanitize_xml_input,
     _xml_to_records,
@@ -12,6 +11,7 @@ from .analyze_xml import (
     _infer_column_types,
     summarize_generic_xml,
 )
+from .time_utils import utc_now_iso_z
 
 # --------------------------------------------------------------------------
 # Markdown Invoice Generator (unchanged)
@@ -55,7 +55,7 @@ def _generate_invoice_md(invoice_data: dict) -> str:
         lines.append(f"| **VAT Total (Approx)** | {vat_total:.2f} |")
         lines.append(f"| **Grand Total (Given)** | {grand_declared:.2f} |")
         lines.append(f"| **Discrepancy Check** | {check} |")
-    lines.append(f"\n🕓 *Generated at:* {datetime.utcnow().isoformat()}Z\n")
+    lines.append(f"\n🕓 *Generated at:* {utc_now_iso_z()}\n")
     return "\n".join(lines)
 
 # --------------------------------------------------------------------------
@@ -273,7 +273,7 @@ def run_xml_pipeline(
 
         inferred_types = _infer_column_types(df_preview)
         metadata = {
-            "loaded_at": datetime.utcnow().isoformat() + "Z",
+            "loaded_at": utc_now_iso_z(),
             "rows": len(df_preview),
             "cols": len(df_preview.columns),
             "file_type": "xml",

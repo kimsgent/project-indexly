@@ -14,6 +14,8 @@ from .json_pipeline import (
     run_json_generic_pipeline,
     run_record_list_json_pipeline,
 )
+from .autodoctor_json_pipeline import analyze_autodoctor_json_file
+from .autodoctor_db_pipeline import analyze_autodoctor_db_file
 from .db_pipeline import run_db_pipeline
 from .xml_pipeline import run_xml_pipeline
 from .parquet_pipeline import run_parquet_pipeline
@@ -146,11 +148,14 @@ def analyze_file(args) -> Optional[AnalysisResult]:
     legacy_mode = False
 
     # --- Legacy passthrough
-    cmd = getattr(args, "command", "")
-    if cmd in {"analyze-csv", "analyze-json"}:
-        pipeline = run_csv_pipeline if cmd == "analyze-csv" else run_json_pipeline
-        df, df_stats, table_output = pipeline(file_path, args)
-        file_type = "csv" if cmd == "analyze-csv" else "json"
+    cmd = getattr(args, "subcommand", "") or getattr(args, "command", "")
+    # Keep CSV on the legacy shortcut because it already prepares tabular
+    # persistence metadata for the generic saver. JSON intentionally falls
+    # through to the orchestrator path below so NDJSON/record-list reroutes
+    # and JSON-aware persistence stay in one place.
+    if cmd == "analyze-csv":
+        df, df_stats, table_output = run_csv_pipeline(file_path, args)
+        file_type = "csv"
         legacy_mode = True
 
         # --- Persist legacy data
@@ -225,6 +230,49 @@ def analyze_file(args) -> Optional[AnalysisResult]:
             loader_raw = load_result.get("raw")
             metadata = load_result.get("metadata", {}) or {}
             show_treeview = getattr(args, "treeview", False)
+
+            if metadata.get("analysis_profile") == "autodoctor":
+                # AutoDoctor reports are operational summaries with multiple
+                # semantically distinct sections, so flattening them into one
+                # synthetic table loses meaning and breaks persistence.
+                variant = metadata.get("autodoctor_variant") or "report"
+                variant_label = (
+                    "telemetry JSON" if variant == "telemetry" else "report JSON"
+                )
+                console.print(
+                    f"[cyan]🩺 Detected AutoDoctor {variant_label} — using specialized summary pipeline[/cyan]"
+                )
+                df, summary_dict, table_output = analyze_autodoctor_json_file(
+                    file_path=file_path,
+                    raw=loader_raw if isinstance(loader_raw, dict) else None,
+                    args=args,
+                    verbose=True,
+                )
+
+                if getattr(args, "no_persist", False):
+                    console.print(
+                        f"[dim]💤 Skipping persistence (--no-persist) for {file_path.name}[/dim]"
+                    )
+                else:
+                    save_analysis_result(
+                        file_path=file_path,
+                        file_type="autodoctor-json",
+                        summary=summary_dict,
+                        sample_data=df,
+                        metadata=metadata,
+                        row_count=len(df) if df is not None else 0,
+                        col_count=len(df.columns) if df is not None else 0,
+                    )
+
+                return AnalysisResult(
+                    file_path=str(file_path),
+                    file_type="autodoctor-json",
+                    df=df,
+                    summary=summary_dict,
+                    metadata=metadata,
+                    cleaned=True,
+                    persisted=not getattr(args, "no_persist", False),
+                )
 
             # ======================================================
             # 1) SEARCH CACHE JSON DETECTED (UNTOUCHED — keep exact behavior)
@@ -407,6 +455,43 @@ def analyze_file(args) -> Optional[AnalysisResult]:
             metadata = load_result.get("metadata", {})
             df_preview = load_result.get("df_preview") if file_type == "xml" else None
             df = load_result.get("df") if file_type != "xml" else None
+
+            if metadata.get("analysis_profile") == "autodoctor" and file_type in {
+                "sqlite",
+                "db",
+            }:
+                # AutoDoctor's DB already stores normalized history tables, so
+                # we summarize domain tables directly instead of treating the
+                # database like an arbitrary schema inspection target.
+                console.print(
+                    f"[cyan]🩺 Detected AutoDoctor SQLite database — using specialized summary pipeline[/cyan]"
+                )
+                df, summary_dict, table_output = analyze_autodoctor_db_file(
+                    file_path,
+                    args=args,
+                    verbose=True,
+                )
+
+                if not getattr(args, "no_persist", False):
+                    save_analysis_result(
+                        file_path=file_path,
+                        file_type="autodoctor-db",
+                        summary=summary_dict,
+                        sample_data=df,
+                        metadata=metadata,
+                        row_count=len(df) if df is not None else 0,
+                        col_count=len(df.columns) if df is not None else 0,
+                    )
+
+                return AnalysisResult(
+                    file_path=str(file_path),
+                    file_type="autodoctor-db",
+                    df=df,
+                    summary=summary_dict,
+                    metadata=metadata,
+                    cleaned=True,
+                    persisted=not getattr(args, "no_persist", False),
+                )
 
             # --- Pass-through for CSV
             if file_type == "csv":

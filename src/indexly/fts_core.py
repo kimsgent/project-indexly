@@ -109,12 +109,27 @@ def extract_virtual_tags(path: str, text: str = None, meta: dict = None):
 
     # --- helper to clean values ---
     def clean(v):
-        if not v:
+        if v in (None, "", []):
             return None
+        if isinstance(v, (list, tuple, set)):
+            v = " ".join(str(item) for item in v if item not in (None, ""))
+        elif isinstance(v, dict):
+            return None
+        else:
+            v = str(v)
         v = re.sub(r"[\u200b\u00a0\r\n\t]+", " ", v)  # hidden unicode cleanup
         v = re.sub(r"\s+", " ", v)
         v = v.strip(" .:-").strip()
         return v if len(v) > 1 else None  # reject garbage like "n" / "u"
+
+    def normalize_tag(key, value):
+        key = clean(key)
+        value = clean(value)
+        if not key or not value:
+            return None
+        value = value.replace(",", " ")
+        value = re.sub(r"\s+", " ", value).strip()
+        return f"{key}: {value}".lower()
 
     # ============================================================
     # 1) TABLE-BASED EXTRACTION (META) — MOST RELIABLE SOURCE
@@ -124,7 +139,7 @@ def extract_virtual_tags(path: str, text: str = None, meta: dict = None):
     if meta:
         for k, v in meta.items():
             key = clean(str(k))
-            val = clean(str(v))
+            val = clean(v)
             if key and val:
                 extracted[key] = val
 
@@ -132,13 +147,13 @@ def extract_virtual_tags(path: str, text: str = None, meta: dict = None):
     # 2) REGEX FALLBACK — ONLY IF META DID NOT PROVIDE FIELD
     # ============================================================
     fallback_patterns = {
-        "Kunde": r"\bKunde[:\.]?\s*([\w\-\s]+)",
-        "Key-Nr": r"\bKey[-‐–]?Nr[:\.]?\s*(\d{2}-\d{5})",
-        "Erstellt von": r"\bErstellt von[:\.]?\s*([\w\-]+)",
-        "Bereich": r"\bBereich[:\.]?\s*([\w\s\-]+)",
+        "Kunde": r"\bKunde[:\.]?\s*([^\n\r|;,]{2,120})",
+        "Key-Nr": r"\bKey[-‐–]?Nr[:\.]?\s*([A-Z0-9][A-Z0-9\-/ ]{1,40})",
+        "Erstellt von": r"\bErstellt von[:\.]?\s*([^\n\r|;,]{2,80})",
+        "Bereich": r"\bBereich[:\.]?\s*([^\n\r|;,]{2,120})",
         "Erstellt am": r"\bErstellt am[:\.]?\s*(\d{2}\.\d{2}\.\d{2,4})",
-        "Version Kunde": r"\bVersion Kunde[:\.]?\s*(V[\d\.]+)",
-        "Patch": r"\bPatch[:\.]?\s*(\d+)",
+        "Version Kunde": r"\bVersion Kunde[:\.]?\s*(V?\s*[\d\.]+)",
+        "Patch": r"\bPatch[:\.]?\s*([A-Z0-9.\-]{1,20})",
     }
 
     if text:
@@ -156,12 +171,13 @@ def extract_virtual_tags(path: str, text: str = None, meta: dict = None):
     # 3) FORMAT FOR STORAGE
     # ============================================================
     for k, v in extracted.items():
-        tags.append(f"{k}: {v}")
+        tag = normalize_tag(k, v)
+        if tag:
+            tags.append(tag)
 
     # Deduplicate + save
     if tags:
-        add_tags_to_file(path, list(set(tags)))
+        tags = list(dict.fromkeys(tags))
+        add_tags_to_file(path, tags)
 
     return tags
-
-

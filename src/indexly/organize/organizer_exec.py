@@ -34,6 +34,7 @@ from .log_schema import (
 from indexly.organize.profiles.media_rules import (
     get_destination as media_destination,
 )
+from indexly.time_utils import utc_now, utc_now_iso_z
 
 console = Console()
 
@@ -215,7 +216,7 @@ def execute_profile_scaffold(
         "category": category,
         "root": str(root),
         "executed_by": executed_by,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": utc_now_iso_z(),
         "created": [],
     }
 
@@ -255,7 +256,7 @@ def execute_profile_scaffold(
             if not meta_path.exists():
                 meta = {
                     "patient_id": resolved_patient_id,
-                    "created_at": datetime.utcnow().isoformat(),
+                    "created_at": utc_now_iso_z(),
                     "created_by": executed_by,
                     "profile": "health",
                     "hashing": True,
@@ -423,7 +424,7 @@ def execute_profile_placement(
     meta = empty_meta(
         root=str(destination_root),
         sorted_by="profile",
-        executed_at=datetime.utcnow().isoformat(),
+        executed_at=utc_now_iso_z(),
         executed_by=executed_by,
     )
     summary = empty_summary()
@@ -474,7 +475,7 @@ def execute_profile_placement(
                 extension=src.suffix.lower(),
                 category=profile,
                 size=size,
-                used_date=datetime.utcnow().isoformat(),
+                used_date=utc_now_iso_z(),
                 hash_value=file_hash,
                 created_at=created_at,
                 modified_at=modified_at,
@@ -529,7 +530,7 @@ def execute_profile_placement(
 
 
 def _next_health_patient_id(root: Path) -> str:
-    today = datetime.utcnow().strftime("%Y%m%d")
+    today = utc_now().strftime("%Y%m%d")
     base = root / "Health" / "Patients"
     base.mkdir(parents=True, exist_ok=True)
 

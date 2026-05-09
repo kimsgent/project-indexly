@@ -73,10 +73,10 @@ def load_json_as_dataframe(
             return None, pd.DataFrame()
         try:
             if file_path.endswith(".gz"):
-                with gzip.open(file_path, "rt", encoding="utf-8") as fh:
+                with gzip.open(file_path, "rt", encoding="utf-8-sig") as fh:
                     data = json.load(fh)
             else:
-                with open(file_path, "r", encoding="utf-8") as fh:
+                with open(file_path, "r", encoding="utf-8-sig") as fh:
                     data = json.load(fh)
         except Exception as e:
             console.print(f"[red]❌ Failed to load JSON file: {e}[/red]")

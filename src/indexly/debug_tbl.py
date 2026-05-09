@@ -2,10 +2,10 @@
 Debug tool for indexly database configuration and content.
 
 Usage:
-    python -m indexly.debug_tbl                          # ✅ default: debug metadata and file_index tables
-    python -m indexly.debug_tbl --show-index              # ✅ show file_index with details (alias now in file_metadata)
-    python -m indexly.debug_tbl --show-migrations         # ✅ show all migration history
-    python -m indexly.debug_tbl --show-migrations --last 5  # ✅ show last 5 migrations
+    python -m indexly.debug_tbl                          # default: debug metadata and file_index tables
+    python -m indexly.debug_tbl --show-index              # show file_index with details (alias now in file_metadata)
+    python -m indexly.debug_tbl --show-migrations         # show all migration history
+    python -m indexly.debug_tbl --show-migrations --last 5  # show last 5 migrations
 """
 
 import os
@@ -16,19 +16,27 @@ from rich.console import Console
 from rich.table import Table
 from rich.json import JSON
 from .config import DB_FILE
-from .db_utils import connect_db
+from .db_utils import _get_db_connection, connect_db
 
 console = Console()
+
+
+def _rule(title: str = "") -> None:
+    """Print an ASCII separator that is safe on legacy Windows consoles."""
+    if title:
+        console.print(f"{'-' * 20} {title} {'-' * 20}")
+    else:
+        console.print("-" * 72)
 
 
 # =============================================================================
 # FILE INDEX DEBUG (joins alias from file_metadata)
 # =============================================================================
 def debug_file_index_table():
-    console.rule("[bold yellow]📁 file_index Debug[/bold yellow]")
+    _rule("file_index Debug")
 
     if not os.path.exists(DB_FILE):
-        console.print(f"[red]❌ DB not found:[/red] {DB_FILE}")
+        console.print(f"[red]DB not found:[/red] {DB_FILE}")
         return
 
     conn = connect_db()
@@ -38,12 +46,12 @@ def debug_file_index_table():
     # Table check
     cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='file_index';")
     if not cur.fetchone():
-        console.print("[red]❌ file_index table not found.[/red]")
+        console.print("[red]file_index table not found.[/red]")
         conn.close()
         return
 
     # Columns
-    console.print("[cyan]📋 Columns:[/cyan]")
+    console.print("[cyan]Columns:[/cyan]")
     cur.execute("PRAGMA table_info(file_index);")
     cols = [c["name"] for c in cur.fetchall()]
     console.print(", ".join(cols))
@@ -51,10 +59,10 @@ def debug_file_index_table():
     # Row count
     cur.execute("SELECT COUNT(*) AS total FROM file_index;")
     total = cur.fetchone()["total"]
-    console.print(f"[green]📊 Total rows:[/green] {total}")
+    console.print(f"[green]Total rows:[/green] {total}")
 
     # Sample entries
-    console.print("\n[bold]🔍 Sample entries (with alias):[/bold]")
+    console.print("\n[bold]Sample entries (with alias):[/bold]")
     try:
         cur.execute(
             """
@@ -67,7 +75,7 @@ def debug_file_index_table():
         )
         rows = cur.fetchall()
         if not rows:
-            console.print("[yellow]⚠️ No entries found.[/yellow]")
+            console.print("[yellow]No entries found.[/yellow]")
         else:
             table = Table(show_header=True, header_style="bold magenta")
             table.add_column("Path", overflow="fold")
@@ -86,10 +94,10 @@ def debug_file_index_table():
                 )
             console.print(table)
     except Exception as e:
-        console.print(f"[red]⚠️ Query error:[/red] {e}")
+        console.print(f"[red]Query error:[/red] {e}")
 
     # Alias summary
-    console.print("\n[bold cyan]📦 Alias summary (file_metadata)[/bold cyan]")
+    console.print("\n[bold cyan]Alias summary (file_metadata)[/bold cyan]")
     try:
         cur.execute(
             """
@@ -103,7 +111,7 @@ def debug_file_index_table():
             f"Unique aliases: [green]{stats['unique_aliases']}[/green]"
         )
     except Exception as e:
-        console.print(f"[red]⚠️ Alias stats error:[/red] {e}")
+        console.print(f"[red]Alias stats error:[/red] {e}")
 
     conn.close()
 
@@ -112,14 +120,14 @@ def debug_file_index_table():
 # FILE METADATA + TAGS DEBUG
 # =============================================================================
 def debug_metadata_table():
-    console.rule("[bold yellow]📂 Metadata Debug[/bold yellow]")
+    _rule("Metadata Debug")
 
     if not os.path.exists(DB_FILE):
-        console.print(f"[red]❌ DB not found:[/red] {DB_FILE}")
+        console.print(f"[red]DB not found:[/red] {DB_FILE}")
         return
 
     size = os.path.getsize(DB_FILE)
-    console.print(f"[green]✅ DB:[/green] {DB_FILE} ({size/1024:.2f} KB)")
+    console.print(f"[green]DB:[/green] {DB_FILE} ({size/1024:.2f} KB)")
 
     conn = connect_db()
     conn.row_factory = sqlite3.Row
@@ -128,11 +136,11 @@ def debug_metadata_table():
     # Tables
     cur.execute("SELECT name FROM sqlite_master WHERE type='table';")
     tables = [r["name"] for r in cur.fetchall()]
-    console.print(f"📋 Tables: [cyan]{', '.join(tables) if tables else 'None'}[/cyan]")
+    console.print(f"Tables: [cyan]{', '.join(tables) if tables else 'None'}[/cyan]")
 
     # file_metadata
     if "file_metadata" in tables:
-        console.print("\n[bold]🔹 file_metadata columns:[/bold]")
+        console.print("\n[bold]file_metadata columns:[/bold]")
         cur.execute("PRAGMA table_info(file_metadata);")
         console.print(", ".join(c["name"] for c in cur.fetchall()))
 
@@ -147,7 +155,7 @@ def debug_metadata_table():
             )
             rows = cur.fetchall()
             if not rows:
-                console.print("[yellow]⚠️ No rows in file_metadata[/yellow]")
+                console.print("[yellow]No rows in file_metadata[/yellow]")
             else:
                 table = Table(show_header=True, header_style="bold blue")
                 table.add_column("Path", overflow="fold")
@@ -167,22 +175,22 @@ def debug_metadata_table():
                     )
                 console.print(table)
         except Exception as e:
-            console.print(f"[red]⚠️ Error reading metadata:[/red] {e}")
+            console.print(f"[red]Error reading metadata:[/red] {e}")
     else:
-        console.print("[red]❌ file_metadata table missing[/red]")
+        console.print("[red]file_metadata table missing[/red]")
 
     # file_tags
     if "file_tags" in tables:
-        console.print("\n[bold]🏷️ file_tags preview:[/bold]")
+        console.print("\n[bold]file_tags preview:[/bold]")
         try:
             cur.execute("SELECT path, tags FROM file_tags LIMIT 3;")
             rows = cur.fetchall()
             for r in rows:
-                console.print(f"• [green]{r['path']}[/green]: {r['tags']}")
+                console.print(f"- [green]{r['path']}[/green]: {r['tags']}")
         except Exception as e:
-            console.print(f"[red]⚠️ file_tags error:[/red] {e}")
+            console.print(f"[red]file_tags error:[/red] {e}")
     else:
-        console.print("[yellow]⚠️ file_tags table not found[/yellow]")
+        console.print("[yellow]file_tags table not found[/yellow]")
 
     conn.close()
 
@@ -193,7 +201,7 @@ def debug_metadata_table():
 def show_migrations(db: str | None = None, last: int | None = None):
     db_path = db or DB_FILE
     if not os.path.exists(db_path):
-        console.print(f"[red]❌ DB not found:[/red] {db_path}")
+        console.print(f"[red]DB not found:[/red] {db_path}")
         return
 
     conn = connect_db()
@@ -204,7 +212,7 @@ def show_migrations(db: str | None = None, last: int | None = None):
         "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_migrations';"
     )
     if not cur.fetchone():
-        console.print("[yellow]⚠️ No schema_migrations table found[/yellow]")
+        console.print("[yellow]No schema_migrations table found[/yellow]")
         conn.close()
         return
 
@@ -217,7 +225,7 @@ def show_migrations(db: str | None = None, last: int | None = None):
     rows.reverse()
 
     if not rows:
-        console.print("[yellow]⚠️ No migrations recorded[/yellow]")
+        console.print("[yellow]No migrations recorded[/yellow]")
     else:
         table = Table(show_header=True, header_style="bold cyan")
         table.add_column("ID", justify="right")
@@ -240,9 +248,7 @@ def debug_cleaned_data_table(limit: int = 10):
     - Handles legacy list-style JSON
     - Uses Rich JSON preview
     """
-    from .cleaning.auto_clean import _get_db_connection
-
-    console.rule("[bold yellow]🧹 Cleaned Data Debug[/bold yellow]")
+    _rule("Cleaned Data Debug")
     conn = _get_db_connection()
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
@@ -251,17 +257,17 @@ def debug_cleaned_data_table(limit: int = 10):
         "SELECT name FROM sqlite_master WHERE type='table' AND name='cleaned_data';"
     )
     if not cur.fetchone():
-        console.print("[yellow]⚠️ cleaned_data table not found[/yellow]")
+        console.print("[yellow]cleaned_data table not found[/yellow]")
         conn.close()
         return
 
     # Columns
     cur.execute("PRAGMA table_info(cleaned_data);")
-    console.print("📋 Columns:", ", ".join(c["name"] for c in cur.fetchall()))
+    console.print("Columns:", ", ".join(c["name"] for c in cur.fetchall()))
 
     # Row count
     cur.execute("SELECT COUNT(*) AS total FROM cleaned_data;")
-    console.print(f"📊 Total rows: {cur.fetchone()['total']}")
+    console.print(f"Total rows: {cur.fetchone()['total']}")
 
     # Samples
     cur.execute(
@@ -269,9 +275,9 @@ def debug_cleaned_data_table(limit: int = 10):
     )
     for r in cur.fetchall():
         row = dict(r)
-        console.print(f"\n[cyan]ID {row.get('id','?')}[/cyan] — {row.get('file_name','—')}")
+        console.print(f"\n[cyan]ID {row.get('id','?')}[/cyan] - {row.get('file_name','-')}")
         console.print(
-            f"[dim]Cleaned at {row.get('cleaned_at','—')} | "
+            f"[dim]Cleaned at {row.get('cleaned_at','-')} | "
             f"Rows:{row.get('row_count','?')} | Cols:{row.get('col_count','?')} | "
             f"Src:{row.get('source_path','unknown')}[/dim]"
         )
@@ -289,8 +295,8 @@ def debug_cleaned_data_table(limit: int = 10):
                 preview = str(data)[:300]
             console.print(JSON.from_data(preview))
         except Exception as e:
-            console.print(f"[red]❌ JSON parse error:[/red] {e}")
-        console.rule()
+            console.print(f"[red]JSON parse error:[/red] {e}")
+        _rule()
 
     conn.close()
 

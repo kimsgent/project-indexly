@@ -143,6 +143,14 @@ def _lazy_analyze_db(args):
     return analyze_db(args)
 
 
+def _lazy_analyze_autodoctor(args):
+    try:
+        from .autodoctor_analyzer import analyze_autodoctor
+    except ModuleNotFoundError as exc:
+        raise SystemExit(_missing_dependency_message(exc, "analysis")) from exc
+    return analyze_autodoctor(args)
+
+
 def _lazy_clear_cleaned_data(args):
     try:
         from .clean_csv import clear_cleaned_data
@@ -150,6 +158,19 @@ def _lazy_clear_cleaned_data(args):
         raise SystemExit(_missing_dependency_message(exc, "analysis")) from exc
     return clear_cleaned_data(
         file_path=args.file, remove_all=getattr(args, "all", False)
+    )
+
+
+def _lazy_clear_search_results(args):
+    from .delete_search import clear_search_results
+
+    return clear_search_results(
+        path=getattr(args, "path", None),
+        tag=getattr(args, "tag", None),
+        remove_all=getattr(args, "all", False),
+        dry_run=getattr(args, "dry_run", False),
+        require_confirmation=True,
+        yes=getattr(args, "yes", False),
     )
 
 
@@ -401,7 +422,11 @@ def build_parser():
     # Search
     search_parser = subparsers.add_parser("search", help="Perform FTS search")
     search_parser.add_argument("term", type=str, help="Search term (FTS5 syntax)")
-    search_parser.add_argument("--db", default="index.db", help="Database path")
+    search_parser.add_argument(
+        "--db",
+        default=None,
+        help="Database path (defaults to Indexly runtime database)",
+    )
     add_common_arguments(search_parser)
     search_parser.add_argument(
         "--fuzzy", action="store_true", help="Enable fuzzy search"
@@ -415,6 +440,12 @@ def build_parser():
         default=5,
         help="Maximum distance for NEAR operator (default: 5)",
     )
+    search_parser.add_argument(
+        "--sort-by",
+        choices=["relevance", "newest", "oldest", "path"],
+        default="relevance",
+        help="Sort results by relevance, newest modified date, oldest modified date, or path",
+    )
     search_parser.add_argument("--author", help="Filter by author metadata")
     search_parser.add_argument("--camera", help="Filter by camera metadata")
     search_parser.add_argument(
@@ -425,10 +456,48 @@ def build_parser():
     search_parser.add_argument("--profile", help="Load search profile name")
     search_parser.set_defaults(func=handle_search)
 
+    # Clear search index results
+    clear_search_parser = subparsers.add_parser(
+        "clear-search",
+        help="Safely remove entries from the FTS search index",
+    )
+    clear_search_group = clear_search_parser.add_mutually_exclusive_group(
+        required=True
+    )
+    clear_search_group.add_argument(
+        "--path",
+        help="Delete a matching file path, directory-like prefix, or basename",
+    )
+    clear_search_group.add_argument(
+        "--tag",
+        nargs="+",
+        help="Delete files matching ANY of the provided tags (OR logic)",
+    )
+    clear_search_group.add_argument(
+        "--all",
+        action="store_true",
+        help="Delete all search index entries",
+    )
+    clear_search_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview affected files without deleting anything",
+    )
+    clear_search_parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="Skip the confirmation prompt for --path, --tag, or --all",
+    )
+    clear_search_parser.set_defaults(func=_lazy_clear_search_results)
+
     # Regex
     regex_parser = subparsers.add_parser("regex", help="Regex search mode")
     regex_parser.add_argument("pattern", help="Regex pattern")
-    regex_parser.add_argument("--db", default="index.db", help="Database path")
+    regex_parser.add_argument(
+        "--db",
+        default=None,
+        help="Database path (defaults to Indexly runtime database)",
+    )
     add_common_arguments(regex_parser)
 
     # Add profile save/load support
@@ -826,6 +895,74 @@ def build_parser():
         "--all", action="store_true", help="Remove all cleaned datasets"
     )
     clear_parser.set_defaults(func=_lazy_clear_cleaned_data)
+
+    # -------------------------------
+    # Analyze AutoDoctor artifacts
+    # -------------------------------
+    analyze_autodoctor_parser = subparsers.add_parser(
+        "analyze-autodoctor",
+        help="Analyze AutoDoctor JSON reports or SQLite databases",
+    )
+    analyze_autodoctor_parser.add_argument(
+        "path",
+        help="Path to AutoDoctor_Report.json or autodoctor.db",
+    )
+    analyze_autodoctor_parser.add_argument(
+        "--source",
+        choices=["auto", "json", "db"],
+        default="auto",
+        help="Force the input type instead of auto-detecting it",
+    )
+    analyze_autodoctor_parser.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Render only the compact operational summary",
+    )
+    analyze_autodoctor_parser.add_argument(
+        "--full",
+        action="store_true",
+        help="Render all supported AutoDoctor summary sections",
+    )
+    analyze_autodoctor_parser.add_argument(
+        "--sections",
+        nargs="+",
+        choices=[
+            "overview",
+            "system",
+            "findings",
+            "inventory",
+            "trends",
+            "remediation",
+            "data_quality",
+        ],
+        help="Limit JSON analysis to selected sections",
+    )
+    analyze_autodoctor_parser.add_argument(
+        "--top-n",
+        type=int,
+        default=5,
+        help="Maximum number of rows/items per rendered summary section",
+    )
+    analyze_autodoctor_parser.add_argument(
+        "--history-limit",
+        type=int,
+        default=100,
+        help="Maximum number of historical DB rows to inspect for trends",
+    )
+    analyze_autodoctor_parser.add_argument(
+        "--show-summary",
+        action="store_true",
+        help="Render the summary to the terminal",
+    )
+    analyze_autodoctor_parser.add_argument(
+        "--no-persist",
+        action="store_true",
+        help="Disable saving AutoDoctor summaries to the database",
+    )
+    analyze_autodoctor_parser.set_defaults(
+        func=_lazy_analyze_autodoctor,
+        show_summary=True,
+    )
 
     # -------------------------------
     # Analyze JSON
@@ -1364,6 +1501,11 @@ def build_parser():
         default=".",
         help="Directory to extract files into (default: current folder)",
     )
+    extract_mtw_parser.add_argument(
+        "--mtw-extended",
+        action="store_true",
+        help="Also extract diagnostic WorksheetInfo and binary fallback streams",
+    )
     extract_mtw_parser.set_defaults(func=handle_extract_mtw)
 
     # Rename File(s)
@@ -1683,6 +1825,16 @@ def build_parser():
         help="Output health report as JSON.",
     )
     doctor.add_argument(
+        "--db",
+        default=None,
+        help="Inspect a specific search database path instead of the runtime DB.",
+    )
+    doctor.add_argument(
+        "--analysis-db",
+        action="store_true",
+        help="Include the persisted analysis database (~/.indexly/indexly.db).",
+    )
+    doctor.add_argument(
         "--profile-db",
         action="store_true",
         help="Run read-only database profiling (Phase 3).",
@@ -1696,6 +1848,21 @@ def build_parser():
         "--auto-fix",
         action="store_true",
         help="Automatically apply schema fixes without prompting",
+    )
+    doctor.add_argument(
+        "--clear-cache",
+        action="store_true",
+        help="Clear the search cache after reporting cache diagnostics.",
+    )
+    doctor.add_argument(
+        "--rebuild-fts",
+        action="store_true",
+        help="Explicitly allow risky FTS5 virtual table rebuilds during --fix-db.",
+    )
+    doctor.add_argument(
+        "--full-integrity",
+        action="store_true",
+        help="Run full SQLite integrity_check for inspected databases; slower but read-only.",
     )
 
     doctor.set_defaults(func=lambda args: handle_doctor(args))

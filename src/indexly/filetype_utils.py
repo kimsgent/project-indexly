@@ -139,7 +139,12 @@ def extract_text_from_file(
                 raw_text = f.read()
 
         elif ext == ".docx":
-            raw_text = _extract_docx(file_path)
+            result = _extract_docx(file_path)
+            if isinstance(result, dict):
+                raw_text = result.get("text")
+                metadata = result.get("metadata")
+            else:
+                raw_text = result
         elif ext == ".xlsx":
             raw_text = _extract_xlsx(file_path)
         elif ext == ".pdf":
@@ -157,9 +162,19 @@ def extract_text_from_file(
         elif ext == ".odt":
             raw_text = _extract_odt(file_path)
         elif ext == ".msg":
-            raw_text = _extract_msg(file_path)
+            result = _extract_msg(file_path)
+            if isinstance(result, dict):
+                raw_text = result.get("text")
+                metadata = result.get("metadata")
+            else:
+                raw_text = result
         elif ext == ".eml":
-            raw_text = _extract_eml(file_path)
+            result = _extract_eml(file_path)
+            if isinstance(result, dict):
+                raw_text = result.get("text")
+                metadata = result.get("metadata")
+            else:
+                raw_text = result
         elif ext in [".jpg", ".jpeg", ".png", ".bmp", ".tiff"]:
             metadata = extract_image_metadata(file_path)
         elif ext in [".zip", ".exe", ".bin"]:

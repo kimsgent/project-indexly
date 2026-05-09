@@ -9,6 +9,7 @@ from indexly.observers.base import BaseObserver
 from .csv_snapshot_store import save_snapshot, load_snapshot
 from .csv_diff import diff_snapshots
 from indexly.db_utils import _get_db_connection
+from indexly.time_utils import utc_now_iso_z
 
 
 class CSVObserver(BaseObserver):
@@ -98,5 +99,5 @@ class CSVObserver(BaseObserver):
             col_count=state["col_count"],
             summary=state["summary"],
             cleaned_at=state["cleaned_at"],
-            snapshot_ts=datetime.utcnow().isoformat(),  # ensures each save is historical
+            snapshot_ts=utc_now_iso_z(),  # ensures each save is historical
         )

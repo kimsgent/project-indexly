@@ -1,16 +1,23 @@
 ---
 title: "Documentation"
-subtitle: "Start here for installation, usage, and developer workflows"
-description: "Official Indexly documentation hub. Learn installation, indexing, search, analysis, backup, migration, and developer setup."
+linkTitle: "Documentation"
+subtitle: "Start here for installation, usage, environment setup, and developer workflows"
+description: "Official Indexly documentation hub for installation, environment setup, search, structured-data analysis, AutoDoctor artifact workflows, backup, and developer setup."
 keywords:
   - indexly documentation
   - local file indexing
   - sqlite fts5 search
   - indexly install guide
+  - indexly development environment
   - indexly cli commands
+  - indexly data analysis
+  - indexly autodoctor
 weight: 5
 type: docs
 toc: true
+date: "2026-04-22"
+lastmod: "2026-05-09"
+draft: false
 categories:
   - Overview
   - Getting Started
@@ -25,26 +32,40 @@ Welcome to the Indexly documentation hub.
 
 Indexly is a local-first CLI for indexing, searching, analyzing, and organizing files without sending your data to external services.
 
+## Documentation Paths
+
+This documentation works best when you enter through the path that matches your goal:
+
+- Everyday CLI path: install, index, search, tag, organize, and back up local content
+- Structured data path: analyze CSV, JSON, NDJSON, SQLite, and AutoDoctor artifacts
+- Developer path: understand architecture, command wiring, and optional dependency boundaries
+- Contributor environment path: prepare a maintained Windows or Linux workstation for Indexly development
+
 ## What Is New
 
-{{< alert title="Release Highlights (v2.0.0)" color="primary" >}}
+{{< alert title="Recent Focus Areas" color="primary" >}}
 <div class="p-3 rounded" style="background:#ffffff; color:#1f2937;">
   <h4 class="mb-2" style="color:#0f172a;">What changed recently</h4>
   <ul class="mb-3">
-    <li>Lightweight core installation with optional feature packs (`documents`, `analysis`, `visualization`, `pdf_export`).</li>
-    <li>Friendlier missing-dependency guidance so users know exactly which extra to install.</li>
-    <li>Improved Homebrew and cross-platform installation guidance for macOS, Linux, and Windows.</li>
-    <li>Expanded command help structure (`indexly show-help`) with clearer categories and scope hints.</li>
+    <li>`v2.1.0` adds `indexly clear-search` for safe search-index cleanup by path, tag, or full index.</li>
+    <li>Search maintenance now includes dry-run previews, confirmation prompts, operation IDs, cache invalidation warnings, and audit logging.</li>
+    <li>`indexly doctor` now reports search DB readiness, analysis DB health, cache state, optional feature packs, and read-only full integrity checks.</li>
+    <li>The current analysis stack now documents dedicated AutoDoctor workflows for report JSON, telemetry JSON, and SQLite artifacts.</li>
+    <li>`indexly show-help` remains the fastest way to discover command categories before reading deeper guides.</li>
   </ul>
   <a href="/en/releases/" class="btn btn-primary btn-sm me-2">View Release Notes</a>
-  <a href="/en/documentation/indexly-installation/" class="btn btn-outline-secondary btn-sm">Open Installation Guide</a>
+  <a href="/en/documentation/data-analysis-pipeline/" class="btn btn-outline-secondary btn-sm">Open Analysis Guide</a>
 </div>
 {{< /alert >}}
 
 ## Start Here
 
 - New user: [Install Indexly](indexly-installation.md)
+- Contributor workstation: [Windows Development Environment Setup](windows-terminal-setup.md)
+- Linux contributor workstation: [Linux Development Environment Setup](linux-development-environment.md)
 - Daily workflows: [Usage Guide](usage.md)
+- Quick answers: [FAQ](faq.md)
+- Structured files and databases: [Data Analysis Overview](data-analysis-overview.md)
 - Configuration and filtering: [Configuration](config.md)
 - Engineering and contributions: [Developer Guide](developer.md)
 
@@ -65,10 +86,16 @@ flowchart LR
 | Goal | Recommended Page |
 | --- | --- |
 | Install and verify on Windows, macOS, Linux | [Install Indexly](indexly-installation.md) |
+| Prepare the maintained contributor workstation | [Windows Development Environment Setup](windows-terminal-setup.md), [Linux Development Environment Setup](linux-development-environment.md) |
 | Learn command workflows end-to-end | [Usage Guide](usage.md) |
+| Remove stale search results without deleting files | [Clear Search Results Safely](clear-search.md) |
+| Diagnose search, cache, analysis DB, and integrity issues | [Indexly Doctor](indexly-doctor.md) |
+| Get short answers for setup, paths, file support, and troubleshooting | [FAQ](faq.md) |
+| Choose the right analysis command and pipeline | [Data Analysis Overview](data-analysis-overview.md) |
+| Analyze AutoDoctor report JSON, telemetry JSON, or SQLite output | [Analyze AutoDoctor Artifacts](analyze-autodoctor-artifacts.md) |
 | Improve indexing quality and ignore rules | [Ignore Rules & Index Hygiene](ignore-rules-index-hygiene.md) |
 | Organize folders and inspect logs | [Organizer](organizer.md), [Lister](lister.md) |
-| Analyze CSV/JSON/XML/SQLite datasets | [Data Analysis Overview](data-analysis-overview.md) |
+| Analyze generic SQLite datasets deeply | [Analyze SQLite Databases](analyze-sqlite-databases.md) |
 | Run statistical inference for CSV datasets | [Inference Docs](/inference/) |
 | Compare files and folders safely | [File & Folder Comparison](file-folder-comparison.md) |
 | Maintain health and schema consistency | [Indexly Doctor](indexly-doctor.md), [DB Migration Utility](db-migration-utility.md) |
@@ -77,12 +104,28 @@ flowchart LR
 ## Popular Deep Dives
 
 - [Indexing](indexing.md)
+- [Search](/searching/)
+- [Clear Search Results Safely](clear-search.md)
 - [Tagging](tagging.md)
+- [Analyze AutoDoctor Artifacts](analyze-autodoctor-artifacts.md)
 - [Semantic Indexing Overview](semantic-indexing-overview.md)
 - [Observers](observers.md)
 - [Backup & Restore](backup-restore.md)
 - [Time-Series Visualization](time-series-visualization.md)
 - [Indexly Logging System](indexly-logging-system.md)
+
+## Cross-Project Notes
+
+Indexly now includes an AutoDoctor documentation subtree under this same Hugo site. That gives you two useful perspectives:
+
+- Use Indexly docs when your goal is: “How do I analyze this artifact with Indexly?”
+- Use AutoDoctor docs when your goal is: “What does this artifact mean in the AutoDoctor system?”
+
+Good companion pages:
+
+- [Analyze AutoDoctor Artifacts](analyze-autodoctor-artifacts.md)
+- [Telemetry and Persistence](autodoctor/developer-guide/telemetry-and-persistence.md)
+- [Generate and Share Support Bundle](autodoctor/getting-started/support-bundle.md)
 
 ## Notes For Developers
 

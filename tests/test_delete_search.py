@@ -1,0 +1,430 @@
+import importlib
+import json
+import sqlite3
+from datetime import date
+from pathlib import Path
+
+import pytest
+
+from indexly import config
+
+
+def configure_indexly_home(tmp_path, monkeypatch):
+    monkeypatch.setenv("INDEXLY_HOME", str(tmp_path))
+    importlib.reload(config)
+
+    import indexly.db_utils as db_utils
+    import indexly.delete_search as delete_search
+
+    importlib.reload(db_utils)
+    importlib.reload(delete_search)
+    return db_utils, delete_search
+
+
+def seed_search_row(conn, path, content="alpha beta", tag=""):
+    conn.execute(
+        """
+        INSERT INTO file_index(path, content, clean_content, modified, hash, tag)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (path, content, content, "2026-05-06T00:00:00", f"hash-{path}", tag),
+    )
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO file_metadata(path, title, metadata)
+        VALUES (?, ?, ?)
+        """,
+        (path, "Title", "{}"),
+    )
+    if tag:
+        conn.execute(
+            "INSERT OR REPLACE INTO file_tags(path, tags) VALUES (?, ?)",
+            (path, tag),
+        )
+    conn.commit()
+
+
+def table_count(conn, table):
+    return conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+
+
+def test_clear_search_by_exact_path_deletes_all_search_tables(tmp_path, monkeypatch):
+    db_utils, delete_search = configure_indexly_home(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        delete_search, "_log_deletions", lambda paths, reason, operation_id: None
+    )
+
+    target = "C:/data/report.txt"
+    other = "C:/data/keep.txt"
+    conn = db_utils.connect_db()
+    seed_search_row(conn, target, tag="review")
+    seed_search_row(conn, other, tag="review")
+    conn.close()
+
+    result = delete_search.clear_search_results(path=target)
+
+    assert result["matched_files"] == 1
+    assert result["deleted_entries"] == 3
+
+    conn = db_utils.connect_db()
+    assert conn.execute("SELECT COUNT(*) FROM file_index WHERE path = ?", (target,)).fetchone()[0] == 0
+    assert conn.execute("SELECT COUNT(*) FROM file_tags WHERE path = ?", (target,)).fetchone()[0] == 0
+    assert conn.execute("SELECT COUNT(*) FROM file_metadata WHERE path = ?", (target,)).fetchone()[0] == 0
+    assert conn.execute("SELECT COUNT(*) FROM file_index WHERE path = ?", (other,)).fetchone()[0] == 1
+    conn.close()
+
+
+def test_clear_search_by_path_with_backslashes_deletes_entries(tmp_path, monkeypatch):
+    db_utils, delete_search = configure_indexly_home(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        delete_search, "_log_deletions", lambda paths, reason, operation_id: None
+    )
+
+    target = r"C:\data\report.txt"
+    conn = db_utils.connect_db()
+    seed_search_row(conn, target, tag="review")
+    conn.close()
+
+    result = delete_search.clear_search_results(path=target)
+
+    assert result["matched_files"] == 1
+    assert result["deleted_entries"] == 3
+
+    conn = db_utils.connect_db()
+    assert conn.execute(
+        "SELECT COUNT(*) FROM file_index WHERE path = ?", (target,)
+    ).fetchone()[0] == 0
+    assert conn.execute(
+        "SELECT COUNT(*) FROM file_tags WHERE path = ?", (target,)
+    ).fetchone()[0] == 0
+    assert conn.execute(
+        "SELECT COUNT(*) FROM file_metadata WHERE path = ?", (target,)
+    ).fetchone()[0] == 0
+    conn.close()
+
+
+def test_clear_search_by_directory_like_path_supports_dry_run(tmp_path, monkeypatch):
+    db_utils, delete_search = configure_indexly_home(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        delete_search, "_log_deletions", lambda paths, reason, operation_id: None
+    )
+
+    conn = db_utils.connect_db()
+    seed_search_row(conn, "C:/data/project/a.txt")
+    seed_search_row(conn, "C:/data/project/nested/b.txt")
+    seed_search_row(conn, "C:/data/other.txt")
+    conn.close()
+
+    result = delete_search.clear_search_results(path="C:/data/project", dry_run=True)
+
+    assert result["matched_files"] == 2
+    assert result["deleted_entries"] == 4
+
+    conn = db_utils.connect_db()
+    assert table_count(conn, "file_index") == 3
+    assert table_count(conn, "file_metadata") == 3
+    conn.close()
+
+
+def test_clear_search_by_tag_matches_exact_comma_separated_tags(tmp_path, monkeypatch):
+    db_utils, delete_search = configure_indexly_home(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        delete_search, "_log_deletions", lambda paths, reason, operation_id: None
+    )
+
+    conn = db_utils.connect_db()
+    seed_search_row(conn, "C:/data/delete.txt", tag="archive,review")
+    seed_search_row(conn, "C:/data/keep.txt", tag="preview")
+    conn.close()
+
+    result = delete_search.clear_search_results(tag="review")
+
+    assert result["matched_files"] == 1
+    assert result["paths"] == ["C:/data/delete.txt"]
+
+    conn = db_utils.connect_db()
+    assert conn.execute("SELECT COUNT(*) FROM file_index WHERE path = ?", ("C:/data/delete.txt",)).fetchone()[0] == 0
+    assert conn.execute("SELECT COUNT(*) FROM file_index WHERE path = ?", ("C:/data/keep.txt",)).fetchone()[0] == 1
+    conn.close()
+
+
+def test_clear_search_invalidates_cache_entries_for_deleted_paths(tmp_path, monkeypatch, capsys):
+    db_utils, delete_search = configure_indexly_home(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        delete_search, "_log_deletions", lambda paths, reason, operation_id: None
+    )
+
+    target = "C:/data/delete.txt"
+    keep = "C:/data/keep.txt"
+    conn = db_utils.connect_db()
+    seed_search_row(conn, target)
+    seed_search_row(conn, keep)
+    conn.close()
+
+    from indexly.cache_utils import save_cache, load_cache
+
+    save_cache(
+        {
+            "remove-me": {"results": [{"path": target}]},
+            "keep-me": {"results": [{"path": keep}]},
+        },
+        config.CACHE_FILE,
+    )
+
+    delete_search.clear_search_results(path=target)
+
+    cache = load_cache(config.CACHE_FILE)
+    assert "remove-me" not in cache
+    assert "keep-me" in cache
+    assert "invalidated cache: 1 entries" in capsys.readouterr().out
+
+
+def test_clear_search_all_clears_entire_search_cache(tmp_path, monkeypatch):
+    db_utils, delete_search = configure_indexly_home(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        delete_search, "_log_deletions", lambda paths, reason, operation_id: None
+    )
+
+    conn = db_utils.connect_db()
+    seed_search_row(conn, "C:/data/delete.txt")
+    conn.close()
+
+    from indexly.cache_utils import save_cache, load_cache
+
+    save_cache(
+        {
+            "indexed-result": {"results": [{"path": "C:/data/delete.txt"}]},
+            "stale-result": {"results": [{"path": "C:/data/missing.txt"}]},
+        },
+        config.CACHE_FILE,
+    )
+
+    result = delete_search.clear_search_results(remove_all=True)
+
+    assert result["matched_files"] == 1
+    assert result["invalidated_cache_entries"] == 2
+    assert load_cache(config.CACHE_FILE) == {}
+
+
+def test_clear_search_logs_small_deletion_batch_to_ndjson(tmp_path, monkeypatch):
+    db_utils, delete_search = configure_indexly_home(tmp_path, monkeypatch)
+
+    import indexly.log_utils as log_utils
+
+    importlib.reload(log_utils)
+
+    target = "C:/data/delete.txt"
+    conn = db_utils.connect_db()
+    seed_search_row(conn, target)
+    conn.close()
+
+    result = delete_search.clear_search_results(path=target)
+
+    today = date.today()
+    log_file = (
+        Path(config.BASE_DIR)
+        / "log"
+        / today.strftime("%Y")
+        / today.strftime("%m")
+        / f"{today.isoformat()}_index_events.ndjson"
+    )
+    assert result["matched_files"] == 1
+    assert log_file.exists()
+
+    entries = [
+        json.loads(line)
+        for line in log_file.read_text(encoding="utf-8").splitlines()
+    ]
+    assert [entry["event"] for entry in entries] == [
+        "SEARCH_DELETE_INITIATED",
+        "SEARCH_RESULT_DELETED",
+        "SEARCH_DELETE_SUMMARY",
+    ]
+    assert entries[0]["operation_id"] == result["operation_id"]
+    assert entries[1]["path"] == target
+    assert entries[1]["reason"] == f"path:{target}"
+    assert entries[2]["timestamp"]
+    assert entries[2]["count"] == 1
+    assert entries[2]["operation_id"] == result["operation_id"]
+
+
+def test_clear_search_path_confirmation_can_cancel(tmp_path, monkeypatch):
+    db_utils, delete_search = configure_indexly_home(tmp_path, monkeypatch)
+    target = "C:/data/delete.txt"
+    conn = db_utils.connect_db()
+    seed_search_row(conn, target)
+    conn.close()
+
+    result = delete_search.clear_search_results(
+        path=target,
+        require_confirmation=True,
+        input_func=lambda _: "n",
+    )
+
+    assert result["cancelled"] is True
+    conn = db_utils.connect_db()
+    assert conn.execute("SELECT COUNT(*) FROM file_index WHERE path = ?", (target,)).fetchone()[0] == 1
+    conn.close()
+
+
+def test_clear_search_tag_confirmation_can_cancel(tmp_path, monkeypatch):
+    db_utils, delete_search = configure_indexly_home(tmp_path, monkeypatch)
+    target = "C:/data/delete.txt"
+    conn = db_utils.connect_db()
+    seed_search_row(conn, target, tag="archive")
+    conn.close()
+
+    result = delete_search.clear_search_results(
+        tag="archive",
+        require_confirmation=True,
+        input_func=lambda _: "no",
+    )
+
+    assert result["cancelled"] is True
+    conn = db_utils.connect_db()
+    assert conn.execute("SELECT COUNT(*) FROM file_index WHERE path = ?", (target,)).fetchone()[0] == 1
+    conn.close()
+
+
+def test_clear_search_yes_skips_confirmation(tmp_path, monkeypatch):
+    db_utils, delete_search = configure_indexly_home(tmp_path, monkeypatch)
+    target = "C:/data/delete.txt"
+    conn = db_utils.connect_db()
+    seed_search_row(conn, target)
+    conn.close()
+
+    result = delete_search.clear_search_results(
+        path=target,
+        require_confirmation=True,
+        yes=True,
+        input_func=lambda _: pytest.fail("input should not be called with yes=True"),
+    )
+
+    assert result["cancelled"] is False
+    assert result["deleted_entries"] == 2
+
+
+def test_clear_search_cache_save_failure_warns_without_undoing_delete(
+    tmp_path, monkeypatch, capsys
+):
+    db_utils, delete_search = configure_indexly_home(tmp_path, monkeypatch)
+    target = "C:/data/delete.txt"
+    conn = db_utils.connect_db()
+    seed_search_row(conn, target)
+    conn.close()
+
+    from indexly.cache_utils import save_cache
+    import indexly.cache_utils as cache_utils
+
+    save_cache({"remove-me": {"results": [{"path": target}]}}, config.CACHE_FILE)
+    monkeypatch.setattr(
+        cache_utils,
+        "save_cache",
+        lambda cache, cache_file: (_ for _ in ()).throw(OSError("disk full")),
+    )
+
+    result = delete_search.clear_search_results(path=target)
+
+    assert result["cache_invalidation_error"] == "disk full"
+    conn = db_utils.connect_db()
+    assert conn.execute("SELECT COUNT(*) FROM file_index WHERE path = ?", (target,)).fetchone()[0] == 0
+    conn.close()
+    assert "Database deletion succeeded" in capsys.readouterr().out
+
+
+def test_clear_search_database_operational_error_is_actionable(
+    tmp_path, monkeypatch
+):
+    _db_utils, delete_search = configure_indexly_home(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        delete_search,
+        "connect_db",
+        lambda: (_ for _ in ()).throw(sqlite3.OperationalError("database is locked")),
+    )
+
+    with pytest.raises(RuntimeError, match="Try: indexly doctor"):
+        delete_search.clear_search_results(path="C:/data/delete.txt")
+
+
+def test_clear_search_transaction_rolls_back_partial_delete_on_failure(
+    tmp_path, monkeypatch
+):
+    db_utils, delete_search = configure_indexly_home(tmp_path, monkeypatch)
+    target = "C:/data/delete.txt"
+    conn = db_utils.connect_db()
+    seed_search_row(conn, target)
+    conn.close()
+
+    def fail_after_first_delete(paths, conn, counts_before, *, show_progress=False):
+        conn.execute("DELETE FROM file_index WHERE path = ?", (target,))
+        raise sqlite3.OperationalError("simulated second-table failure")
+
+    monkeypatch.setattr(delete_search, "_perform_deletions", fail_after_first_delete)
+
+    with pytest.raises(RuntimeError, match="Try: indexly doctor"):
+        delete_search.clear_search_results(path=target)
+
+    conn = db_utils.connect_db()
+    assert conn.execute("SELECT COUNT(*) FROM file_index WHERE path = ?", (target,)).fetchone()[0] == 1
+    assert conn.execute("SELECT COUNT(*) FROM file_metadata WHERE path = ?", (target,)).fetchone()[0] == 1
+    conn.close()
+
+
+def test_clear_search_large_operation_reports_progress(tmp_path, monkeypatch, capsys):
+    db_utils, delete_search = configure_indexly_home(tmp_path, monkeypatch)
+    conn = db_utils.connect_db()
+    conn.executemany(
+        "INSERT INTO file_metadata(path, title, metadata) VALUES (?, ?, ?)",
+        ((f"C:/bulk/file-{index}.txt", "Title", "{}") for index in range(10_001)),
+    )
+    conn.commit()
+    conn.close()
+
+    result = delete_search.clear_search_results(path="C:/bulk")
+
+    assert result["matched_files"] == 10_001
+    output = capsys.readouterr().out
+    assert "chunks" in output
+    assert "Processing chunk" in output
+
+
+def test_clear_search_missing_tag_shows_available_tags(
+    tmp_path, monkeypatch, capsys
+):
+    db_utils, delete_search = configure_indexly_home(tmp_path, monkeypatch)
+    conn = db_utils.connect_db()
+    seed_search_row(conn, "C:/data/keep.txt", tag="reviewed")
+    conn.close()
+
+    result = delete_search.clear_search_results(tag="archive")
+
+    assert result["matched_files"] == 0
+    output = capsys.readouterr().out
+    assert "Tag 'archive' not found" in output
+    assert "reviewed" in output
+
+
+def test_clear_search_existing_path_with_no_indexed_files_is_clear(
+    tmp_path, monkeypatch, capsys
+):
+    configure_indexly_home(tmp_path, monkeypatch)
+    existing_dir = tmp_path / "existing"
+    existing_dir.mkdir()
+
+    from indexly.delete_search import clear_search_results
+
+    result = clear_search_results(path=str(existing_dir))
+
+    assert result["matched_files"] == 0
+    assert "exists but contains 0 indexed files" in capsys.readouterr().out
+
+
+def test_clear_search_parser_accepts_supported_modes(tmp_path, monkeypatch):
+    configure_indexly_home(tmp_path, monkeypatch)
+
+    from indexly.cli_utils import build_parser
+
+    parser = build_parser()
+    assert parser.parse_args(["clear-search", "--path", "C:/data", "--dry-run"]).path == "C:/data"
+    assert parser.parse_args(["clear-search", "--tag", "review", "archive"]).tag == ["review", "archive"]
+    assert parser.parse_args(["clear-search", "--all", "--yes"]).all is True

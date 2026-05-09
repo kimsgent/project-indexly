@@ -37,6 +37,8 @@ from .config import DB_FILE, PROFILE_FILE
 
 user_interrupted = False
 
+SEARCH_SORT_CHOICES = ("relevance", "newest", "oldest", "path")
+
 
 def handle_sigint(signum, frame):
     global user_interrupted
@@ -45,6 +47,39 @@ def handle_sigint(signum, frame):
 
 
 signal.signal(signal.SIGINT, handle_sigint)
+
+
+def normalize_search_sort(sort_by: str | None) -> str:
+    if sort_by in SEARCH_SORT_CHOICES:
+        return sort_by
+    return "relevance"
+
+
+def _search_order_clause(sort_by: str | None, table_alias: str | None = "fi") -> str:
+    sort_by = normalize_search_sort(sort_by)
+    prefix = f"{table_alias}." if table_alias else ""
+
+    if sort_by == "newest":
+        return f"ORDER BY {prefix}modified DESC, rank"
+    if sort_by == "oldest":
+        return f"ORDER BY {prefix}modified ASC, rank"
+    if sort_by == "path":
+        return f"ORDER BY {prefix}path COLLATE NOCASE ASC, rank"
+    return "ORDER BY rank"
+
+
+def sort_search_results(results, sort_by: str | None):
+    results = results or []
+    sort_by = normalize_search_sort(sort_by)
+    if sort_by == "newest":
+        return sorted(results, key=lambda r: r.get("modified") or "", reverse=True)
+    if sort_by == "oldest":
+        return sorted(results, key=lambda r: r.get("modified") or "")
+    if sort_by == "path":
+        return sorted(results, key=lambda r: (r.get("path") or "").lower())
+    return sorted(
+        results, key=lambda r: r.get("score") if r.get("score") is not None else 0
+    )
 
 
 def refresh_cache_if_stale(cache_key, cache_entry, no_write=False):
@@ -106,7 +141,14 @@ def refresh_cache_if_stale(cache_key, cache_entry, no_write=False):
 
 
 # --- Hybrid fuzzy fallback (vocab expansion + refined snippets) ---
-def fuzzy_fallback(term, threshold=80, topn=5, context_chars=150, max_snippets=3):
+def fuzzy_fallback(
+    term,
+    threshold=80,
+    topn=5,
+    context_chars=150,
+    max_snippets=3,
+    sort_by="relevance",
+):
     """
     Hybrid fuzzy fallback:
     - Expands query using vocab tokens + fuzzy ratio.
@@ -148,7 +190,12 @@ def fuzzy_fallback(term, threshold=80, topn=5, context_chars=150, max_snippets=3
     print(f"🔁 Fuzzy expanded query: {expanded}")
 
     cursor.execute(
-        "SELECT path, content FROM file_index WHERE file_index MATCH ?",
+        f"""
+        SELECT path, content, modified, rank AS score
+        FROM file_index
+        WHERE file_index MATCH ?
+        {_search_order_clause(sort_by, table_alias=None)}
+        """,
         (expanded,),
     )
     rows = cursor.fetchall()
@@ -174,6 +221,8 @@ def fuzzy_fallback(term, threshold=80, topn=5, context_chars=150, max_snippets=3
             {
                 "path": path,
                 "snippet": snippet_text,
+                "modified": row["modified"],
+                "score": row["score"],
                 "tags": get_tags_for_file(path),
                 "source": "fuzzy",
             }
@@ -181,7 +230,7 @@ def fuzzy_fallback(term, threshold=80, topn=5, context_chars=150, max_snippets=3
 
     # Deduplicate by normalized path
     dedup = {r["path"]: r for r in results}
-    return list(dedup.values())
+    return sort_search_results(list(dedup.values()), sort_by)
 
 
 # ---------------------------------------------------------------------
@@ -196,6 +245,9 @@ _RE_TOKENIZER = re.compile(
     flags=re.IGNORECASE,
 )
 _RE_SAFE = re.compile(r'^[\w\s"\'()*+:\-~<>/]+$', re.IGNORECASE)
+_RE_EXPLICIT_FTS_SYNTAX = re.compile(
+    r'\b(?:AND|OR|NOT|NEAR(?:/\d+)?)\b|\bNEAR\s*\(\s*\d*\s*\)|["()*]'
+)
 
 
 def sanitize_fts_term(term: str) -> str:
@@ -244,13 +296,14 @@ def normalize_near_term(expr: str, near_distance: int = 5) -> str:
 
 def contains_fts_operators(term: str) -> bool:
     """Detect FTS5 logical operators and NEAR constructs."""
-    term_upper = term.upper()
-    return bool(re.search(r'\b(AND|OR|NOT|NEAR/?\d*)\b|\*|\(|\)|"', term_upper))
+    return bool(_RE_EXPLICIT_FTS_SYNTAX.search(term or ""))
 
 
 def normalize_logical_expression(query: str, near_distance: int = 5) -> str:
     """
     Normalize FTS5 logical query and safely apply NEAR where possible.
+    Logical operators are opt-in and case-sensitive: AND/OR/NOT/NEAR are
+    operators, while natural English words like "and" stay literal.
     Falls back gracefully if NEAR/N not supported.
     """
     import re, sqlite3
@@ -264,8 +317,11 @@ def normalize_logical_expression(query: str, near_distance: int = 5) -> str:
 
     q = re.sub(r"\s+", " ", query.strip())
 
+    has_explicit_fts_syntax = contains_fts_operators(q)
+
     # Try to detect if NEAR/N is supported in this SQLite build
     supports_near_n = False
+    conn = None
     try:
         conn = sqlite3.connect(":memory:")
         conn.execute("CREATE VIRTUAL TABLE t USING fts5(x);")
@@ -275,23 +331,21 @@ def normalize_logical_expression(query: str, near_distance: int = 5) -> str:
     except sqlite3.OperationalError:
         supports_near_n = False
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
-    if supports_near_n:
-        q = re.sub(r"\bNEAR\b(?!/\d+)", f"NEAR/{near_distance}", q, flags=re.IGNORECASE)
-    else:
-        q = re.sub(r"\bNEAR\b(?!/\d+)", "NEAR", q, flags=re.IGNORECASE)
+    if has_explicit_fts_syntax:
+        def _near_paren_repl(match):
+            distance = match.group(1) or str(near_distance)
+            return f"NEAR/{distance}" if supports_near_n else "NEAR"
 
-    q = re.sub(
-        r"\b(and|or|not|near(?:/\d+)?)\b",
-        lambda m: m.group(1).upper(),
-        q,
-        flags=re.IGNORECASE,
-    )
+        q = re.sub(r"\bNEAR\s*\(\s*(\d+)?\s*\)", _near_paren_repl, q)
+        if supports_near_n:
+            q = re.sub(r"\bNEAR\b(?!/\d+)", f"NEAR/{near_distance}", q)
+        else:
+            q = re.sub(r"\bNEAR/\d+\b", "NEAR", q)
 
-    if not any(
-        op in q.upper() for op in ("AND", "OR", "NOT", "NEAR")
-    ) and not re.search(r'["()]', q):
+    if not has_explicit_fts_syntax:
         q = f'"{q}"'
 
     return q
@@ -320,6 +374,7 @@ def search_fts5(
     camera=None,
     image_created=None,
     format=None,
+    sort_by="relevance",
 ):
     import re, sqlite3, time
     from rich.console import Console
@@ -344,6 +399,7 @@ def search_fts5(
         "camera": camera,
         "image_created": image_created,
         "format": format,
+        "sort_by": normalize_search_sort(sort_by),
     }
 
     key = calculate_query_hash(term, args_dict)
@@ -372,7 +428,9 @@ def search_fts5(
     console.print(f"[cyan]Normalized FTS expression:[/cyan] [white]{fts_expr}[/white]")
 
     # --- Build base query ---
-    query_parts = ["SELECT fi.path, fi.content FROM file_index fi"]
+    query_parts = [
+        "SELECT fi.path, fi.content, fi.modified, rank AS score FROM file_index fi"
+    ]
     if any([author, camera, image_created, format]):
         query_parts.append("JOIN file_metadata fm ON fi.path = fm.path")
 
@@ -427,7 +485,7 @@ def search_fts5(
         query_parts.append("AND fm.format LIKE ?")
         params.append(f"%{format}%")
 
-    query_parts.append("ORDER BY rank")
+    query_parts.append(_search_order_clause(sort_by))
     query_str = "\n".join(query_parts)
 
     # --- Execute query safely ---
@@ -443,7 +501,12 @@ def search_fts5(
         console.print(
             f"[yellow]Retrying with fallback literal query:[/yellow] {literal_query}"
         )
-        fallback_query = "SELECT fi.path, fi.content FROM file_index fi WHERE fi.content MATCH ? ORDER BY rank"
+        fallback_query = f"""
+            SELECT fi.path, fi.content, fi.modified, rank AS score
+            FROM file_index fi
+            WHERE fi.content MATCH ?
+            {_search_order_clause(sort_by)}
+        """
         try:
             cursor.execute(fallback_query, [literal_query])
             rows = cursor.fetchall()
@@ -461,7 +524,10 @@ def search_fts5(
                 "[yellow]🔁 No results, attempting fuzzy fallback...[/yellow]"
             )
             return fuzzy_fallback(
-                term, threshold=fuzzy_threshold, context_chars=context_chars
+                term,
+                threshold=fuzzy_threshold,
+                context_chars=context_chars,
+                sort_by=sort_by,
             )
         console.print("[red]❌ No results found, nothing cached.[/red]")
         return []
@@ -481,6 +547,8 @@ def search_fts5(
             "snippet": build_snippet(
                 row["content"], search_terms, context_chars=context_chars
             ),
+            "modified": row["modified"],
+            "score": row["score"],
             "tags": get_tags_for_file(row["path"]),
         }
         for row in rows
@@ -488,9 +556,10 @@ def search_fts5(
     serializable_results = enrich_results_with_tags(serializable_results)
 
     # --- Cache results ---
-    cache[key] = {"timestamp": time.time(), "results": serializable_results}
-    save_cache(cache)
-    console.print("[green]💾 Cached results successfully.[/green]")
+    if not no_cache:
+        cache[key] = {"timestamp": time.time(), "results": serializable_results}
+        save_cache(cache)
+        console.print("[green]💾 Cached results successfully.[/green]")
 
     return serializable_results
 

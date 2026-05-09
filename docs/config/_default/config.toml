@@ -1,4 +1,4 @@
-languageCode = "en-us"
+locale = "en-us"
 title = "Project Indexly"
 defaultContentLanguage = "en"
 defaultContentLanguageInSubdir = true
@@ -48,7 +48,7 @@ pagination.paperSize = 20
     disable = true # We copied the files manually, so this avoids loading the module
 
 [languages.en]
-  languageName = "English"
+  label = "English"
   weight = 1
 
   [[languages.en.menus.main]]

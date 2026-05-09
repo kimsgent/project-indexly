@@ -36,7 +36,7 @@ from .filetype_utils import (
     get_missing_documents_dependencies,
 )
 from .db_utils import connect_db, get_tags_for_file, _sync_path_in_db
-from .search_core import search_fts5, search_regex
+from .search_core import search_fts5, search_regex, sort_search_results
 from .extract_utils import update_file_metadata
 from .rename_utils import (
     rename_file,
@@ -360,23 +360,42 @@ def run_stats(args):
 
     ripple = Ripple(command_titles["stats"], speed="fast", rainbow=True)
     ripple.start()
+    conn = None
 
     try:
         conn = connect_db()
         cursor = conn.cursor()
 
         total_files = cursor.execute("SELECT COUNT(*) FROM file_index").fetchone()[0]
-        total_tagged = cursor.execute("SELECT COUNT(*) FROM file_tags").fetchone()[0]
-        db_size = os.path.getsize(DB_FILE) / 1024
+        total_tagged = cursor.execute(
+            """
+            SELECT COUNT(DISTINCT ft.path)
+            FROM file_tags ft
+            JOIN file_index fi ON fi.path = ft.path
+            WHERE ft.tags IS NOT NULL AND TRIM(ft.tags) != ''
+            """
+        ).fetchone()[0]
+        untagged_files = max(total_files - total_tagged, 0)
+        tag_coverage = (total_tagged / total_files * 100) if total_files else 0
+        db_size = os.path.getsize(DB_FILE) / 1024 if os.path.exists(DB_FILE) else 0
 
         ripple.stop()
         print("\n📊 Database Stats:")
         print(f"- Total Indexed Files: {total_files}")
         print(f"- Total Tagged Files: {total_tagged}")
+        print(f"- Untagged Files: {untagged_files}")
+        print(f"- Tag Coverage: {tag_coverage:.1f}%")
         print(f"- DB Size: {db_size:.1f} KB")
 
         print("\n🏷️ Top Tags:")
-        rows = cursor.execute("SELECT tags FROM file_tags").fetchall()
+        rows = cursor.execute(
+            """
+            SELECT DISTINCT ft.path, ft.tags
+            FROM file_tags ft
+            JOIN file_index fi ON fi.path = ft.path
+            WHERE ft.tags IS NOT NULL AND TRIM(ft.tags) != ''
+            """
+        ).fetchall()
         all_tags = []
 
         for row in rows:
@@ -385,12 +404,19 @@ def run_stats(args):
                 all_tags.extend(t.strip() for t in tag_string.split(",") if t.strip())
 
         tag_counter = Counter(all_tags)
-        for tag, count in tag_counter.most_common(10):
-            print(f"  • {tag}: {count}")
+        print(f"- Unique Tags: {len(tag_counter)}")
+        print(f"- Total Tag Assignments: {sum(tag_counter.values())}")
+
+        if tag_counter:
+            for tag, count in tag_counter.most_common(10):
+                print(f"  • {tag}: {count}")
+        else:
+            print("  No tags found yet.")
 
     finally:
         ripple.stop()
-        conn.close()
+        if conn:
+            conn.close()
 
 
 # Configure logging
@@ -585,7 +611,10 @@ def handle_search(args):
     if getattr(args, "profile", None):
         prof = load_profile(args.profile)
         if prof and prof.get("results"):
-            results = filter_saved_results(prof["results"], term_cli)
+            results = sort_search_results(
+                filter_saved_results(prof["results"], term_cli),
+                getattr(args, "sort_by", "relevance"),
+            )
             print(
                 f"Searching '{term_cli or prof.get('term')}' (profile-only: {args.profile})"
             )
@@ -627,6 +656,7 @@ def handle_search(args):
             format=getattr(args, "format", None),
             no_cache=args.no_cache,
             near_distance=args.near_distance,
+            sort_by=getattr(args, "sort_by", "relevance"),
         )
     finally:
         ripple.stop()
@@ -778,21 +808,16 @@ def clear_cleaned_data_handler(args):
 def handle_doctor(args):
     from indexly.doctor import run_doctor
 
-    # Only pass auto_fix if --profile-db is active
-    if getattr(args, "profile_db", False):
-        auto_fix = getattr(args, "auto_fix", False)
-    else:
-        if getattr(args, "auto_fix", False):
-            console.print(
-                "[yellow]Warning: --auto-fix only works with --profile-db. Ignoring.[/yellow]"
-            )
-        auto_fix = False
-
     exit_code = run_doctor(
         json_output=getattr(args, "json", False),
         profile_db=getattr(args, "profile_db", False),
         fix_db=getattr(args, "fix_db", False),
-        auto_fix=auto_fix,  # <-- now properly forwarded
+        auto_fix=getattr(args, "auto_fix", False),
+        db_path=getattr(args, "db", None),
+        include_analysis_db=getattr(args, "analysis_db", False),
+        clear_cache=getattr(args, "clear_cache", False),
+        rebuild_fts=getattr(args, "rebuild_fts", False),
+        full_integrity=getattr(args, "full_integrity", False),
     )
 
     sys.exit(exit_code)
@@ -810,7 +835,11 @@ def handle_extract_mtw(args):
     print(f"📂 Extracting MTW file: {file_path}")
 
     try:
-        extracted_files = _extract_mtw(file_path, output_dir)
+        extracted_files = _extract_mtw(
+            file_path,
+            output_dir,
+            extended=getattr(args, "mtw_extended", False),
+        )
     except Exception as e:
         print(f"❌ Error extracting MTW file: {e}")
         return
@@ -982,7 +1011,14 @@ def handle_show_help(args):
         summary_lookup[choice_action.dest] = (choice_action.help or "").strip()
 
     categories = {
-        "Search & Index Workflow": ["index", "search", "regex", "watch", "tag"],
+        "Search & Index Workflow": [
+            "index",
+            "search",
+            "clear-search",
+            "regex",
+            "watch",
+            "tag",
+        ],
         "Analysis & Data Inspection": [
             "analyze-csv",
             "infer-csv",
@@ -1020,6 +1056,9 @@ def handle_show_help(args):
         "analyze-file": "Core command; extras depend on input file type",
         "analyze-db": "Requires optional extras: analysis",
         "extract-mtw": "Requires optional extras: analysis",
+        "doctor": "Core diagnostics; --analysis-db inspects persisted analysis state",
+        "update-db": "Critical schema maintenance; use after backup",
+        "migrate": "Critical schema maintenance; backups recommended",
     }
 
     all_commands = list(command_parsers.keys())
@@ -1141,7 +1180,8 @@ def handle_show_help(args):
                 if getattr(args, "details", False):
                     scope = _markdown_escape(_scope_for(command))
                     usage = _markdown_escape(_command_usage(subparser))
-                    options = ", ".join(_extract_key_options(subparser, limit=6)) or "—"
+                    option_limit = 9 if command == "doctor" else 6
+                    options = ", ".join(_extract_key_options(subparser, limit=option_limit)) or "—"
                     options = _markdown_escape(options)
                     print(
                         f"| `{command}` | {summary} | {scope} | {modes} | "
@@ -1176,7 +1216,8 @@ def handle_show_help(args):
                 summary = _command_summary(command, subparser)
                 modes = ", ".join(_extract_modes(subparser)) or "—"
                 usage = _command_usage(subparser)
-                key_flags = ", ".join(_extract_key_options(subparser, limit=6)) or "—"
+                option_limit = 9 if command == "doctor" else 6
+                key_flags = ", ".join(_extract_key_options(subparser, limit=option_limit)) or "—"
 
                 body = Text()
                 body.append("What it does: ", style="bold")

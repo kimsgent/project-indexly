@@ -39,7 +39,11 @@ def calculate_query_hash(term: str, args: dict) -> str:
         "fuzzy_threshold": args.get("fuzzy_threshold"),
         "near_distance": args.get("near_distance"),
         "author": args.get("author"),
+        "camera": args.get("camera"),
+        "image_created": args.get("image_created"),
+        "format": args.get("format"),
         "subject": args.get("subject"),
+        "sort_by": args.get("sort_by"),
     }
     key_data = f"{CACHE_VERSION}-{term}-{json.dumps(relevant_args, sort_keys=True)}"
     return hashlib.sha256(key_data.encode("utf-8")).hexdigest()

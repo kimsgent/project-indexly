@@ -1,187 +1,329 @@
 ---
-title: "Customizing Windows Terminal"
-slug: "customizing-windows-terminal"
+title: "Windows Development Environment Setup"
+linkTitle: "Windows Setup"
+slug: "windows-development-environment-setup"
 icon: "mdi:microsoft-windows"
-weight: 4
-date: 2025-10-12
-summary: "Set up Windows Terminal like a pro — featuring Chocolatey, Scoop, Oh My Posh, Neovim, fzf, and PowerShell enhancements."
-description: "Learn how to fully customize Windows Terminal for productivity and aesthetics. This step-by-step guide covers installing Chocolatey, Scoop, Oh My Posh, Neovim, PowerShell modules, fzf, and fonts to build a powerful Linux-like development environment on Windows. Created collaboratively with ChatGPT."
-keywords: [
-  "Windows Terminal customization",
-  "PowerShell productivity setup",
-  "Oh My Posh configuration",
-  "Chocolatey install guide",
-  "Scoop package manager tutorial",
-  "Neovim on Windows setup",
-  "fzf PowerShell integration",
-  "Windows developer environment",
-  "Chris Titus PowerShell setup",
-  "modern terminal tools"
-]
-cta: "Transform your terminal experience"
-canonicalURL: "/en/documentation/customizing-windows-terminal/"
+weight: 11
+date: "2026-04-23"
+lastmod: "2026-04-23"
+draft: false
+summary: "Set up the maintained Indexly contributor environment on Windows using dotfiles-windows, PowerShell 7, Scoop, winget, and the repo-native setup.ps1 workflow."
+description: "Production-ready Windows setup guide for Indexly contributors. Covers PowerShell 7, Windows Terminal, Scoop, winget, dotfiles-windows bootstrap, project-indexly setup.ps1, verification, and troubleshooting."
+keywords:
+  - indexly windows development environment
+  - indexly contributor setup windows
+  - dotfiles-windows bootstrap
+  - powershell 7 indexly
+  - scoop winget developer setup
+  - indexly setup.ps1
+  - windows terminal indexly
 aliases:
+  - "/en/documentation/customizing-windows-terminal/"
   - "/en/documentation/windows-terminal-setup/"
 type: docs
+toc: true
 categories:
-    - Platform Setup 
-    - Usage
+  - Development
+  - Environment Setup
 tags:
-    - windows
-    - setup
-    - configuration
-    - usage
-    - productivity
+  - windows
+  - setup
+  - powershell
+  - dotfiles
+  - developer
 ---
 
-_A collaborative guide with ChatGPT_
+This guide documents the current maintained Windows contributor workflow for Indexly.
 
----
+It replaces the old Windows Terminal customization page and aligns with the actual implementation in:
 
-## Prerequisites
+- `dotfiles-windows` for shell, terminal, package manager, and editor setup
+- `project-indexly/setup.ps1` for repo-specific dependencies and virtual environment setup
 
-Ensure you have the latest PowerShell and script execution rights:
+{{< alert title="Scope" color="primary" >}}
+Use this page when your goal is: "I want a Windows workstation that matches the maintained Indexly development flow."
+
+If you only want to install Indexly as a user, start with [Install Indexly](indexly-installation.md) instead.
+{{< /alert >}}
+
+## What This Setup Covers
+
+| Layer | Source of truth | Purpose |
+| --- | --- | --- |
+| Shell and workstation bootstrap | `dotfiles-windows/bootstrap.ps1` | Installs PowerShell 7, Windows Terminal support tools, Scoop packages, fonts, modules, and profile wiring |
+| Day-to-day shell workflow | `dotfiles-windows/profile.ps1` and `modules/functions.ps1` | Loads prompt, helper commands, updater commands, and project setup helpers |
+| Repo-specific onboarding | `project-indexly/setup.ps1` | Installs repo system packages from `winget.yaml`, creates `.venv`, and installs Python dependencies |
+| Product installation docs | [Install Indexly](indexly-installation.md) | End-user install and verification guidance |
+
+## Recommended Windows Flow
+
+### 1. Start With Official Base Components
+
+Recommended before you bootstrap:
+
+- [PowerShell 7](https://learn.microsoft.com/powershell/scripting/install/install-powershell-on-windows)
+- [Windows Terminal](https://learn.microsoft.com/windows/terminal/install)
+- [winget / App Installer](https://learn.microsoft.com/windows/package-manager/winget/)
+
+You can run the bootstrap from Windows PowerShell, but the bootstrap now attempts to install PowerShell 7 first and then relaunch itself under `pwsh` when available.
+
+### 2. Get The Dotfiles Repo
+
+Clone the dotfiles repository:
 
 ```powershell
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
-````
-
----
-
-## Step 1: Install Package Managers
-
-### Chocolatey
-
-```powershell
-Set-ExecutionPolicy Bypass -Scope Process -Force; `
-[System.Net.ServicePointManager]::SecurityProtocol = `
-[System.Net.ServicePointManager]::SecurityProtocol -bor 3072; `
-iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+git clone https://github.com/kimsgent/dotfiles.git "$HOME\dotfiles"
+Copy-Item -Recurse -Force "$HOME\dotfiles\dotfiles-windows" "$HOME\dotfiles-windows"
+Set-Location "$HOME\dotfiles-windows"
 ```
 
-📖 [Official Chocolatey Guide](https://docs.chocolatey.org/en-us/choco/setup/)
-
-### Scoop
+If `git` is not installed yet, install it first with an official source such as `winget`:
 
 ```powershell
-irm get.scoop.sh | iex
-scoop bucket add extras
+winget install --id Git.Git -e
 ```
 
-📖 [Scoop Website](https://scoop.sh)
-
-
----
-
-## Step 2: Upgrade & Install Power Tools
-
-### Oh My Posh
+### 3. Run The Maintained Windows Bootstrap
 
 ```powershell
-winget upgrade JanDeDobbeleer.OhMyPosh -s winget
+.\bootstrap.ps1
 ```
 
-📖 [Oh My Posh GitHub](https://github.com/JanDeDobbeleer/oh-my-posh)
+The current bootstrap flow does all of the following:
 
-### Windows Updates via PowerShell
+1. Ensures PowerShell 7 is available.
+2. Relaunches the bootstrap under `pwsh` when possible.
+3. Installs base Windows packages with `winget`.
+4. Installs Scoop if missing.
+5. Ensures Scoop Git support before adding buckets.
+6. Adds and refreshes the `extras` and `nerd-fonts` buckets when available.
+7. Installs core CLI tools such as `neovim`, `ripgrep`, `fd`, `fzf`, `bat`, `eza`, `zoxide`, `jq`, and `delta`.
+8. Installs Nerd Fonts when the `nerd-fonts` bucket is available.
+9. Ensures Python and Node.js are available.
+10. Installs maintained PowerShell modules such as `PSReadLine`, `PSFzf`, `Terminal-Icons`, `PSWindowsUpdate`, and `ImportExcel`.
+11. Copies the maintained PowerShell profile and links Starship and Neovim config.
+
+### 4. Restart The Shell And Verify
+
+Close the current shell and open a new PowerShell 7 session.
+
+Run these checks:
 
 ```powershell
-Install-Module PSWindowsUpdate
-Add-WUServiceManager -MicrosoftUpdate
-Get-WindowsUpdate
-Install-WindowsUpdate -MicrosoftUpdate -AcceptAll -AutoReboot | Out-File "C:\($env.computername-$(Get-Date -f yyyy-MM-dd))-MSUpdates.log" -Force
+pwsh --version
+git --version
+python --version
+nvim --version
+rg --version
+fd --version
 ```
 
----
-
-## Step 3: Configure Neovim
+If the profile loaded correctly, you should also have helper commands such as:
 
 ```powershell
-choco install -y neovim git ripgrep wget fd unzip gzip mingw make
-git clone https://github.com/nvim-lua/kickstart.nvim.git $env:USERPROFILE\AppData\Local\nvim\
-pip3 install --user --upgrade pynvim
+usp
+update-powershell
+setup-env
+dev-mode
+minimal-mode
 ```
 
-📖 [Kickstart.nvim GitHub](https://github.com/nvim-lua/kickstart.nvim)
+## What The Windows Bootstrap Installs
 
----
+### Managed By winget
 
-## Step 4: Add Shell Enhancers
+The current bootstrap uses `winget` for Windows-native packages such as:
 
-### fzf (Fuzzy Finder)
+- `Microsoft.PowerShell`
+- `Microsoft.WindowsTerminal`
+- `JanDeDobbeleer.OhMyPosh`
+- `Starship.Starship`
+- `Microsoft.PowerToys`
+- `OpenJS.NodeJS`
+- Python when no working Python runtime is already present
+
+### Managed By Scoop
+
+The current bootstrap uses [Scoop](https://scoop.sh/) for CLI-focused tools and buckets. It currently installs or manages:
+
+- `git`
+- `neovim`
+- `ripgrep`
+- `fd`
+- `fzf`
+- `bat`
+- `eza`
+- `zoxide`
+- `jq`
+- `delta`
+- `fastfetch`
+- `mingw`
+
+When the `nerd-fonts` bucket is available, it also installs:
+
+- `Hack-NF`
+- `Meslo-NF`
+
+### Managed By PowerShell Gallery
+
+The bootstrap also installs or updates PowerShell modules that improve the contributor shell experience:
+
+- `PackageManagement`
+- `PSReadLine`
+- `PSFzf`
+- `Terminal-Icons`
+- `PSWindowsUpdate`
+- `ImportExcel`
+
+## Onboard The `project-indexly` Repository
+
+After your workstation bootstrap is complete, move to the repo itself:
 
 ```powershell
-choco install fzf
-Install-Module -Name PSFzf
+Set-Location D:\project-indexly
 ```
 
-📖 [fzf GitHub](https://github.com/junegunn/fzf)
-
-### PowerShell Editor Services
+The repo contains its own onboarding script:
 
 ```powershell
-Install-Module PSReadLine -Force
-Import-Module PSReadLine
-Install-Module InvokeBuild -Scope CurrentUser
-Install-Module platyPS -Scope CurrentUser
-Install-Module -Name PowerShellEditorServices -Repository PSGallery
+.\setup.ps1 -CheckOnly
+.\setup.ps1
 ```
 
-### Excel Support
+What `setup.ps1` does today:
+
+- validates `winget`, Python, and repo files
+- applies system packages from `winget.yaml`
+- creates or reuses `.venv`
+- upgrades `pip`, `setuptools`, and `wheel`
+- installs `requirements.txt`
+- installs `requirements-dev.txt`
+
+Supported modes:
 
 ```powershell
-Install-Module -Name ImportExcel -Scope CurrentUser -Force
-pip install openpyxl
+.\setup.ps1 -CheckOnly
+.\setup.ps1 -UpdateOnly
+.\setup.ps1 -FreshInstall
+.\setup.ps1 -Purge
 ```
 
-📖 [ImportExcel GitHub](https://github.com/dfinke/ImportExcel)
-
-
----
-
-## Step 5: Beautify Terminal
+If your dotfiles profile is already loaded, the same repo-native flow is also available through the helper command:
 
 ```powershell
-scoop bucket add nerd-fonts
-scoop install Hack-NF
-scoop install eza bat fd fastfetch
+setup-env indexly -check
+setup-env indexly
 ```
 
+## Recommended Validation For Contributors
 
----
-
-## Bonus: Titus PowerShell Setup
+After bootstrap and repo setup, verify the environment that actually matters for Indexly work:
 
 ```powershell
-irm "https://github.com/ChrisTitusTech/powershell-profile/raw/main/setup.ps1" | iex
+Set-Location D:\project-indexly
+.venv\Scripts\Activate.ps1
+python -m indexly --help
+indexly --version
+indexly show-help
+indexly doctor
+pytest -q
 ```
 
-📖 [Chris Titus GitHub](https://github.com/ChrisTitusTech)
+If you are working on optional features, install the matching extra groups described in [Install Indexly](indexly-installation.md) and [Indexly Developer Guide](developer.md).
 
----
+## Optional Quality-Of-Life Commands
 
-## Optional: jq & ripgrep-all
+The maintained Windows profile adds several useful commands for contributors:
+
+| Command | Purpose |
+| --- | --- |
+| `usp` | Run the logged package-manager update flow |
+| `uspf` | Run the fuller update variant |
+| `usd` | Preview updates without making changes |
+| `upd` | View the latest structured update log |
+| `update-powershell` | Update the PowerShell 7 runtime using `winget` first, then the official MSI fallback |
+| `fdg` / `rgg` | Fuzzy file search and ripgrep-driven code search |
+| `dev-mode` / `minimal-mode` | Switch Starship prompt mode |
+
+## Troubleshooting
+
+### Bootstrap Started In Windows PowerShell Instead Of PowerShell 7
+
+This is expected on a clean machine.
+
+The current bootstrap attempts to install PowerShell 7 first, then relaunches itself under `pwsh`. If it cannot, it continues with a warning and you can verify later with:
 
 ```powershell
-choco install jq
-choco install ripgrep-all
+pwsh --version
+update-powershell
 ```
 
-📖 [ripgrep-all GitHub](https://github.com/phiresky/ripgrep-all)
+### Scoop Says Git Is Required For Buckets
 
----
+The maintained bootstrap now installs or detects Scoop Git support before adding buckets.
 
-## Sources & Credits
+If you still see bucket-related Git errors:
 
-* [Chocolatey](https://chocolatey.org/)
-* [Scoop](https://scoop.sh)
-* [Oh My Posh](https://ohmyposh.dev/)
-* [Chris Titus Tech](https://github.com/ChrisTitusTech)
-* [ripgrep-all](https://github.com/phiresky/ripgrep-all)
-* [fzf](https://github.com/junegunn/fzf)
-* [Kickstart.nvim](https://github.com/nvim-lua/kickstart.nvim)
-* [ImportExcel](https://github.com/dfinke/ImportExcel)
-* Brett Terpstra — inspiration from [Ripple (GitHub gist)](https://gist.github.com/ttscoff/efe9c1284745c4df956457a5707e7450) and his [homepage article](https://brettterpstra.com/2025/06/30/ripple-an-indeterminate-progress-indicator/)  
-* Michael Bazzel — inspiration drawn from his OSINT books on extraction techniques
+```powershell
+git --version
+scoop update
+usp
+```
 
-> ✨ Created collaboratively with **ChatGPT** based on N. K. Franklin-Gent’s prompt.
+If `git` is still missing in the current session, restart PowerShell and rerun the bootstrap.
+
+### Scoop Cannot Find `Hack-NF` Or `Meslo-NF`
+
+This usually means the `nerd-fonts` bucket is unavailable or stale, not that the fonts are universally unsupported.
+
+Use this order:
+
+```powershell
+scoop bucket list
+scoop update
+usp
+```
+
+If the `nerd-fonts` bucket is still missing, rerun the bootstrap after Git and Scoop are healthy.
+
+### Bootstrap Runs Without Administrator Rights
+
+A non-elevated run is acceptable for most of the environment.
+
+Current behavior:
+
+- file symlinks may fall back to hard links or file copies
+- Neovim directory linking may fall back to a junction
+- some Windows Update or package operations may still require an elevated shell
+
+Typical admin-sensitive areas:
+
+- `PSWindowsUpdate` operations
+- some `winget` installs or configuration changes
+- symbolic links when Developer Mode is not enabled
+
+### `setup.ps1` Fails During `winget configure`
+
+`project-indexly/setup.ps1` applies `winget.yaml`, and some packages may prompt, fail, or require elevation depending on machine policy.
+
+Start with:
+
+```powershell
+.\setup.ps1 -CheckOnly
+```
+
+Then rerun the full setup in an elevated shell if `winget` or package policy blocks the import.
+
+### Script Execution Is Blocked
+
+If PowerShell blocks local scripts, use a per-user policy:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+```
+
+## Related Pages
+
+- [Linux Development Environment Setup](linux-development-environment.md)
+- [Install Indexly](indexly-installation.md)
+- [Indexly Developer Guide](developer.md)

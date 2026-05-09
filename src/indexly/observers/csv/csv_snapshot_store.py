@@ -3,9 +3,9 @@
 from pathlib import Path
 from typing import Any
 import json
-from datetime import datetime
 
 from indexly.db_utils import connect_db
+from indexly.time_utils import utc_now_iso_z
 
 TABLE_NAME = "csv_snapshots"
 
@@ -46,7 +46,7 @@ def save_snapshot(
     ensure_table()
     conn = connect_db()
     p = Path(file_path)
-    ts = snapshot_ts or datetime.utcnow().isoformat()
+    ts = snapshot_ts or utc_now_iso_z()
 
     conn.execute(
         f"""
