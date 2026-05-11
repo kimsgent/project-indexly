@@ -46,11 +46,14 @@ def _render_file_result(result: FileCompareResult, context: int = 3) -> None:
         status_text += f" | Similarity: {result.similarity:.2f}"
     console.print(f"[yellow]{status_text}[/yellow]\n")
 
+    if result.comparison_warning:
+        console.print(f"[yellow]! {result.comparison_warning}[/yellow]\n")
+
     if not result.diffs:
         return
 
     # Build structured diff lines
-    lines = []
+    lines: list[tuple[str, str]] = []
     for d in result.diffs:
         sign = getattr(d, "sign", " ")
         text = getattr(d, "text", "")
@@ -58,14 +61,18 @@ def _render_file_result(result: FileCompareResult, context: int = 3) -> None:
             lines.append(("[red]-[/red]", text))
         elif sign == "+":
             lines.append(("[green]+[/green]", text))
+        elif sign == "!":
+            lines.append(("[red]![/red]", text))
+        elif sign == "\\":
+            lines.append(("[dim]\\[/dim]", text))
         else:
             lines.append(("[dim] [/dim]", text))
 
     # Apply context folding
-    displayed = []
-    buffer = []
+    displayed: list[str] = []
+    buffer: list[tuple[str, str]] = []
 
-    def flush_buffer(buf):
+    def flush_buffer(buf: list[tuple[str, str]]) -> None:
         if len(buf) <= context * 2:
             for b_sign, b_text in buf:
                 displayed.append(f"{b_sign} {b_text}")
@@ -77,7 +84,7 @@ def _render_file_result(result: FileCompareResult, context: int = 3) -> None:
                 displayed.append(f"{b_sign} {b_text}")
 
     for sign, text in lines:
-        if sign in ("[red]-[/red]", "[green]+[/green]"):
+        if sign in ("[red]-[/red]", "[green]+[/green]", "[red]![/red]"):
             if buffer:
                 flush_buffer(buffer)
                 buffer = []

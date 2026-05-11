@@ -1678,13 +1678,16 @@ def build_parser():
     compare_parser.add_argument(
         "path_b",
         nargs="?",
-        help="Second file or folder (optional for auto-compare)",
+        help=(
+            "Second file or folder. If omitted, compare PATH_A with a same-named "
+            "peer in the current directory."
+        ),
     )
 
     compare_parser.add_argument(
         "--threshold",
         type=float,
-        help="Similarity tolerance (0.0 exact, 1.0 very loose)",
+        help="Similarity tolerance / maximum difference (0.0 exact, 1.0 very loose)",
     )
 
     compare_parser.add_argument(
@@ -1714,7 +1717,25 @@ def build_parser():
     compare_parser.add_argument(
         "--ignore",
         type=str,
-        help="Comma-separated list of file/folder names to ignore (e.g., .git,__pycache__)",
+        help="Comma-separated file/folder names to ignore in addition to .indexlyignore",
+    )
+
+    compare_parser.add_argument(
+        "--ignore-file",
+        type=str,
+        help="Path to an explicit .indexlyignore file for folder comparisons",
+    )
+
+    compare_parser.add_argument(
+        "--no-project-ignore",
+        action="store_true",
+        help="Disable automatic .indexlyignore loading for folder comparisons",
+    )
+
+    compare_parser.add_argument(
+        "--full-diff",
+        action="store_true",
+        help="Scan all lines for large text files while keeping diff output bounded",
     )
 
     compare_parser.add_argument(

@@ -1,8 +1,11 @@
 import sys
 import json
 from pathlib import Path
+from typing import NoReturn
 
 from .compare_engine import run_compare
+from .constants import ExitCode
+from .resolver import ComparePathResolutionError
 from .render import render_result
 from .models import FileCompareResult, FolderCompareResult
 
@@ -15,21 +18,20 @@ console = Console()
 
 
 def handle_compare(args):
-    result, exit_code = run_compare(
-        args.path_a,
-        args.path_b,
-        threshold=args.threshold,
-        extensions=(
-            set(getattr(args, "extensions", "").split(","))
-            if getattr(args, "extensions", None)
-            else None
-        ),
-        ignore=(
-            set(getattr(args, "ignore", "").split(","))
-            if getattr(args, "ignore", None)
-            else None
-        ),
-    )
+    try:
+        result, exit_code = run_compare(
+            args.path_a,
+            args.path_b,
+            threshold=args.threshold,
+            extensions=getattr(args, "extensions", None),
+            ignore=getattr(args, "ignore", None),
+            ignore_file=getattr(args, "ignore_file", None),
+            use_project_ignore=not getattr(args, "no_project_ignore", False),
+            full_diff=getattr(args, "full_diff", False),
+            context=getattr(args, "context", 3),
+        )
+    except (ComparePathResolutionError, FileNotFoundError) as exc:
+        _handle_compare_error(args, str(exc))
 
     if args.quiet:
         sys.exit(exit_code)
@@ -47,6 +49,17 @@ def handle_compare(args):
 
     # Pass context to the renderer
     render_result(result, context=getattr(args, "context", 3))
+    sys.exit(exit_code)
+
+
+def _handle_compare_error(args, message: str) -> NoReturn:
+    exit_code = int(ExitCode.ERROR)
+    if args.quiet:
+        sys.exit(exit_code)
+    if args.json:
+        print(json.dumps({"type": "error", "error": message}, indent=2))
+        sys.exit(exit_code)
+    console.print(f"[red]Compare error:[/red] {message}")
     sys.exit(exit_code)
 
 
@@ -116,6 +129,8 @@ def _result_to_dict(result):
             "tier": result.tier.value,
             "identical": result.identical,
             "similarity": result.similarity,
+            "extraction_error": result.extraction_error,
+            "comparison_warning": result.comparison_warning,
             "diffs": [{"sign": d.sign, "text": d.text} for d in result.diffs],
         }
 
@@ -123,7 +138,13 @@ def _result_to_dict(result):
         "type": "folder",
         "path_a": str(result.path_a),
         "path_b": str(result.path_b),
-        "summary": vars(result.summary),
+        "summary": {
+            "identical": result.summary.identical,
+            "similar": result.summary.similar,
+            "modified": result.summary.modified,
+            "missing_a": result.summary.missing_a,
+            "missing_b": result.summary.missing_b,
+        },
         "files": [
             {
                 "path_a": str(f.path_a),
@@ -131,6 +152,8 @@ def _result_to_dict(result):
                 "tier": f.tier.value,
                 "identical": f.identical,
                 "similarity": f.similarity,
+                "extraction_error": f.extraction_error,
+                "comparison_warning": f.comparison_warning,
             }
             for f in result.files
         ],

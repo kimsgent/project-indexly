@@ -315,6 +315,8 @@ Compare files or folders:
 ```bash
 indexly compare /path/a /path/b
 indexly compare /path/a /path/b --extensions .py,.md --context 5
+indexly compare /path/a /path/b --ignore-file /path/to/.indexlyignore
+indexly compare /path/a /path/b --no-project-ignore
 indexly compare /path/a /path/b --json
 ```
 
