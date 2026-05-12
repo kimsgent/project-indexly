@@ -38,6 +38,7 @@ def handle_organize(
     shoot_name: str | None = None,
     patient_id: str | None = None,
     recursive: bool = False,
+    precomputed_plan: dict | None = None,
 ):
     try:
         folder_path = Path(folder).resolve()
@@ -65,7 +66,7 @@ def handle_organize(
             return None, {}
 
         # 2️⃣ PROFILE CLASSIFICATION
-        if profile and (classify or classify_raw):
+        if profile and (classify or classify_raw or precomputed_plan):
             execute_profile_placement(
                 source_root=folder_path,
                 destination_root=folder_path,
@@ -79,6 +80,7 @@ def handle_organize(
                 executed_by=executed_by,
                 recursive=recursive,
                 classify_raw=classify_raw,
+                precomputed_plan=precomputed_plan,
             )
             return None, {}
 
@@ -95,6 +97,7 @@ def handle_organize(
             lister_date=lister_date,
             lister_duplicates=lister_duplicates,
             dry_run=dry_run,
+            precomputed_plan=precomputed_plan,
         )
 
         return plan, backup_mapping

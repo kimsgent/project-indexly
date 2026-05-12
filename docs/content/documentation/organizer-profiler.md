@@ -33,7 +33,7 @@ weight: 11
 * Safe, collision-aware file movement
 * Dry-run planning (no side effects)
 * Structured, indexable JSON logs
-* Hash-based integrity tracking
+* Hash-based duplicate and integrity tracking
 * Audit-ready history of changes
 * ✅ Business-rule aware classification (via `rename-file --business-naming`)
 
@@ -113,7 +113,35 @@ The business rule uses keyword detection to infer document type:
 | Contract | contract, agreement, nda              |
 | Payroll  | payroll, salary, lohn, gehalt         |
 
-If no keyword is detected, the CLI prompts the user interactively.
+If no keyword is detected, files fall back to `Business/Archive`.
+
+---
+
+## Researcher Profile
+
+The researcher profile uses conservative rules that preserve reproducibility:
+
+* Raw/source datasets go to `Research/Data/Raw`
+* Cleaned or normalized datasets go to `Research/Data/Cleaned`
+* Results, scripts, notebooks, figures, and analysis outputs go to `Research/Data/Results`
+* Papers are separated into draft, submitted, and published areas when filenames provide enough signal
+* Notes, references, presentations, and admin files stay separate
+
+The rule intentionally avoids discipline-specific assumptions.
+
+---
+
+## Engineer Profile
+
+The engineer profile uses broad engineering-safe buckets:
+
+* CAD files go to `Engineering/CAD`
+* Simulation and analysis files go to `Engineering/Projects/Simulation`
+* Calculations and spreadsheets go to `Engineering/Projects/Calculations`
+* Reports, drawings, standards, and field photos are separated
+* Unknown files go to `Engineering/Archive`
+
+The rule is intentionally general so mechanical, electrical, civil, and software-adjacent engineering folders remain usable without overfitting.
 
 ---
 
@@ -194,6 +222,8 @@ indexly organize ./incoming --profile business --classify --dry-run
 ```
 
 This works independently — or after a rename operation.
+
+Dry-run profile classification does not create folders, write logs, trigger observers, or move files. `--apply` is required for profile moves and scaffold creation.
 
 ---
 

@@ -1277,7 +1277,7 @@ def build_parser():
     # Organizer CLI
     # ------------------------
     organize_parser = subparsers.add_parser(
-        "organize", help="Organize files in a folder by date or name"
+        "organize", help="Organize files by date, name, extension, or profile"
     )
     organize_parser.add_argument("folder", help="Folder to organize")
     organize_parser.add_argument(
@@ -1288,7 +1288,7 @@ def build_parser():
     )
     organize_parser.add_argument(
         "--backup",
-        help="Optional backup folder to store copies of organized files",
+        help="Optional backup folder; copies originals before moving files",
     )
     organize_parser.add_argument(
         "--log-dir",
@@ -1332,7 +1332,7 @@ def build_parser():
             "media",
             "business",
         ],
-        help="Create a profession-based directory scaffold",
+        help="Create or classify with a profession-based directory profile",
     )
 
     organize_parser.add_argument(
@@ -1352,13 +1352,13 @@ def build_parser():
     organize_parser.add_argument(
         "--apply",
         action="store_true",
-        help="Apply directory creation",
+        help="Apply directory creation or classification moves",
     )
 
     organize_parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Show structure without creating directories",
+        help="Preview organizer work without creating folders, logs, or moving files",
     )
 
     organize_parser.add_argument(
@@ -1553,8 +1553,17 @@ def build_parser():
     )
     rename_file_parser.add_argument(
         "--profile",
-        choices=["it", "education", "researcher", "engineer", "business"],
-        help="Create a profession-based directory scaffold (see organize for full options).",
+        choices=[
+            "it",
+            "education",
+            "researcher",
+            "engineer",
+            "health",
+            "data",
+            "media",
+            "business",
+        ],
+        help="Organize renamed files with a profession-based profile.",
     )
     rename_file_parser.add_argument(
         "--category",
@@ -1571,7 +1580,7 @@ def build_parser():
     rename_file_parser.add_argument(
         "--apply",
         action="store_true",
-        help="Actually create directories (by default, only dry-run is shown).",
+        help="Apply organizer moves after renaming.",
     )
     rename_file_parser.set_defaults(func=handle_rename_file)
 

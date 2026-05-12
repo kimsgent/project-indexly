@@ -279,8 +279,7 @@ def execute_rename_then_organize(
         project_name=project_name,
         shoot_name=shoot_name,
         patient_id=patient_id,
-        # Pass plan for immediate movement
-        classify_raw=precomputed_plan,
+        precomputed_plan=precomputed_plan,
     )
 
 # -------------------------------------------------

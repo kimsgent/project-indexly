@@ -237,6 +237,9 @@ PROFILE_NEXT_STEPS = {
     "health": "Create patient folders manually. Maintain audit trails.",
     "data": "Use --project-name to initialize a project. Raw data is immutable.",
     "media": "Import RAW files only. Never overwrite originals.",
+    "business": "Invoices and receipts are immutable. Never edit originals.",
+    "solo": "Separate business and private finances strictly.",
+    "employer": "Employee records must be append-only and access-controlled.",
     "profile_business": "Invoices and receipts are immutable. Never edit originals.",
     "profile_solo": "Separate business and private finances strictly.",
     "profile_employer": "Employee records must be append-only and access-controlled.",
@@ -260,7 +263,7 @@ FALLBACK_FOLDER = "_Unknown"
 
 def build_media_shoot_structure(
     media_root: str | Path, shoot_name: str | None = None
-) -> List[Path]:
+) -> List[str]:
     """
     Build full Media hierarchy for professional photographers.
 
@@ -269,85 +272,40 @@ def build_media_shoot_structure(
       - Shoot scaffold (if shoot_name provided):
           00_RAW, 01_Cull, 02_Edits, 03_Exports/Web|Print|Social, 99_Archive
     """
-    media_root = Path(media_root).resolve()
     today = date.today().isoformat()[:7]  # YYYY-MM
     shoot_folder = f"{today}-{shoot_name}" if shoot_name else None
 
-    # 1️⃣ Top-level folders
     top_level = [
-        media_root / "Shoots",
-        media_root / "Clients",
-        media_root / "Catalogs",
-        media_root / "Presets",
-        media_root / "Video",
-        media_root / "Assets",
-        media_root / "Archive",
+        "Media/Shoots",
+        "Media/Clients",
+        "Media/Catalogs/Lightroom",
+        "Media/Catalogs/CaptureOne",
+        "Media/Presets/Lightroom",
+        "Media/Presets/CaptureOne",
+        "Media/Presets/LUTs",
+        "Media/Video/Projects",
+        "Media/Video/Footage",
+        "Media/Video/Exports",
+        "Media/Assets/Logos",
+        "Media/Assets/Watermarks",
+        "Media/Assets/Overlays",
+        "Media/Archive",
     ]
 
-    # 2️⃣ Client subfolders example (optional, can be extended dynamically)
-    client_example = top_level[1] / "ClientA"
-    client_subfolders = [
-        client_example / "Contracts",
-        client_example / "Invoices",
-        client_example / "Briefs",
-        client_example / "Deliverables",
-    ]
-
-    # 3️⃣ Catalogs / Presets subfolders
-    catalog_subfolders = [
-        top_level[2] / "Lightroom",
-        top_level[2] / "CaptureOne",
-    ]
-    preset_subfolders = [
-        top_level[3] / "Lightroom",
-        top_level[3] / "CaptureOne",
-        top_level[3] / "LUTs",
-    ]
-
-    # 4️⃣ Video subfolders
-    video_subfolders = [
-        top_level[4] / "Projects",
-        top_level[4] / "Footage",
-        top_level[4] / "Exports",
-    ]
-
-    # 5️⃣ Assets subfolders
-    assets_subfolders = [
-        top_level[5] / "Logos",
-        top_level[5] / "Watermarks",
-        top_level[5] / "Overlays",
-    ]
-
-    # 6️⃣ Dynamic shoot scaffold
-    shoot_subfolders: List[Path] = []
+    shoot_subfolders: List[str] = []
     if shoot_folder:
-        base = top_level[0] / shoot_folder
+        base = f"Media/Shoots/{shoot_folder}"
         shoot_subfolders = [
-            base / "00_RAW",  # RAW images (lazy subfolders can be added later)
-            base / "01_Cull",
-            base / "02_Edits",
-            base / "03_Exports" / "Web",
-            base / "03_Exports" / "Print",
-            base / "03_Exports" / "Social",
-            base / "99_Archive",
+            f"{base}/00_RAW",
+            f"{base}/01_Cull",
+            f"{base}/02_Edits",
+            f"{base}/03_Exports/Web",
+            f"{base}/03_Exports/Print",
+            f"{base}/03_Exports/Social",
+            f"{base}/99_Archive",
         ]
 
-    # Combine everything
-    all_folders = (
-        top_level
-        + client_subfolders
-        + catalog_subfolders
-        + preset_subfolders
-        + video_subfolders
-        + assets_subfolders
-        + shoot_subfolders
-    )
-
-    # Create folders on disk
-    for folder in all_folders:
-        folder.mkdir(parents=True, exist_ok=True)
-
-    return all_folders
+    return top_level + shoot_subfolders
 
 
 # Example usage:
