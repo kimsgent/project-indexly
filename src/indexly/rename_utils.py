@@ -145,14 +145,34 @@ def slugify(text: str) -> str:
 def _extract_date_prefix(filename: str) -> str | None:
     if not filename:
         return None
-    m = re.match(r"^(?P<date>\d{4}-\d{2}-\d{2}|\d{8})[-_\s]?", filename)
-    return m.group("date").replace("-", "") if m else None
+    m = re.match(r"^(?P<date>\d{4}-\d{2}-\d{2}|\d{8}|\d{6})[-_\s]?", filename)
+    if not m:
+        return None
+    date_prefix = m.group("date").replace("-", "")
+    return date_prefix if _parse_date_prefix(date_prefix) else None
+
+
+def _parse_date_prefix(date_prefix: str) -> datetime | None:
+    """Parse supported leading date tokens used by rename patterns."""
+    formats = {
+        8: ("%Y%m%d",),
+        6: ("%y%m%d",),
+    }.get(len(date_prefix), ())
+
+    for fmt in formats:
+        try:
+            return datetime.strptime(date_prefix, fmt)
+        except ValueError:
+            continue
+    return None
 
 
 def _remove_leading_date_from_string(s: str) -> str:
     if not s:
         return s
-    return re.sub(r"^(?:\d{4}-\d{2}-\d{2}|\d{8})[-_\s]*", "", s)
+    if not _extract_date_prefix(s):
+        return s
+    return re.sub(r"^(?:\d{4}-\d{2}-\d{2}|\d{8}|\d{6})[-_\s]*", "", s)
 
 
 def _clean_filename_component(s: str) -> str:
@@ -250,14 +270,10 @@ def generate_new_filename(
     existing_prefix = _extract_date_prefix(file_path.name)
 
     if existing_prefix:
-        try:
-            parsed_dt = (
-                datetime.strptime(existing_prefix, "%Y-%m-%d")
-                if "-" in existing_prefix
-                else datetime.strptime(existing_prefix, "%Y%m%d")
-            )
+        parsed_dt = _parse_date_prefix(existing_prefix)
+        if parsed_dt:
             date_str = parsed_dt.strftime(date_format)
-        except ValueError:
+        else:
             date_str = modified_dt.strftime(date_format)
     else:
         date_str = modified_dt.strftime(date_format)
@@ -468,14 +484,10 @@ def rename_files_in_dir(
         existing_prefix = _extract_date_prefix(f.name)
 
         if existing_prefix:
-            try:
-                parsed_dt = (
-                    datetime.strptime(existing_prefix, "%Y-%m-%d")
-                    if "-" in existing_prefix
-                    else datetime.strptime(existing_prefix, "%Y%m%d")
-                )
+            parsed_dt = _parse_date_prefix(existing_prefix)
+            if parsed_dt:
                 date_str = parsed_dt.strftime(date_format)
-            except ValueError:
+            else:
                 date_str = datetime.fromtimestamp(f.stat().st_mtime).strftime(
                     date_format
                 )

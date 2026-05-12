@@ -71,6 +71,51 @@ def test_directory_rename_uses_implicit_counter_only_for_collisions(tmp_path):
     ]
 
 
+def test_directory_rename_skips_files_that_already_match_short_date_contract(tmp_path):
+    work_dir = tmp_path / "files"
+    work_dir.mkdir()
+    source = work_dir / "251203-chinook.db"
+    source.write_text("hello", encoding="utf-8")
+    _set_mtime(source, year=2026, month=3, day=12)
+
+    entries = rename_files_in_dir(
+        str(work_dir),
+        pattern="{date}-{title}",
+        date_format="%y%m%d",
+        dry_run=True,
+    )
+
+    assert entries[0].renamed_path == source
+
+
+def test_short_date_prefix_can_be_reformatted_when_contract_changes(tmp_path):
+    source = tmp_path / "251203-chinook.db"
+    source.write_text("hello", encoding="utf-8")
+    _set_mtime(source, year=2026, month=3, day=12)
+
+    new_name = generate_new_filename(
+        source,
+        pattern="{date}-{title}",
+        date_format="%Y%m%d",
+    )
+
+    assert new_name == "20251203-chinook.db"
+
+
+def test_invalid_numeric_prefix_is_preserved_as_title_text(tmp_path):
+    source = tmp_path / "123456-report.txt"
+    source.write_text("hello", encoding="utf-8")
+    _set_mtime(source)
+
+    new_name = generate_new_filename(
+        source,
+        pattern="{date}-{title}",
+        date_format="%y%m%d",
+    )
+
+    assert new_name == "260312-123456-report.txt"
+
+
 def test_directory_rename_tracks_planned_dry_run_collisions(tmp_path):
     work_dir = tmp_path / "files"
     work_dir.mkdir()
