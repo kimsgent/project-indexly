@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from indexly.cli_utils import build_parser
+from indexly.organize.cli_wrapper import handle_organize
 from indexly.organize.organizer_exec import (
     execute_organizer,
     execute_profile_placement,
@@ -128,3 +129,158 @@ def test_cli_help_choices_include_classifiable_profiles_for_organize_and_rename(
 
     assert organize_args.profile == "engineer"
     assert rename_args.profile == "media"
+
+
+def test_data_project_name_is_used_as_safe_project_folder(tmp_path):
+    root = tmp_path / "workspace"
+    root.mkdir()
+    (root / "raw_measurements.csv").write_text("x,y\n1,2\n", encoding="utf-8")
+
+    plan = execute_profile_placement(
+        source_root=root,
+        destination_root=root,
+        profile="data",
+        project_name="Bridge Study",
+        executed_by="pytest",
+        apply=False,
+        dry_run=True,
+    )
+
+    destination = plan[0]["destination"].replace("\\", "/")
+    assert "Data/Projects/Bridge Study/Data/Raw/raw_measurements.csv" in destination
+
+
+def test_profile_name_segments_reject_paths(tmp_path):
+    root = tmp_path / "workspace"
+    root.mkdir()
+    (root / "raw.csv").write_text("x", encoding="utf-8")
+
+    try:
+        execute_profile_placement(
+            source_root=root,
+            destination_root=root,
+            profile="data",
+            project_name="../escape",
+            executed_by="pytest",
+            apply=False,
+            dry_run=True,
+        )
+    except ValueError as exc:
+        assert "--project-name must be a name" in str(exc)
+    else:
+        raise AssertionError("expected path-like project name to fail")
+
+
+def test_health_patient_id_scaffold_rejects_path_segments(tmp_path):
+    root = tmp_path / "workspace"
+    root.mkdir()
+
+    try:
+        execute_profile_scaffold(root, "health", patient_id="../patient", dry_run=True)
+    except ValueError as exc:
+        assert "--patient-id must be a name" in str(exc)
+    else:
+        raise AssertionError("expected path-like patient id to fail")
+
+
+def test_media_shoot_name_scaffold_rejects_path_segments(tmp_path):
+    root = tmp_path / "workspace"
+    root.mkdir()
+
+    try:
+        execute_profile_scaffold(root, "media", shoot_name="client/escape", dry_run=True)
+    except ValueError as exc:
+        assert "--shoot-name must be a name" in str(exc)
+    else:
+        raise AssertionError("expected path-like shoot name to fail")
+
+
+def test_classify_requires_profile_in_cli_wrapper(tmp_path):
+    root = tmp_path / "workspace"
+    root.mkdir()
+
+    try:
+        handle_organize(str(root), classify=True, dry_run=True)
+    except SystemExit as exc:
+        assert exc.code == 2
+    else:
+        raise AssertionError("expected classify without profile to fail")
+
+
+def test_classify_raw_requires_media_photographer_profile(tmp_path):
+    root = tmp_path / "workspace"
+    root.mkdir()
+    (root / "image.jpg").write_text("image", encoding="utf-8")
+
+    try:
+        execute_profile_placement(
+            source_root=root,
+            destination_root=root,
+            profile="media",
+            category=None,
+            classify_raw="camera",
+            executed_by="pytest",
+            apply=False,
+            dry_run=True,
+        )
+    except ValueError as exc:
+        assert "--classify-raw requires --profile media --category photographer" in str(exc)
+    else:
+        raise AssertionError("expected invalid classify_raw combination to fail")
+
+
+def test_classify_raw_groups_only_existing_00_raw_images(tmp_path, monkeypatch):
+    import indexly.organize.profiles.media_rules as media_rules
+
+    root = tmp_path / "workspace"
+    raw_dir = root / "Media" / "Shoots" / "2026-05-client" / "00_RAW"
+    raw_dir.mkdir(parents=True)
+    raw_image = raw_dir / "frame.jpg"
+    raw_image.write_text("image", encoding="utf-8")
+    non_raw = root / "loose.jpg"
+    non_raw.write_text("image", encoding="utf-8")
+
+    monkeypatch.setattr(
+        media_rules,
+        "extract_image_metadata",
+        lambda _: {"camera": "Nikon/Z 8"},
+    )
+
+    plan = execute_profile_placement(
+        source_root=root,
+        destination_root=root,
+        profile="media",
+        category="photographer",
+        classify_raw="camera",
+        executed_by="pytest",
+        recursive=True,
+        apply=False,
+        dry_run=True,
+    )
+
+    assert len(plan) == 1
+    destination = plan[0]["destination"].replace("\\", "/")
+    assert destination.endswith("00_RAW/Nikon_Z 8/frame.jpg")
+    assert "loose.jpg" not in destination
+
+
+def test_classify_raw_without_classify_routes_to_classification(tmp_path, monkeypatch):
+    import indexly.organize.profiles.media_rules as media_rules
+
+    root = tmp_path / "workspace"
+    raw_dir = root / "Media" / "Shoots" / "2026-05-client" / "00_RAW"
+    raw_dir.mkdir(parents=True)
+    (raw_dir / "frame.jpg").write_text("image", encoding="utf-8")
+    monkeypatch.setattr(media_rules, "extract_image_metadata", lambda _: {"camera": "Leica"})
+
+    result = handle_organize(
+        str(root),
+        profile="media",
+        category="photographer",
+        classify_raw="camera",
+        recursive=True,
+        dry_run=True,
+    )
+
+    assert result == (None, {})
+    assert not (root / "log").exists()

@@ -4,6 +4,7 @@ import json
 import sys
 import time
 import logging
+import re
 from pathlib import Path
 from datetime import datetime
 
@@ -41,6 +42,8 @@ logging.basicConfig(
     handlers=[RichHandler(console=console)],
 )
 log = logging.getLogger("organizer")
+SAFE_NAME_RE = re.compile(r"[^A-Za-z0-9._ -]+")
+RAW_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".tiff", ".bmp"}
 
 
 def _hash_file(path: Path, algo="sha256") -> str | None:
@@ -140,6 +143,32 @@ def _profile_with_category(profile: str, category: str | None) -> str:
     if profile == "business" and category in {"solo", "employer"}:
         return f"business:{category}"
     return profile
+
+
+def _safe_path_segment(value: str, *, field: str) -> str:
+    raw = value.strip()
+    if not raw:
+        raise ValueError(f"{field} cannot be empty.")
+    if raw in {".", ".."}:
+        raise ValueError(f"{field} cannot be a relative path segment.")
+    if Path(raw).is_absolute() or ":" in raw or any(sep in raw for sep in ("/", "\\")):
+        raise ValueError(f"{field} must be a name, not a path.")
+
+    cleaned = SAFE_NAME_RE.sub("_", raw)
+    cleaned = cleaned.strip(" .")
+    if not cleaned:
+        raise ValueError(f"{field} cannot be empty.")
+    return cleaned[:80]
+
+
+def _normalize_optional_segment(value: str | None, *, field: str) -> str | None:
+    if value is None:
+        return None
+    return _safe_path_segment(value, field=field)
+
+
+def _is_raw_image(path: Path) -> bool:
+    return path.parent.name.lower() == "00_raw" and path.suffix.lower() in RAW_IMAGE_EXTS
 
 
 def execute_organizer(
@@ -294,6 +323,8 @@ def execute_profile_scaffold(
 ):
     root = Path(root).resolve()
     profile = profile.lower()
+    project_name = _normalize_optional_segment(project_name, field="--project-name")
+    shoot_name = _normalize_optional_segment(shoot_name, field="--shoot-name")
 
     if profile not in PROFILE_STRUCTURES:
         raise ValueError(f"Unknown profile: {profile}")
@@ -319,7 +350,7 @@ def execute_profile_scaffold(
         resolved_patient_id = (
             _next_health_patient_id(root)
             if patient_id == "" or patient_id is True
-            else patient_id
+            else _safe_path_segment(patient_id, field="--patient-id")
         )
 
         patient_root = root / "Health" / "Patients" / resolved_patient_id
@@ -471,11 +502,18 @@ def execute_profile_placement(
 
     source_root = Path(source_root).resolve()
     destination_root = Path(destination_root).resolve()
+    project_name = _normalize_optional_segment(project_name, field="--project-name")
+    shoot_name = _normalize_optional_segment(shoot_name, field="--shoot-name")
     profile = _profile_with_category(profile.lower(), category)
     preview_only = dry_run or not apply
 
     if profile not in PROFILE_RULES:
         raise ValueError(f"Unknown profile: {profile}")
+
+    if classify_raw and (profile != "media" or category != "photographer"):
+        raise ValueError(
+            "--classify-raw requires --profile media --category photographer."
+        )
 
     if precomputed_plan:
         files = []
@@ -490,6 +528,13 @@ def execute_profile_placement(
             if recursive
             else [p for p in source_root.iterdir() if p.is_file()]
         )
+
+    if classify_raw:
+        files = [
+            item
+            for item in files
+            if _is_raw_image(item[1] if isinstance(item, tuple) else item)
+        ]
 
     if not files:
         console.print(
@@ -506,7 +551,7 @@ def execute_profile_placement(
         resolved_patient_id = (
             _next_health_patient_id(destination_root)
             if patient_id == ""
-            else patient_id
+            else _safe_path_segment(patient_id, field="--patient-id")
         )
 
     plan = build_placement_plan(
