@@ -51,19 +51,8 @@ def handle_organize(
         else:
             profile_category = None
 
-        if profile and not classify:
-            execute_profile_scaffold(
-                root=folder_path,
-                profile=profile,
-                category=profile_category,
-                apply=apply,
-                dry_run=dry_run,
-                executed_by=executed_by,
-                project_name=project_name,
-                shoot_name=shoot_name,
-                patient_id=patient_id,
-            )
-            return None, {}
+        if (classify or classify_raw) and not profile:
+            raise ValueError("--classify and --classify-raw require --profile.")
 
         # 2️⃣ PROFILE CLASSIFICATION
         if profile and (classify or classify_raw or precomputed_plan):
@@ -84,7 +73,22 @@ def handle_organize(
             )
             return None, {}
 
-        # 3️⃣ LEGACY ORGANIZER
+        # 3️⃣ PROFILE SCAFFOLD ONLY
+        if profile:
+            execute_profile_scaffold(
+                root=folder_path,
+                profile=profile,
+                category=profile_category,
+                apply=apply,
+                dry_run=dry_run,
+                executed_by=executed_by,
+                project_name=project_name,
+                shoot_name=shoot_name,
+                patient_id=patient_id,
+            )
+            return None, {}
+
+        # 4️⃣ LEGACY ORGANIZER
         plan, backup_mapping = execute_organizer(
             root=folder_path,
             sort_by=sort_by,

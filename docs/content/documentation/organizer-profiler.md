@@ -52,6 +52,20 @@ This allows the Organizer to adapt naturally to different workflows.
 
 ---
 
+## Profile-Specific Options
+
+Profile options that create folder names are treated as names, not paths:
+
+* `--project-name` adds a project segment for the data profile, for example `Data/Projects/Bridge Study`
+* `--shoot-name` adds a dated media shoot segment, for example `Media/Shoots/2026-05-ClientShoot`
+* `--id` / `--patient-id` targets a health patient folder, for example `Health/Patients/P001`
+
+Path separators, absolute paths, and relative path segments are rejected for these values.
+
+`--classify` requires `--profile`. `--classify-raw` also requires `--profile media --category photographer` and routes to classification even if `--classify` is omitted.
+
+---
+
 ## 🏢 Business Profile (Extended)
 
 The **business profile** now supports structured financial and administrative organization.
@@ -142,6 +156,45 @@ The engineer profile uses broad engineering-safe buckets:
 * Unknown files go to `Engineering/Archive`
 
 The rule is intentionally general so mechanical, electrical, civil, and software-adjacent engineering folders remain usable without overfitting.
+
+---
+
+## Media RAW Classification
+
+`--classify-raw` is a photographer-only refinement for images already located in `00_RAW`.
+
+```bash
+indexly organize ./Media --profile media --category photographer --classify-raw camera --recursive --dry-run
+```
+
+Supported metadata keys:
+
+* `camera`
+* `gps`
+* `date`
+* `title`
+* `author`
+
+Only image files whose parent folder is named `00_RAW` are grouped. For example:
+
+```text
+Media/Shoots/2026-05-Client/00_RAW/frame.jpg
+→ Media/Shoots/2026-05-Client/00_RAW/Nikon_Z 8/frame.jpg
+```
+
+Files outside `00_RAW` are left out of the RAW metadata classification plan.
+
+---
+
+## Health Patient IDs
+
+Health classification can target a patient folder:
+
+```bash
+indexly organize ./incoming --profile health --classify --id P001 --dry-run
+```
+
+When applied, Indexly ensures the patient subfolders exist and records observer metadata with the patient ID. Passing an empty ID value asks Indexly to generate the next date-based patient ID.
 
 ---
 

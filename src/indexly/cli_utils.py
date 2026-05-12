@@ -1363,19 +1363,19 @@ def build_parser():
 
     organize_parser.add_argument(
         "--project-name",
-        help="Project name (used with --profile data)",
+        help="Project name segment (used with --profile data)",
     )
 
     organize_parser.add_argument(
         "--shoot-name",
-        help="Optional shoot name (used with --profile media)",
+        help="Optional shoot name segment (used with --profile media)",
     )
 
     organize_parser.add_argument(
         "--id",
         "--patient-id",
         dest="patient_id",
-        help="Patient ID / alias (used with --profile health)",
+        help="Patient ID / alias segment (used with --profile health)",
     )
 
     organize_parser.add_argument(
@@ -1390,9 +1390,8 @@ def build_parser():
         metavar="KEY",
         choices=["camera", "gps", "date", "title", "author"],
         help=(
-            "Classify RAW images by metadata (photographer only). "
-            "Applies only to images in 00_RAW when --profile media "
-            "and --category photographer are set."
+            "Classify existing 00_RAW images by metadata. Requires "
+            "--profile media --category photographer; implies classification."
         ),
     )
 
