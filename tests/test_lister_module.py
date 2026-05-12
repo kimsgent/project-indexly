@@ -5,6 +5,7 @@ from pathlib import Path
 
 from indexly.organize.lister import (
     _discover_log,
+    _sort_files,
     list_organizer_log,
 )
 from indexly.organize.lister_cache import read_cache, write_cache
@@ -138,3 +139,20 @@ def test_duplicate_detection_hashes_generated_logs_via_original_paths(tmp_path, 
     assert listed == 2
     assert "Duplicates detected: 2" in out
     assert "Skipping hash-based duplicate detection" not in out
+
+
+def test_sort_by_extension_groups_extensionless_files_last(tmp_path):
+    files = [
+        {"new_path": str(tmp_path / "zeta"), "extension": ""},
+        {"new_path": str(tmp_path / "b.pdf"), "extension": ".pdf"},
+        {"new_path": str(tmp_path / "a.doc"), "extension": ".doc"},
+        {"new_path": str(tmp_path / "a.pdf"), "extension": ".pdf"},
+    ]
+
+    assert _sort_files(files, "extension") is True
+    assert [Path(f["new_path"]).name for f in files] == [
+        "a.doc",
+        "a.pdf",
+        "b.pdf",
+        "zeta",
+    ]

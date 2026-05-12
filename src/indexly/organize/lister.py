@@ -98,7 +98,13 @@ def _sort_files(files: list[dict], sort_by: str) -> bool:
         files.sort(key=lambda f: Path(f["new_path"]).name.lower())
         return True
     if sort_by == "extension":
-        files.sort(key=lambda f: f["extension"])
+        files.sort(
+            key=lambda f: (
+                f.get("extension") in {"", None},
+                (f.get("extension") or "").lower(),
+                Path(f["new_path"]).name.lower(),
+            )
+        )
         return True
     return False
 
