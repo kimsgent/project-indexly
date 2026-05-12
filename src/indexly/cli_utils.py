@@ -1520,6 +1520,17 @@ def build_parser():
         help="Renaming pattern (supports {date}, {title}, {counter}, {prefix})",
     )
     rename_file_parser.add_argument(
+        "--date-format",
+        choices=["%Y%m%d", "%Y-%m-%d", "%y%m%d", "%d-%m-%Y", "%d%m%Y"],
+        default="%Y%m%d",
+        help="Date format used for the {date} placeholder.",
+    )
+    rename_file_parser.add_argument(
+        "--counter-format",
+        default="d",
+        help="Python integer format used for {counter}, for example 03d.",
+    )
+    rename_file_parser.add_argument(
         "--business-naming",
         action="store_true",
         help="Use business rules to add category-based prefix to filenames (interactive if needed)",
@@ -1533,6 +1544,15 @@ def build_parser():
         "--recursive",
         action="store_true",
         help="Recursively rename all files in the given directory",
+    )
+    rename_file_parser.add_argument(
+        "--update-db",
+        action="store_true",
+        help="Update Indexly database paths after applying filesystem renames.",
+    )
+    rename_file_parser.add_argument(
+        "--db",
+        help="Database path to update when --update-db is used.",
     )
     # Organizer-related flags (only for use with --organize)
     rename_file_parser.add_argument(
