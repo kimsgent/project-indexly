@@ -77,6 +77,12 @@ Choose prefix for 'tax' [mwst/vat/steuer/ust/tax] (mwst): vat
 | `{counter}` | Collision-safe index     |
 | `{prefix}`  | Business category prefix |
 
+When `{counter}` is omitted, Indexly adds a numeric suffix only when needed to
+avoid an existing or planned destination filename collision.
+Existing leading date prefixes in `YYYY-MM-DD`, `YYYYMMDD`, and `YYMMDD` form
+are recognized, so files that already match the active pattern are skipped
+instead of being dated a second time.
+
 ---
 
 ## Rename Options
