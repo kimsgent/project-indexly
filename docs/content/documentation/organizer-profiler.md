@@ -223,6 +223,10 @@ indexly rename-file . \
    * etc.
 4. A full audit log is generated.
 
+The organizer uses the precomputed rename plan instead of guessing from a fresh
+directory scan. With `--dry-run`, planned filenames are used for the preview
+without moving files; with `--apply`, organization runs after successful renames.
+
 This creates a **rename → classify → audit pipeline**.
 
 ---
