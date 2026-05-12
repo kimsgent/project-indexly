@@ -115,21 +115,23 @@ def connect_db(db_path: str | None = None):
     return conn
 
 
-def _sync_path_in_db(old_path: str, new_path: str):
+def _sync_path_in_db(old_path: str, new_path: str, db_path: str | None = None):
     """
     Fully synchronize a renamed file across all DB tables:
     - Updates path in file_metadata (reference table)
     - Writes old filename into alias column
     - Also updates path in file_tags for consistency
+    - Also updates path in file_index for search consistency
     """
     from pathlib import Path
 
     old_path_str = normalize_path(old_path)
     new_path_str = normalize_path(new_path)
-    old_name = Path(old_path_str).name
+    old_name = Path(str(old_path)).name or Path(old_path_str).name
+    conn = None
 
     try:
-        conn = connect_db()
+        conn = connect_db(db_path)
         cur = conn.cursor()
 
         # --- file_metadata (main reference table now) ---
@@ -152,17 +154,31 @@ def _sync_path_in_db(old_path: str, new_path: str):
             (new_path_str, old_path_str),
         )
 
+        # --- file_index (FTS search table) ---
+        cur.execute(
+            """
+            UPDATE file_index
+            SET path = ?
+            WHERE path = ?
+            """,
+            (new_path_str, old_path_str),
+        )
+
         conn.commit()
-        conn.close()
 
         logger.info(f"🗄️ DB fully synced for rename: {old_path_str} → {new_path_str}")
         return True
 
     except Exception as e:
+        if conn is not None:
+            conn.rollback()
         logger.error(
             f"⚠️ DB sync failed for rename {old_path_str} → {new_path_str}: {e}"
         )
         return False
+    finally:
+        if conn is not None:
+            conn.close()
 
 # ------------------------------------------------------
 # 🧱 1. Connection Helper

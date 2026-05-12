@@ -17,6 +17,10 @@ def _safe_folder_name(value: str) -> str:
     return value[:80] or FALLBACK_FOLDER
 
 
+def _is_raw_folder(path: Path) -> bool:
+    return path.name.lower() == "00_raw"
+
+
 def get_destination(
     root: Path,
     file_path: Path,
@@ -36,10 +40,12 @@ def get_destination(
     # IMAGE → SHOOTS / RAW
     # ---------------------------
     if ext in IMAGE_EXTS:
-        base = root / "Media" / "Shoots" / shoot_folder / "00_RAW"
-
         # Photographer RAW classification (OPT-IN)
         if profile == "media" and category == "photographer" and classify_raw:
+            if not _is_raw_folder(file_path.parent):
+                return root / "Media" / "Archive" / file_path.name
+
+            base = file_path.parent
             md = extract_image_metadata(str(file_path))
 
             key_map = {
@@ -58,6 +64,8 @@ def get_destination(
             )
 
             return base / folder_name / file_path.name
+
+        base = root / "Media" / "Shoots" / shoot_folder / "00_RAW"
 
         # Default RAW behavior
         return base / file_path.name

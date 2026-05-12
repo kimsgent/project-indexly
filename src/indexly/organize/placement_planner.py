@@ -9,7 +9,7 @@ def build_placement_plan(
     *,
     source_root: Path,
     destination_root: Path,
-    files: List[Path],
+    files: List[Path | tuple[Path, Path]],
     profile: str,
     **profile_args,
 ) -> List[Dict[str, str]]:
@@ -19,29 +19,35 @@ def build_placement_plan(
 
     resolver: Callable = base_destination
 
-    if profile != "health":
-        rule = PROFILE_RULES.get(profile)
-        if callable(rule):
-            resolver = rule
+    rule = PROFILE_RULES.get(profile)
+    if callable(rule):
+        resolver = rule
 
-    for path in files:
-        if not path.is_file():
+    for item in files:
+        if isinstance(item, tuple):
+            source_path, rule_path = item
+        else:
+            source_path = item
+            rule_path = item
+
+        if not source_path.is_file():
             continue
 
         dest = resolver(
             root=destination_root,
-            file_path=path,
+            file_path=rule_path,
             shoot_name=profile_args.get("shoot_name"),
             profile=profile,
             category=profile_args.get("category"),
             classify_raw=profile_args.get("classify_raw"),
             project_name=profile_args.get("project_name"),
             patient_id=profile_args.get("patient_id"),
+            ensure_patient_folder_exists=profile_args.get("ensure_patient_folder_exists", False),
         )
 
         plan.append(
             {
-                "source": str(path),
+                "source": str(source_path),
                 "destination": str(dest),
                 "profile": profile,
                 "rule": resolver.__name__,
