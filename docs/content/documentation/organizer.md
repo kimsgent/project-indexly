@@ -32,7 +32,9 @@ At its core, the Organizer uses **[profile-based classification](organizer-profi
 indexly organize <folder>
 ```
 
-This organizes the given folder using default rules (by extension-based categories).
+This organizes the given folder using the default `date` mode.
+
+Use `--dry-run` to preview legacy organization or profile classification without creating folders, logs, backups, or moving files. Use `--apply` for profile scaffold/classification commands when you want filesystem changes.
 
 ----
 
@@ -48,15 +50,15 @@ Supported modes:
 
 | **Mode**    | **Behavior**                     |
 | ----------- | -------------------------------- |
-| `date`      | Groups files by year/month       |
+| `date`      | Groups files by year/month (default) |
 | `name`      | Alphabetical grouping            |
-| `extension` | Category-based folders (default) |
+| `extension` | Groups by category, year/month, and extension |
 
 ----
 
 ## Backup While Organizing
 
-Organizer can **copy files before moving them**, ensuring reversibility:
+Organizer can **copy originals before moving them**, ensuring reversibility:
 
 ```bash
 indexly organize Downloads --backup D:\organizer-backups
@@ -64,8 +66,8 @@ indexly organize Downloads --backup D:\organizer-backups
 
 Behavior:
 
-- Files are copied to the backup directory **before** reorganization
-- Directory structure is preserved
+- Files are copied to the backup directory **before** any move happens
+- The original relative directory structure is preserved
 - Backup is non-destructive and optional
 
 Recommended for first-time runs or production folders.
@@ -145,7 +147,7 @@ Organizer automatically detects duplicate files using:
 
 - File name
 - Size
-- Content hash (where applicable)
+- Content hash
 
 Duplicates are **not deleted automatically**.
 
@@ -159,6 +161,8 @@ indexly organize Downloads --lister-duplicates
 ```
 
 This design prevents accidental data loss.
+
+Duplicate flags are also written during dry-run planning. Hashing is read-only; unreadable files are skipped and reported.
 
 ----
 

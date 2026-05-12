@@ -33,7 +33,7 @@ weight: 11
 * Safe, collision-aware file movement
 * Dry-run planning (no side effects)
 * Structured, indexable JSON logs
-* Hash-based integrity tracking
+* Hash-based duplicate and integrity tracking
 * Audit-ready history of changes
 * ✅ Business-rule aware classification (via `rename-file --business-naming`)
 
@@ -49,6 +49,20 @@ Profiles represent **real-world domains**, each with its own logic and structure
 
 Each profile defines *rules*, not hardcoded paths.
 This allows the Organizer to adapt naturally to different workflows.
+
+---
+
+## Profile-Specific Options
+
+Profile options that create folder names are treated as names, not paths:
+
+* `--project-name` adds a project segment for the data profile, for example `Data/Projects/Bridge Study`
+* `--shoot-name` adds a dated media shoot segment, for example `Media/Shoots/2026-05-ClientShoot`
+* `--id` / `--patient-id` targets a health patient folder, for example `Health/Patients/P001`
+
+Path separators, absolute paths, and relative path segments are rejected for these values.
+
+`--classify` requires `--profile`. `--classify-raw` also requires `--profile media --category photographer` and routes to classification even if `--classify` is omitted.
 
 ---
 
@@ -113,7 +127,74 @@ The business rule uses keyword detection to infer document type:
 | Contract | contract, agreement, nda              |
 | Payroll  | payroll, salary, lohn, gehalt         |
 
-If no keyword is detected, the CLI prompts the user interactively.
+If no keyword is detected, files fall back to `Business/Archive`.
+
+---
+
+## Researcher Profile
+
+The researcher profile uses conservative rules that preserve reproducibility:
+
+* Raw/source datasets go to `Research/Data/Raw`
+* Cleaned or normalized datasets go to `Research/Data/Cleaned`
+* Results, scripts, notebooks, figures, and analysis outputs go to `Research/Data/Results`
+* Papers are separated into draft, submitted, and published areas when filenames provide enough signal
+* Notes, references, presentations, and admin files stay separate
+
+The rule intentionally avoids discipline-specific assumptions.
+
+---
+
+## Engineer Profile
+
+The engineer profile uses broad engineering-safe buckets:
+
+* CAD files go to `Engineering/CAD`
+* Simulation and analysis files go to `Engineering/Projects/Simulation`
+* Calculations and spreadsheets go to `Engineering/Projects/Calculations`
+* Reports, drawings, standards, and field photos are separated
+* Unknown files go to `Engineering/Archive`
+
+The rule is intentionally general so mechanical, electrical, civil, and software-adjacent engineering folders remain usable without overfitting.
+
+---
+
+## Media RAW Classification
+
+`--classify-raw` is a photographer-only refinement for images already located in `00_RAW`.
+
+```bash
+indexly organize ./Media --profile media --category photographer --classify-raw camera --recursive --dry-run
+```
+
+Supported metadata keys:
+
+* `camera`
+* `gps`
+* `date`
+* `title`
+* `author`
+
+Only image files whose parent folder is named `00_RAW` are grouped. For example:
+
+```text
+Media/Shoots/2026-05-Client/00_RAW/frame.jpg
+→ Media/Shoots/2026-05-Client/00_RAW/Nikon_Z 8/frame.jpg
+```
+
+Files outside `00_RAW` are left out of the RAW metadata classification plan.
+
+---
+
+## Health Patient IDs
+
+Health classification can target a patient folder:
+
+```bash
+indexly organize ./incoming --profile health --classify --id P001 --dry-run
+```
+
+When applied, Indexly ensures the patient subfolders exist and records observer metadata with the patient ID. Passing an empty ID value asks Indexly to generate the next date-based patient ID.
 
 ---
 
@@ -141,6 +222,10 @@ indexly rename-file . \
    * `Business/Invoices/Outgoing/Paid`
    * etc.
 4. A full audit log is generated.
+
+The organizer uses the precomputed rename plan instead of guessing from a fresh
+directory scan. With `--dry-run`, planned filenames are used for the preview
+without moving files; with `--apply`, organization runs after successful renames.
 
 This creates a **rename → classify → audit pipeline**.
 
@@ -194,6 +279,8 @@ indexly organize ./incoming --profile business --classify --dry-run
 ```
 
 This works independently — or after a rename operation.
+
+Dry-run profile classification does not create folders, write logs, trigger observers, or move files. `--apply` is required for profile moves and scaffold creation.
 
 ---
 

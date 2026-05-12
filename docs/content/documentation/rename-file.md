@@ -63,7 +63,7 @@ Choose prefix for 'tax' [mwst/vat/steuer/ust/tax] (mwst): vat
 1. Detects business keywords.
 2. Assigns category.
 3. Selects or prompts for prefix.
-4. Applies pattern safely.
+4. Applies pattern safely. If `{prefix}` is not in the pattern, the detected prefix is prepended automatically.
 5. Prevents collisions automatically.
 
 ---
@@ -76,6 +76,33 @@ Choose prefix for 'tax' [mwst/vat/steuer/ust/tax] (mwst): vat
 | `{title}`   | Slugified filename       |
 | `{counter}` | Collision-safe index     |
 | `{prefix}`  | Business category prefix |
+
+---
+
+## Rename Options
+
+`rename-file` supports these rename-specific flags directly:
+
+```bash
+indexly rename-file ./incoming \
+  --pattern "{date}-{title}-{counter}" \
+  --date-format "%Y-%m-%d" \
+  --counter-format "03d" \
+  --dry-run
+```
+
+| Flag               | Behavior                                                                 |
+| ------------------ | ------------------------------------------------------------------------ |
+| `--pattern`        | Filename pattern using `{date}`, `{title}`, `{counter}`, and `{prefix}`. |
+| `--date-format`    | Date format for `{date}`. Defaults to `%Y%m%d`.                          |
+| `--counter-format` | Python integer format for `{counter}` such as `03d`.                     |
+| `--recursive`      | Rename files below the target directory recursively.                     |
+| `--dry-run`        | Preview filesystem renames without moving files.                         |
+| `--update-db`      | After applied renames, update Indexly DB paths for metadata, tags, and search index rows. |
+| `--db`             | Database path to update when `--update-db` is used.                      |
+
+`--update-db` is opt-in. Without it, `rename-file` only changes filenames on disk.
+When `--db` is omitted, Indexly uses its configured default database.
 
 ---
 
@@ -101,6 +128,10 @@ Files are:
 2. Classified into Business structure
 3. Logged and hashed
 4. Moved safely
+
+When `--organize` is used, the organizer receives the rename plan directly. In
+dry-run mode it previews organization from the planned filenames; in apply mode
+it organizes the files after successful filesystem renames.
 
 This makes organizing highly intuitive — especially with `--classify`.
 

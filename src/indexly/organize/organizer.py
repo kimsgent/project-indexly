@@ -3,6 +3,7 @@ from datetime import datetime
 import re
 
 from indexly.filetype_utils import SUPPORTED_EXTENSIONS
+from indexly.ignore_defaults.loader import load_ignore_rules
 from indexly.time_utils import utc_now_iso_z
 from indexly.organize.log_schema import (
     empty_meta,
@@ -27,6 +28,7 @@ DOCUMENT_EXTENSIONS = SUPPORTED_EXTENSIONS.union({
 })
 
 DATE_RE = re.compile(r"(19|20)\d{2}[01]\d[0-3]\d")
+INTERNAL_TOP_LEVEL_DIRS = {"log", ".indexly"}
 
 
 def _extract_date_from_name(name: str):
@@ -49,6 +51,13 @@ def _resolve_year_month(path: Path):
         ts = datetime.now()
 
     return ts.strftime("%Y"), ts.strftime("%m")
+
+
+def _extension_for(path: Path) -> str:
+    suffixes = path.suffixes
+    if len(suffixes) >= 2 and suffixes[-2].lower() == ".json" and suffixes[-1].lower() == ".gz":
+        return ".json.gz"
+    return path.suffix.lower()
 
 
 def _is_binary(path: Path, blocksize: int = 1024) -> bool:
@@ -81,6 +90,48 @@ def _alpha_bucket(name: str):
     return c if c.isalpha() else "_"
 
 
+def _summary_key(category: str) -> str:
+    if category == "unsorted":
+        return "unsorted"
+    return category + "s"
+
+
+def _is_internal_path(root: Path, path: Path) -> bool:
+    try:
+        rel = path.relative_to(root)
+    except ValueError:
+        return False
+    return bool(rel.parts) and rel.parts[0] in INTERNAL_TOP_LEVEL_DIRS
+
+
+def _iter_source_files(root: Path):
+    ignore_rules = load_ignore_rules(root)
+    for path in sorted(root.rglob("*")):
+        if not path.is_file():
+            continue
+        if _is_internal_path(root, path):
+            continue
+        if ignore_rules.should_ignore(path, root=root):
+            continue
+        yield path
+
+
+def _dedupe_target_path(target_path: Path, planned_targets: set[Path]) -> tuple[Path, str | None, bool]:
+    if target_path not in planned_targets and not target_path.exists():
+        return target_path, None, False
+
+    stem = target_path.stem
+    suffix = target_path.suffix
+    parent = target_path.parent
+    i = 1
+
+    while True:
+        candidate = parent / f"{stem}_{i:02d}{suffix}"
+        if candidate not in planned_targets and not candidate.exists():
+            return candidate, candidate.name, True
+        i += 1
+
+
 def organize_folder(
     root: Path,
     *,
@@ -99,17 +150,20 @@ def organize_folder(
     )
     summary = empty_summary()
     files = []
+    planned_targets: set[Path] = set()
 
     if precomputed_entries is None:
         # Standalone mode (original behavior)
-        iterable = []
-        for p in root.rglob("*"):
-            if p.is_file():
-                iterable.append((p, p))  # (original_path, working_path)
+        iterable = [(p, p) for p in _iter_source_files(root)]
     else:
         # Integrated mode (rename → organize)
         iterable = []
         for entry in precomputed_entries:
+            if isinstance(entry, dict):
+                original = entry.get("original_path")
+                renamed = entry.get("renamed_path") or entry.get("new_path") or original
+                iterable.append((Path(original), Path(renamed)))
+                continue
             iterable.append(
                 (
                     Path(entry.original_path),
@@ -121,7 +175,7 @@ def organize_folder(
 
         path = working_path  # organizer works on renamed path if provided
 
-        ext = path.suffix.lower()
+        ext = _extension_for(path)
         category = _category_for(ext, path)
         year, month = _resolve_year_month(path)
 
@@ -136,31 +190,16 @@ def organize_folder(
         else:
             target_dir = root / category / year / month
 
-        if not dry_run:
-            target_dir.mkdir(parents=True, exist_ok=True)
-
         target_path = target_dir / path.name
-        alias = None
-        duplicate = False
+        target_path, alias, duplicate = _dedupe_target_path(target_path, planned_targets)
+        planned_targets.add(target_path)
 
-        if target_path.exists():
-            duplicate = True
-            stem = target_path.stem
-            suffix = target_path.suffix
-            i = 1
-            while True:
-                cand = target_dir / f"{stem}_{i:02d}{suffix}"
-                if not cand.exists():
-                    target_path = cand
-                    alias = cand.name
-                    break
-                i += 1
-
-        stat = original_path.stat() if original_path.exists() else path.stat()
+        source_path = original_path if original_path.exists() else path
+        stat = source_path.stat()
 
         files.append(
             file_entry_template(
-                original_path=str(original_path),
+                original_path=str(source_path),
                 new_path=str(target_path),
                 alias=alias,
                 extension=ext,
@@ -174,7 +213,8 @@ def organize_folder(
         )
 
         summary["total_files"] += 1
-        summary[category + "s"] = summary.get(category + "s", 0) + 1
+        key = _summary_key(category)
+        summary[key] = summary.get(key, 0) + 1
         if duplicate:
             summary["duplicates"] += 1
 

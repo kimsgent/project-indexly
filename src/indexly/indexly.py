@@ -35,7 +35,7 @@ from .filetype_utils import (
     SUPPORTED_EXTENSIONS,
     get_missing_documents_dependencies,
 )
-from .db_utils import connect_db, get_tags_for_file, _sync_path_in_db
+from .db_utils import connect_db, get_tags_for_file
 from .search_core import search_fts5, search_regex, sort_search_results
 from .extract_utils import update_file_metadata
 from .rename_utils import (
@@ -855,8 +855,7 @@ def handle_extract_mtw(args):
 
 def handle_rename_file(args):
     """
-    Handle renaming of a file or all files in a directory,
-    and immediately update DB to reflect the change.
+    Handle renaming of a file or all files in a directory.
     """
 
     path = Path(args.path)
@@ -896,6 +895,7 @@ def handle_rename_file(args):
             dry_run=getattr(args, "dry_run", True),
             recursive=getattr(args, "recursive", False),
             update_db=getattr(args, "update_db", False),
+            db_path=getattr(args, "db", None),
             date_format=date_format,
             counter_format=counter_format,
             prefix=business_prefix,
@@ -926,6 +926,7 @@ def handle_rename_file(args):
         pattern=getattr(args, "pattern", None),
         dry_run=getattr(args, "dry_run", True),
         update_db=getattr(args, "update_db", False),
+        db_path=getattr(args, "db", None),
         date_format=date_format,
         counter_format=counter_format,
         prefix=business_prefix,
@@ -952,19 +953,6 @@ def handle_rename_file(args):
             patient_id=getattr(args, "patient_id", None),
             executed_by="rename-file",
         )
-
-    # --- Sync rename in DB immediately ---
-    if not getattr(args, "dry_run", True):
-        try:
-            _sync_path_in_db(str(path), str(new_path))
-        except Exception as e:
-            print(f"⚠️ DB sync after rename failed: {e}")
-
-    # --- Output ---
-    if getattr(args, "dry_run", True):
-        print(f"[Dry-run] Would rename: {path} → {new_path}")
-    else:
-        print(f"✅ Renamed and synced: {path} → {new_path}")
 
 
 def handle_update_db(args):
