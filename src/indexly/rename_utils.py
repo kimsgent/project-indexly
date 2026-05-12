@@ -1,6 +1,7 @@
 import re
 import shutil
 import logging
+import os
 import unicodedata
 from pathlib import Path
 from datetime import datetime
@@ -26,17 +27,24 @@ DEFAULT_PATTERN = "{date}-{title}"
 BUSINESS_CATEGORIES = ["invoice", "tax", "receipt", "payroll", "contract"]
 
 
-def _check_alias_column_in_metadata():
+def _resolve_filesystem_path(path: str | Path) -> Path:
+    """Resolve filesystem paths without applying DB-only case normalization."""
+    expanded = os.path.expandvars(os.path.expanduser(str(path)))
+    return Path(expanded).resolve()
+
+
+def _check_alias_column_in_metadata(db_path: str | None = None):
     """Ensure file_metadata table includes alias column before DB sync."""
     import sqlite3
     from .config import DB_FILE
 
-    if not Path(DB_FILE).exists():
-        print(f"❌ Database not found at: {DB_FILE}")
+    target_db = db_path or DB_FILE
+    if not Path(target_db).exists():
+        print(f"❌ Database not found at: {target_db}")
         return False
 
     try:
-        conn = sqlite3.connect(DB_FILE)
+        conn = sqlite3.connect(target_db)
         cursor = conn.cursor()
         cursor.execute("PRAGMA table_info(file_metadata);")
         columns = [row[1] for row in cursor.fetchall()]
@@ -55,6 +63,67 @@ def _check_alias_column_in_metadata():
     except Exception as e:
         print(f"⚠️ Database schema check failed: {e}")
         return False
+
+
+def _preflight_db_rename(
+    old_path: Path,
+    new_path: Path,
+    *,
+    schema_checked: bool = False,
+    db_path: str | None = None,
+) -> bool:
+    """Validate DB state before moving a file that will be synced."""
+    import sqlite3
+
+    from .config import DB_FILE
+
+    target_db = db_path or DB_FILE
+
+    if not schema_checked and not _check_alias_column_in_metadata(target_db):
+        return False
+
+    old_norm = normalize_path(str(old_path))
+    new_norm = normalize_path(str(new_path))
+    conn = None
+
+    try:
+        conn = sqlite3.connect(target_db)
+        cur = conn.cursor()
+
+        source_seen = False
+        for table in ("file_metadata", "file_tags", "file_index"):
+            cur.execute(f"SELECT 1 FROM {table} WHERE path = ? LIMIT 1", (old_norm,))
+            if cur.fetchone():
+                source_seen = True
+
+            cur.execute(f"SELECT 1 FROM {table} WHERE path = ? LIMIT 1", (new_norm,))
+            if cur.fetchone():
+                print(
+                    f"❌ Database already contains destination path in {table}: {new_norm}"
+                )
+                return False
+
+        if not source_seen:
+            print(f"⚠️ No existing DB row found for rename source: {old_norm}")
+
+        return True
+    except Exception as e:
+        print(f"⚠️ Database rename preflight failed: {e}")
+        return False
+    finally:
+        if conn is not None:
+            conn.close()
+
+
+def _rollback_file_move(original_path: Path, renamed_path: Path) -> bool:
+    """Best-effort rollback when DB sync fails after a filesystem move."""
+    try:
+        if renamed_path.exists() and not original_path.exists():
+            shutil.move(str(renamed_path), str(original_path))
+            return True
+    except Exception as e:
+        logger.error(f"Rollback failed after DB sync error: {e}")
+    return False
 
 
 # -------------------------------------------------
@@ -212,9 +281,11 @@ def generate_new_filename(
     )
 
     # --- Prefix substitution ---
+    prefix_value = slugify(prefix) if prefix else ""
     if "{prefix}" in pattern:
-        prefix_value = slugify(prefix) if prefix else ""
         new_name = new_name.replace("{prefix}", prefix_value)
+    elif prefix_value:
+        new_name = f"{prefix_value}-{new_name}"
 
     # --- Auto-append counter if not in pattern ---
     if "{counter}" not in pattern and counter > 0:
@@ -279,8 +350,7 @@ def execute_rename_then_organize(
         project_name=project_name,
         shoot_name=shoot_name,
         patient_id=patient_id,
-        # Pass plan for immediate movement
-        classify_raw=precomputed_plan,
+        precomputed_plan=precomputed_plan,
     )
 
 # -------------------------------------------------
@@ -293,12 +363,13 @@ def rename_file(
     pattern: str = None,
     dry_run: bool = True,
     update_db: bool = False,
+    db_path: str | None = None,
     date_format: str = "%Y%m%d",
     counter_format: str = "d",
     prefix: str = None,
 ) -> Path | None:
 
-    file_path = Path(normalize_path(path))
+    file_path = _resolve_filesystem_path(path)
     if not file_path.exists():
         print(f"⚠️ File not found: {file_path}")
         return None
@@ -336,14 +407,22 @@ def rename_file(
         if new_name == file_path.name:
             print(f"✅ Skipped (already correct): {file_path}")
         else:
-            shutil.move(str(file_path), str(new_path))
-
             if update_db:
-                if not _check_alias_column_in_metadata():
-                    print("⏹️  Rename aborted due to missing alias column.")
+                if not _preflight_db_rename(file_path, new_path, db_path=db_path):
+                    print("⏹️  Rename aborted before moving files.")
                     return None
 
-                _sync_path_in_db(str(file_path), str(new_path))
+            shutil.move(str(file_path), str(new_path))
+
+            if update_db and not _sync_path_in_db(
+                str(file_path), str(new_path), db_path=db_path
+            ):
+                rolled_back = _rollback_file_move(file_path, new_path)
+                if rolled_back:
+                    print("⏹️  Rename rolled back because DB sync failed.")
+                else:
+                    print("⚠️ Rename completed on disk, but DB sync failed.")
+                return None
 
             print(f"✅ Renamed:\n  {file_path} → {new_path}")
 
@@ -356,6 +435,7 @@ def rename_files_in_dir(
     dry_run: bool = True,
     recursive: bool = False,
     update_db: bool = False,
+    db_path: str | None = None,
     date_format: str = "%Y%m%d",
     counter_format: str = "d",
     prefix: str = None,
@@ -367,7 +447,7 @@ def rename_files_in_dir(
     - Supports recursive renaming
     - Uses pre-resolved business_prefix if provided
     """
-    dir_path = Path(normalize_path(directory))
+    dir_path = _resolve_filesystem_path(directory)
     if not dir_path.exists() or not dir_path.is_dir():
         print(f"⚠️ Directory not found: {dir_path}")
         return []
@@ -421,32 +501,46 @@ def rename_files_in_dir(
 
             break
 
-        rename_entries.append(
-            RenameEntry(
-                original_path=f,
-                renamed_path=new_path,
-            )
-        )
-
         if dry_run:
             if new_name != f.name:
                 print(f"[Dry-run] Would rename:\n  {f} → {new_path}")
             else:
                 print(f"[Dry-run] No rename needed: {f.name}")
+            rename_entries.append(
+                RenameEntry(
+                    original_path=f,
+                    renamed_path=new_path,
+                )
+            )
         else:
-            if not _check_alias_column_in_metadata():
-                print("⏹️  Rename aborted due to missing alias column.")
-                return rename_entries
-
             if new_name != f.name:
+                if update_db and not _preflight_db_rename(
+                    f, new_path, db_path=db_path
+                ):
+                    print("⏹️  Rename aborted before moving files.")
+                    return rename_entries
+
                 shutil.move(str(f), str(new_path))
 
-                if update_db:
-                    _sync_path_in_db(str(f), str(new_path))
+                if update_db and not _sync_path_in_db(
+                    str(f), str(new_path), db_path=db_path
+                ):
+                    rolled_back = _rollback_file_move(f, new_path)
+                    if rolled_back:
+                        print("⏹️  Rename rolled back because DB sync failed.")
+                    else:
+                        print("⚠️ Rename completed on disk, but DB sync failed.")
+                    return rename_entries
 
                 print(f"✅ Renamed:\n  {f} → {new_path}")
             else:
                 print(f"✅ Skipped (already correct): {f.name}")
+            rename_entries.append(
+                RenameEntry(
+                    original_path=f,
+                    renamed_path=new_path,
+                )
+            )
 
         counter += 1
 

@@ -40,20 +40,25 @@ Organize 🗂️ → Validate/List 📋 → Backup 💾 → Index 📦 → Searc
 ## **CLI Usage**
 
 ```bash
-indexly compare path_a path_b [OPTIONS]
+indexly compare path_a [path_b] [OPTIONS]
 ```
 
 ### **Options**
 
 | **Option**                | **Description**                                      |
 | ------------------------- | ---------------------------------------------------- |
-| `--threshold THRESHOLD`   | Similarity tolerance (0.0 exact, 1.0 very loose)     |
+| `--threshold THRESHOLD`   | Similarity tolerance / maximum difference (0.0 exact, 1.0 very loose) |
 | `--context CONTEXT`       | Unchanged lines shown around diffs (default: 3)      |
 | `--extensions EXTENSIONS` | Comma-separated extensions to include (`.json,.md`)  |
-| `--ignore IGNORE`         | Comma-separated paths to ignore (`.git,__pycache__`) |
+| `--ignore IGNORE`         | Comma-separated names/paths to ignore in addition to `.indexlyignore` |
+| `--ignore-file PATH`      | Use an explicit ignore file instead of folder-local `.indexlyignore` |
+| `--no-project-ignore`     | Disable automatic `.indexlyignore` / preset ignore loading |
+| `--full-diff`             | Scan all lines for large text files while keeping diff output bounded |
 | `--summary-only`          | Folder summary without per-file diffs                |
 | `--json`                  | Output full comparison as JSON                       |
 | `--quiet`                 | Suppress output (use exit code only)                 |
+
+If `path_b` is omitted, Indexly compares `path_a` with a same-named file or folder in the current directory. It refuses ambiguous cases, including comparing a path to itself.
 
 ----
 
@@ -106,7 +111,7 @@ File Comparison
 
 ## **Context Folding**
 
-Large unchanged blocks are automatically collapsed.
+Large unchanged blocks are automatically collapsed. For very large text files, Indexly protects the CLI from expensive whole-file similarity and unified diff generation by switching to a bounded streaming line preview. `--context` controls how many unchanged lines are included around each previewed change. Use `--full-diff` when you want Indexly to scan the whole large file line-by-line while still keeping terminal output bounded.
 
 Example:
 
@@ -122,6 +127,7 @@ Example:
 
 ```bash
 indexly compare file_a.json file_b.json --context 5
+indexly compare large_a.csv large_b.csv --full-diff --context 5
 ```
 
 Shows 5 unchanged lines above and below each diff while folding larger blocks.
@@ -150,7 +156,11 @@ indexly compare "E:/project/folder_a" "E:/project/folder_b" --summary-only
 
 ```bash
 indexly compare folder_a folder_b --extensions .json --ignore __pycache__
+indexly compare folder_a folder_b --ignore-file /path/to/.indexlyignore
+indexly compare folder_a folder_b --no-project-ignore
 ```
+
+Folder comparison automatically applies `.indexlyignore` rules from both comparison roots. Explicit `--ignore` entries are additive.
 
 ----
 
@@ -189,6 +199,7 @@ Ideal for parsing, reporting, or downstream automation.
     - Generates **line-level diffs** with folding
 - `compare_folders()`:
     - Tracks identical, similar, modified, and missing files
+    - Applies `.indexlyignore` rules consistently with indexing and organizer listing
     - Returns structured results for rendering or JSON export
 - Renderers apply **GitHub-style coloring** and default **3-line context**
 

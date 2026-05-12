@@ -18,6 +18,8 @@ class FileCompareResult:
     identical: bool
     similarity: Optional[float] = None
     diffs: List[DiffLine] = field(default_factory=list)
+    extraction_error: Optional[str] = None
+    comparison_warning: Optional[str] = None
 
 
 @dataclass(slots=True)

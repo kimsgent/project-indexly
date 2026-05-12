@@ -38,6 +38,7 @@ def handle_organize(
     shoot_name: str | None = None,
     patient_id: str | None = None,
     recursive: bool = False,
+    precomputed_plan: dict | None = None,
 ):
     try:
         folder_path = Path(folder).resolve()
@@ -50,22 +51,11 @@ def handle_organize(
         else:
             profile_category = None
 
-        if profile and not classify:
-            execute_profile_scaffold(
-                root=folder_path,
-                profile=profile,
-                category=profile_category,
-                apply=apply,
-                dry_run=dry_run,
-                executed_by=executed_by,
-                project_name=project_name,
-                shoot_name=shoot_name,
-                patient_id=patient_id,
-            )
-            return None, {}
+        if (classify or classify_raw) and not profile:
+            raise ValueError("--classify and --classify-raw require --profile.")
 
         # 2️⃣ PROFILE CLASSIFICATION
-        if profile and (classify or classify_raw):
+        if profile and (classify or classify_raw or precomputed_plan):
             execute_profile_placement(
                 source_root=folder_path,
                 destination_root=folder_path,
@@ -79,10 +69,26 @@ def handle_organize(
                 executed_by=executed_by,
                 recursive=recursive,
                 classify_raw=classify_raw,
+                precomputed_plan=precomputed_plan,
             )
             return None, {}
 
-        # 3️⃣ LEGACY ORGANIZER
+        # 3️⃣ PROFILE SCAFFOLD ONLY
+        if profile:
+            execute_profile_scaffold(
+                root=folder_path,
+                profile=profile,
+                category=profile_category,
+                apply=apply,
+                dry_run=dry_run,
+                executed_by=executed_by,
+                project_name=project_name,
+                shoot_name=shoot_name,
+                patient_id=patient_id,
+            )
+            return None, {}
+
+        # 4️⃣ LEGACY ORGANIZER
         plan, backup_mapping = execute_organizer(
             root=folder_path,
             sort_by=sort_by,
@@ -95,6 +101,7 @@ def handle_organize(
             lister_date=lister_date,
             lister_duplicates=lister_duplicates,
             dry_run=dry_run,
+            precomputed_plan=precomputed_plan,
         )
 
         return plan, backup_mapping
