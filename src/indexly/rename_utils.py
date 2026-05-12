@@ -442,7 +442,8 @@ def rename_files_in_dir(
 ):
     """
     Rename all files in a directory:
-    - Counter resets per date
+    - Explicit {counter} resets per date
+    - Implicit counter suffixes are used only for collision avoidance
     - Optionally syncs DB if update_db=True
     - Supports recursive renaming
     - Uses pre-resolved business_prefix if provided
@@ -455,7 +456,9 @@ def rename_files_in_dir(
     files = sorted(dir_path.rglob("*") if recursive else dir_path.glob("*"))
 
     last_date = None
-    counter = 0
+    sequence_counter = 0
+    uses_explicit_counter = "{counter}" in (pattern or DEFAULT_PATTERN)
+    planned_targets: set[str] = set()
     rename_entries: list[RenameEntry] = []
 
     for f in files:
@@ -480,8 +483,10 @@ def rename_files_in_dir(
             date_str = datetime.fromtimestamp(f.stat().st_mtime).strftime(date_format)
 
         if date_str != last_date:
-            counter = 0
+            sequence_counter = 0
             last_date = date_str
+
+        counter = sequence_counter if uses_explicit_counter else 0
 
         while True:
             new_name = generate_new_filename(
@@ -494,8 +499,9 @@ def rename_files_in_dir(
             )
 
             new_path = f.parent / new_name
+            target_key = normalize_path(str(new_path))
 
-            if new_path.exists() and new_path != f:
+            if new_path != f and (new_path.exists() or target_key in planned_targets):
                 counter += 1
                 continue
 
@@ -512,6 +518,7 @@ def rename_files_in_dir(
                     renamed_path=new_path,
                 )
             )
+            planned_targets.add(normalize_path(str(new_path)))
         else:
             if new_name != f.name:
                 if update_db and not _preflight_db_rename(
@@ -541,7 +548,9 @@ def rename_files_in_dir(
                     renamed_path=new_path,
                 )
             )
+            planned_targets.add(normalize_path(str(new_path)))
 
-        counter += 1
+        if uses_explicit_counter:
+            sequence_counter = counter + 1
 
     return rename_entries

@@ -1,3 +1,6 @@
+import os
+from datetime import datetime
+
 from indexly.cli_utils import build_parser
 from indexly.db_utils import connect_db
 from indexly.path_utils import normalize_path
@@ -23,6 +26,11 @@ def _insert_index_rows(path, db_path=None):
     return norm
 
 
+def _set_mtime(path, year=2026, month=3, day=12):
+    timestamp = datetime(year, month, day, 12, 0, 0).timestamp()
+    os.utime(path, (timestamp, timestamp))
+
+
 def test_rename_files_without_db_update_does_not_require_metadata_schema(tmp_path):
     source = tmp_path / "report.txt"
     source.write_text("hello", encoding="utf-8")
@@ -38,6 +46,48 @@ def test_rename_files_without_db_update_does_not_require_metadata_schema(tmp_pat
     assert renamed.exists()
     assert not source.exists()
     assert entries[0].renamed_path == renamed
+
+
+def test_directory_rename_uses_implicit_counter_only_for_collisions(tmp_path):
+    work_dir = tmp_path / "files"
+    work_dir.mkdir()
+    for name in ("autodoctor.db", "report.json", "sakila.db"):
+        path = work_dir / name
+        path.write_text("hello", encoding="utf-8")
+        _set_mtime(path)
+
+    entries = rename_files_in_dir(
+        str(work_dir),
+        pattern="{date}-{title}",
+        date_format="%y%m%d",
+        dry_run=True,
+    )
+
+    renamed_names = [entry.renamed_path.name for entry in entries]
+    assert renamed_names == [
+        "260312-autodoctor.db",
+        "260312-report.json",
+        "260312-sakila.db",
+    ]
+
+
+def test_directory_rename_tracks_planned_dry_run_collisions(tmp_path):
+    work_dir = tmp_path / "files"
+    work_dir.mkdir()
+    for name in ("alpha.txt", "alpha!.txt"):
+        path = work_dir / name
+        path.write_text("hello", encoding="utf-8")
+        _set_mtime(path)
+
+    entries = rename_files_in_dir(
+        str(work_dir),
+        pattern="{date}-{title}",
+        date_format="%y%m%d",
+        dry_run=True,
+    )
+
+    renamed_names = {entry.renamed_path.name for entry in entries}
+    assert renamed_names == {"260312-alpha.txt", "260312-alpha-1.txt"}
 
 
 def test_rename_file_update_db_syncs_metadata_tags_and_search_index(tmp_path):
