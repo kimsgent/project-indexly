@@ -3,7 +3,11 @@ import subprocess
 import shutil
 from pathlib import Path
 
-ZSTD_INSTALL_HINT = "Install zstd and retry. On Windows: winget install Facebook.Zstandard"
+ZSTD_INSTALL_HINT = (
+    "Install zstd and retry. On Windows: winget install Facebook.Zstandard. "
+    "On macOS: brew install zstd. "
+    "On Debian/Ubuntu: sudo apt-get install zstd."
+)
 
 def detect_best_compression() -> str:
     zstd_exe = shutil.which("zstd")

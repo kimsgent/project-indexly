@@ -3,7 +3,7 @@ title: "Backup & Restore"
 description: "Incremental, encrypted backups with automatic scheduling and reliable restore chains in Indexly."
 slug: "backup-restore"
 weight: 30
-lastmod: "2026-04-23"
+lastmod: "2026-05-13"
 type: docs
 draft: false
 keywords: [
@@ -142,11 +142,13 @@ Indexly automatically selects the best available compression:
 
 Detection is runtime-based. If `zstd` is not available, Indexly falls back to gzip when creating new backups.
 
-When restoring existing `.tar.zst` archives, Indexly can use either the Python `zstandard` package or the `zstd` CLI. On Windows, install the CLI with:
+When restoring existing `.tar.zst` archives, Indexly can use either the Python `zstandard` package or the `zstd` CLI.
 
-```powershell
-winget install Facebook.Zstandard
-```
+Install `zstd` by platform:
+
+- Windows (PowerShell): `winget install Facebook.Zstandard`
+- macOS: `brew install zstd`
+- Debian/Ubuntu: `sudo apt-get install zstd`
 
 ----
 
