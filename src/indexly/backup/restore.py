@@ -2,6 +2,7 @@
 # src/indexly/backup/restore.py
 # ------------------------------
 from pathlib import Path
+import os
 import shutil
 import tempfile
 import json
@@ -15,7 +16,7 @@ from .registry import load_registry
 from .decrypt import decrypt_archive, is_encrypted
 from .extract import extract_archive
 from .metadata_restore import apply_metadata
-from .verify import verify_checksum
+from .verify import find_checksum_file, verify_checksum
 from .rotation import rotate_logs
 from .manifest import has_effective_changes
 from .logging_utils import (
@@ -29,6 +30,107 @@ from .logging_utils import (
     RESTORE_ABORT,
 )
 
+
+def _archive_key(value: str) -> str:
+    path = Path(value)
+    try:
+        path = path.resolve(strict=False)
+    except Exception:
+        path = path.absolute()
+    return os.path.normcase(str(path))
+
+
+def _find_registry_entry_by_archive(backups: list[dict], archive_ref: str) -> dict | None:
+    archive_key = _archive_key(archive_ref)
+    archive_name = Path(archive_ref).name
+
+    for backup in backups:
+        if _archive_key(backup["archive"]) == archive_key:
+            return backup
+
+    return next((backup for backup in backups if Path(backup["archive"]).name == archive_name), None)
+
+
+def _build_restore_steps(entry: dict, registry_backups: list[dict]) -> list[dict]:
+    restore_steps: list[dict] = []
+    current = entry
+    seen: set[str] = set()
+
+    while True:
+        current_key = _archive_key(current["archive"])
+        if current_key in seen:
+            raise ValueError("Restore chain contains a cycle")
+        seen.add(current_key)
+
+        restore_steps.insert(0, {"archive": current["archive"], "manifest": current["manifest"]})
+        if current.get("type") == "full":
+            break
+
+        chain = current.get("chain", [])
+        if not chain:
+            break
+
+        parent_ref = chain[0].get("archive")
+        if not parent_ref:
+            raise ValueError("Restore chain is missing a parent archive")
+
+        current = _find_registry_entry_by_archive(registry_backups, parent_ref)
+        if current is None:
+            raise ValueError("Restore chain is broken")
+
+    return restore_steps
+
+
+def _remove_path(path: Path):
+    if path.is_dir() and not path.is_symlink():
+        shutil.rmtree(path, ignore_errors=True)
+    elif path.exists() or path.is_symlink():
+        path.unlink()
+
+
+def _move_data_contents(data_dir: Path, staging: Path):
+    if not data_dir.exists():
+        return
+
+    for item in data_dir.rglob("*"):
+        rel = item.relative_to(data_dir)
+        dest = staging / rel
+        if item.is_dir() and not item.is_symlink():
+            dest.mkdir(parents=True, exist_ok=True)
+            continue
+
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        _remove_path(dest)
+        shutil.move(str(item), str(dest))
+
+
+def _prune_to_snapshot(staging: Path, manifest: dict, metadata: dict):
+    keep = set(manifest)
+    keep.update(metadata)
+
+    for item in sorted(staging.rglob("*"), key=lambda p: len(p.parts), reverse=True):
+        rel = item.relative_to(staging).as_posix()
+        if rel in keep:
+            continue
+        if item.is_dir() and not item.is_symlink() and any(item.iterdir()):
+            continue
+        _remove_path(item)
+
+
+def _apply_extracted_step(workspace: Path, staging: Path):
+    manifest_path = workspace / "manifest.json"
+    metadata_path = workspace / "metadata.json"
+
+    manifest = json.loads(manifest_path.read_text("utf-8")) if manifest_path.exists() else {}
+    metadata = json.loads(metadata_path.read_text("utf-8")) if metadata_path.exists() else {}
+
+    _move_data_contents(workspace / "data", staging)
+    _prune_to_snapshot(staging, manifest, metadata)
+
+    if metadata:
+        apply_metadata(metadata, staging)
+
+
 # ------------------------------
 # Restore function
 # ------------------------------
@@ -36,6 +138,7 @@ def restore_backup(
     backup_name: str,
     target: Path | None = None,
     password: str | None = None,
+    dry_run: bool = False,
 ):
     dirs = ensure_backup_dirs()
     ts = time.strftime("%Y-%m-%d_%H%M%S")
@@ -77,28 +180,17 @@ def restore_backup(
         logger.error(msg, extra={"event": RESTORE_ABORT, "context": {"backup": backup_name, "restore_id": restore_id}})
         return
 
-    # Build restore chain
-    restore_steps: list[dict] = []
-    if entry["type"] == "full":
-        restore_steps = [{"archive": entry["archive"], "manifest": entry["manifest"]}]
-    else:
-        registry_backups = registry.get("backups", [])
-        current = entry
-        while True:
-            restore_steps.insert(0, {"archive": current["archive"], "manifest": current["manifest"]})
-            chain = current.get("chain", [])
-            if not chain:
-                break
-            parent_archive = Path(chain[0]["archive"]).name
-            current = next((b for b in registry_backups if Path(b["archive"]).name == parent_archive), None)
-            if current is None:
-                msg = "Restore chain is broken"
-                print(f"❌ {msg}")
-                logger.error(msg, extra={"event": RESTORE_ABORT, "context": {"backup": backup_name, "restore_id": restore_id}})
-                return
+    try:
+        restore_steps = _build_restore_steps(entry, registry.get("backups", []))
+    except ValueError as e:
+        msg = str(e)
+        print(f"❌ {msg}")
+        logger.error(msg, extra={"event": RESTORE_ABORT, "context": {"backup": backup_name, "restore_id": restore_id}})
+        return
 
     target = target or Path.cwd()
-    target.mkdir(parents=True, exist_ok=True)
+    if not dry_run:
+        target.mkdir(parents=True, exist_ok=True)
 
     dangerous_targets = {Path("/").resolve(), Path.home().resolve(), dirs["root"].resolve()}
 
@@ -116,7 +208,8 @@ def restore_backup(
         logger.error(msg, extra={"event": RESTORE_ABORT, "context": {"target": str(resolved_target), "restore_id": restore_id}})
         return
 
-    print(f"📂 Restoring backup '{backup_name}' to '{target}'...\n")
+    action = "Dry-running restore" if dry_run else "Restoring"
+    print(f"📂 {action} backup '{backup_name}' to '{target}'...\n")
     logger.info("Resolved restore target", extra={"event": RESTORE_START, "context": {"target": str(resolved_target), "restore_id": restore_id}})
 
     with tempfile.TemporaryDirectory() as tmp_dir:
@@ -126,7 +219,7 @@ def restore_backup(
         workspace = tmp / "workspace"
         workspace.mkdir(parents=True, exist_ok=True)
 
-        staging = target.parent / (target.name + ".restore_tmp")
+        staging = tmp / "dry_run_staging" if dry_run else target.parent / (target.name + ".restore_tmp")
         if staging.exists():
             shutil.rmtree(staging, ignore_errors=True)
         staging.mkdir(parents=True)
@@ -141,7 +234,7 @@ def restore_backup(
 
             try:
                 print(f"🔍 Verifying checksum for {archive.name}...")
-                verify_checksum(archive, archive.with_suffix(".sha256"))
+                verify_checksum(archive, find_checksum_file(archive))
                 print("✅ Checksum verified")
                 logger.info("Checksum verified", extra={"event": RESTORE_VERIFY, "context": {"archive": str(archive), "restore_id": restore_id}})
             except Exception:
@@ -183,25 +276,42 @@ def restore_backup(
             print("✅ Extraction successful\n")
             logger.info("Extraction completed", extra={"event": RESTORE_EXTRACT, "context": {"archive": str(work_file), "restore_id": restore_id}})
 
-            meta = workspace / "metadata.json"
-            if meta.exists():
+            metadata_path = workspace / "metadata.json"
+            if metadata_path.exists():
                 print("🛠 Applying metadata...")
-                apply_metadata(json.loads(meta.read_text("utf-8")), workspace)
+
+            _apply_extracted_step(workspace, staging)
+
+            if metadata_path.exists():
                 print("✅ Metadata applied")
                 logger.info("Metadata applied", extra={"event": RESTORE_METADATA, "context": {"archive": str(work_file), "restore_id": restore_id}})
-
-            for item in workspace.iterdir():
-                if item.name == "metadata.json":
-                    continue
-                dest = staging / item.name
-                if dest.exists():
-                    shutil.rmtree(dest, ignore_errors=True) if dest.is_dir() else dest.unlink()
-                shutil.move(str(item), dest)
 
         if not any(staging.iterdir()):
             print("❌ Restore produced empty snapshot\n🚫 Restore aborted")
             logger.error("Restore produced empty snapshot", extra={"event": RESTORE_ABORT, "context": {"restore_id": restore_id}})
             shutil.rmtree(staging, ignore_errors=True)
+            return
+
+        if dry_run:
+            file_count = sum(1 for item in staging.rglob("*") if item.is_file())
+            dir_count = sum(1 for item in staging.rglob("*") if item.is_dir())
+            print("✅ Restore dry-run completed successfully")
+            print(f"   Archives checked: {len(restore_steps)}")
+            print(f"   Final snapshot: {file_count} file(s), {dir_count} directorie(s)")
+            print(f"   No files were written to: {target}")
+            logger.info(
+                "Restore dry-run completed successfully",
+                extra={
+                    "event": RESTORE_COMPLETE,
+                    "context": {
+                        "backup": backup_name,
+                        "restore_id": restore_id,
+                        "dry_run": True,
+                        "files": file_count,
+                        "directories": dir_count,
+                    },
+                },
+            )
             return
 
         for item in staging.iterdir():

@@ -6,7 +6,6 @@ import hashlib
 import json
 import logging
 import tempfile
-import shutil
 from .extract import extract_archive
 
 logger = logging.getLogger("indexly_manifest")
@@ -33,8 +32,32 @@ def build_manifest(root_path: Path) -> dict:
 
 
 def load_manifest(path: Path) -> dict:
-    return json.loads(path.read_text(encoding="utf-8"))
+    try:
+        manifest = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid manifest JSON: {path}") from exc
 
+    if not isinstance(manifest, dict):
+        raise ValueError(f"Invalid manifest structure: expected object in {path}")
+    return manifest
+
+
+
+def _metadata_changed(previous: dict, current: dict) -> bool:
+    previous_checksum = previous.get("checksum")
+    current_checksum = current.get("checksum")
+    if previous_checksum and current_checksum:
+        return previous_checksum != current_checksum
+
+    if previous.get("size") != current.get("size"):
+        return True
+
+    previous_mtime = previous.get("mtime")
+    current_mtime = current.get("mtime")
+    if previous_mtime is None or current_mtime is None:
+        return True
+
+    return abs(float(previous_mtime) - float(current_mtime)) > 1e-6
 
 
 def diff_manifests(previous: dict, current: dict, include_deletions: bool = False) -> tuple[dict, list]:
@@ -58,12 +81,8 @@ def diff_manifests(previous: dict, current: dict, include_deletions: bool = Fals
         if not prev_meta:
             # New file
             diff[f] = meta
-        else:
-            # Modified file if checksum differs
-            prev_checksum = prev_meta.get("checksum")
-            curr_checksum = meta.get("checksum")
-            if prev_checksum != curr_checksum:
-                diff[f] = meta
+        elif _metadata_changed(prev_meta, meta):
+            diff[f] = meta
 
     # Detect deletions
     if include_deletions:
@@ -84,18 +103,12 @@ def has_effective_changes(archive: Path) -> bool:
       Always returns True. A full backup defines the base snapshot
       and must be applied.
 
-    - INCREMENTAL backup (current format):
-      Returns False if:
-        * manifest.json exists AND
-        * there is no "data/" directory OR "data/" is empty.
-
-      In that case, the archive has no changed files to apply.
-      (Deletions are already reflected in the snapshot-style manifest
-       and are encoded by the absence of entries.)
+    - INCREMENTAL backup:
+      Returns True when a manifest is readable so deletion-only
+      incrementals are replayed instead of silently skipped.
 
     This function performs a lightweight extraction into a temporary
-    directory, inspects the manifest and the "data/" directory, then
-    discards the extracted files.
+    directory, inspects the manifest, then discards the extracted files.
 
     NOTE: This is intentionally conservative and will err on the side
     of returning True if anything looks unusual.
@@ -151,27 +164,8 @@ def has_effective_changes(archive: Path) -> bool:
             f"Entries: {len(manifest_data) if isinstance(manifest_data, dict) else 'unknown'}"
         )
 
-        # Check the data directory for any changed files.
-        data_dir = tmp / "data"
-        if not data_dir.exists():
-            logger.info(
-                f"No 'data/' directory in {archive}. "
-                f"Assuming snapshot-only or empty incremental → no effective changes."
-            )
-            return False
-
-        # If 'data/' exists but has no files, then this incremental carries no file changes.
-        # Deletions are already encoded in the snapshot manifest produced by backup.
-        has_files = any(data_dir.rglob("*"))
-        if not has_files:
-            logger.info(
-                f"'data/' directory in {archive} is empty. "
-                f"No changed files → archive has no effective changes."
-            )
-            return False
-
         logger.info(
-            f"'data/' in {archive} contains changed files. "
-            f"Archive has effective changes and should be applied."
+            f"Archive {archive} has a readable manifest. "
+            f"Treating it as effective so deletion-only incrementals are applied."
         )
         return True
