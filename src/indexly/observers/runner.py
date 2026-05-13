@@ -1,4 +1,6 @@
 import json
+import logging
+import tempfile
 import time
 from pathlib import Path
 from typing import Any
@@ -16,14 +18,37 @@ from .metrics import MetricsCollector, ObserverMetrics
 from .registry import emit_event, get_enabled_observers
 from .snapshot_store import load_snapshot, save_snapshot
 
-_TS = utc_now().strftime("%Y%m%dT%H%M%SZ")
 
-observer_logger = get_logger(
-    name="indexly.observers",
-    log_dir=Path.home() / ".indexly" / "logs",
-    ts=_TS,
-    component="observer",
-)
+def _build_observer_logger(log_dir: Path | None = None) -> logging.Logger:
+    ts = utc_now().strftime("%Y%m%dT%H%M%SZ")
+    target_log_dir = Path(log_dir) if log_dir else (Path.home() / ".indexly" / "logs")
+
+    try:
+        return get_logger(
+            name="indexly.observers",
+            log_dir=target_log_dir,
+            ts=ts,
+            component="observer",
+        )
+    except OSError:
+        fallback_log_dir = Path(tempfile.gettempdir()) / "indexly" / "logs"
+        try:
+            return get_logger(
+                name="indexly.observers",
+                log_dir=fallback_log_dir,
+                ts=ts,
+                component="observer",
+            )
+        except OSError:
+            logger = logging.getLogger("indexly.observers")
+            logger.setLevel(logging.INFO)
+            logger.propagate = False
+            logger.handlers.clear()
+            logger.addHandler(logging.NullHandler())
+            return logger
+
+
+observer_logger = _build_observer_logger()
 
 
 def _observer_sort_key(observer) -> int:
@@ -239,14 +264,7 @@ def handle_observe_run(
     # Update logger if a custom log_dir is passed
     global observer_logger
     if log_dir:
-
-        _TS = utc_now().strftime("%Y%m%dT%H%M%SZ")
-        observer_logger = get_logger(
-            name="indexly.observers",
-            log_dir=Path(log_dir),
-            ts=_TS,
-            component="observer",
-        )
+        observer_logger = _build_observer_logger(Path(log_dir))
 
     if not target.exists():
         raise FileNotFoundError(f"Path does not exist: {target}")

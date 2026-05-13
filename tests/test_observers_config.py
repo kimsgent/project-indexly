@@ -1,7 +1,9 @@
 import logging
+from pathlib import Path
 
+import indexly.observers.config as config_module
 import indexly.observers.field_observer as field_observer_module
-from indexly.observers.config import validate_config
+from indexly.observers.config import get_config_path, validate_config
 from indexly.observers.field_observer import FieldObserver
 
 
@@ -55,3 +57,15 @@ def test_field_observer_skips_malformed_rules(monkeypatch, tmp_path, caplog):
 
     assert extracted == {"version": "1.2.3"}
     assert "missing 'pattern'" in caplog.text
+
+
+def test_get_config_path_falls_back_when_home_is_not_writable(monkeypatch, tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    temp_root = tmp_path / "tmp"
+
+    monkeypatch.setattr(config_module.Path, "home", staticmethod(lambda: home))
+    monkeypatch.setattr(config_module, "_directory_is_writable", lambda _: False)
+    monkeypatch.setattr(config_module.tempfile, "gettempdir", lambda: str(temp_root))
+
+    assert get_config_path() == Path(temp_root) / "indexly" / config_module.CONFIG_FILENAME

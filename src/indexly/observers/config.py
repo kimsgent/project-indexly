@@ -7,15 +7,31 @@ Purpose:
 """
 
 import json
+import os
+import tempfile
 from pathlib import Path
 
 CONFIG_FILENAME = ".indexly.observers.json"
 
 
+def _fallback_config_path() -> Path:
+    return Path(tempfile.gettempdir()) / "indexly" / CONFIG_FILENAME
+
+
+def _directory_is_writable(directory: Path) -> bool:
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return False
+    return os.access(directory, os.W_OK | os.X_OK)
+
+
 def get_config_path() -> Path:
-    """Return full path to the observer config file in the user home directory."""
+    """Return full path to the observer config file."""
     home = Path.home()
-    return home / CONFIG_FILENAME
+    if _directory_is_writable(home):
+        return home / CONFIG_FILENAME
+    return _fallback_config_path()
 
 
 def default_config() -> dict:
@@ -163,10 +179,20 @@ def load_config() -> dict:
 
 
 def save_config(config: dict) -> None:
-    """Save config JSON to user home directory."""
+    """Save config JSON to disk, falling back to temp storage when needed."""
     config_path = get_config_path()
-    config_path.parent.mkdir(parents=True, exist_ok=True)
-    with config_path.open("w", encoding="utf-8") as f:
+    try:
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        with config_path.open("w", encoding="utf-8") as f:
+            json.dump(config, f, indent=2)
+        return
+    except OSError:
+        fallback_path = _fallback_config_path()
+        if fallback_path == config_path:
+            raise
+
+    fallback_path.parent.mkdir(parents=True, exist_ok=True)
+    with fallback_path.open("w", encoding="utf-8") as f:
         json.dump(config, f, indent=2)
 
 

@@ -1,7 +1,8 @@
+import logging
 from pathlib import Path
 
 import indexly.observers.runner as runner_module
-from indexly.observers.runner import _snapshot_identity, run_observers
+from indexly.observers.runner import _build_observer_logger, _snapshot_identity, run_observers
 
 
 class DependencyObserver:
@@ -87,3 +88,26 @@ def test_observer_dependency_execution_order(monkeypatch, tmp_path):
 def test_snapshot_identity_uses_health_patient_id():
     assert _snapshot_identity({"patient_id": "P001", "entity_key": "report"}) == "P001"
     assert _snapshot_identity({"identity": "custom", "patient_id": "P001"}) == "custom"
+
+
+def test_build_observer_logger_falls_back_to_temp_dir(monkeypatch, tmp_path):
+    calls = []
+
+    def fake_get_logger(*, name, log_dir, ts, component):
+        calls.append(log_dir)
+        if len(calls) == 1:
+            raise PermissionError("home log dir is not writable")
+        logger = logging.getLogger("indexly.observers.test")
+        logger.handlers.clear()
+        logger.addHandler(logging.NullHandler())
+        logger.propagate = False
+        return logger
+
+    monkeypatch.setattr(runner_module, "get_logger", fake_get_logger)
+    monkeypatch.setattr(runner_module.tempfile, "gettempdir", lambda: str(tmp_path))
+
+    logger = _build_observer_logger()
+
+    assert logger is not None
+    assert len(calls) == 2
+    assert calls[1] == tmp_path / "indexly" / "logs"
