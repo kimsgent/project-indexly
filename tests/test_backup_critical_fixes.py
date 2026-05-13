@@ -1,6 +1,7 @@
 import os
 import shutil
 import tarfile
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -11,7 +12,7 @@ from indexly.backup.encrypt import encrypt_archive
 from indexly.backup.manifest import diff_manifests
 from indexly.backup.metadata import serialize_metadata
 from indexly.backup.metadata_restore import apply_metadata
-from indexly.backup.registry import load_registry, save_registry
+from indexly.backup.registry import load_registry, register_backup, save_registry
 from indexly.backup.rotation import apply_rotation
 from indexly.backup.validation import (
     validate_backup_destination,
@@ -260,3 +261,45 @@ def test_auto_script_falls_back_to_python_module_when_indexly_cli_missing(tmp_pa
     assert 'set "PYTHON_EXE=C:\\Python\\python.exe"' in content
     assert '-m indexly backup "%BACKUP_SOURCE%"' in content
     assert 'if not exist "%LOG_DIR%" mkdir "%LOG_DIR%"' in content
+
+
+def test_register_backup_allows_tmp_archive_inside_registry_root(tmp_path):
+    registry_root = tmp_path / "backups"
+    registry_root.mkdir(parents=True)
+    registry_path = registry_root / "index.json"
+    archive = registry_root / "full" / "full_2026-01-01_120000.tar.gz"
+    archive.parent.mkdir(parents=True)
+    archive.write_bytes(b"payload")
+
+    register_backup(
+        registry_path,
+        {
+            "type": "full",
+            "archive": str(archive),
+            "manifest": "manifest.json",
+            "encrypted": False,
+            "chain": [],
+        },
+    )
+
+    registry = load_registry(registry_path)
+    assert registry["backups"][-1]["archive"] == str(archive)
+
+
+def test_register_backup_rejects_external_tmp_archive(tmp_path):
+    registry_root = tmp_path / "backups"
+    registry_root.mkdir(parents=True)
+    registry_path = registry_root / "index.json"
+    external_tmp_archive = Path(tempfile.gettempdir()) / "indexly-external" / "full.tar.gz"
+
+    with pytest.raises(ValueError, match="temporary path"):
+        register_backup(
+            registry_path,
+            {
+                "type": "full",
+                "archive": str(external_tmp_archive),
+                "manifest": "manifest.json",
+                "encrypted": False,
+                "chain": [],
+            },
+        )
