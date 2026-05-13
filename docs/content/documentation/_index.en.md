@@ -95,6 +95,7 @@ flowchart LR
 | Analyze AutoDoctor report JSON, telemetry JSON, or SQLite output | [Analyze AutoDoctor Artifacts](analyze-autodoctor-artifacts.md) |
 | Improve indexing quality and ignore rules | [Ignore Rules & Index Hygiene](ignore-rules-index-hygiene.md) |
 | Organize folders and inspect logs | [Organizer](organizer.md), [Lister](lister.md) |
+| Run semantic observers and audit stored snapshots | [Observers](observers.md) |
 | Analyze generic SQLite datasets deeply | [Analyze SQLite Databases](analyze-sqlite-databases.md) |
 | Run statistical inference for CSV datasets | [Inference Docs](/inference/) |
 | Compare files and folders safely | [File & Folder Comparison](file-folder-comparison.md) |

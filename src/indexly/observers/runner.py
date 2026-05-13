@@ -1,4 +1,5 @@
 import json
+import time
 from pathlib import Path
 from typing import Any
 from typing import Optional
@@ -9,7 +10,10 @@ from indexly.compare.hash_utils import sha256
 from indexly.backup.logging_utils import get_logger, OBSERVER_EVENT, OBSERVER_ERROR
 from indexly.time_utils import utc_now
 
-from .registry import get_observers
+from .aggregator import aggregate_events
+from .config import should_emit_event
+from .metrics import MetricsCollector, ObserverMetrics
+from .registry import emit_event, get_enabled_observers
 from .snapshot_store import load_snapshot, save_snapshot
 
 _TS = utc_now().strftime("%Y%m%dT%H%M%SZ")
@@ -22,7 +26,44 @@ observer_logger = get_logger(
 )
 
 
-def run_observers(file_path: Path, metadata: dict[str, Any] | None = None) -> None:
+def _observer_sort_key(observer) -> int:
+    return 1 if getattr(observer, "dependencies", []) else 0
+
+
+def _validate_state(observer_name: str, state: Any) -> dict[str, Any]:
+    if not isinstance(state, dict):
+        raise TypeError(
+            f"{observer_name}.extract() must return dict, got {type(state)}"
+        )
+    return state
+
+
+def _validate_events(observer_name: str, events: Any) -> list[dict]:
+    if not isinstance(events, list):
+        raise TypeError(
+            f"{observer_name}.compare() must return list, got {type(events)}"
+        )
+    if not all(isinstance(event, dict) for event in events):
+        raise TypeError(f"{observer_name}.compare() events must all be dicts")
+    return events
+
+
+def _snapshot_identity(state: dict[str, Any]) -> str | None:
+    identity = state.get("identity")
+    if identity is not None:
+        return str(identity)
+
+    for key in ("patient_id", "entity_key"):
+        value = state.get(key)
+        if value is not None:
+            return str(value)
+
+    return None
+
+
+def run_observers(
+    file_path: Path, metadata: dict[str, Any] | None = None
+) -> list[dict]:
     """
     Run all registered observers on a file and provide user-friendly terminal feedback.
     """
@@ -35,37 +76,73 @@ def run_observers(file_path: Path, metadata: dict[str, Any] | None = None) -> No
         hash_value = sha256(file_path)
 
     metadata["hash"] = hash_value
+    observer_outputs: dict[str, tuple[dict | None, dict, list[dict]]] = {}
+    emitted_events: list[dict] = []
 
-    for observer in get_observers():
+    for observer in sorted(get_enabled_observers(), key=_observer_sort_key):
+        start = time.perf_counter()
         try:
             if not observer.applies_to(file_path, metadata):
                 continue
 
-            # Load historical snapshot if observer supports it and metadata has snapshot_ts
-            if getattr(observer, "load_previous_snapshot", None) and metadata.get(
-                "snapshot_ts"
-            ):
+            dependencies = getattr(observer, "dependencies", [])
+            if dependencies:
+                if hasattr(observer, "_dependency_outputs"):
+                    observer._dependency_outputs = {}
+
+                missing = [dep for dep in dependencies if dep not in observer_outputs]
+                if missing:
+                    observer_logger.warning(
+                        "Observer dependency output missing",
+                        extra={
+                            "event": OBSERVER_ERROR,
+                            "context": {
+                                "path": raw_path,
+                                "observer": observer.name,
+                                "missing_dependencies": missing,
+                            },
+                        },
+                    )
+
+                for dep_name in dependencies:
+                    if dep_name in observer_outputs and hasattr(
+                        observer, "set_dependency_output"
+                    ):
+                        dep_old, dep_new, dep_events = observer_outputs[dep_name]
+                        observer.set_dependency_output(
+                            dep_name,
+                            dep_old,
+                            dep_new,
+                            dep_events,
+                        )
+
+            # Load observer-specific historical snapshots when available.
+            if getattr(observer, "load_previous_snapshot", None):
                 old_state = observer.load_previous_snapshot(
-                    raw_path, snapshot_ts=metadata["snapshot_ts"]
+                    raw_path, snapshot_ts=metadata.get("snapshot_ts")
                 )
             else:
                 old_state = load_snapshot(observer.name, raw_path)
 
-            new_state = observer.extract(file_path, metadata) or {}
-            if not isinstance(new_state, dict):
-                raise TypeError(
-                    f"{observer.name}.extract() must return dict, got {type(new_state)}"
-                )
-
-            events = observer.compare(old_state, new_state) or []
-
-            if not isinstance(events, list):
-                raise TypeError(
-                    f"{observer.name}.compare() must return list, got {type(events)}"
-                )
+            new_state = _validate_state(
+                observer.name, observer.extract(file_path, metadata) or {}
+            )
+            events = _validate_events(
+                observer.name, observer.compare(old_state, new_state) or []
+            )
+            events = [
+                event for event in events if should_emit_event(observer.name, event)
+            ]
+            events = aggregate_events(
+                events,
+                strategy=metadata.get("event_aggregation", "none"),
+            )
+            observer_outputs[observer.name] = (old_state, new_state, events)
 
             # Log events in structured logging
             for event in events:
+                emitted_events.append({"observer": observer.name, **event})
+                emit_event(observer.name, event)
                 observer_logger.info(
                     f"{observer.name} emitted semantic event",
                     extra={
@@ -85,10 +162,14 @@ def run_observers(file_path: Path, metadata: dict[str, Any] | None = None) -> No
             save_snapshot(
                 observer.name,
                 raw_path,
-                identity=new_state.get("identity"),
+                identity=_snapshot_identity(new_state),
                 hash_value=hash_value,
                 state=new_state,
             )
+
+            observer_save = getattr(observer, "save", None)
+            if callable(observer_save) and new_state:
+                observer_save(file_path, new_state)
 
             # --- User-friendly terminal output ----
             if events:
@@ -102,7 +183,27 @@ def run_observers(file_path: Path, metadata: dict[str, Any] | None = None) -> No
             else:
                 print(f"\n📄 [{observer.name}] no changes detected for: {raw_path}")
 
+            elapsed_ms = (time.perf_counter() - start) * 1000
+            MetricsCollector.record(
+                ObserverMetrics(
+                    observer_name=observer.name,
+                    execution_time_ms=elapsed_ms,
+                    event_count=len(events),
+                    error=False,
+                )
+            )
+
         except Exception as e:
+            elapsed_ms = (time.perf_counter() - start) * 1000
+            MetricsCollector.record(
+                ObserverMetrics(
+                    observer_name=observer.name,
+                    execution_time_ms=elapsed_ms,
+                    event_count=0,
+                    error=True,
+                    error_msg=str(e),
+                )
+            )
             observer_logger.error(
                 "Observer execution failed",
                 extra={
@@ -117,6 +218,8 @@ def run_observers(file_path: Path, metadata: dict[str, Any] | None = None) -> No
             )
             # Print friendly error to terminal
             print(f"\n⚠️  [{observer.name}] observer failed for {raw_path}: {e}")
+
+    return emitted_events
 
 
 def handle_observe_run(
@@ -166,6 +269,26 @@ def handle_observe_run(
     raise ValueError(f"Unsupported path type: {target}")
 
 
+def run_observers_batch(
+    file_paths: list[Path],
+    metadata_dict: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, list[dict]]:
+    """
+    Run observers for multiple files and return emitted events by path.
+
+    This keeps the public API simple while preserving per-file observer
+    isolation and existing snapshot behavior.
+    """
+    metadata_dict = metadata_dict or {}
+    results: dict[str, list[dict]] = {}
+
+    for file_path in file_paths:
+        metadata = metadata_dict.get(str(file_path), {})
+        results[str(file_path)] = run_observers(file_path, metadata)
+
+    return results
+
+
 def handle_observe_audit(patient_id: Optional[str] = None) -> None:
     """
     Audit semantic observer snapshots.
@@ -185,13 +308,11 @@ def handle_observe_audit(patient_id: Optional[str] = None) -> None:
             (patient_id,),
         )
     else:
-        cur = conn.execute(
-            """
+        cur = conn.execute("""
             SELECT observer, identity, file_path, hash, state_json, timestamp
             FROM observer_snapshots
             ORDER BY timestamp ASC
-            """
-        )
+            """)
 
     rows = cur.fetchall()
 
