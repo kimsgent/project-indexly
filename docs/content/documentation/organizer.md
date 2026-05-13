@@ -18,7 +18,7 @@ weight: 10
 
 ## Overview
 
-The **Indexly Organizer** is a modern, intelligent file organization engine built for users who prioritize **safety**, **transparency**, and **long-term traceability**. It reorganizes files using a controlled **plan** → **validate** → **apply** workflow, allowing files to be observed as they are being organized through configurable [file observers](observers.md), ensuring every action is explainable, auditable, and reversible.
+The **Indexly Organizer** is a modern, intelligent file organization engine built for users who prioritize **safety**, **transparency**, and **long-term traceability**. It reorganizes files using a controlled **plan** → **validate** → **apply** workflow. Applied profile moves trigger configurable [semantic observers](observers.md) after each file reaches its final destination, ensuring every action is explainable, auditable, and reversible.
 
 Unlike traditional tools that immediately move files, Indexly preserves **full traceability**, supports optional **automatic backups**, and generates **structured JSON** logs that can later be analyzed with the Lister command. This makes it ideal not only for everyday cleanup, but also for **compliance-driven**, **regulated**, **and repeatable workflows**.
 
@@ -35,6 +35,8 @@ indexly organize <folder>
 This organizes the given folder using the default `date` mode.
 
 Use `--dry-run` to preview legacy organization or profile classification without creating folders, logs, backups, or moving files. Use `--apply` for profile scaffold/classification commands when you want filesystem changes.
+
+Dry-runs do not trigger observers. Applied profile moves do.
 
 ----
 

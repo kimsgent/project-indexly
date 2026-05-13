@@ -360,8 +360,17 @@ indexly migrate check
 Semantic observers:
 
 ```bash
-indexly observe run /path/to/folder
+indexly observe --help
+indexly observe run /path/to/folder --recursive
+indexly observe run /path/to/file --log-dir /path/to/logs
 indexly observe audit
+indexly observe audit --id 20260201-patient-00001
+```
+
+CSV observer history is normally created by CSV analysis after cleaned data is persisted:
+
+```bash
+indexly analyze-csv sales.csv --show-summary
 ```
 
 Live indexing:

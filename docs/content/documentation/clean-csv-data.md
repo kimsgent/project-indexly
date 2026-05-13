@@ -290,7 +290,15 @@ def auto _clean _csv(df, file _path, method="mean", save _cleaned=False, date _f
  * Use `--date-threshold 0.1` for tolerant datetime detection on mixed sources
  * Reuse cleaned data with `--use-cleaned` to skip repetitive parsing
  * Adjust fill strategy for skewed data: `--fill-method median`
- * Use the [semantic observers](observers.md) to watch field changes over time.
+ * Use [semantic observers](observers.md) to create CSV snapshot history after analysis persistence:
+
+```bash
+indexly analyze-csv dataset.csv --show-summary
+indexly observe audit
+```
+
+The CSV observer compares persisted cleaned-data snapshots for column, row-count, and summary changes.
+
 ---
 
 ## Next Steps

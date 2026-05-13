@@ -196,6 +196,14 @@ indexly organize ./incoming --profile health --classify --id P001 --dry-run
 
 When applied, Indexly ensures the patient subfolders exist and records observer metadata with the patient ID. Passing an empty ID value asks Indexly to generate the next date-based patient ID.
 
+Inspect the resulting semantic snapshots with:
+
+```bash
+indexly observe audit --id P001
+```
+
+Dry-runs do not trigger observers.
+
 ---
 
 ## Rename → Organize (Seamless Workflow)
