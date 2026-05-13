@@ -1660,6 +1660,18 @@ def build_parser():
         metavar="PASSWORD",
         help="Encrypt backup with password",
     )
+    backup_parser.add_argument(
+        "--decrypt",
+        metavar="PASSWORD",
+        help="Password for verifying encrypted backups",
+    )
+    backup_parser.add_argument(
+        "--verify",
+        nargs="?",
+        const="all",
+        metavar="BACKUP",
+        help="Verify one backup by archive name, or all backups if omitted",
+    )
 
     # 🔹 Automatic backup controls
     backup_parser.add_argument(
@@ -1690,6 +1702,11 @@ def build_parser():
     restore_parser.add_argument("backup", help="Backup name")
     restore_parser.add_argument("--target", help="Restore destination")
     restore_parser.add_argument("--decrypt", help="Decryption password")
+    restore_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Verify and simulate restore without writing to the target",
+    )
     restore_parser.set_defaults(func=_lazy_handle_restore)
 
     # Compare

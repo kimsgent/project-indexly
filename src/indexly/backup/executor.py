@@ -6,7 +6,6 @@ import json
 import shutil
 import time
 import tempfile
-import hashlib
 from getpass import getpass
 import uuid
 
@@ -15,10 +14,17 @@ from .manifest import build_manifest, diff_manifests, load_manifest
 from .metadata import serialize_metadata
 from .compress import detect_best_compression, create_tar_zst, create_tar_gz
 from .registry import register_backup, load_registry, get_last_full_backup
-from .encrypt import encrypt_file
+from .encrypt import encrypt_archive
 from .decrypt import decrypt_archive, is_encrypted
 from .extract import extract_archive
 from .rotation import apply_rotation, rotate_logs
+from .verify import write_checksum
+from .validation import (
+    validate_backup_destination,
+    validate_backup_source,
+    validate_backup_space,
+    validate_encryption_password,
+)
 from .logging_utils import (
     get_logger,
     BACKUP_START,
@@ -50,6 +56,10 @@ def run_backup(
     automatic: bool = False,
 ):
     dirs = ensure_backup_dirs()
+    source = validate_backup_source(source)
+    validate_backup_destination(source, dirs["root"])
+    validate_encryption_password(password)
+    validate_backup_space(source, dirs["root"])
     ts = time.strftime("%Y-%m-%d_%H%M%S")
     backup_id = str(uuid.uuid4())  # unique ID per backup
 
@@ -194,22 +204,14 @@ def run_backup(
     if password:
         print("🔐 Encrypting backup...")
         logger.info("Encrypting archive", extra={"event": BACKUP_ENCRYPT, "context": {"backup_id": backup_id}})
-        encrypt_file(archive, password)
-        enc_archive = archive.with_suffix(archive.suffix + ".enc")
-        archive.rename(enc_archive)
-        archive = enc_archive
+        archive = encrypt_archive(archive, password)
         encrypted = True
         print(f"✅ Encryption completed → {archive.name}")
 
     # ------------------------------
     # Checksum
     # ------------------------------
-    h = hashlib.sha256()
-    with archive.open("rb") as f:
-        for chunk in iter(lambda: f.read(8192), b""):
-            h.update(chunk)
-    checksum = archive.with_suffix(".sha256")
-    checksum.write_text(h.hexdigest())
+    checksum = write_checksum(archive)
     logger.info(
         "Checksum created",
         extra={"event": BACKUP_CHECKSUM, "context": {"checksum": str(checksum), "backup_id": backup_id}},

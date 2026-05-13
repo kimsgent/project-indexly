@@ -7,4 +7,5 @@ def handle_restore(args):
         backup_name=args.backup,
         target=Path(args.target).resolve() if args.target else None,
         password=args.decrypt,
+        dry_run=args.dry_run,
     )
