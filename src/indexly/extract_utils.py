@@ -964,7 +964,8 @@ def extract_image_metadata(path: str) -> dict:
             md["dimensions"] = f"{img.width}x{img.height}"
             md["format"] = img.format
 
-            exif = img._getexif()
+            get_exif = getattr(img, "_getexif", None)
+            exif = get_exif() if callable(get_exif) else None
             if exif:
                 exif_data = {ExifTags.TAGS.get(k, k): v for k, v in exif.items()}
                 md["camera"] = exif_data.get("Model") or None
