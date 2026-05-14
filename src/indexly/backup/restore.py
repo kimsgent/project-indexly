@@ -68,7 +68,7 @@ def _build_restore_steps(entry: dict, registry_backups: list[dict]) -> list[dict
 
         chain = current.get("chain", [])
         if not chain:
-            break
+            raise ValueError("Restore chain is missing a parent archive")
 
         parent_ref = chain[0].get("archive")
         if not parent_ref:
@@ -129,6 +129,11 @@ def _apply_extracted_step(workspace: Path, staging: Path):
 
     if metadata:
         apply_metadata(metadata, staging)
+
+
+def _clear_directory_contents(path: Path):
+    for item in path.iterdir():
+        _remove_path(item)
 
 
 # ------------------------------
@@ -314,6 +319,7 @@ def restore_backup(
             )
             return
 
+        _clear_directory_contents(target)
         for item in staging.iterdir():
             dest = target / item.name
             if dest.exists():

@@ -47,6 +47,22 @@ def test_load_snapshot_at_time_returns_prior_snapshot(tmp_path):
     assert snapshot["row_count"] == 1
 
 
+def test_load_snapshot_can_isolate_same_filename_by_source_path(tmp_path):
+    first = tmp_path / "one" / "sample.csv"
+    second = tmp_path / "two" / "sample.csv"
+    first.parent.mkdir()
+    second.parent.mkdir()
+    first.write_text("a\n1\n", encoding="utf-8")
+    second.write_text("a\n2\n", encoding="utf-8")
+
+    _save_snapshot(first, "2024-01-01T00:00:00Z", rows=1)
+    _save_snapshot(second, "2024-01-02T00:00:00Z", rows=2)
+
+    assert load_snapshot(str(first.resolve()))["row_count"] == 1
+    assert load_snapshot(str(second.resolve()))["row_count"] == 2
+    assert load_snapshot("sample.csv")["row_count"] == 2
+
+
 def test_load_snapshot_nonexistent_returns_none():
     assert load_snapshot("missing.csv") is None
 

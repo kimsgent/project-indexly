@@ -23,13 +23,16 @@ class CSVObserver(BaseObserver):
         Build CURRENT CSV state from cleaned_data.
         """
         conn = _get_db_connection()
+        resolved_path = str(file_path.resolve())
         try:
             cur = conn.execute(
                 """
                 SELECT * FROM cleaned_data
                 WHERE source_path = ? OR file_name = ?
+                ORDER BY CASE WHEN source_path = ? THEN 0 ELSE 1 END
+                LIMIT 1
                 """,
-                (str(file_path.resolve()), file_path.name),
+                (resolved_path, file_path.name, resolved_path),
             )
             row = cur.fetchone()
         finally:
@@ -67,7 +70,7 @@ class CSVObserver(BaseObserver):
         - None → loads latest snapshot
         """
         return load_snapshot(
-            Path(file_path).name, latest=(snapshot_ts is None), at_time=snapshot_ts
+            str(Path(file_path).resolve()), latest=(snapshot_ts is None), at_time=snapshot_ts
         )
 
     def compare(self, old: dict | None, new: dict) -> list[dict]:

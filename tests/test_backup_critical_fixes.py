@@ -12,6 +12,7 @@ from indexly.backup.encrypt import encrypt_archive
 from indexly.backup.manifest import diff_manifests
 from indexly.backup.metadata import serialize_metadata
 from indexly.backup.metadata_restore import apply_metadata
+import indexly.backup.registry as registry_module
 from indexly.backup.registry import load_registry, register_backup, save_registry
 from indexly.backup.rotation import apply_rotation
 from indexly.backup.validation import (
@@ -96,6 +97,47 @@ def test_restore_replays_incremental_layers_and_deletions(tmp_path, monkeypatch)
     assert not (target / "remove.txt").exists()
     assert not (target / "data").exists()
     assert not (target / "manifest.json").exists()
+
+
+def test_restore_prunes_existing_target_to_restored_snapshot(tmp_path, monkeypatch):
+    backup_root = tmp_path / "backups"
+    _use_backup_root(monkeypatch, backup_root)
+
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "keep.txt").write_text("first", encoding="utf-8")
+    (source / "remove.txt").write_text("remove me", encoding="utf-8")
+
+    executor.run_backup(source)
+    full = load_registry(backup_root / "index.json")["backups"][-1]
+    target = tmp_path / "restore"
+    restore.restore_backup(Path(full["archive"]).name, target=target)
+    assert (target / "remove.txt").exists()
+
+    (source / "keep.txt").write_text("second", encoding="utf-8")
+    (source / "remove.txt").unlink()
+    (source / "added.txt").write_text("new", encoding="utf-8")
+
+    executor.run_backup(source, incremental=True)
+    latest = load_registry(backup_root / "index.json")["backups"][-1]
+    restore.restore_backup(Path(latest["archive"]).name, target=target)
+
+    assert (target / "keep.txt").read_text(encoding="utf-8") == "second"
+    assert (target / "added.txt").read_text(encoding="utf-8") == "new"
+    assert not (target / "remove.txt").exists()
+
+
+def test_restore_rejects_incremental_without_parent_chain():
+    with pytest.raises(ValueError, match="missing a parent archive"):
+        restore._build_restore_steps(
+            {
+                "type": "incremental",
+                "archive": "/backups/incremental.tar.gz",
+                "manifest": "manifest.json",
+                "chain": [],
+            },
+            [],
+        )
 
 
 def test_incremental_uses_latest_full_after_stale_missing_incrementals(tmp_path, monkeypatch):
@@ -335,6 +377,26 @@ def test_register_backup_rejects_external_tmp_archive(tmp_path):
     registry_root.mkdir(parents=True)
     registry_path = registry_root / "index.json"
     external_tmp_archive = Path(tempfile.gettempdir()) / "indexly-external" / "full.tar.gz"
+
+    with pytest.raises(ValueError, match="temporary path"):
+        register_backup(
+            registry_path,
+            {
+                "type": "full",
+                "archive": str(external_tmp_archive),
+                "manifest": "manifest.json",
+                "encrypted": False,
+                "chain": [],
+            },
+        )
+
+
+def test_register_backup_rejects_external_private_tmp_archive(tmp_path, monkeypatch):
+    registry_root = tmp_path / "backups"
+    registry_root.mkdir(parents=True)
+    registry_path = registry_root / "index.json"
+    monkeypatch.setattr(registry_module.tempfile, "gettempdir", lambda: str(tmp_path / "system-temp"))
+    external_tmp_archive = Path("/private/tmp") / "indexly-external" / "full.tar.gz"
 
     with pytest.raises(ValueError, match="temporary path"):
         register_backup(

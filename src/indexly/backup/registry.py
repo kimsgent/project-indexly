@@ -27,17 +27,26 @@ def _is_within(path: Path, root: Path) -> bool:
         return False
 
 
+def _temp_roots() -> list[Path]:
+    roots = {
+        Path(tempfile.gettempdir()),
+        Path("/tmp"),
+        Path("/private/tmp"),
+        Path("/var/tmp"),
+    }
+    return [_normalize_path(root) for root in roots]
+
+
 def _assert_persistent_path(path: str, registry_root: Path):
     resolved_path = _normalize_path(Path(path))
     resolved_root = _normalize_path(registry_root)
-    temp_root = _normalize_path(Path(tempfile.gettempdir()))
 
     # Backups tracked in the active registry root are always valid,
     # even when that root lives under OS temp paths in tests.
     if _is_within(resolved_path, resolved_root):
         return
 
-    if _is_within(resolved_path, temp_root):
+    if any(_is_within(resolved_path, temp_root) for temp_root in _temp_roots()):
         raise ValueError(f"Refusing to register temporary path: {path}")
 
 def register_backup(registry_path: Path, entry: dict):

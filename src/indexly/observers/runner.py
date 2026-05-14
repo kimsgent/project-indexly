@@ -92,7 +92,7 @@ def run_observers(
     """
     Run all registered observers on a file and provide user-friendly terminal feedback.
     """
-    metadata = metadata or {}
+    metadata = dict(metadata or {})
     raw_path = str(file_path)
 
     # Ensure hash exists

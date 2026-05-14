@@ -11,6 +11,13 @@ TABLE_NAME = "csv_snapshots"
 RETENTION_POLICY = {"keep_latest": 10}
 
 
+def _lookup_filter(file_ref: str) -> tuple[str, list[str]]:
+    path = Path(file_ref)
+    if path.is_absolute() or path.parent != Path("."):
+        return "source_path = ?", [str(path.expanduser().resolve())]
+    return "file_name = ?", [file_ref]
+
+
 def ensure_table() -> None:
     """Create table if not exists. Historical snapshots kept with timestamp."""
     conn = connect_db()
@@ -25,7 +32,7 @@ def ensure_table() -> None:
             summary_json TEXT,
             cleaned_at TEXT,
             snapshot_ts TEXT NOT NULL,
-            PRIMARY KEY (file_name, snapshot_ts)
+            PRIMARY KEY (source_path, snapshot_ts)
         )
         """)
     conn.commit()
@@ -80,13 +87,14 @@ def save_snapshot(
     finally:
         conn.close()
 
-    cleanup_old_snapshots(p.name)
+    cleanup_old_snapshots(str(p.resolve()))
 
 
 def cleanup_old_snapshots(file_name: str, policy: dict[str, Any] | None = None) -> int:
     """Delete older CSV snapshots while keeping the newest configured count."""
     policy = policy or RETENTION_POLICY
     keep_latest = max(int(policy.get("keep_latest", 10)), 1)
+    where_clause, params = _lookup_filter(file_name)
 
     ensure_table()
     conn = connect_db()
@@ -94,11 +102,11 @@ def cleanup_old_snapshots(file_name: str, policy: dict[str, Any] | None = None) 
         cutoff = conn.execute(
             f"""
             SELECT snapshot_ts FROM {TABLE_NAME}
-            WHERE file_name = ?
+            WHERE {where_clause}
             ORDER BY snapshot_ts DESC
             LIMIT 1 OFFSET ?
             """,
-            (file_name, keep_latest - 1),
+            (*params, keep_latest - 1),
         ).fetchone()
 
         if not cutoff:
@@ -107,9 +115,9 @@ def cleanup_old_snapshots(file_name: str, policy: dict[str, Any] | None = None) 
         deleted = conn.execute(
             f"""
             DELETE FROM {TABLE_NAME}
-            WHERE file_name = ? AND snapshot_ts < ?
+            WHERE {where_clause} AND snapshot_ts < ?
             """,
-            (file_name, cutoff["snapshot_ts"]),
+            (*params, cutoff["snapshot_ts"]),
         ).rowcount
         conn.commit()
         return deleted
@@ -143,8 +151,8 @@ def load_snapshot(
     """
     ensure_table()
     conn = connect_db()
-    query = f"SELECT * FROM {TABLE_NAME} WHERE file_name = ?"
-    params = [file_name]
+    where_clause, params = _lookup_filter(file_name)
+    query = f"SELECT * FROM {TABLE_NAME} WHERE {where_clause}"
 
     if at_time:
         query += " AND snapshot_ts <= ?"
@@ -174,8 +182,8 @@ def query_snapshot_range(
     """Return chronological CSV snapshots for a file within an optional range."""
     ensure_table()
     conn = connect_db()
-    query = f"SELECT * FROM {TABLE_NAME} WHERE file_name = ?"
-    params = [file_name]
+    where_clause, params = _lookup_filter(file_name)
+    query = f"SELECT * FROM {TABLE_NAME} WHERE {where_clause}"
 
     if start_time:
         query += " AND snapshot_ts >= ?"

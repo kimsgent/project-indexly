@@ -2,6 +2,7 @@ import logging
 from pathlib import Path
 
 import indexly.observers.runner as runner_module
+from indexly.compare.hash_utils import sha256
 from indexly.observers.runner import _build_observer_logger, _snapshot_identity, run_observers
 
 
@@ -54,6 +55,23 @@ class DependentObserver:
         return event["type"]
 
 
+class HashObserver:
+    name = "hash"
+    dependencies = []
+
+    def applies_to(self, file_path, metadata):
+        return True
+
+    def extract(self, file_path, metadata):
+        return {"hash": metadata["hash"]}
+
+    def compare(self, old, new):
+        return [{"type": "HASH_SEEN", "hash": new["hash"]}]
+
+    def format_event(self, event):
+        return event["type"]
+
+
 def test_observer_dependency_execution_order(monkeypatch, tmp_path):
     calls = []
     source = tmp_path / "file.txt"
@@ -88,6 +106,26 @@ def test_observer_dependency_execution_order(monkeypatch, tmp_path):
 def test_snapshot_identity_uses_health_patient_id():
     assert _snapshot_identity({"patient_id": "P001", "entity_key": "report"}) == "P001"
     assert _snapshot_identity({"identity": "custom", "patient_id": "P001"}) == "custom"
+
+
+def test_run_observers_does_not_reuse_hash_from_shared_metadata(monkeypatch, tmp_path):
+    first = tmp_path / "first.txt"
+    second = tmp_path / "second.txt"
+    first.write_text("first", encoding="utf-8")
+    second.write_text("second", encoding="utf-8")
+    shared_metadata = {}
+
+    monkeypatch.setattr(runner_module, "get_enabled_observers", lambda: [HashObserver()])
+    monkeypatch.setattr(runner_module, "load_snapshot", lambda *args, **kwargs: None)
+    monkeypatch.setattr(runner_module, "save_snapshot", lambda *args, **kwargs: None)
+
+    first_events = run_observers(first, shared_metadata)
+    second_events = run_observers(second, shared_metadata)
+
+    assert shared_metadata == {}
+    assert first_events == [{"observer": "hash", "type": "HASH_SEEN", "hash": sha256(first)}]
+    assert second_events == [{"observer": "hash", "type": "HASH_SEEN", "hash": sha256(second)}]
+    assert first_events[0]["hash"] != second_events[0]["hash"]
 
 
 def test_build_observer_logger_falls_back_to_temp_dir(monkeypatch, tmp_path):
