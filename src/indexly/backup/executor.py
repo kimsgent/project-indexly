@@ -111,10 +111,26 @@ def run_backup(
             logger.error(msg, extra={"event": BACKUP_ABORT, "context": {"backup_id": backup_id}})
             return
 
-        last_inc = next((b for b in reversed(registry.get("backups", [])) if b["type"] == "incremental"), None)
+        last_full_at = last_full.get("registered_at", 0)
+        last_inc = next(
+            (
+                b
+                for b in reversed(registry.get("backups", []))
+                if b["type"] == "incremental"
+                and b.get("registered_at", 0) >= last_full_at
+                and Path(b["archive"]).exists()
+            ),
+            None,
+        )
         base = last_inc or last_full
         registry_archive = Path(base["archive"])
         base_archive = registry_archive
+
+        if not registry_archive.exists():
+            msg = f"Incremental base archive is missing: {registry_archive}"
+            print(f"❌ {msg}")
+            logger.error(msg, extra={"event": BACKUP_ABORT, "context": {"backup_id": backup_id}})
+            return
 
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)

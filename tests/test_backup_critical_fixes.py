@@ -98,6 +98,50 @@ def test_restore_replays_incremental_layers_and_deletions(tmp_path, monkeypatch)
     assert not (target / "manifest.json").exists()
 
 
+def test_incremental_uses_latest_full_after_stale_missing_incrementals(tmp_path, monkeypatch):
+    backup_root = tmp_path / "backups"
+    _use_backup_root(monkeypatch, backup_root)
+
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "file.txt").write_text("first", encoding="utf-8")
+
+    password = "Better-Password-2026"
+    executor.run_backup(source, password=password)
+
+    registry_path = backup_root / "index.json"
+    registry = load_registry(registry_path)
+    latest_full = registry["backups"][-1]
+    old_full = {
+        "type": "full",
+        "archive": str(backup_root / "full" / "full_2026-01-01_000000.tar.gz"),
+        "manifest": "manifest.json",
+        "encrypted": False,
+        "chain": [],
+        "registered_at": 1,
+    }
+    old_incremental = {
+        "type": "incremental",
+        "archive": str(backup_root / "incremental" / "incremental_2026-01-02_000000.tar.gz"),
+        "manifest": "manifest.json",
+        "encrypted": False,
+        "chain": [{"archive": old_full["archive"], "manifest": "manifest.json"}],
+        "registered_at": 2,
+    }
+    registry["backups"] = [old_full, old_incremental, latest_full]
+    save_registry(registry_path, registry)
+
+    (source / "file.txt").write_text("second", encoding="utf-8")
+
+    executor.run_backup(source, incremental=True, password=password)
+
+    registry = load_registry(registry_path)
+    latest = registry["backups"][-1]
+    assert latest["type"] == "incremental"
+    assert latest["chain"] == [{"archive": latest_full["archive"], "manifest": "manifest.json"}]
+    assert Path(latest["archive"]).exists()
+
+
 def test_restore_dry_run_checks_chain_without_writing_target(tmp_path, monkeypatch):
     backup_root = tmp_path / "backups"
     _use_backup_root(monkeypatch, backup_root)
