@@ -16,7 +16,7 @@ weight: 5
 type: docs
 toc: true
 date: "2026-04-22"
-lastmod: "2026-05-09"
+lastmod: "2026-05-15"
 draft: false
 categories:
   - Overview
@@ -47,11 +47,11 @@ This documentation works best when you enter through the path that matches your 
 <div class="p-3 rounded" style="background:#ffffff; color:#1f2937;">
   <h4 class="mb-2" style="color:#0f172a;">What changed recently</h4>
   <ul class="mb-3">
-    <li>`v2.1.0` adds `indexly clear-search` for safe search-index cleanup by path, tag, or full index.</li>
-    <li>Search maintenance now includes dry-run previews, confirmation prompts, operation IDs, cache invalidation warnings, and audit logging.</li>
-    <li>`indexly doctor` now reports search DB readiness, analysis DB health, cache state, optional feature packs, and read-only full integrity checks.</li>
-    <li>The current analysis stack now documents dedicated AutoDoctor workflows for report JSON, telemetry JSON, and SQLite artifacts.</li>
-    <li>`indexly show-help` remains the fastest way to discover command categories before reading deeper guides.</li>
+    <li>`v2.1.1` hardens backup verification, dry-run restore, incremental base selection, and restore safety checks.</li>
+    <li>Semantic observers now persist snapshots more reliably and fall back when home paths are unwritable.</li>
+    <li>Compare, organizer, lister, and rename workflows include tighter handling around profiles, caches, counters, and database sync.</li>
+    <li>BMP image metadata extraction is now handled consistently with the broader image metadata pipeline.</li>
+    <li>`v2.1.0` introduced `indexly clear-search` for safe search-index cleanup by path, tag, or full index.</li>
   </ul>
   <a href="/en/releases/" class="btn btn-primary btn-sm me-2">View Release Notes</a>
   <a href="/en/documentation/data-analysis-pipeline/" class="btn btn-outline-secondary btn-sm">Open Analysis Guide</a>
