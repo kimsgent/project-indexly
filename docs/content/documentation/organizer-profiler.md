@@ -3,7 +3,7 @@ title: "Indexly Organizer – Profile-Based, Auditable File Organization"
 description: "Safely organize and classify files using intelligent profiles with full logging, hashing, audit trails, dry-run planning, and automation support in Indexly Organizer."
 slug: "organizer-profiles"
 date: 2026-01-16
-lastmod: 2026-01-16
+lastmod: 2026-05-16
 type: docs
 categories: ["Indexly", "File Management", "Automation", "Auditing"]
 tags:
@@ -35,7 +35,7 @@ weight: 11
 * Structured, indexable JSON logs
 * Hash-based duplicate and integrity tracking
 * Audit-ready history of changes
-* ✅ Business-rule aware classification (via `rename-file --business-naming`)
+* Business-rule aware classification via [`rename-file --business-naming`](rename-file.md)
 
 ---
 

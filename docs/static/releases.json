@@ -2,7 +2,7 @@
   "project": "FTS5 File Search Tool",
   "latest": {
     "version": "2.1.1",
-    "date": "2026-05-15",
+    "date": "2026-05-16",
     "link": "/en/releases/v2.1.1/",
     "summary": "feat(backup): add local backup verification and dry-run restore workflows | fix(backup): harden restore safety checks, incremental base selection, temp-root registry handling, and cryptography dependency coverage",
     "prerelease": false

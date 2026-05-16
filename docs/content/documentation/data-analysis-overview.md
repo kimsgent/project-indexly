@@ -7,7 +7,7 @@ type: docs
 slug: "data-analysis-pipeline"
 weight: 18
 date: "2026-04-22"
-lastmod: "2026-04-22"
+lastmod: "2026-05-16"
 draft: false
 toc: true
 canonicalURL: "/en/documentation/data-analysis-pipeline/"
@@ -80,6 +80,7 @@ Indexly provides analysis and summarization for these structured formats:
 | Scenario | Best command | Why |
 | --- | --- | --- |
 | Unknown structured file | `indexly analyze-file <file>` | Lets the universal loader detect the file and route it automatically |
+| Exported CSVs or reports with inconsistent names | `indexly rename-file <folder> --dry-run` before analysis | Standardizes filenames so later analysis, search, and organizer logs are easier to compare |
 | Large JSON or NDJSON file | `indexly analyze-json <file>` | Uses JSON-specific validation and fallback handling |
 | Generic SQLite inspection | `indexly analyze-db <db>` | Focused on schema, table profiling, and export |
 | AutoDoctor report JSON, telemetry JSON, or `autodoctor.db` | `indexly analyze-autodoctor <path>` | Produces an operational summary instead of a generic table dump |
@@ -197,6 +198,15 @@ For operational examples and artifact selection guidance, see:
 
 ## Practical Examples
 
+### Preparing exported files before analysis
+
+```bash
+indexly rename-file ./exports --pattern "{date}-{title}" --recursive --dry-run
+indexly rename-file ./exports --pattern "{date}-{title}" --recursive
+```
+
+Use [Rename File](rename-file.md) when exported CSVs, reports, or logs need stable names before analysis or organization.
+
 ### Generic structured-file analysis
 
 ```bash
@@ -230,6 +240,8 @@ indexly analyze-autodoctor .\autodoctor.db --show-summary
 ## Related Pages
 
 - [Usage Guide](usage.md)
+- [Rename File](rename-file.md)
+- [Cleaning CSV Data](clean-csv-data.md)
 - [Analyze SQLite Databases](analyze-sqlite-databases.md)
 - [Analyze AutoDoctor Artifacts](analyze-autodoctor-artifacts.md)
 - [Developer Guide](developer.md)

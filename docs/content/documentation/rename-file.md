@@ -1,38 +1,70 @@
 ---
 title: "Renaming Files with Patterns"
-slug: "renaming-file"
-date: 2025-10-10
-weight: 5
-icon: "mdi:rename-box"
-cta: "Learn how to rename files"
-description: "Learn how to rename files in Indexly using smart patterns with dates, counters, and titles — safely preview changes using dry-run mode."
-summary: "Easily rename files or entire folders using flexible patterns like {date}, {title}, and {counter}. Perfect for organizing notes, documents, and datasets with consistent, searchable filenames."
-canonicalURL: "/en/documentation/renaming-file/"
+linkTitle: "Rename File"
+slug: "rename-file"
 aliases:
   - "/documentation/renaming-file/"
+  - "/en/documentation/renaming-file/"
+date: "2025-10-10"
+lastmod: "2026-05-16"
+weight: 5
+type: docs
+toc: true
+draft: false
+icon: "mdi:rename-box"
+cta: "Learn how to rename files"
+description: "Standardize filenames in Indexly with rename-file patterns, dry-run previews, optional database path sync, and direct handoff into profile-based organization."
+summary: "Easily rename files or entire folders using flexible patterns like {date}, {title}, and {counter}. Perfect for organizing notes, documents, and datasets with consistent, searchable filenames."
+canonicalURL: "/en/documentation/rename-file/"
+keywords:
+  - indexly rename-file
+  - rename files with patterns
+  - file preparation
+  - organize files
+  - csv analysis preparation
+  - profile based organization
+tags:
+  - rename-file
+  - file preparation
+  - organizer
+  - data analysis
+  - cli
+categories:
+  - Documentation
+  - File Management
+  - Data Preparation
 ---
 
-# Rename Files Easily with `rename-file`
+## Overview
 
 The `rename-file` command in **Indexly** introduces a powerful way to rename files using customizable naming patterns.
+Use it when file names need to become consistent before indexing, analysis, comparison, or [profile-based organization](organizer-profiler.md).
 
 It now also supports:
 
-* 🏢 Business-rule intelligent renaming
-* 🗂 Optional profile-based organization
-* 🔁 Rename + classify in a single workflow
+- Business-rule intelligent renaming
+- Optional profile-based organization
+- Rename and classify in a single workflow
+
+---
+
+## Who This Is For
+
+- Users preparing messy downloads, exported CSVs, reports, or document batches for analysis
+- Operators who want predictable file names before running [Organizer](organizer.md)
+- Developers or analysts who need database paths updated after applied renames
 
 ---
 
 ## Key Features
 
-* 🧠 Pattern-based renaming (`{date}`, `{title}`, `{counter}`, `{prefix}`)
-* 🏢 Business-rule keyword detection (`--business-naming`)
-* 🗂 Optional direct classification via `--organize`
-* 📅 Flexible date formatting
-* 🔢 Collision-safe counters
-* 🧪 Dry-run preview
-* 💾 Optional database sync
+- Pattern-based renaming with `{date}`, `{title}`, `{counter}`, and `{prefix}`
+- Business-rule keyword detection with `--business-naming`
+- Optional direct classification via `--organize`
+- Flexible date formatting
+- Collision-safe counters
+- Dry-run preview
+- Optional database sync for search and metadata paths
 
 ---
 
@@ -110,6 +142,10 @@ indexly rename-file ./incoming \
 `--update-db` is opt-in. Without it, `rename-file` only changes filenames on disk.
 When `--db` is omitted, Indexly uses its configured default database.
 
+{{< alert title="Use dry-run first" color="warning" >}}
+Preview rename and organize workflows with `--dry-run` before applying changes to important folders. Add `--update-db` only when you want Indexly metadata, tags, and search-index paths synchronized after applied filesystem renames.
+{{< /alert >}}
+
 ---
 
 ## Rename + Organize in One Command
@@ -141,8 +177,31 @@ it organizes the files after successful filesystem renames.
 
 This makes organizing highly intuitive — especially with `--classify`.
 
-For details on profiles and classification, see:
-👉 [Profile-Based Organization](organizer-profiler.md)
+For details on profiles and classification, see [Profile-Based Organization](organizer-profiler.md).
+
+---
+
+## Prepare CSVs And Analysis Inputs
+
+Renaming is useful before data analysis when exported files have inconsistent names, duplicated date prefixes, or unclear report titles.
+
+Example:
+
+```bash
+indexly rename-file ./exports \
+  --pattern "{date}-{title}" \
+  --recursive \
+  --dry-run
+```
+
+After reviewing the plan, apply the rename and analyze the prepared CSV:
+
+```bash
+indexly rename-file ./exports --pattern "{date}-{title}" --recursive
+indexly analyze-csv ./exports/20260516-sales-report.csv --auto-clean --show-summary
+```
+
+For the analysis path, see [Cleaning CSV Data](clean-csv-data.md) and [Data Analysis Overview](data-analysis-overview.md).
 
 ---
 
@@ -208,3 +267,9 @@ The enhanced `rename-file` now allows you to:
 Renaming is no longer isolated.
 It is now part of a structured organization pipeline.
 
+## Next Steps
+
+- [Organizer](organizer.md)
+- [Profile-Based Organization](organizer-profiler.md)
+- [Cleaning CSV Data](clean-csv-data.md)
+- [Usage Guide](usage.md)
