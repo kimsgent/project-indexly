@@ -81,7 +81,7 @@ indexly rename-file . \
 
 ### Sample Output
 
-```
+```bash
 ⚠️ No business keyword found in 20260208-another-example-txt-file.txt.
 Select category [invoice/tax/receipt/payroll/contract] (invoice): tax
 Choose prefix for 'tax' [mwst/vat/steuer/ust/tax] (mwst): vat
@@ -209,7 +209,7 @@ For the analysis path, see [Cleaning CSV Data](clean-csv-data.md) and [Data Anal
 
 You receive a folder of mixed files:
 
-```
+```bash
 INV-00012.txt
 receipt_2026.txt
 steuer_report.pdf
