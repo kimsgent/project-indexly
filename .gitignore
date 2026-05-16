@@ -50,6 +50,7 @@ docs/*
 !docs/themes/
 !docs/go.mod
 !docs/go.sum
+!docs/postcss.config.js
 # keep vendored Hugo modules for stable builds
 !docs/_vendor/
 
