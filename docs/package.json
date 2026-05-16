@@ -6,8 +6,27 @@
   "name": "docs",
   "version": "1.0.0",
   "main": "index.js",
+  "browserslist": [
+    "defaults"
+  ],
   "devDependencies": {
     "pagefind": "^1.4.0"
+  },
+  "overrides": {
+    "anymatch": {
+      "picomatch": "2.3.2"
+    },
+    "fdir": {
+      "picomatch": "4.0.4"
+    },
+    "postcss": "8.5.14",
+    "readdirp": {
+      "picomatch": "2.3.2"
+    },
+    "tinyglobby": {
+      "picomatch": "4.0.4"
+    },
+    "yaml": "2.9.0"
   },
   "scripts": {
     "dev": "hugo server",
