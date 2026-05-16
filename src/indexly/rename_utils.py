@@ -1,6 +1,7 @@
 import re
 import shutil
 import logging
+import os
 import unicodedata
 from pathlib import Path
 from datetime import datetime
@@ -26,17 +27,24 @@ DEFAULT_PATTERN = "{date}-{title}"
 BUSINESS_CATEGORIES = ["invoice", "tax", "receipt", "payroll", "contract"]
 
 
-def _check_alias_column_in_metadata():
+def _resolve_filesystem_path(path: str | Path) -> Path:
+    """Resolve filesystem paths without applying DB-only case normalization."""
+    expanded = os.path.expandvars(os.path.expanduser(str(path)))
+    return Path(expanded).resolve()
+
+
+def _check_alias_column_in_metadata(db_path: str | None = None):
     """Ensure file_metadata table includes alias column before DB sync."""
     import sqlite3
     from .config import DB_FILE
 
-    if not Path(DB_FILE).exists():
-        print(f"❌ Database not found at: {DB_FILE}")
+    target_db = db_path or DB_FILE
+    if not Path(target_db).exists():
+        print(f"❌ Database not found at: {target_db}")
         return False
 
     try:
-        conn = sqlite3.connect(DB_FILE)
+        conn = sqlite3.connect(target_db)
         cursor = conn.cursor()
         cursor.execute("PRAGMA table_info(file_metadata);")
         columns = [row[1] for row in cursor.fetchall()]
@@ -55,6 +63,67 @@ def _check_alias_column_in_metadata():
     except Exception as e:
         print(f"⚠️ Database schema check failed: {e}")
         return False
+
+
+def _preflight_db_rename(
+    old_path: Path,
+    new_path: Path,
+    *,
+    schema_checked: bool = False,
+    db_path: str | None = None,
+) -> bool:
+    """Validate DB state before moving a file that will be synced."""
+    import sqlite3
+
+    from .config import DB_FILE
+
+    target_db = db_path or DB_FILE
+
+    if not schema_checked and not _check_alias_column_in_metadata(target_db):
+        return False
+
+    old_norm = normalize_path(str(old_path))
+    new_norm = normalize_path(str(new_path))
+    conn = None
+
+    try:
+        conn = sqlite3.connect(target_db)
+        cur = conn.cursor()
+
+        source_seen = False
+        for table in ("file_metadata", "file_tags", "file_index"):
+            cur.execute(f"SELECT 1 FROM {table} WHERE path = ? LIMIT 1", (old_norm,))
+            if cur.fetchone():
+                source_seen = True
+
+            cur.execute(f"SELECT 1 FROM {table} WHERE path = ? LIMIT 1", (new_norm,))
+            if cur.fetchone():
+                print(
+                    f"❌ Database already contains destination path in {table}: {new_norm}"
+                )
+                return False
+
+        if not source_seen:
+            print(f"⚠️ No existing DB row found for rename source: {old_norm}")
+
+        return True
+    except Exception as e:
+        print(f"⚠️ Database rename preflight failed: {e}")
+        return False
+    finally:
+        if conn is not None:
+            conn.close()
+
+
+def _rollback_file_move(original_path: Path, renamed_path: Path) -> bool:
+    """Best-effort rollback when DB sync fails after a filesystem move."""
+    try:
+        if renamed_path.exists() and not original_path.exists():
+            shutil.move(str(renamed_path), str(original_path))
+            return True
+    except Exception as e:
+        logger.error(f"Rollback failed after DB sync error: {e}")
+    return False
 
 
 # -------------------------------------------------
@@ -76,14 +145,34 @@ def slugify(text: str) -> str:
 def _extract_date_prefix(filename: str) -> str | None:
     if not filename:
         return None
-    m = re.match(r"^(?P<date>\d{4}-\d{2}-\d{2}|\d{8})[-_\s]?", filename)
-    return m.group("date").replace("-", "") if m else None
+    m = re.match(r"^(?P<date>\d{4}-\d{2}-\d{2}|\d{8}|\d{6})[-_\s]?", filename)
+    if not m:
+        return None
+    date_prefix = m.group("date").replace("-", "")
+    return date_prefix if _parse_date_prefix(date_prefix) else None
+
+
+def _parse_date_prefix(date_prefix: str) -> datetime | None:
+    """Parse supported leading date tokens used by rename patterns."""
+    formats = {
+        8: ("%Y%m%d",),
+        6: ("%y%m%d",),
+    }.get(len(date_prefix), ())
+
+    for fmt in formats:
+        try:
+            return datetime.strptime(date_prefix, fmt)
+        except ValueError:
+            continue
+    return None
 
 
 def _remove_leading_date_from_string(s: str) -> str:
     if not s:
         return s
-    return re.sub(r"^(?:\d{4}-\d{2}-\d{2}|\d{8})[-_\s]*", "", s)
+    if not _extract_date_prefix(s):
+        return s
+    return re.sub(r"^(?:\d{4}-\d{2}-\d{2}|\d{8}|\d{6})[-_\s]*", "", s)
 
 
 def _clean_filename_component(s: str) -> str:
@@ -181,14 +270,10 @@ def generate_new_filename(
     existing_prefix = _extract_date_prefix(file_path.name)
 
     if existing_prefix:
-        try:
-            parsed_dt = (
-                datetime.strptime(existing_prefix, "%Y-%m-%d")
-                if "-" in existing_prefix
-                else datetime.strptime(existing_prefix, "%Y%m%d")
-            )
+        parsed_dt = _parse_date_prefix(existing_prefix)
+        if parsed_dt:
             date_str = parsed_dt.strftime(date_format)
-        except ValueError:
+        else:
             date_str = modified_dt.strftime(date_format)
     else:
         date_str = modified_dt.strftime(date_format)
@@ -212,9 +297,11 @@ def generate_new_filename(
     )
 
     # --- Prefix substitution ---
+    prefix_value = slugify(prefix) if prefix else ""
     if "{prefix}" in pattern:
-        prefix_value = slugify(prefix) if prefix else ""
         new_name = new_name.replace("{prefix}", prefix_value)
+    elif prefix_value:
+        new_name = f"{prefix_value}-{new_name}"
 
     # --- Auto-append counter if not in pattern ---
     if "{counter}" not in pattern and counter > 0:
@@ -279,8 +366,7 @@ def execute_rename_then_organize(
         project_name=project_name,
         shoot_name=shoot_name,
         patient_id=patient_id,
-        # Pass plan for immediate movement
-        classify_raw=precomputed_plan,
+        precomputed_plan=precomputed_plan,
     )
 
 # -------------------------------------------------
@@ -293,12 +379,13 @@ def rename_file(
     pattern: str = None,
     dry_run: bool = True,
     update_db: bool = False,
+    db_path: str | None = None,
     date_format: str = "%Y%m%d",
     counter_format: str = "d",
     prefix: str = None,
 ) -> Path | None:
 
-    file_path = Path(normalize_path(path))
+    file_path = _resolve_filesystem_path(path)
     if not file_path.exists():
         print(f"⚠️ File not found: {file_path}")
         return None
@@ -336,14 +423,22 @@ def rename_file(
         if new_name == file_path.name:
             print(f"✅ Skipped (already correct): {file_path}")
         else:
-            shutil.move(str(file_path), str(new_path))
-
             if update_db:
-                if not _check_alias_column_in_metadata():
-                    print("⏹️  Rename aborted due to missing alias column.")
+                if not _preflight_db_rename(file_path, new_path, db_path=db_path):
+                    print("⏹️  Rename aborted before moving files.")
                     return None
 
-                _sync_path_in_db(str(file_path), str(new_path))
+            shutil.move(str(file_path), str(new_path))
+
+            if update_db and not _sync_path_in_db(
+                str(file_path), str(new_path), db_path=db_path
+            ):
+                rolled_back = _rollback_file_move(file_path, new_path)
+                if rolled_back:
+                    print("⏹️  Rename rolled back because DB sync failed.")
+                else:
+                    print("⚠️ Rename completed on disk, but DB sync failed.")
+                return None
 
             print(f"✅ Renamed:\n  {file_path} → {new_path}")
 
@@ -356,18 +451,20 @@ def rename_files_in_dir(
     dry_run: bool = True,
     recursive: bool = False,
     update_db: bool = False,
+    db_path: str | None = None,
     date_format: str = "%Y%m%d",
     counter_format: str = "d",
     prefix: str = None,
 ):
     """
     Rename all files in a directory:
-    - Counter resets per date
+    - Explicit {counter} resets per date
+    - Implicit counter suffixes are used only for collision avoidance
     - Optionally syncs DB if update_db=True
     - Supports recursive renaming
     - Uses pre-resolved business_prefix if provided
     """
-    dir_path = Path(normalize_path(directory))
+    dir_path = _resolve_filesystem_path(directory)
     if not dir_path.exists() or not dir_path.is_dir():
         print(f"⚠️ Directory not found: {dir_path}")
         return []
@@ -375,7 +472,9 @@ def rename_files_in_dir(
     files = sorted(dir_path.rglob("*") if recursive else dir_path.glob("*"))
 
     last_date = None
-    counter = 0
+    sequence_counter = 0
+    uses_explicit_counter = "{counter}" in (pattern or DEFAULT_PATTERN)
+    planned_targets: set[str] = set()
     rename_entries: list[RenameEntry] = []
 
     for f in files:
@@ -385,14 +484,10 @@ def rename_files_in_dir(
         existing_prefix = _extract_date_prefix(f.name)
 
         if existing_prefix:
-            try:
-                parsed_dt = (
-                    datetime.strptime(existing_prefix, "%Y-%m-%d")
-                    if "-" in existing_prefix
-                    else datetime.strptime(existing_prefix, "%Y%m%d")
-                )
+            parsed_dt = _parse_date_prefix(existing_prefix)
+            if parsed_dt:
                 date_str = parsed_dt.strftime(date_format)
-            except ValueError:
+            else:
                 date_str = datetime.fromtimestamp(f.stat().st_mtime).strftime(
                     date_format
                 )
@@ -400,8 +495,10 @@ def rename_files_in_dir(
             date_str = datetime.fromtimestamp(f.stat().st_mtime).strftime(date_format)
 
         if date_str != last_date:
-            counter = 0
+            sequence_counter = 0
             last_date = date_str
+
+        counter = sequence_counter if uses_explicit_counter else 0
 
         while True:
             new_name = generate_new_filename(
@@ -414,40 +511,58 @@ def rename_files_in_dir(
             )
 
             new_path = f.parent / new_name
+            target_key = normalize_path(str(new_path))
 
-            if new_path.exists() and new_path != f:
+            if new_path != f and (new_path.exists() or target_key in planned_targets):
                 counter += 1
                 continue
 
             break
-
-        rename_entries.append(
-            RenameEntry(
-                original_path=f,
-                renamed_path=new_path,
-            )
-        )
 
         if dry_run:
             if new_name != f.name:
                 print(f"[Dry-run] Would rename:\n  {f} → {new_path}")
             else:
                 print(f"[Dry-run] No rename needed: {f.name}")
+            rename_entries.append(
+                RenameEntry(
+                    original_path=f,
+                    renamed_path=new_path,
+                )
+            )
+            planned_targets.add(normalize_path(str(new_path)))
         else:
-            if not _check_alias_column_in_metadata():
-                print("⏹️  Rename aborted due to missing alias column.")
-                return rename_entries
-
             if new_name != f.name:
+                if update_db and not _preflight_db_rename(
+                    f, new_path, db_path=db_path
+                ):
+                    print("⏹️  Rename aborted before moving files.")
+                    return rename_entries
+
                 shutil.move(str(f), str(new_path))
 
-                if update_db:
-                    _sync_path_in_db(str(f), str(new_path))
+                if update_db and not _sync_path_in_db(
+                    str(f), str(new_path), db_path=db_path
+                ):
+                    rolled_back = _rollback_file_move(f, new_path)
+                    if rolled_back:
+                        print("⏹️  Rename rolled back because DB sync failed.")
+                    else:
+                        print("⚠️ Rename completed on disk, but DB sync failed.")
+                    return rename_entries
 
                 print(f"✅ Renamed:\n  {f} → {new_path}")
             else:
                 print(f"✅ Skipped (already correct): {f.name}")
+            rename_entries.append(
+                RenameEntry(
+                    original_path=f,
+                    renamed_path=new_path,
+                )
+            )
+            planned_targets.add(normalize_path(str(new_path)))
 
-        counter += 1
+        if uses_explicit_counter:
+            sequence_counter = counter + 1
 
     return rename_entries

@@ -4,9 +4,9 @@ import json
 import sys
 import time
 import logging
+import re
 from pathlib import Path
 from datetime import datetime
-from typing import Iterable
 
 from rich.console import Console
 from rich.tree import Tree
@@ -31,9 +31,6 @@ from .log_schema import (
     file_entry_template,
     empty_organizer_log,
 )
-from indexly.organize.profiles.media_rules import (
-    get_destination as media_destination,
-)
 from indexly.time_utils import utc_now, utc_now_iso_z
 
 console = Console()
@@ -45,6 +42,8 @@ logging.basicConfig(
     handlers=[RichHandler(console=console)],
 )
 log = logging.getLogger("organizer")
+SAFE_NAME_RE = re.compile(r"[^A-Za-z0-9._ -]+")
+RAW_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".tiff", ".bmp"}
 
 
 def _hash_file(path: Path, algo="sha256") -> str | None:
@@ -73,6 +72,105 @@ def _write_log_atomic(log: dict, log_dir: Path, root_name: str):
     return final_path
 
 
+def _relative_or_name(path: Path, root: Path) -> Path:
+    try:
+        return path.relative_to(root)
+    except ValueError:
+        return Path(path.name)
+
+
+def _copy_backup_before_move(src: Path, root: Path, backup_root: Path) -> Path | None:
+    backup_path = backup_root / _relative_or_name(src, root)
+    backup_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(src, backup_path)
+    return backup_path
+
+
+def _refresh_duplicate_summary(plan: dict) -> None:
+    summary = plan.setdefault("summary", {})
+    summary["duplicates"] = sum(1 for f in plan.get("files", []) if f.get("duplicate"))
+
+
+def _mark_duplicate_metadata(plan: dict) -> int:
+    """
+    Add content and name/size duplicate flags to plan entries.
+
+    Existing collision-based duplicate flags are preserved. Hashing is read-only
+    and runs before any move so dry-runs and executed runs share the same view.
+    """
+    skipped = 0
+    seen_hashes: dict[str, int] = {}
+    seen_name_size: dict[tuple[str, int | None], int] = {}
+    files = plan.get("files", [])
+
+    for idx, entry in enumerate(files):
+        src = Path(entry["original_path"])
+        path_name = Path(entry.get("new_path") or src).name.lower()
+        key = (path_name, entry.get("size"))
+
+        previous_idx = seen_name_size.get(key)
+        if previous_idx is None:
+            seen_name_size[key] = idx
+        else:
+            files[previous_idx]["duplicate"] = True
+            entry["duplicate"] = True
+
+        h = _hash_file(src)
+        entry["hash"] = h
+        if h is None:
+            skipped += 1
+            continue
+
+        previous_idx = seen_hashes.get(h)
+        if previous_idx is None:
+            seen_hashes[h] = idx
+            continue
+
+        files[previous_idx]["duplicate"] = True
+        entry["duplicate"] = True
+
+    _refresh_duplicate_summary(plan)
+    return skipped
+
+
+def _ensure_health_patient_dirs(root: Path, patient_id: str) -> None:
+    patient_root = root / "Health" / "Patients" / patient_id
+    for folder in ["Reports", "Imaging", "Lab", "Admin", "Guidelines", "Archive"]:
+        (patient_root / folder).mkdir(parents=True, exist_ok=True)
+
+
+def _profile_with_category(profile: str, category: str | None) -> str:
+    if profile == "business" and category in {"solo", "employer"}:
+        return f"business:{category}"
+    return profile
+
+
+def _safe_path_segment(value: str, *, field: str) -> str:
+    raw = value.strip()
+    if not raw:
+        raise ValueError(f"{field} cannot be empty.")
+    if raw in {".", ".."}:
+        raise ValueError(f"{field} cannot be a relative path segment.")
+    if Path(raw).is_absolute() or ":" in raw or any(sep in raw for sep in ("/", "\\")):
+        raise ValueError(f"{field} must be a name, not a path.")
+
+    cleaned = SAFE_NAME_RE.sub("_", raw)
+    cleaned = cleaned.strip(" .")
+    if not cleaned:
+        raise ValueError(f"{field} cannot be empty.")
+    return cleaned[:80]
+
+
+def _normalize_optional_segment(value: str | None, *, field: str) -> str | None:
+    if value is None:
+        return None
+    return _safe_path_segment(value, field=field)
+
+
+def _is_raw_image(path: Path) -> bool:
+    return path.parent.name.lower() == "00_raw" and path.suffix.lower() in RAW_IMAGE_EXTS
+
+
 def execute_organizer(
     root: Path,
     sort_by: str = "date",
@@ -96,7 +194,18 @@ def execute_organizer(
 
     if precomputed_plan is not None:
         print("📂 Using precomputed rename plan for organization...")
-        plan = precomputed_plan
+        if precomputed_plan.get("summary") and all(
+            "new_path" in f for f in precomputed_plan.get("files", [])
+        ):
+            plan = precomputed_plan
+        else:
+            plan = organize_folder(
+                root,
+                sort_by=sort_by,
+                executed_by=executed_by,
+                dry_run=dry_run,
+                precomputed_entries=precomputed_plan.get("files", []),
+            )
     else:
         print(f"📂 Building organization plan for {root}...")
         plan = organize_folder(
@@ -105,9 +214,14 @@ def execute_organizer(
     total_files = len(plan["files"])
     print(f"✅ Plan ready: {total_files} files to organize.\n")
 
+    skipped_hash_files = _mark_duplicate_metadata(plan)
     backup_mapping = {}
     if backup_root and not dry_run:
         backup_root.mkdir(parents=True, exist_ok=True)
+
+    if total_files == 0:
+        print("ℹ️ No files found to organize.")
+        return (plan, {}) if dry_run else (plan, backup_mapping)
 
     max_name_len = max(len(Path(f["new_path"]).name) for f in plan["files"])
 
@@ -118,7 +232,7 @@ def execute_organizer(
         if not dry_run:
             dst.parent.mkdir(parents=True, exist_ok=True)
 
-            src_hash = _hash_file(src)
+            src_hash = f.get("hash") or _hash_file(src)
             if src_hash is None:
                 continue
 
@@ -128,22 +242,24 @@ def execute_organizer(
             else:
                 f["unchanged"] = False
 
+            if backup_root and not f.get("unchanged"):
+                try:
+                    bkp_path = _copy_backup_before_move(src, root, backup_root)
+                    backup_mapping[str(src)] = str(bkp_path)
+                except (OSError, shutil.Error) as e:
+                    log.warning(
+                        f"⚠️ Cannot backup file (skipped): {src} → {backup_root} — {e}"
+                    )
+                    continue
+
             try:
-                safe_move(src, dst)
+                final_dst = safe_move(src, dst)
+                if final_dst != dst:
+                    f["new_path"] = str(final_dst)
+                    f["alias"] = final_dst.name
             except (OSError, shutil.Error) as e:
                 log.warning(f"⚠️ Cannot move file (skipped): {src} → {dst} — {e}")
                 continue
-
-            if backup_root and not f.get("unchanged"):
-                bkp_path = backup_root / dst.relative_to(root)
-                bkp_path.parent.mkdir(parents=True, exist_ok=True)
-                try:
-                    shutil.copy2(dst, bkp_path)
-                    backup_mapping[str(dst)] = str(bkp_path)
-                except (OSError, shutil.Error) as e:
-                    log.warning(
-                        f"⚠️ Cannot backup file (skipped): {dst} → {bkp_path} — {e}"
-                    )
 
         # Dry-run feedback
         sys.stdout.write(
@@ -155,6 +271,8 @@ def execute_organizer(
 
     if dry_run:
         print(f"\n📄 Dry-run only: {total_files} files would be organized.")
+        if skipped_hash_files:
+            print(f"⚠️ Files skipped during duplicate hashing: {skipped_hash_files}")
         return plan, {}
 
     print("\n📄 Writing log...")
@@ -167,6 +285,8 @@ def execute_organizer(
     print(f"  Pictures: {summary.get('pictures', 0)}")
     print(f"  Videos: {summary.get('videos', 0)}")
     print(f"  Duplicates: {summary.get('duplicates', 0)}")
+    if skipped_hash_files:
+        print(f"  Hash skipped: {skipped_hash_files}")
     print(f"✅ Organizer completed. Log saved to {log_path}")
     if backup_root:
         print(f"📦 Backup saved at {backup_root}")
@@ -203,6 +323,8 @@ def execute_profile_scaffold(
 ):
     root = Path(root).resolve()
     profile = profile.lower()
+    project_name = _normalize_optional_segment(project_name, field="--project-name")
+    shoot_name = _normalize_optional_segment(shoot_name, field="--shoot-name")
 
     if profile not in PROFILE_STRUCTURES:
         raise ValueError(f"Unknown profile: {profile}")
@@ -228,7 +350,7 @@ def execute_profile_scaffold(
         resolved_patient_id = (
             _next_health_patient_id(root)
             if patient_id == "" or patient_id is True
-            else patient_id
+            else _safe_path_segment(patient_id, field="--patient-id")
         )
 
         patient_root = root / "Health" / "Patients" / resolved_patient_id
@@ -299,7 +421,7 @@ def execute_profile_scaffold(
         if profile == "data" and project_name:
             paths.extend(build_data_project_structure(project_name))
 
-        if profile == "media":
+        if profile == "media" and shoot_name:
             paths.extend(
                 build_media_shoot_structure(media_root=root, shoot_name=shoot_name)
             )
@@ -338,10 +460,11 @@ def execute_profile_scaffold(
             )
         )
 
+    next_steps_key = category if profile == "business" and category else profile
     next_steps_msg = (
         f"Patient folder scaffolded: {resolved_patient_id}."
         if profile == "health" and resolved_patient_id
-        else PROFILE_NEXT_STEPS[profile]
+        else PROFILE_NEXT_STEPS[next_steps_key]
     )
 
     console.print(
@@ -373,24 +496,45 @@ def execute_profile_placement(
     patient_id: str | None = None,
     recursive: bool = False,
     classify_raw: str | None = None,
+    precomputed_plan: dict | None = None,
 ):
-    from indexly.organize.profiles.health_rules import (
-        get_destination as health_destination,
-    )
     from indexly.observers.runner import run_observers
 
     source_root = Path(source_root).resolve()
     destination_root = Path(destination_root).resolve()
-    profile = profile.lower()
+    project_name = _normalize_optional_segment(project_name, field="--project-name")
+    shoot_name = _normalize_optional_segment(shoot_name, field="--shoot-name")
+    profile = _profile_with_category(profile.lower(), category)
+    preview_only = dry_run or not apply
 
     if profile not in PROFILE_RULES:
         raise ValueError(f"Unknown profile: {profile}")
 
-    files = (
-        [p for p in source_root.rglob("*") if p.is_file()]
-        if recursive
-        else [p for p in source_root.iterdir() if p.is_file()]
-    )
+    if classify_raw and (profile != "media" or category != "photographer"):
+        raise ValueError(
+            "--classify-raw requires --profile media --category photographer."
+        )
+
+    if precomputed_plan:
+        files = []
+        for entry in precomputed_plan.get("files", []):
+            original = Path(entry["original_path"])
+            renamed = Path(entry.get("renamed_path") or entry.get("new_path") or original)
+            source = renamed if renamed.exists() else original
+            files.append((source, renamed))
+    else:
+        files = (
+            [p for p in source_root.rglob("*") if p.is_file()]
+            if recursive
+            else [p for p in source_root.iterdir() if p.is_file()]
+        )
+
+    if classify_raw:
+        files = [
+            item
+            for item in files
+            if _is_raw_image(item[1] if isinstance(item, tuple) else item)
+        ]
 
     if not files:
         console.print(
@@ -407,7 +551,7 @@ def execute_profile_placement(
         resolved_patient_id = (
             _next_health_patient_id(destination_root)
             if patient_id == ""
-            else patient_id
+            else _safe_path_segment(patient_id, field="--patient-id")
         )
 
     plan = build_placement_plan(
@@ -419,6 +563,8 @@ def execute_profile_placement(
         shoot_name=shoot_name,
         patient_id=resolved_patient_id,
         classify_raw=classify_raw,
+        category=category,
+        ensure_patient_folder_exists=bool(resolved_patient_id),
     )
 
     meta = empty_meta(
@@ -432,27 +578,12 @@ def execute_profile_placement(
 
     console.rule(f"[bold cyan]Indexly Organize — Placement Plan ({profile})")
 
+    if not preview_only and profile == "health" and resolved_patient_id:
+        _ensure_health_patient_dirs(destination_root, resolved_patient_id)
+
     for entry in plan:
         src = Path(entry["source"])
-
-        if profile == "health" and resolved_patient_id:
-            dst = health_destination(
-                root=destination_root,
-                file_path=src,
-                patient_id=resolved_patient_id,
-                ensure_patient_folder_exists=True,
-            )
-        elif profile == "media" and category == "photographer" and classify_raw:
-            dst = media_destination(
-                root=destination_root,
-                file_path=src,
-                profile=profile,
-                category=category,
-                shoot_name=shoot_name,
-                classify_raw=classify_raw,
-            )
-        else:
-            dst = Path(entry["destination"])
+        dst = Path(entry["destination"])
 
         file_hash = _hash_file(src)
         if file_hash is None:
@@ -483,10 +614,14 @@ def execute_profile_placement(
         )
         summary["total_files"] += 1
 
-        if apply and not dry_run:
+        if not preview_only:
             try:
                 dst.parent.mkdir(parents=True, exist_ok=True)
-                safe_move(src, dst)
+                final_dst = safe_move(src, dst)
+                if final_dst != dst:
+                    dst = final_dst
+                    log_files[-1]["new_path"] = str(final_dst)
+                    log_files[-1]["alias"] = final_dst.name
 
                 # ✅ OBSERVER INTEGRATION (semantic commit)
                 observer_metadata = {
@@ -503,21 +638,25 @@ def execute_profile_placement(
                 log.warning(f"⚠️ Cannot move file (skipped): {src} → {dst} — {e}")
                 continue
 
-    final_log = empty_organizer_log(meta, summary, log_files)
-    if not log_path:
-        log_path = destination_root / "log" / f"profile_{profile}_placement.json"
-    write_organizer_log(final_log, log_path)
+    if not preview_only:
+        final_log = empty_organizer_log(meta, summary, log_files)
+        if not log_path:
+            log_path = destination_root / "log" / f"profile_{profile}_placement.json"
+        write_organizer_log(final_log, log_path)
+        log_message = f"\nLog written to: {log_path}"
+    else:
+        log_message = ""
 
     console.print(
         Panel.fit(
             (
                 "Dry-run only. No files were moved."
-                if dry_run
+                if preview_only
                 else f"{len(plan)} files placed successfully."
             )
-            + f"\nLog written to: {log_path}",
-            title="Mode" if dry_run else "Status",
-            style="yellow" if dry_run else "green",
+            + log_message,
+            title="Mode" if preview_only else "Status",
+            style="yellow" if preview_only else "green",
         )
     )
 
@@ -532,17 +671,17 @@ def execute_profile_placement(
 def _next_health_patient_id(root: Path) -> str:
     today = utc_now().strftime("%Y%m%d")
     base = root / "Health" / "Patients"
-    base.mkdir(parents=True, exist_ok=True)
 
     prefix = f"{today}-patient-"
     existing = []
 
-    for p in base.iterdir():
-        if p.is_dir() and p.name.startswith(prefix):
-            try:
-                existing.append(int(p.name.split("-")[-1]))
-            except ValueError:
-                pass
+    if base.exists():
+        for p in base.iterdir():
+            if p.is_dir() and p.name.startswith(prefix):
+                try:
+                    existing.append(int(p.name.split("-")[-1]))
+                except ValueError:
+                    pass
 
     next_id = max(existing, default=0) + 1
     return f"{prefix}{next_id:05d}"

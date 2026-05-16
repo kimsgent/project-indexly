@@ -15,10 +15,10 @@ class BaseObserver(ABC):
     """
 
     name: str
+    dependencies: list[str] = []
 
     @abstractmethod
-    def applies_to(self, file_path: Path, metadata: dict[str, Any]) -> bool:
-        ...
+    def applies_to(self, file_path: Path, metadata: dict[str, Any]) -> bool: ...
 
     @abstractmethod
     def extract(self, file_path: Path, metadata: dict[str, Any]) -> dict[str, Any]:

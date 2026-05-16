@@ -24,6 +24,7 @@ tags:
   - cli
 author: "N. K. Franklin-Gent"
 date: 2025-10-19
+lastmod: 2026-05-16
 draft: false
 categories:
   - Documentation
@@ -78,6 +79,14 @@ Let’s analyze a dataset called `sales_data.csv`:
 ```bash
 indexly analyze-csv sales_data.csv --show-chart ascii --chart-type hist --transform auto
 ````
+
+If your exports arrive with inconsistent names, standardize them first:
+
+```bash
+indexly rename-file ./exports --pattern "{date}-{title}" --recursive --dry-run
+```
+
+See [Rename File](rename-file.md) for safe previews and optional organizer handoff.
 
 **Output Example:**
 
@@ -247,6 +256,7 @@ Uses **Plotly** to produce dynamic visualizations viewable in the browser.
 Continue exploring Indexly’s analytical capabilities:
 
 * 🔍 [Configuration & Optimization](config.md)
+* Prepare exported datasets with [Rename File](rename-file.md)
 * 🏷️ [Tagging & Metadata Management](tagging.md)
 * ⚡ [Real-Time Watchdog Indexing](config.md#watchdog-real-time-indexing)
 * 📊 [Search & Filter with FTS5](/features/_index.en.md#search)
@@ -254,4 +264,3 @@ Continue exploring Indexly’s analytical capabilities:
 ---
 
 ✨ **Indexly makes your data talk — visually, statistically, and intelligently.**
-

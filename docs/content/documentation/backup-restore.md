@@ -3,7 +3,7 @@ title: "Backup & Restore"
 description: "Incremental, encrypted backups with automatic scheduling and reliable restore chains in Indexly."
 slug: "backup-restore"
 weight: 30
-lastmod: "2026-04-23"
+lastmod: "2026-05-13"
 type: docs
 draft: false
 keywords: [
@@ -71,12 +71,13 @@ Indexly automatically determines the correct base.
 Backups can be encrypted using a password:
 
 ```bash
-indexly backup "E:\data" --encrypt mypassword
+indexly backup "E:\data" --encrypt "Better-Password-2026"
 ```
 
 - Encryption happens **after compression**
 - Resulting file ends with `.enc`
 - Registry tracks encryption state
+- Passwords must be at least 12 characters and include upper/lowercase letters, a digit, and a symbol
 
 Example:
 
@@ -93,14 +94,40 @@ The original archive is replaced by its encrypted form (`.enc`).
 Indexly generates a SHA-256 checksum for every backup:
 
 ```shell
-full_2026-01-01_191528.tar.zst.sha256
+full_2026-01-01_191528.tar.zst.enc.sha256
 ```
 
-- Always computed on the compressed archive **before encryption**
+- Always computed on the final stored archive, including `.enc` files
 - Ensures archive integrity
 - Verified automatically during restore
 
-Users may optionally verify checksums manually after decryption.
+Older backups that used the previous checksum filename format remain restorable.
+
+----
+
+## Backup Verification
+
+Verify all registered backups without restoring them:
+
+```bash
+indexly backup --verify
+```
+
+Verify a single archive by filename:
+
+```bash
+indexly backup --verify full_2026-01-01_191528.tar.zst.enc --decrypt "Better-Password-2026"
+```
+
+Verification checks:
+
+- Archive checksum
+- Decryption, when `.enc` is detected
+- Safe extraction into a temporary directory
+- Manifest and metadata readability
+- Payload checksums for files stored inside the archive
+
+No files are written to your restore target during verification.
 
 ----
 
@@ -113,7 +140,15 @@ Indexly automatically selects the best available compression:
 | Zstandard  | `.tar.zst`    | `zstd` available |
 | Gzip       | `.tar.gz`     | fallback         |
 
-Detection is runtime-based—no manual selection needed.
+Detection is runtime-based. If `zstd` is not available, Indexly falls back to gzip when creating new backups.
+
+When restoring existing `.tar.zst` archives, Indexly can use either the Python `zstandard` package or the `zstd` CLI.
+
+Install `zstd` by platform:
+
+- Windows (PowerShell): `winget install Facebook.Zstandard`
+- macOS: `brew install zstd`
+- Debian/Ubuntu: `sudo apt-get install zstd`
 
 ----
 
@@ -137,6 +172,16 @@ indexly restore full_2026-01-01_191528.tar.zst.enc --target "E:\restore"
 
 If decryption fails after 3 attempts, restore aborts safely.
 
+### Restore Dry-Run
+
+Use dry-run mode to verify and simulate a restore chain without writing files to the destination:
+
+```bash
+indexly restore incremental_2026-01-02_080000.tar.gz --target "E:\restore" --dry-run
+```
+
+Dry-run mode verifies checksums, decrypts when needed, extracts into temporary storage, replays the final snapshot, and reports the resulting file count. The target folder is left untouched.
+
 ----
 
 ## Incremental Restore Chains
@@ -146,6 +191,7 @@ Restoring an incremental backup automatically:
 1. Locates the base full backup
 2. Replays all incrementals in order
 3. Verifies checksums at each step
+4. Applies deletion-only incrementals from the manifest snapshot
 
 > Incremental restore chains are reconstructed automatically during restore, so users only need to restore the latest archive—Indexly handles the rest.
 
@@ -192,6 +238,8 @@ What happens next, step by step:
 
 You’ll see confirmation in the terminal along with the script location.
 
+Indexly validates that the source exists, is readable, and is not inside the backup storage directory before a backup runs. It also checks available disk space before writing archives.
+
 ----
 
 ### Step 2: Understand the Generated Script
@@ -225,6 +273,7 @@ Key points:
 - Works for both developers and non-developers
 - Uses virtual environment Python if available
 - Falls back to system Python and PATH-installed `indexly`
+- Falls back to `python -m indexly` if the `indexly` command is not discoverable
 
 You are encouraged to open and inspect this file.
 

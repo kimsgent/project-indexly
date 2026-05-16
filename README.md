@@ -108,6 +108,7 @@ indexly search "keyword"
 indexly watch /path/to/folder
 indexly analyze-file /path/to/file
 indexly compare path_a path_b
+indexly compare path_a path_b --ignore-file /path/to/.indexlyignore
 indexly backup /path/to/folder
 indexly restore backup_name --target /restore/path
 indexly doctor

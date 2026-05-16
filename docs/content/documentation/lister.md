@@ -86,7 +86,15 @@ Under the hood, Lister:
 
 The result is **identical output**, regardless of whether the log was loaded or generated.
 
+The predicted organization paths and filters use the same rendering pipeline in both modes. Metadata can still differ: generated fallback logs are marked as dry-run/cacheable predictions, while Organizer logs preserve the original execution metadata.
+
 > ℹ️ Generated logs exist in memory only unless caching is enabled.
+
+Use `--no-generate` when you want Lister to require an existing Organizer log and exit cleanly if none is found:
+
+```bash
+indexly lister . --no-generate
+```
 
 ---
 
@@ -105,6 +113,15 @@ Caching is:
 • Safe
 • Local to the inspected root
 • Fully optional (`--no-cache` disables it)
+
+Cache details:
+
+• Location: `.indexly/lister_cache.json` inside the inspected root
+• Scope: generated read-only lister results for that root
+• Validation: schema, resolved root path, file count, file manifest hash, and `.indexlyignore` hash
+• Invalidation: files added, removed, replaced, renamed, resized, timestamp-changed, or ignore rules changed
+
+The cache bookkeeping file itself is ignored during validation so cached runs do not invalidate themselves.
 
 ---
 
@@ -159,7 +176,10 @@ indexly lister --help
 
 ```shell
 usage: indexly lister [-h] [--ext EXT] [--category CATEGORY]
-                      [--date DATE] [--duplicates] source
+                      [--date DATE] [--duplicates]
+                      [--detect-duplicates] [--no-generate]
+                      [--sort-by {date,name,extension}] [--no-cache]
+                      source
 
 positional arguments:
   source               Organizer JSON log file or directory containing logs
@@ -170,6 +190,10 @@ options:
   --category CATEGORY  Filter by category (e.g. Documents, Images)
   --date DATE          Filter by YYYY-MM
   --duplicates         Show only duplicate files
+  --detect-duplicates  Hash accessible files to mark duplicates before listing
+  --no-generate        Do not synthesize a fallback log when no log exists
+  --sort-by            Sort by date, name, or extension
+  --no-cache           Skip cached lister results
 ```
 
 ----
@@ -228,13 +252,13 @@ Useful for:
 ### 🔹 Detect Duplicate Files
 
 ```bash
-indexly lister logs --duplicates
+indexly lister logs --detect-duplicates
 ```
 
 Duplicate detection is based on:
 
 - File hashes
-- Normalized paths
+- Accessible file paths from the log
 
 This allows you to:
 
@@ -243,6 +267,14 @@ This allows you to:
 - Avoid accidental deletion
 
 > ⚠️ Lister **does not delete duplicates** — it only reports them.
+
+`--detect-duplicates` hashes readable files and marks duplicates. It works for generated fallback logs too: Lister uses the organized target path when it exists and falls back to the original path when the target path is only a prediction.
+
+`--duplicates` only filters the current listing to entries already marked as duplicates. Combine both options to hash first and show only duplicate groups:
+
+```bash
+indexly lister . --detect-duplicates --duplicates
+```
 
 ----
 
@@ -273,6 +305,12 @@ What happens:
 | Log directory      | ✅             |
 | Mixed logs         | ✅             |
 | Non-Organizer JSON | ❌             |
+
+----
+
+## 🪟 Windows Path Display
+
+Lister resolves input paths before selecting logs or validating cache state. On Windows, output paths are displayed in the form stored in the Organizer log, so you may see absolute drive-letter paths, UNC paths, or generated prediction paths depending on how the log was produced.
 
 ----
 

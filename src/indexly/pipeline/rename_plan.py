@@ -19,10 +19,12 @@ class RenamePlan:
         """
         Convert rename plan into organizer-compatible file structure.
         """
-        return [
-            {
-                "original_path": str(e.renamed_path if not self.dry_run else e.original_path),
-                "new_path": str(e.renamed_path),
-            }
-            for e in self.entries
-        ]
+        return {
+            "files": [
+                {
+                    "original_path": str(e.original_path),
+                    "renamed_path": str(e.renamed_path),
+                }
+                for e in self.entries
+            ]
+        }

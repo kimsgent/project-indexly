@@ -35,12 +35,7 @@ def get_destination(
     if patient_id:
         patient_root = root / "Health" / HEALTH_FOLDERS["patients"] / patient_id
 
-        if ensure_patient_folder_exists:
-            patient_root.mkdir(parents=True, exist_ok=True)
-            for folder in HEALTH_FOLDERS.values():
-                if folder != HEALTH_FOLDERS["patients"]:
-                    (patient_root / folder).mkdir(parents=True, exist_ok=True)
-        elif not patient_root.exists():
+        if not ensure_patient_folder_exists and not patient_root.exists():
             raise RuntimeError(
                 f"Patient ID '{patient_id}' does not exist. "
                 "Use `organize scaffold health --apply` to create it first."
@@ -62,7 +57,6 @@ def get_destination(
             dest = base_destination(patient_root, file_path)
             folder = dest.parent
 
-        folder.mkdir(parents=True, exist_ok=True)
         return folder / file_path.name
 
     # 🔓 Non-patient placement
@@ -79,5 +73,4 @@ def get_destination(
     else:
         folder = root / "Health" / HEALTH_FOLDERS["archive"]
 
-    folder.mkdir(parents=True, exist_ok=True)
     return folder / file_path.name

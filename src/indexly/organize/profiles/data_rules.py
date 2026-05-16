@@ -15,10 +15,12 @@ def get_destination(root: Path, file_path: Path, project_name: str | None = None
     Returns the folder where the file should be placed for the 'data' profile.
     """
     proj = project_name or "Unnamed_Project"
-    base = root / "Projects" / proj
+    base = root / "Data" / "Projects" / proj
 
     fname = file_path.name.lower()
     ext = file_path.suffix.lower()
+    if file_path.name.lower().endswith(".json.gz"):
+        ext = ".json.gz"
 
     if any(h in fname for h in RAW_HINTS) or ext in DATA_EXTS:
         folder = base / "Data" / "Raw"
@@ -35,6 +37,6 @@ def get_destination(root: Path, file_path: Path, project_name: str | None = None
     elif ext in DB_EXTS:
         folder = base / "Data"
     else:
-        folder = root / "Archive"
+        folder = root / "Data" / "Archive"
 
     return folder / file_path.name

@@ -10,12 +10,15 @@ Emits:
 """
 
 import re
+import logging
 from pathlib import Path
 from typing import Any
 
 from .base import BaseObserver
 from indexly.path_utils import normalize_path
 from indexly.observers.config import find_watch_entry
+
+logger = logging.getLogger(__name__)
 
 
 class FieldObserver(BaseObserver):
@@ -40,39 +43,68 @@ class FieldObserver(BaseObserver):
             content = ""
 
         for field, rule in fields_cfg.items():
-            rtype = rule.get("type")
+            if not isinstance(rule, dict):
+                logger.warning("Field '%s' rule must be an object", field)
+                continue
 
-            # --- regex
-            if rtype == "regex":
-                m = re.search(rule["pattern"], content, re.MULTILINE)
-                if m:
-                    extracted[field] = m.group(1).strip()
+            try:
+                value = self._extract_field_value(rule, content, metadata)
+            except Exception as exc:
+                logger.warning("Failed to extract field '%s': %s", field, exc)
+                continue
 
-            # --- multi (first hit wins)
-            elif rtype == "multi":
-                for sub in rule.get("patterns", []):
-                    stype = sub.get("type")
-
-                    if stype in ("markdown", "text"):
-                        m = re.search(sub["pattern"], content, re.MULTILINE)
-                        if m:
-                            extracted[field] = m.group(1).strip()
-                            break
-
-                    elif stype == "toml":
-                        m = re.search(
-                            rf'{sub["key"]}\s*=\s*["\'](.+?)["\']',
-                            content,
-                        )
-                        if m:
-                            extracted[field] = m.group(1).strip()
-                            break
-
-            # --- metadata passthrough
-            elif rtype == "metadata":
-                extracted[field] = metadata.get(rule.get("key"))
+            if value is not None:
+                extracted[field] = value
 
         return extracted
+
+    def _extract_field_value(
+        self,
+        rule: dict[str, Any],
+        content: str,
+        metadata: dict[str, Any],
+    ) -> Any:
+        rtype = rule.get("type")
+
+        if rtype in ("regex", "markdown", "text"):
+            pattern = rule.get("pattern")
+            if not pattern:
+                logger.warning("Field rule type '%s' missing 'pattern'", rtype)
+                return None
+            m = re.search(pattern, content, re.MULTILINE)
+            return m.group(1).strip() if m else None
+
+        if rtype == "toml":
+            key = rule.get("key")
+            if not key:
+                logger.warning("TOML field rule missing 'key'")
+                return None
+            m = re.search(rf"{re.escape(key)}\s*=\s*[\"'](.+?)[\"']", content)
+            return m.group(1).strip() if m else None
+
+        if rtype == "multi":
+            patterns = rule.get("patterns", [])
+            if not isinstance(patterns, list):
+                logger.warning("Multi field rule requires a 'patterns' list")
+                return None
+            for subrule in patterns:
+                if not isinstance(subrule, dict):
+                    logger.warning("Multi field subrule must be an object")
+                    continue
+                value = self._extract_field_value(subrule, content, metadata)
+                if value is not None:
+                    return value
+            return None
+
+        if rtype == "metadata":
+            key = rule.get("key")
+            if not key:
+                logger.warning("Metadata field rule missing 'key'")
+                return None
+            return metadata.get(key)
+
+        logger.warning("Unsupported field rule type '%s'", rtype)
+        return None
 
     def compare(self, old: dict | None, new: dict) -> list[dict]:
         events: list[dict] = []

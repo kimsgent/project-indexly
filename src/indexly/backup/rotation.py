@@ -1,9 +1,12 @@
 from pathlib import Path
+import logging
 import time
 
 from .registry import load_registry, save_registry
+from .verify import checksum_path_for, legacy_checksum_path_for
 
 MAX_FULL_BACKUPS = 3
+logger = logging.getLogger("indexly_rotation")
 
 
 def apply_rotation(registry_path: Path):
@@ -18,25 +21,50 @@ def apply_rotation(registry_path: Path):
     fulls.sort(key=lambda b: b.get("registered_at", 0))
 
     to_prune = fulls[:-MAX_FULL_BACKUPS]
-    prune_archives = set()
+    prune_archives = {full["archive"] for full in to_prune}
 
-    for full in to_prune:
-        prune_archives.add(full["archive"])
-        for step in full.get("chain", []):
-            prune_archives.add(step["archive"])
+    changed = True
+    while changed:
+        changed = False
+        for backup in backups:
+            if backup["archive"] in prune_archives:
+                continue
+            chain_archives = {step.get("archive") for step in backup.get("chain", [])}
+            if prune_archives.intersection(chain_archives):
+                prune_archives.add(backup["archive"])
+                changed = True
 
-    registry["backups"] = [
-        b for b in backups if b["archive"] not in prune_archives
-    ]
+    deleted_archives = set()
+    failed_archives = set()
 
     for archive in prune_archives:
+        archive_path = Path(archive)
+        deletion_failed = False
         try:
-            Path(archive).unlink(missing_ok=True)
-            Path(archive).with_suffix(".sha256").unlink(missing_ok=True)
-        except Exception:
-            pass
+            archive_path.unlink(missing_ok=True)
+        except OSError as exc:
+            deletion_failed = True
+            logger.warning("Failed to delete rotated archive %s: %s", archive_path, exc)
+
+        if deletion_failed:
+            failed_archives.add(archive)
+            continue
+
+        for checksum in {checksum_path_for(archive_path), legacy_checksum_path_for(archive_path)}:
+            try:
+                checksum.unlink(missing_ok=True)
+            except OSError as exc:
+                logger.warning("Failed to delete rotated checksum %s: %s", checksum, exc)
+
+        deleted_archives.add(archive)
+
+    registry["backups"] = [
+        b for b in backups if b["archive"] not in deleted_archives
+    ]
 
     save_registry(registry_path, registry)
+    if failed_archives:
+        print(f"⚠️ Rotation kept {len(failed_archives)} backup(s) whose files could not be deleted")
     print(f"♻️ Rotation applied (kept {MAX_FULL_BACKUPS} full backups)")
 
 
@@ -56,5 +84,5 @@ def rotate_logs(log_dir: Path, max_age_days: int = 30):
         try:
             if now - log_file.stat().st_mtime > max_age_sec:
                 log_file.unlink()
-        except Exception:
-            pass
+        except OSError as exc:
+            logger.warning("Failed to rotate log %s: %s", log_file, exc)

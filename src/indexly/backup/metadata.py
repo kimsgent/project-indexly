@@ -5,12 +5,18 @@ import json
 
 def collect_metadata(path: Path) -> dict:
     st = path.lstat()
-    return {
+    is_symlink = path.is_symlink()
+    meta = {
         "mode": stat.S_IMODE(st.st_mode),
-        "is_symlink": path.is_symlink(),
+        "is_symlink": is_symlink,
+        "is_dir": path.is_dir() and not is_symlink,
         "mtime": st.st_mtime,
         "atime": st.st_atime,
     }
+    if is_symlink:
+        meta["symlink_target"] = os.readlink(path)
+        meta["target_is_directory"] = path.is_dir()
+    return meta
 
 def serialize_metadata(root: Path) -> dict:
     meta = {}

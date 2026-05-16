@@ -160,7 +160,7 @@ project-indexly/
 | Organization | `organize/organizer.py`, `organize/lister.py`, `organize/cli_wrapper.py` | Folder structuring, logs, lister views |
 | Compare | `compare/compare_engine.py`, `compare/file_compare.py`, `compare/folder_compare.py` | File/folder diff and similarity checks |
 | Backup/restore | `backup/cli.py`, `backup/restore.py`, `backup/compress.py` | Full/incremental backup and restore workflows |
-| Monitoring | `watcher.py`, `observers/runner.py` | Live folder watch and observer-based audits |
+| Monitoring | `watcher.py`, `observers/runner.py`, `observers/registry.py` | Live folder watch, semantic observer runs, event callbacks, metrics, and audits |
 | Health diagnostics | `doctor.py`, `db_update.py`, `db_schema_utils.py` | Runtime health checks, search/analysis DB diagnostics, guarded repair flow |
 
 ---
@@ -215,6 +215,45 @@ When adding a command:
 - Export and rendering: `output_utils.py`, `export_utils.py`, `visualization/`
 - Ignore behavior: `ignore/` and `ignore_defaults/`
 - Backup behavior: `backup/`
+
+---
+
+## Observer Internals
+
+The observer system lives in `src/indexly/observers/`.
+
+Core modules:
+
+- `base.py`: observer contract (`applies_to`, `extract`, `compare`, `format_event`)
+- `registry.py`: built-in registration, enable/disable controls, event handlers
+- `runner.py`: execution order, dependency wiring, snapshot lifecycle, logging, metrics
+- `snapshot_store.py`: latest generic observer snapshots in `observer_snapshots`
+- `csv/csv_snapshot_store.py`: historical CSV snapshots in `csv_snapshots`
+- `aggregator.py`: optional event aggregation for programmatic runs
+- `metrics.py`: in-process observer execution metrics
+
+Built-in observer names are `identity`, `field`, `state`, `health_identity`, `health_fields`, `health_events`, and `csv`.
+
+The public CLI surface is intentionally small:
+
+```bash
+indexly observe --help
+indexly observe run /path/to/file
+indexly observe run /path/to/folder --recursive
+indexly observe audit
+indexly observe audit --id 20260201-patient-00001
+```
+
+Programmatic controls such as `disable_observer()`, `enable_observer()`, `register_event_handler()`, `run_observers_batch()`, event aggregation, and `MetricsCollector.get_summary()` are Python APIs rather than CLI flags.
+
+When changing observer behavior, run:
+
+```bash
+python -m pytest tests/test_observers_config.py tests/test_health_event_observer.py tests/test_csv_snapshot_store.py tests/test_csv_observer.py tests/test_observer_runner.py
+python -m indexly observe --help
+python -m indexly observe run --help
+python -m indexly observe audit --help
+```
 
 ---
 

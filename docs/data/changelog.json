@@ -2,6 +2,29 @@
   "project": "FTS5 File Search Tool",
   "versions": [
     {
+      "version": "2.1.1",
+      "date": "2026-05-16",
+      "contributors": [
+        "N. K. Franklin-Gent",
+        "OpenAI Codex"
+      ],
+      "changes": [
+        "feat(backup): add local backup verification and dry-run restore workflows",
+        "fix(backup): harden restore safety checks, incremental base selection, temp-root registry handling, and cryptography dependency coverage",
+        "feat(observers): stabilize the semantic observer pipeline and snapshot persistence",
+        "fix(observers): fall back gracefully when home paths are unwritable",
+        "fix(compare): harden file and folder comparison workflows",
+        "fix(organize): stabilize lister root handling, cache fallback behavior, organizer execution, and profile-specific flags",
+        "fix(rename): reserve implicit collision counters, avoid duplicate date prefixes, and harden database sync with organizer handoff",
+        "fix(metadata): handle BMP image metadata extraction",
+        "docs(organize): document lister cache and fallback behavior",
+        "perf(organize): group lister extension sorting for more predictable scans",
+        "chore(release): promote package metadata from 2.1.1b to 2.1.1",
+        "breaking: none"
+      ]
+    },
+
+    {
       "version": "2.1.0",
       "date": "2026-05-09",
       "contributors": [

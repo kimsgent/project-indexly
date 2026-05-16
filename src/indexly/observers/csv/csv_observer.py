@@ -23,34 +23,55 @@ class CSVObserver(BaseObserver):
         Build CURRENT CSV state from cleaned_data.
         """
         conn = _get_db_connection()
-        cur = conn.execute(
-            "SELECT * FROM cleaned_data WHERE source_path = ?",
-            (str(file_path),),
-        )
-        row = cur.fetchone()
-        conn.close()
+        resolved_path = str(file_path.resolve())
+        try:
+            cur = conn.execute(
+                """
+                SELECT * FROM cleaned_data
+                WHERE source_path = ? OR file_name = ?
+                ORDER BY CASE WHEN source_path = ? THEN 0 ELSE 1 END
+                LIMIT 1
+                """,
+                (resolved_path, file_path.name, resolved_path),
+            )
+            row = cur.fetchone()
+        finally:
+            conn.close()
 
         if not row:
             return {}
 
-        columns = json.loads(row["data_json"]).keys() if row["data_json"] else []
+        cleaned_records = json.loads(row["cleaned_data_json"] or "[]")
+        if isinstance(cleaned_records, list) and cleaned_records:
+            columns = list(cleaned_records[0].keys())
+        else:
+            sample_records = json.loads(row["sample_json"] or "[]")
+            columns = (
+                list(sample_records[0].keys())
+                if isinstance(sample_records, list) and sample_records
+                else []
+            )
 
         return {
             "hash": metadata.get("hash", "unknown"),
-            "columns": list(columns),
+            "columns": columns,
             "row_count": row["row_count"] or 0,
             "col_count": row["col_count"] or len(columns),
             "summary": json.loads(row["summary_json"] or "{}"),
             "cleaned_at": row["cleaned_at"] or datetime.now().isoformat(),
         }
 
-    def load_previous_snapshot(self, file_path: str, snapshot_ts: str | None = None) -> dict | None:
+    def load_previous_snapshot(
+        self, file_path: str, snapshot_ts: str | None = None
+    ) -> dict | None:
         """
         Load a historical snapshot from csv_snapshots table.
         - snapshot_ts provided → loads snapshot at or before given timestamp
         - None → loads latest snapshot
         """
-        return load_snapshot(Path(file_path).name, latest=(snapshot_ts is None), at_time=snapshot_ts)
+        return load_snapshot(
+            str(Path(file_path).resolve()), latest=(snapshot_ts is None), at_time=snapshot_ts
+        )
 
     def compare(self, old: dict | None, new: dict) -> list[dict]:
         events = diff_snapshots(old, new) or []
@@ -88,7 +109,6 @@ class CSVObserver(BaseObserver):
 
         # Fallback safety
         return super().format_event(event)
-
 
     def save(self, file_path: Path, state: dict) -> None:
         save_snapshot(

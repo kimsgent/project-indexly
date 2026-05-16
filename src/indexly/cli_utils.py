@@ -1277,7 +1277,7 @@ def build_parser():
     # Organizer CLI
     # ------------------------
     organize_parser = subparsers.add_parser(
-        "organize", help="Organize files in a folder by date or name"
+        "organize", help="Organize files by date, name, extension, or profile"
     )
     organize_parser.add_argument("folder", help="Folder to organize")
     organize_parser.add_argument(
@@ -1288,7 +1288,7 @@ def build_parser():
     )
     organize_parser.add_argument(
         "--backup",
-        help="Optional backup folder to store copies of organized files",
+        help="Optional backup folder; copies originals before moving files",
     )
     organize_parser.add_argument(
         "--log-dir",
@@ -1332,7 +1332,7 @@ def build_parser():
             "media",
             "business",
         ],
-        help="Create a profession-based directory scaffold",
+        help="Create or classify with a profession-based directory profile",
     )
 
     organize_parser.add_argument(
@@ -1352,30 +1352,30 @@ def build_parser():
     organize_parser.add_argument(
         "--apply",
         action="store_true",
-        help="Apply directory creation",
+        help="Apply directory creation or classification moves",
     )
 
     organize_parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Show structure without creating directories",
+        help="Preview organizer work without creating folders, logs, or moving files",
     )
 
     organize_parser.add_argument(
         "--project-name",
-        help="Project name (used with --profile data)",
+        help="Project name segment (used with --profile data)",
     )
 
     organize_parser.add_argument(
         "--shoot-name",
-        help="Optional shoot name (used with --profile media)",
+        help="Optional shoot name segment (used with --profile media)",
     )
 
     organize_parser.add_argument(
         "--id",
         "--patient-id",
         dest="patient_id",
-        help="Patient ID / alias (used with --profile health)",
+        help="Patient ID / alias segment (used with --profile health)",
     )
 
     organize_parser.add_argument(
@@ -1390,9 +1390,8 @@ def build_parser():
         metavar="KEY",
         choices=["camera", "gps", "date", "title", "author"],
         help=(
-            "Classify RAW images by metadata (photographer only). "
-            "Applies only to images in 00_RAW when --profile media "
-            "and --category photographer are set."
+            "Classify existing 00_RAW images by metadata. Requires "
+            "--profile media --category photographer; implies classification."
         ),
     )
 
@@ -1521,6 +1520,17 @@ def build_parser():
         help="Renaming pattern (supports {date}, {title}, {counter}, {prefix})",
     )
     rename_file_parser.add_argument(
+        "--date-format",
+        choices=["%Y%m%d", "%Y-%m-%d", "%y%m%d", "%d-%m-%Y", "%d%m%Y"],
+        default="%Y%m%d",
+        help="Date format used for the {date} placeholder.",
+    )
+    rename_file_parser.add_argument(
+        "--counter-format",
+        default="d",
+        help="Python integer format used for {counter}, for example 03d.",
+    )
+    rename_file_parser.add_argument(
         "--business-naming",
         action="store_true",
         help="Use business rules to add category-based prefix to filenames (interactive if needed)",
@@ -1534,6 +1544,15 @@ def build_parser():
         "--recursive",
         action="store_true",
         help="Recursively rename all files in the given directory",
+    )
+    rename_file_parser.add_argument(
+        "--update-db",
+        action="store_true",
+        help="Update Indexly database paths after applying filesystem renames.",
+    )
+    rename_file_parser.add_argument(
+        "--db",
+        help="Database path to update when --update-db is used.",
     )
     # Organizer-related flags (only for use with --organize)
     rename_file_parser.add_argument(
@@ -1553,8 +1572,17 @@ def build_parser():
     )
     rename_file_parser.add_argument(
         "--profile",
-        choices=["it", "education", "researcher", "engineer", "business"],
-        help="Create a profession-based directory scaffold (see organize for full options).",
+        choices=[
+            "it",
+            "education",
+            "researcher",
+            "engineer",
+            "health",
+            "data",
+            "media",
+            "business",
+        ],
+        help="Organize renamed files with a profession-based profile.",
     )
     rename_file_parser.add_argument(
         "--category",
@@ -1571,7 +1599,7 @@ def build_parser():
     rename_file_parser.add_argument(
         "--apply",
         action="store_true",
-        help="Actually create directories (by default, only dry-run is shown).",
+        help="Apply organizer moves after renaming.",
     )
     rename_file_parser.set_defaults(func=handle_rename_file)
 
@@ -1632,6 +1660,18 @@ def build_parser():
         metavar="PASSWORD",
         help="Encrypt backup with password",
     )
+    backup_parser.add_argument(
+        "--decrypt",
+        metavar="PASSWORD",
+        help="Password for verifying encrypted backups",
+    )
+    backup_parser.add_argument(
+        "--verify",
+        nargs="?",
+        const="all",
+        metavar="BACKUP",
+        help="Verify one backup by archive name, or all backups if omitted",
+    )
 
     # 🔹 Automatic backup controls
     backup_parser.add_argument(
@@ -1662,6 +1702,11 @@ def build_parser():
     restore_parser.add_argument("backup", help="Backup name")
     restore_parser.add_argument("--target", help="Restore destination")
     restore_parser.add_argument("--decrypt", help="Decryption password")
+    restore_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Verify and simulate restore without writing to the target",
+    )
     restore_parser.set_defaults(func=_lazy_handle_restore)
 
     # Compare
@@ -1678,13 +1723,16 @@ def build_parser():
     compare_parser.add_argument(
         "path_b",
         nargs="?",
-        help="Second file or folder (optional for auto-compare)",
+        help=(
+            "Second file or folder. If omitted, compare PATH_A with a same-named "
+            "peer in the current directory."
+        ),
     )
 
     compare_parser.add_argument(
         "--threshold",
         type=float,
-        help="Similarity tolerance (0.0 exact, 1.0 very loose)",
+        help="Similarity tolerance / maximum difference (0.0 exact, 1.0 very loose)",
     )
 
     compare_parser.add_argument(
@@ -1714,7 +1762,25 @@ def build_parser():
     compare_parser.add_argument(
         "--ignore",
         type=str,
-        help="Comma-separated list of file/folder names to ignore (e.g., .git,__pycache__)",
+        help="Comma-separated file/folder names to ignore in addition to .indexlyignore",
+    )
+
+    compare_parser.add_argument(
+        "--ignore-file",
+        type=str,
+        help="Path to an explicit .indexlyignore file for folder comparisons",
+    )
+
+    compare_parser.add_argument(
+        "--no-project-ignore",
+        action="store_true",
+        help="Disable automatic .indexlyignore loading for folder comparisons",
+    )
+
+    compare_parser.add_argument(
+        "--full-diff",
+        action="store_true",
+        help="Scan all lines for large text files while keeping diff output bounded",
     )
 
     compare_parser.add_argument(

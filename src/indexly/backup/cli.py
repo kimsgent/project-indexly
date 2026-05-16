@@ -4,6 +4,7 @@
 from pathlib import Path
 from .executor import run_backup
 from .auto import init_auto_backup, disable_auto_backup, auto_enabled
+from .verification import verify_backups
 import sys
 
 
@@ -13,6 +14,15 @@ def _is_interactive() -> bool:
 
 
 def handle_backup(args):
+    if getattr(args, "verify", None):
+        ok = verify_backups(
+            backup_name=args.verify,
+            password=getattr(args, "decrypt", None),
+        )
+        if not ok:
+            raise RuntimeError("Backup verification failed")
+        return
+
     # ------------------------------
     # Init / disable auto mode
     # ------------------------------

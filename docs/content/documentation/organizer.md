@@ -3,7 +3,7 @@ title: "Indexly Organizer – Intelligent File Organization"
 description: "Automatically organize files by date, name, or extension with full logging, backups, duplicate detection and audit support using Indexly Organizer."
 slug: "organizer"
 date: 2026-01-02
-lastmod: 2026-01-16
+lastmod: 2026-05-16
 type: docs
 categories: ["Indexly", "File Management", "Automation"]
 tags: ["organizer", "file organization", "automation", "backup", "logging"]
@@ -18,11 +18,13 @@ weight: 10
 
 ## Overview
 
-The **Indexly Organizer** is a modern, intelligent file organization engine built for users who prioritize **safety**, **transparency**, and **long-term traceability**. It reorganizes files using a controlled **plan** → **validate** → **apply** workflow, allowing files to be observed as they are being organized through configurable [file observers](observers.md), ensuring every action is explainable, auditable, and reversible.
+The **Indexly Organizer** is a modern, intelligent file organization engine built for users who prioritize **safety**, **transparency**, and **long-term traceability**. It reorganizes files using a controlled **plan** → **validate** → **apply** workflow. Applied profile moves trigger configurable [semantic observers](observers.md) after each file reaches its final destination, ensuring every action is explainable, auditable, and reversible.
 
 Unlike traditional tools that immediately move files, Indexly preserves **full traceability**, supports optional **automatic backups**, and generates **structured JSON** logs that can later be analyzed with the Lister command. This makes it ideal not only for everyday cleanup, but also for **compliance-driven**, **regulated**, **and repeatable workflows**.
 
 At its core, the Organizer uses **[profile-based classification](organizer-profiler.md#profile-based-organization)** rules to place files into meaningful, real-world structures instead of arbitrary folders. This approach makes it suitable for professional environments such as **business**, **healthcare**, **education**, **IT operations**, **research**, **and data projects**, where accountability and clarity matter.
+
+When filenames need cleanup before they are moved, use [Rename File](rename-file.md) first. `rename-file --organize` can pass its planned names directly into profile classification so the organizer works from the standardized filename instead of the original export name.
 
 ----
 
@@ -32,7 +34,11 @@ At its core, the Organizer uses **[profile-based classification](organizer-profi
 indexly organize <folder>
 ```
 
-This organizes the given folder using default rules (by extension-based categories).
+This organizes the given folder using the default `date` mode.
+
+Use `--dry-run` to preview legacy organization or profile classification without creating folders, logs, backups, or moving files. Use `--apply` for profile scaffold/classification commands when you want filesystem changes.
+
+Dry-runs do not trigger observers. Applied profile moves do.
 
 ----
 
@@ -48,15 +54,15 @@ Supported modes:
 
 | **Mode**    | **Behavior**                     |
 | ----------- | -------------------------------- |
-| `date`      | Groups files by year/month       |
+| `date`      | Groups files by year/month (default) |
 | `name`      | Alphabetical grouping            |
-| `extension` | Category-based folders (default) |
+| `extension` | Groups by category, year/month, and extension |
 
 ----
 
 ## Backup While Organizing
 
-Organizer can **copy files before moving them**, ensuring reversibility:
+Organizer can **copy originals before moving them**, ensuring reversibility:
 
 ```bash
 indexly organize Downloads --backup D:\organizer-backups
@@ -64,8 +70,8 @@ indexly organize Downloads --backup D:\organizer-backups
 
 Behavior:
 
-- Files are copied to the backup directory **before** reorganization
-- Directory structure is preserved
+- Files are copied to the backup directory **before** any move happens
+- The original relative directory structure is preserved
 - Backup is non-destructive and optional
 
 Recommended for first-time runs or production folders.
@@ -145,7 +151,7 @@ Organizer automatically detects duplicate files using:
 
 - File name
 - Size
-- Content hash (where applicable)
+- Content hash
 
 Duplicates are **not deleted automatically**.
 
@@ -160,9 +166,25 @@ indexly organize Downloads --lister-duplicates
 
 This design prevents accidental data loss.
 
+Duplicate flags are also written during dry-run planning. Hashing is read-only; unreadable files are skipped and reported.
+
 ----
 
 ## Typical Workflows
+
+### Rename Then Organize
+
+```bash
+indexly rename-file ./incoming \
+  --business-naming \
+  --pattern "{prefix}-{date}-{title}" \
+  --organize \
+  --profile business \
+  --classify \
+  --dry-run
+```
+
+This previews the rename plan and profile classification together. Remove `--dry-run` and use the profile apply flags only after reviewing the destination paths.
 
 ### Safe Cleanup
 
@@ -206,3 +228,4 @@ The Organizer is designed to pair with **Lister**, which allows:
 
 ➡️ Continue with **[Lister Documentation](lister.md)**
 
+Also see [Rename File](rename-file.md) when preparing filenames before organization.

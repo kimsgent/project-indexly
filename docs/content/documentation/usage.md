@@ -5,7 +5,7 @@ icon: "mdi:play-circle"
 weight: 2
 type: docs
 date: 2026-04-01
-lastmod: 2026-05-09
+lastmod: 2026-05-16
 summary: "Learn the day-to-day Indexly workflow: install, index, search, tag, analyze, compare, and back up with practical command examples."
 description: "Practical Indexly usage guide for Windows, macOS, and Linux. Covers indexing, search, regex, tagging, analysis, organizing, backup/restore, and common troubleshooting."
 keywords: [
@@ -44,7 +44,7 @@ You will learn the most common workflows:
 - Index and re-index files quickly
 - Search with full-text and regex
 - Safely remove stale search index entries
-- Tag and organize content
+- Rename, tag, and organize content
 - Analyze CSV and other structured files
 - Compare, back up, and restore safely
 
@@ -59,6 +59,7 @@ indexly --help
 indexly index /path/to/folder
 indexly search "invoice"
 indexly clear-search --path /path/to/old-folder --dry-run
+indexly rename-file /path/to/incoming --pattern "{date}-{title}" --dry-run
 indexly regex "[A-Z]{3}-\\d{4}"
 ```
 
@@ -226,7 +227,26 @@ See [Clear Search Results Safely](clear-search.md).
 
 ---
 
-## 4) Tag And Organize
+## 4) Rename, Tag, And Organize
+
+Use `rename-file` before organizing or analyzing files when names are inconsistent, duplicated, or missing useful context:
+
+```bash
+indexly rename-file /path/to/incoming --pattern "{date}-{title}" --dry-run
+indexly rename-file /path/to/incoming --pattern "{date}-{title}" --recursive
+```
+
+For business folders, `rename-file` can pass its planned names directly into profile-based organization:
+
+```bash
+indexly rename-file /path/to/incoming \
+  --business-naming \
+  --pattern "{prefix}-{date}-{title}" \
+  --organize \
+  --profile business \
+  --classify \
+  --dry-run
+```
 
 Tag files and folders:
 
@@ -251,7 +271,7 @@ indexly lister /path/to/logs --ext .pdf
 indexly lister /path/to/logs --duplicates
 ```
 
-See [Organizer](organizer.md), [Organizer Profiler](organizer-profiler.md), and [Lister](lister.md).
+See [Rename File](rename-file.md), [Organizer](organizer.md), [Organizer Profiler](organizer-profiler.md), and [Lister](lister.md).
 
 ---
 
@@ -260,6 +280,7 @@ See [Organizer](organizer.md), [Organizer Profiler](organizer-profiler.md), and 
 CSV analysis:
 
 ```bash
+indexly rename-file ./exports --pattern "{date}-{title}" --dry-run
 indexly analyze-csv sales.csv --show-summary
 indexly analyze-csv sales.csv --auto-clean --show-summary
 indexly analyze-csv sales.csv --show-chart ascii --chart-type bar
@@ -302,7 +323,7 @@ Run statistical inference on indexed CSV datasets:
 indexly infer-csv sales_q1.csv sales_q2.csv --merge-on customer_id --test ttest --x group --y revenue
 ```
 
-See [Data Analysis Overview](data-analysis-overview.md) and [Time-Series Visualization](time-series-visualization.md).
+Use [Rename File](rename-file.md) when exported datasets need predictable names before analysis. See [Data Analysis Overview](data-analysis-overview.md) and [Time-Series Visualization](time-series-visualization.md).
 
 For AutoDoctor-specific guidance, see [Analyze AutoDoctor Artifacts](analyze-autodoctor-artifacts.md).
 
@@ -315,6 +336,8 @@ Compare files or folders:
 ```bash
 indexly compare /path/a /path/b
 indexly compare /path/a /path/b --extensions .py,.md --context 5
+indexly compare /path/a /path/b --ignore-file /path/to/.indexlyignore
+indexly compare /path/a /path/b --no-project-ignore
 indexly compare /path/a /path/b --json
 ```
 
@@ -358,8 +381,17 @@ indexly migrate check
 Semantic observers:
 
 ```bash
-indexly observe run /path/to/folder
+indexly observe --help
+indexly observe run /path/to/folder --recursive
+indexly observe run /path/to/file --log-dir /path/to/logs
 indexly observe audit
+indexly observe audit --id 20260201-patient-00001
+```
+
+CSV observer history is normally created by CSV analysis after cleaned data is persisted:
+
+```bash
+indexly analyze-csv sales.csv --show-summary
 ```
 
 Live indexing:
@@ -403,5 +435,6 @@ This lets core commands like `indexly --help` and `indexly --version` remain usa
 - [Search](/searching/)
 - [Clear Search Results Safely](clear-search.md)
 - [Tagging](tagging.md)
+- [Rename File](rename-file.md)
 - [Organizer](organizer.md)
 - [Developer Guide](developer.md)
