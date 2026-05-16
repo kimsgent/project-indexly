@@ -16,7 +16,7 @@ weight: 5
 type: docs
 toc: true
 date: "2026-04-22"
-lastmod: "2026-05-15"
+lastmod: "2026-05-16"
 draft: false
 categories:
   - Overview
@@ -37,7 +37,7 @@ Indexly is a local-first CLI for indexing, searching, analyzing, and organizing 
 This documentation works best when you enter through the path that matches your goal:
 
 - Everyday CLI path: install, index, search, tag, organize, and back up local content
-- Structured data path: analyze CSV, JSON, NDJSON, SQLite, and AutoDoctor artifacts
+- Structured data path: prepare filenames, analyze CSV, JSON, NDJSON, SQLite, and AutoDoctor artifacts
 - Developer path: understand architecture, command wiring, and optional dependency boundaries
 - Contributor environment path: prepare a maintained Windows or Linux workstation for Indexly development
 
@@ -88,6 +88,7 @@ flowchart LR
 | Install and verify on Windows, macOS, Linux | [Install Indexly](indexly-installation.md) |
 | Prepare the maintained contributor workstation | [Windows Development Environment Setup](windows-terminal-setup.md), [Linux Development Environment Setup](linux-development-environment.md) |
 | Learn command workflows end-to-end | [Usage Guide](usage.md) |
+| Standardize filenames before analysis or organization | [Rename File](rename-file.md) |
 | Remove stale search results without deleting files | [Clear Search Results Safely](clear-search.md) |
 | Diagnose search, cache, analysis DB, and integrity issues | [Indexly Doctor](indexly-doctor.md) |
 | Get short answers for setup, paths, file support, and troubleshooting | [FAQ](faq.md) |
@@ -107,6 +108,7 @@ flowchart LR
 - [Indexing](indexing.md)
 - [Search](/searching/)
 - [Clear Search Results Safely](clear-search.md)
+- [Rename File](rename-file.md)
 - [Tagging](tagging.md)
 - [Analyze AutoDoctor Artifacts](analyze-autodoctor-artifacts.md)
 - [Semantic Indexing Overview](semantic-indexing-overview.md)

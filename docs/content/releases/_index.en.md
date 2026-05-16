@@ -9,7 +9,7 @@ weight: 10
 
 _Retention policy: latest release + 5 previous releases are shown here. Older releases are moved to Archive._
 
-## Latest Release: v2.1.1 (2026-05-15)
+## Latest Release: v2.1.1 (2026-05-16)
 
 ### Changes
 - feat(backup): add local backup verification and dry-run restore workflows
