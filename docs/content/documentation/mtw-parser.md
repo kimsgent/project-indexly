@@ -1,9 +1,10 @@
 ---
 title: "Minitab MTW files"
+type: docs
+weight: 140
 slug: "extract-mtw"
 date: 2025-10-11
 version: "1.0.3"
-weight: 7
 description: "Learn how to extract, decode, and analyze Minitab MTW files using Indexly’s extract-mtw feature — including cleaner worksheet CSV output, notes files, and optional diagnostic streams."
 keywords: ["indexly", "extract-mtw", "mtw", "minitab", "data extraction", "worksheetinfo", "metadata", "cli"]
 summary: "The extract-mtw feature in Indexly introduces native support for Minitab (.MTW) files — decoding worksheet columns, preserving readable notes, and optionally extracting diagnostic WorksheetInfo or binary streams."

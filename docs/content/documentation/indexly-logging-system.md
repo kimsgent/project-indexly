@@ -12,7 +12,7 @@ keywords:
   - metadata extraction
   - log analysis
 slug: "indexly-logging-system"
-weight: 45
+weight: 200
 type: docs
 images:
   - "/images/logging-ndjson-pipeline.png"

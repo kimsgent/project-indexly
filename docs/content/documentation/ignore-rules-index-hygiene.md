@@ -1,6 +1,6 @@
 ---
 title: "Ignore Rules & Index Hygiene"
-weight: 15
+weight: 31
 type: docs
 ---
 

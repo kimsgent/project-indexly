@@ -1,7 +1,7 @@
 ---
 title: "Semantic Observers"
 linkTitle: "Observers"
-weight: 40
+weight: 170
 type: docs
 description: >
   Semantic observers let Indexly detect meaningful file changes, not just filesystem events.

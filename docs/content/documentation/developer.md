@@ -2,7 +2,7 @@
 title: "Indexly Developer Guide"
 slug: "developer-guide"
 icon: "mdi:code-braces"
-weight: 5
+weight: 220
 date: 2026-04-01
 lastmod: 2026-05-09
 summary: "Production-grade developer guide for Indexly: architecture, dependency policy, local setup, testing, packaging, and contribution workflow."

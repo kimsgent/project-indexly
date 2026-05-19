@@ -10,7 +10,7 @@ keywords:
   - Indexly database analysis
   - SQLite documentation
 slug: "chinook-db-examples"
-weight: 30
+weight: 121
 type: docs
 images:
   - "images/chinook-db-overview.png"

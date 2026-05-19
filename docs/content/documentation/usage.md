@@ -2,7 +2,7 @@
 title: "Indexly Usage Guide"
 slug: "usage-guide"
 icon: "mdi:play-circle"
-weight: 2
+weight: 20
 type: docs
 date: 2026-04-01
 lastmod: 2026-05-16

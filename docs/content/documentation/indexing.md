@@ -10,7 +10,7 @@ keywords:
   - FTS5 file search
   - document management cli
 slug: "index-files-and-folders"
-weight: 20
+weight: 40
 type: docs
 images:
   - "images/indexly_indexing.png"

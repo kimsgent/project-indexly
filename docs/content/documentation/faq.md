@@ -5,7 +5,7 @@ description: "Frequently asked questions for installing, using, troubleshooting,
 summary: "Quick answers for installation, runtime file locations, supported file types, troubleshooting, and performance guidance."
 type: docs
 slug: "faq"
-weight: 16
+weight: 240
 date: "2026-04-22"
 lastmod: "2026-04-22"
 draft: false

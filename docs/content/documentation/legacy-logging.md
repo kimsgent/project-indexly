@@ -22,7 +22,7 @@ categories:
   - Logging
   - Internals
 slug: "legacy-log-system"
-weight: 50
+weight: 201
 type: docs
 draft: false
 canonicalURL: "https://projectindexly.com/en/documentation/legacy-log-system/"
