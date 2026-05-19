@@ -45,12 +45,19 @@ def detect_delimiter(file_path):
     lines = re.split(r"[\r\n]+", sample.strip())[:10]
     freq_scores = {}
 
-    for delim in possible_delims:
+    def _delimiter_score(delim):
         counts = [line.count(delim) for line in lines if line]
-        if counts:
-            avg = sum(counts) / len(counts)
-            variance = sum((c - avg) ** 2 for c in counts) / len(counts)
-            freq_scores[delim] = avg / (1 + variance)
+        positive = [count for count in counts if count > 0]
+        if not counts or not positive:
+            return 0.0
+        avg = sum(counts) / len(counts)
+        variance = sum((c - avg) ** 2 for c in counts) / len(counts)
+        return avg / (1 + variance)
+
+    for delim in possible_delims:
+        score = _delimiter_score(delim)
+        if score > 0:
+            freq_scores[delim] = score
 
     best_delim = max(freq_scores, key=freq_scores.get) if freq_scores else None
 
@@ -59,7 +66,12 @@ def detect_delimiter(file_path):
     except csv.Error:
         sniffer_delim = None
 
-    delimiter = best_delim or sniffer_delim
+    delimiter = None
+    if sniffer_delim in possible_delims and _delimiter_score(sniffer_delim) > 0:
+        delimiter = sniffer_delim
+    elif best_delim:
+        delimiter = best_delim
+
     if not delimiter:
         print("❌ Could not detect a valid CSV delimiter.")
         return None
@@ -226,18 +238,18 @@ def analyze_csv(file_or_df, from_df=False):
             return f"{val:,.3f}".rstrip("0").rstrip(".")
         return str(val)
 
-    df_stats = df_stats.apply(lambda col: col.map(format_number))
+    display_stats = df_stats.apply(lambda col: col.map(format_number))
 
     # ---------------------------
     # 🖥️ Adaptive table width
     # ---------------------------
     term_width = shutil.get_terminal_size((120, 20)).columns
     max_width = term_width - 4
-    col_count = len(df_stats.columns)
+    col_count = len(display_stats.columns)
     max_col_width = max(8, int(max_width / col_count))
 
-    for c in df_stats.columns:
-        df_stats[c] = df_stats[c].apply(
+    for c in display_stats.columns:
+        display_stats[c] = display_stats[c].apply(
             lambda v: (
                 str(v)[: max_col_width - 1] + "…"
                 if len(str(v)) > max_col_width
@@ -248,7 +260,9 @@ def analyze_csv(file_or_df, from_df=False):
     # ---------------------------
     # 📋 Render table
     # ---------------------------
-    table_output = tabulate(df_stats, headers="keys", tablefmt="grid", showindex=False)
+    table_output = tabulate(
+        display_stats, headers="keys", tablefmt="grid", showindex=False
+    )
 
     return df, df_stats, table_output
 

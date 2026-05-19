@@ -62,7 +62,9 @@ def _persist_analysis(
     # Respect --no-persist CLI flag
     if getattr(args, "no_persist", False):
         if verbose:
-            console.print(f"[dim]💤 Skipping persistence (--no-persist) for {file_path.name}[/dim]")
+            console.print(
+                f"[dim]💤 Skipping persistence (--no-persist) for {file_path.name}[/dim]"
+            )
         return False
 
     # Avoid double writes
@@ -74,7 +76,9 @@ def _persist_analysis(
     data_to_save = df if df is not None else df_preview
     if data_to_save is None or data_to_save.empty:
         if verbose:
-            console.print(f"[yellow]⚠️ Nothing to persist for {file_path.name}[/yellow]")
+            console.print(
+                f"[yellow]⚠️ Nothing to persist for {file_path.name}[/yellow]"
+            )
         return False
 
     def _serialize_timestamps(obj):
@@ -89,19 +93,41 @@ def _persist_analysis(
             return obj
 
     try:
-        summary_records = getattr(df, "_summary_records", None)
-        derived_map = derived_map or getattr(df, "_derived_map", None)
+        summary_records = getattr(df, "_summary_records", None) or (
+            df.attrs.get("_summary_records") if df is not None else None
+        )
+        df_stats = getattr(df, "_df_stats", None)
+        if df_stats is None and df is not None:
+            df_stats = df.attrs.get("_df_stats")
+        derived_map = (
+            derived_map
+            or getattr(df, "_derived_map", None)
+            or (df.attrs.get("_derived_map") if df is not None else None)
+        )
         raw_df = getattr(df, "_raw_df", None) if df is not None else None
 
         # Serialize summary safely
-        summary_safe = _serialize_timestamps(summary_records or table_output or {})
+        summary_source = df_stats if df_stats is not None else (table_output or {})
+        summary_safe = _serialize_timestamps(summary_source)
+        metadata = {}
+        if derived_map:
+            metadata["derived_map"] = derived_map
+        if summary_records:
+            metadata["cleaning_summary"] = summary_records
+
+        if isinstance(summary_safe, pd.DataFrame):
+            summary_df = summary_safe
+        elif isinstance(summary_safe, dict):
+            summary_df = pd.DataFrame(summary_safe)
+        else:
+            summary_df = None
 
         save_analysis_result(
             file_path=str(file_path),
             file_type=file_type,
-            summary=pd.DataFrame(summary_safe) if isinstance(summary_safe, dict) else None,
+            summary=summary_df,
             sample_data=data_to_save.head(10) if df is not None else None,
-            metadata=derived_map or {},
+            metadata=metadata,
             row_count=len(data_to_save),
             col_count=len(data_to_save.columns),
             raw_df=raw_df,
@@ -131,7 +157,9 @@ def _persist_analysis(
                     f"[green]✔ Persisted cleaned + raw data for {file_path.name}[/green]"
                 )
             else:
-                console.print(f"[green]✔ Persisted cleaned data for {file_path.name}[/green]")
+                console.print(
+                    f"[green]✔ Persisted cleaned data for {file_path.name}[/green]"
+                )
 
         return True
 
@@ -650,7 +678,7 @@ def analyze_file(args) -> Optional[AnalysisResult]:
 
     # --- Export
     export_path = getattr(args, "export_path", None)
-    export_fmt = getattr(args, "format", "txt")
+    export_fmt = getattr(args, "export_format", None) or getattr(args, "format", "txt")
     compress_export = getattr(args, "compress_export", False)
     db_mode = getattr(args, "db_mode", "replace")  # Smart bonus
     # For CSV/Excel/Parquet, pass dict directly

@@ -32,12 +32,16 @@ MAX_ROWS = 1_000_000
 # ---------------------------------------------------------
 console = Console()
 
+
 def run_boxplot(args):
     validate_boxplot_args(args)
 
     file_names: List[str] = args.input_files
     y_cols: List[str] = args.y_col
     x_col: Optional[str] = args.x_col
+    use_raw = getattr(args, "use_raw", False)
+    use_clean = getattr(args, "use_clean", False) or getattr(args, "use_cleaned", False)
+    use_cleaned_for_load = not use_raw
 
     # ensure y_cols is always a list
     if isinstance(y_cols, str):
@@ -55,8 +59,8 @@ def run_boxplot(args):
 
         df = load_dataframe(
             db_file_name,
-            use_cleaned=args.use_cleaned,
-            use_raw=args.use_raw,
+            use_cleaned=use_cleaned_for_load,
+            use_raw=use_raw,
         )
 
         if df.empty:
@@ -76,10 +80,10 @@ def run_boxplot(args):
             dfs=list(datasets.values()),
             merge_on=args.merge_on,
             how=args.merge_how or "inner",
-            agg=args.merge_agg or "none",
+            agg=getattr(args, "merge_agg", None) or "none",
         )
 
-        if args.use_raw or args.use_cleaned:
+        if use_raw or use_clean:
             # Use raw columns, no aggregation
             df_processed = merged_df[[x_col] + y_cols].copy()
         else:
@@ -105,7 +109,7 @@ def run_boxplot(args):
         processed = {}
 
         for name, df in datasets.items():
-            if args.use_raw or args.use_cleaned:
+            if use_raw or use_clean:
                 df_agg = df[[x_col] + y_cols].copy()
             else:
                 df_agg = apply_group_aggregation(
@@ -128,7 +132,7 @@ def run_boxplot(args):
 
     else:
         name, df = next(iter(datasets.items()))
-        if args.use_raw or args.use_cleaned:
+        if use_raw or use_clean:
             df_processed = df[[x_col] + y_cols].copy()
         else:
             df_processed = apply_group_aggregation(
@@ -162,15 +166,16 @@ def run_boxplot(args):
             df=long_df,
             group_col=x_col if x_col else None,
             value_col="value",
-            outlier_method=getattr(args, "outlier_method", "classic")
+            outlier_method=getattr(args, "outlier_method", "classic"),
         )
 
     # -----------------------------------------------------
     # 6️⃣ Optional Normalization
     # -----------------------------------------------------
 
-    if args.normalize:
-        long_df = _apply_normalization(long_df, args.normalize)
+    norm_method = getattr(args, "norm", None)
+    if norm_method:
+        long_df = _apply_normalization(long_df, norm_method)
 
     # -----------------------------------------------------
     # 7️⃣ Render
@@ -180,15 +185,12 @@ def run_boxplot(args):
         # Adaptive rendering using summary builder
         if args.mode == "interactive":
             fig = render_interactive_summary(
-                summaries=summaries,
-                title="Boxplot (summary mode)"
+                summaries=summaries, title="Boxplot (summary mode)"
             )
             fig.show()
         else:
             ax = render_static_summary(
-                ax=plt.gca(),
-                summaries=summaries,
-                show_mean=args.show_mean
+                ax=plt.gca(), summaries=summaries, show_mean=args.show_mean
             )
     else:
         # Normal rendering (existing code)

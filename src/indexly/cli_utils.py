@@ -23,7 +23,6 @@ from .migration_manager import run_migrations
 from .rename_utils import SUPPORTED_DATE_FORMATS
 from .log_utils import handle_log_clean
 
-
 # CLI display configurations here
 command_titles = {
     "index": "[I] n  d  e  x  i  n  g",
@@ -461,9 +460,7 @@ def build_parser():
         "clear-search",
         help="Safely remove entries from the FTS search index",
     )
-    clear_search_group = clear_search_parser.add_mutually_exclusive_group(
-        required=True
-    )
+    clear_search_group = clear_search_parser.add_mutually_exclusive_group(required=True)
     clear_search_group.add_argument(
         "--path",
         help="Delete a matching file path, directory-like prefix, or basename",
@@ -544,7 +541,7 @@ def build_parser():
         "--export-path", help="Export analysis table to file (txt, md)"
     )
     csv_parser.add_argument(
-        "--format", choices=["txt", "md"], default="txt", help="Export format"
+        "--format", choices=["txt", "md", "json"], default="txt", help="Export format"
     )
     csv_parser.add_argument(
         "--compress-export",
@@ -568,7 +565,9 @@ def build_parser():
         "--export-plot", help="Export chart to file (png, svg, html)"
     )
     csv_parser.add_argument("--x-col", help="X-axis column for scatter and box plot")
-    csv_parser.add_argument("--y-col", nargs="+", help="Y-axis column for scatter and box plot")
+    csv_parser.add_argument(
+        "--y-col", nargs="+", help="Y-axis column for scatter and box plot"
+    )
     csv_parser.add_argument(
         "--transform",
         choices=["none", "log", "sqrt", "softplus", "exp-log", "auto"],
@@ -696,8 +695,8 @@ def build_parser():
     csv_parser.add_argument(
         "--export-format",
         choices=["txt", "md", "json"],
-        default="csv",
-        help="Format for cleaned dataset export",
+        default=None,
+        help="Export format alias for CSV analysis output",
     )
     csv_parser.add_argument(
         "--show-summary",

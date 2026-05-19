@@ -47,9 +47,9 @@ def load_csv(file_path: Path, args) -> pd.DataFrame:
         console.print(f"✅ Loaded CSV: {file_path.name} ({df.shape[0]}x{df.shape[1]})")
 
         # 🔖 Propagate global no-persist flag to DataFrame for all downstream ops
-        setattr(df, "_no_persist", getattr(args, "no_persist", False))
-        setattr(df, "_source_file_path", str(file_path))
-        setattr(df, "_from_orchestrator", True)
+        object.__setattr__(df, "_no_persist", getattr(args, "no_persist", False))
+        object.__setattr__(df, "_source_file_path", str(file_path))
+        object.__setattr__(df, "_from_orchestrator", True)
 
         return df
 
@@ -67,6 +67,7 @@ def clean_csv(df: pd.DataFrame, args):
     Handles persistence control via global --no-persist and passes to auto_clean_csv().
     """
     summary_records = []
+    derived_map = {}
 
     # --------------------------------------------
     # 🧼 Auto-clean Stage (date parsing, NaN fill)
@@ -89,9 +90,12 @@ def clean_csv(df: pd.DataFrame, args):
         )
 
         # If orchestrator handles persistence, mark this for it
-        setattr(df, "_from_orchestrator", True)
+        object.__setattr__(df, "_from_orchestrator", True)
         # Optionally store derived_map in df for downstream inspection
+        object.__setattr__(df, "_derived_map", derived_map)
         df.attrs["_derived_map"] = derived_map
+        object.__setattr__(df, "_summary_records", summary_records)
+        df.attrs["_summary_records"] = summary_records
 
     # --------------------------------------------
     # 📏 Optional Normalization Stage
@@ -106,6 +110,12 @@ def clean_csv(df: pd.DataFrame, args):
     if getattr(args, "remove_outliers", False):
         df, out_summary = _remove_outliers(df)
         _summarize_post_clean(out_summary, "📉 Outlier Removal Summary")
+
+    if summary_records:
+        object.__setattr__(df, "_summary_records", summary_records)
+        object.__setattr__(df, "_derived_map", derived_map)
+        df.attrs["_summary_records"] = summary_records
+        df.attrs["_derived_map"] = derived_map
 
     # ✅ Return DataFrame and summary_records (keep derived_map inside df for reference)
     return df, summary_records
@@ -274,7 +284,7 @@ def run_csv_pipeline(file_path: Path, args, df: pd.DataFrame = None):
 
     # --- Step 0.5: Preserve raw CSV snapshot for unified persistence ---
     raw_df = df.copy()  # preserve original
-    df._raw_df = raw_df
+    object.__setattr__(df, "_raw_df", raw_df)
 
     if not getattr(args, "no_persist", False):
         console.print(
@@ -287,6 +297,9 @@ def run_csv_pipeline(file_path: Path, args, df: pd.DataFrame = None):
     # --- Step 2: Analyze CSV ---
     try:
         df_stats, table_output = analyze_csv_pipeline(df, args)
+        if df_stats is not None:
+            object.__setattr__(df, "_df_stats", df_stats)
+            df.attrs["_df_stats"] = df_stats
 
         if df_stats is None:
             console.print(
@@ -319,7 +332,9 @@ def run_csv_pipeline(file_path: Path, args, df: pd.DataFrame = None):
 
     # --- Step 4: Cleaning summary ---
     if summary_records:
-        derived_map = {r["column"]: r.get("derived_from", "") for r in summary_records}
+        derived_map = getattr(df, "_derived_map", None) or df.attrs.get(
+            "_derived_map", {}
+        )
         try:
             cleaning_summary = _summarize_pipeline_cleaning(
                 df=df, original_df=raw_df, derived_map=derived_map
@@ -336,6 +351,7 @@ def run_csv_pipeline(file_path: Path, args, df: pd.DataFrame = None):
 # --------------------------------------------------------
 # 🔧 Helper printing utilities
 # --------------------------------------------------------
+
 
 def _summarize_pipeline_cleaning(
     df: pd.DataFrame,

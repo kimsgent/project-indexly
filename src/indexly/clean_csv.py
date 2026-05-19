@@ -21,12 +21,12 @@ from .path_utils import normalize_path
 from rich.table import Table
 from rich.console import Console
 
-
 # ---------------------
 # 🧹 CLEANING PIPELINE
 # ---------------------
 
 console = Console()
+
 
 def _normalize_numeric(df, method="zscore"):
     """
@@ -47,16 +47,20 @@ def _normalize_numeric(df, method="zscore"):
         if method == "zscore":
             df[col] = (col_data - old_mean) / (old_std if old_std != 0 else 1)
         elif method == "minmax":
-            df[col] = (col_data - old_min) / (old_max - old_min if old_max != old_min else 1)
+            df[col] = (col_data - old_min) / (
+                old_max - old_min if old_max != old_min else 1
+            )
 
-        summary.append({
-            "Column": col,
-            "Method": method,
-            "Old Mean": round(old_mean, 3),
-            "Old Std": round(old_std, 3),
-            "Old Min": round(old_min, 3),
-            "Old Max": round(old_max, 3),
-        })
+        summary.append(
+            {
+                "Column": col,
+                "Method": method,
+                "Old Mean": round(old_mean, 3),
+                "Old Std": round(old_std, 3),
+                "Old Min": round(old_min, 3),
+                "Old Max": round(old_max, 3),
+            }
+        )
 
     return df, summary
 
@@ -64,7 +68,9 @@ def _normalize_numeric(df, method="zscore"):
 def _remove_outliers(df, method="iqr", threshold=1.5):
     """
     Remove outliers from numeric columns in the cleaned DataFrame.
-    Uses IQR or z-score method.
+    Uses IQR or z-score method. Filtering is sequential across columns:
+    once a row is removed for one numeric column, later columns compute their
+    thresholds on the remaining rows.
     """
     summary = []
     numeric_cols = df.select_dtypes(include=[np.number]).columns
@@ -74,25 +80,39 @@ def _remove_outliers(df, method="iqr", threshold=1.5):
 
     for col in numeric_cols:
         before_count = len(df)
-        col_data = df[col]
+        col_data = df[col].dropna()
+        if col_data.empty:
+            summary.append(
+                {
+                    "Column": col,
+                    "Method": method,
+                    "Threshold": threshold,
+                    "Removed": 0,
+                    "Remaining Rows": len(df),
+                }
+            )
+            continue
 
         if method == "iqr":
             q1, q3 = col_data.quantile(0.25), col_data.quantile(0.75)
             iqr = q3 - q1
             lower, upper = q1 - threshold * iqr, q3 + threshold * iqr
-            df = df[(col_data >= lower) & (col_data <= upper)]
+            df = df[df[col].between(lower, upper) | df[col].isna()]
         elif method == "zscore":
-            z_scores = np.abs((col_data - col_data.mean()) / (col_data.std() or 1))
-            df = df[z_scores < threshold]
+            std = col_data.std()
+            z_scores = np.abs((df[col] - col_data.mean()) / (std if std else 1))
+            df = df[(z_scores < threshold) | df[col].isna()]
 
         after_count = len(df)
-        summary.append({
-            "Column": col,
-            "Method": method,
-            "Threshold": threshold,
-            "Removed": before_count - after_count,
-            "Remaining Rows": after_count,
-        })
+        summary.append(
+            {
+                "Column": col,
+                "Method": method,
+                "Threshold": threshold,
+                "Removed": before_count - after_count,
+                "Remaining Rows": after_count,
+            }
+        )
 
     return df, summary
 
@@ -110,7 +130,7 @@ def _summarize_post_clean(summary, title):
         table.add_row(*[str(v) for v in record.values()])
 
     console.print(table)
-    
+
 
 def clean_csv_data(df, file_name, method="mean", save_data=False):
     """
@@ -177,14 +197,16 @@ def clean_csv_data(df, file_name, method="mean", save_data=False):
         else:
             valid_pct = 0.0
 
-        summary_records.append({
-            "column": col,
-            "dtype": str(cleaned_df[col].dtype),
-            "action": action,
-            "valid%": round(valid_pct, 2),
-            "filled": int(n_filled),
-            "notes": "",
-        })
+        summary_records.append(
+            {
+                "column": col,
+                "dtype": str(cleaned_df[col].dtype),
+                "action": action,
+                "valid%": round(valid_pct, 2),
+                "filled": int(n_filled),
+                "notes": "",
+            }
+        )
 
     # Attach persistence info (orchestrator uses this)
     if save_data:
@@ -203,27 +225,29 @@ def clean_csv_data(df, file_name, method="mean", save_data=False):
     else:
         cleaned_df._persist_ready = None
         cleaned_df._persisted = False
-        print("⚙️ Data cleaned in-memory only. Use --save-data to persist cleaned results.")
+        print(
+            "⚙️ Data cleaned in-memory only. Use --save-data to persist cleaned results."
+        )
 
     return cleaned_df, summary_records
-
 
 
 # ----------------------------------
 # DELETE CLEANED DATA LOGIC
 # ----------------------------------
 
+
 def clear_cleaned_data(file_path: str = None, remove_all: bool = False):
     """
     Remove entries from the cleaned_data table.
-    
+
     Behavior:
     - If remove_all=True, deletes all records.
     - If file_path is provided, deletes the record by matching either:
       1. Full absolute path in file_name or source_path (case-insensitive)
       2. Normalized forward-slash path in file_name or source_path
       3. Basename only (case-insensitive)
-    
+
     This ensures it works across OSes and mixed case file names.
     """
     conn = _get_db_connection()
@@ -276,7 +300,8 @@ def clear_cleaned_data(file_path: str = None, remove_all: bool = False):
     conn.close()
 
     if deleted_rows:
-        print(f"🧹 Cleared cleaned data entry for: {file_name} ({deleted_rows} record{'s' if deleted_rows > 1 else ''} removed)")
+        print(
+            f"🧹 Cleared cleaned data entry for: {file_name} ({deleted_rows} record{'s' if deleted_rows > 1 else ''} removed)"
+        )
     else:
         print(f"❌ No cleaned data entry found for: {file_name}")
-
