@@ -72,9 +72,9 @@ The CSV pipeline runs in this order:
 6. Optionally render charts or export analysis output.
 7. Persist analysis results unless `--no-persist` is set.
 
-{{< alert title="Cleaning is optional" color="info" >}}
+{{% alert title="Cleaning is optional" color="info" %}}
 Use `--auto-clean` when the CSV needs datetime parsing, missing-value filling, derived date features, normalization, or outlier removal. See [Clean CSV Data](clean-csv-data.md) for the detailed cleaning behavior.
-{{< /alert >}}
+{{% /alert %}}
 
 ## Statistics Produced
 

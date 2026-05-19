@@ -50,14 +50,14 @@ Indexly is maintained with these priorities:
 
 ## Local Setup
 
-{{< alert title="Platform Setup Notes" color="info" >}}
+{{% alert title="Platform Setup Notes" color="info" %}}
 If you want the maintained contributor workstation flow, start with:
 
 - [Windows Development Environment Setup](windows-terminal-setup.md) for the maintained Windows workflow
 - [Linux Development Environment Setup](linux-development-environment.md) for the maintained Ubuntu/Linux workflow
 
 This page focuses on repo-local development once your shell and workstation are ready.
-{{< /alert >}}
+{{% /alert %}}
 
 Clone and create a virtual environment:
 

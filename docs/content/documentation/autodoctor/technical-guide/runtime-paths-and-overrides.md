@@ -95,9 +95,9 @@ Effects:
 - API host/port vars affect service bind only if registry/INI does not override.
 - `AUTO_DOCTOR_CHROMIUM_PATH` controls which browser binary is used for automatic PDF generation.
 
-{{< alert title="Important" color="warning" >}}
+{{% alert title="Important" color="warning" %}}
 Path behavior depends on precedence rules. Review [Configuration Precedence](./config-precedence/) before mixing registry, INI, and environment overrides.
-{{< /alert >}}
+{{% /alert %}}
 
 ## Next Steps
 

@@ -30,9 +30,9 @@ tags:
 ---
 Indexly provides a powerful pipeline for inspecting SQLite databases, allowing you to extract meaningful insights and visualize table relationships efficiently. Whether you're exploring your own datasets or working with sample DBs such as [Chinook](https://github.com/lerocha/chinook-database), `analyze-db` gives you the ability to summarize, profile, and export your data.
 
-{{< alert title="AutoDoctor-aware behavior" color="info" >}}
+{{% alert title="AutoDoctor-aware behavior" color="info" %}}
 If the SQLite schema matches AutoDoctor’s persistence tables, Indexly switches from generic DB inspection to a specialized operational summary. Use [Analyze AutoDoctor Artifacts](analyze-autodoctor-artifacts.md) when your input is `autodoctor.db`.
-{{< /alert >}}
+{{% /alert %}}
 
 ## Key Features
 
