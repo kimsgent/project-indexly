@@ -39,6 +39,7 @@ plotext>=5.2.8
 # --- Statistical inference (used by infer-csv CLI) ---
 scipy>=1.12.0
 statsmodels>=0.14.0,<0.15.0
+tabulate>=0.9.0,<1.0
 
 # --- Dev / Test Tools ---
 pytest>=8.4.2

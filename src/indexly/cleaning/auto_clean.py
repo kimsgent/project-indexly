@@ -139,10 +139,10 @@ def _auto_parse_dates(df, date_formats=None, min_valid_ratio=0.3, verbose=False)
             )
             if verbose:
                 console.print(
-                    f"[green]✅ Parsed '{col}' using {used_formats} ({parse_ratio:.1%})[/green]"
+                    f"[green]Parsed '{col}' using {used_formats} ({parse_ratio:.1%})[/green]"
                 )
         else:
-            # ⚠️ Preserve original: do NOT overwrite
+            # Preserve original: do not overwrite.
             df[col] = original_series
             summary_records.append(
                 {
@@ -156,7 +156,7 @@ def _auto_parse_dates(df, date_formats=None, min_valid_ratio=0.3, verbose=False)
             )
             if verbose:
                 console.print(
-                    f"[yellow]⚠️ Preserved '{col}' (valid_ratio {parse_ratio:.1%} < {min_valid_ratio:.0%})[/yellow]"
+                    f"[yellow][!] Preserved '{col}' (valid_ratio {parse_ratio:.1%} < {min_valid_ratio:.0%})[/yellow]"
                 )
 
     return df, summary_records
@@ -207,7 +207,7 @@ def _handle_datetime_columns(
                 }
                 auto_summary.append(rec)
                 if verbose:
-                    console.print(f"[green]ℹ️ Recognized '{col}' as datetime64[/green]")
+                    console.print(f"[green]Recognized '{col}' as datetime64[/green]")
 
     # -----------------------
     # Step 2: Generate derived datetime features
@@ -258,7 +258,7 @@ def _handle_datetime_columns(
                     ).astype("Int64")
                 _safe_add(f"{col}_timestamp", ts)
         except Exception as e:
-            console.print(f"[red]⚠️ Derived creation failed for {col}: {e}[/red]")
+            console.print(f"[red][!] Derived creation failed for {col}: {e}[/red]")
 
         datetime_summary.append(rec)
         for dcol in derived_map[col]:
@@ -313,7 +313,7 @@ def _summarize_cleaning_result(summary: list[dict[str, Any]]):
         console.print("[dim]No post-clean summary available.[/dim]")
         return
 
-    table = Table(title="🧩 Cleaning Summary", header_style="bold cyan")
+    table = Table(title="Cleaning Summary", header_style="bold cyan")
     # Create columns based on summary keys
     keys = summary[0].keys()
     for k in keys:
@@ -398,7 +398,7 @@ def auto_clean_csv(
                 derived_columns.add(col_name)
         summary_records.extend(dt_summary)
     except Exception as e:
-        console.print(f"[red]⚠️ Datetime handling failed: {e}[/red]")
+        console.print(f"[red][!] Datetime handling failed: {e}[/red]")
 
     # -------------------------
     # Step 2: Fill missing values in non-datetime columns only.
@@ -477,7 +477,7 @@ def auto_clean_csv(
     # --- Temporarily disable persistence for testing orchestrator-level save ---
     if persist and verbose:
         console.print(
-            f"[dim]💾 Skipping internal persistence (handled by orchestrator)...[/dim]"
+            f"[dim]Skipping internal persistence (handled by orchestrator)...[/dim]"
         )
     # Restore raw_df after transformations
     if _original_raw is not None:

@@ -126,7 +126,7 @@ Documentation = "https://projectindexly.com"
 Source = "https://github.com/kimsgent/project-indexly"
 Issues = "https://github.com/kimsgent/project-indexly/issues"
 
-# ✅ FIXED BUILD CONFIG
+# Fixed build config
 [tool.hatch.build]
 packages = ["src/indexly"]
 

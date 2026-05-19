@@ -73,10 +73,10 @@ def detect_delimiter(file_path):
         delimiter = best_delim
 
     if not delimiter:
-        print("❌ Could not detect a valid CSV delimiter.")
+        print("[!] Could not detect a valid CSV delimiter.")
         return None
 
-    # 👇 Removed print here
+    # Keep delimiter detection quiet unless it fails.
     return delimiter
 
 
@@ -95,7 +95,7 @@ def analyze_csv(file_or_df, from_df=False):
     file_path = None
 
     # ---------------------------
-    # 📂 Load DataFrame
+    # Load DataFrame
     # ---------------------------
     if from_df:
         df = file_or_df.copy()
@@ -111,14 +111,14 @@ def analyze_csv(file_or_df, from_df=False):
             alt_path = Path.cwd() / file_or_df
             if alt_path.exists():
                 file_path = alt_path
-                console.print(f"ℹ️ Using fallback path: {alt_path}", style="bold cyan")
+                console.print(f"[i] Using fallback path: {alt_path}", style="bold cyan")
             else:
                 return None, None, None
 
         try:
             delimiter = detect_delimiter(file_path)
             delimiter = delimiter or ","  # <-- fallback
-            console.print(f"📄 Detected delimiter: '{delimiter}'", style="bold cyan")
+            console.print(f"Detected delimiter: '{delimiter}'", style="bold cyan")
             try:
                 df = pd.read_csv(
                     file_path,
@@ -139,14 +139,14 @@ def analyze_csv(file_or_df, from_df=False):
             return None, None, None
 
     # ---------------------------
-    # 🚨 Empty dataset check
+    # Empty dataset check
     # ---------------------------
     if df.empty:
         console.print("[!] No data to analyze.", style="bold red")
         return None, None, None
 
     # ---------------------------
-    # 🔢 Robust numeric inference
+    # Robust numeric inference
     # ---------------------------
     for col in df.columns:
         # Skip columns already numeric
@@ -159,7 +159,7 @@ def analyze_csv(file_or_df, from_df=False):
             df[col] = converted
 
     # ---------------------------
-    # 🧮 Numeric & datetime detection
+    # Numeric & datetime detection
     # ---------------------------
     numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
 
@@ -168,13 +168,13 @@ def analyze_csv(file_or_df, from_df=False):
         if datetime_numeric_cols:
             numeric_cols = datetime_numeric_cols
             console.print(
-                "ℹ️ Using datetime-derived numeric columns for analysis...",
+                "[i] Using datetime-derived numeric columns for analysis...",
                 style="bold cyan",
             )
 
     if not numeric_cols:
         console.print(
-            "⚠️ No valid numeric or date columns available for analysis.",
+            "[!] No valid numeric or date columns available for analysis.",
             style="bold yellow",
         )
         return df, None, None
@@ -182,7 +182,7 @@ def analyze_csv(file_or_df, from_df=False):
     numeric_df = df[numeric_cols]
 
     # ---------------------------
-    # 📊 Compute statistics
+    # Compute statistics
     # ---------------------------
     stats = []
     for col in numeric_df.columns:
@@ -227,7 +227,7 @@ def analyze_csv(file_or_df, from_df=False):
     df_stats = pd.DataFrame(stats, columns=headers)
 
     # ---------------------------
-    # 🧠 Smart number formatting
+    # Smart number formatting
     # ---------------------------
     def format_number(val):
         if isinstance(val, (int, float, np.number)):
@@ -241,7 +241,7 @@ def analyze_csv(file_or_df, from_df=False):
     display_stats = df_stats.apply(lambda col: col.map(format_number))
 
     # ---------------------------
-    # 🖥️ Adaptive table width
+    # Adaptive table width
     # ---------------------------
     term_width = shutil.get_terminal_size((120, 20)).columns
     max_width = term_width - 4
@@ -251,14 +251,14 @@ def analyze_csv(file_or_df, from_df=False):
     for c in display_stats.columns:
         display_stats[c] = display_stats[c].apply(
             lambda v: (
-                str(v)[: max_col_width - 1] + "…"
+                str(v)[: max_col_width - 3] + "..."
                 if len(str(v)) > max_col_width
                 else str(v)
             )
         )
 
     # ---------------------------
-    # 📋 Render table
+    # Render table
     # ---------------------------
     table_output = tabulate(
         display_stats, headers="keys", tablefmt="grid", showindex=False
@@ -387,7 +387,7 @@ def export_results(
         pass
 
     # ----------------------------------------
-    # 🔧 Helper: Clean text summary
+    # Helper: Clean text summary
     # ----------------------------------------
     def _clean_summary_text(text: str) -> str:
         if not text or not isinstance(text, str):
@@ -429,7 +429,7 @@ def export_results(
         return "\n".join(cleaned)
 
     # ----------------------------------------
-    # 🧩 Helper: Parse markdown-like table → JSON list
+    # Helper: Parse markdown-like table to JSON list
     # ----------------------------------------
     def _parse_summary_table(text: str):
         if not text or "|" not in text:
@@ -474,7 +474,7 @@ def export_results(
         return data_rows
 
     # ----------------------------------------
-    # ✍️ Export
+    # Export
     # ----------------------------------------
     if export_format in ("md", "txt"):
         with open(export_path, "w", encoding="utf-8") as f:
@@ -543,7 +543,7 @@ def export_results(
             f.write("]\n}\n")
 
     # ----------------------------------------
-    # 🪶 Rich CSV / Parquet / Excel export
+    # Rich CSV / Parquet / Excel export
     # ----------------------------------------
     elif export_format in ("csv", "excel", "parquet", "db"):
         pd, _, _, _ = _ensure_analysis_runtime()
@@ -561,7 +561,7 @@ def export_results(
             "format": export_format,
         }
 
-        # 🧩 Construct summary if present
+        # Construct summary if present
         if isinstance(results, dict) and "text_summary" in results:
             summary_text = results.get("text_summary", "")
         elif isinstance(results, str):
@@ -621,9 +621,8 @@ def export_results(
                     f"No DataFrame available for {export_format.upper()} export."
                 )
 
-            # --- DEBUG info ---
             console.print(
-                f"[cyan]💡 Debug: DataFrame shape={df.shape}, columns={df.columns.tolist()}[/cyan]"
+                f"[cyan]Debug: DataFrame shape={df.shape}, columns={df.columns.tolist()}[/cyan]"
             )
             console.print(df.head(5))  # show first 5 rows
 
@@ -657,7 +656,7 @@ def export_results(
                 table, export_path, compression="snappy" if compress else None
             )
             console.print(
-                f"[green]✅ Parquet export complete: {export_path} ({total_rows} rows)[/green]"
+                f"[green]Parquet export complete: {export_path} ({total_rows} rows)[/green]"
             )
 
         # --- SQLite Database Export ---
@@ -668,7 +667,7 @@ def export_results(
             if df is None or df.empty:
                 raise ValueError("No DataFrame available for DB export.")
 
-            # 🧩 Prepare metadata
+            # Prepare metadata
             table_name = Path(source_file).stem.replace("-", "_").replace(" ", "_")
             metadata = {
                 "analyzed_at": utc_now_iso_z(),
@@ -679,7 +678,7 @@ def export_results(
                 "table_name": table_name,
             }
 
-            # ✨ Smart Bonus: Auto-clean and infer best dtypes
+            # Auto-clean and infer best dtypes
             df = df.convert_dtypes()
 
             # --- Optional: Add summary enrichment ---
@@ -722,16 +721,15 @@ def export_results(
                         indent=2,
                     )
 
-                # 🪶 Rich console feedback
                 console.print(
-                    f"[green]✅ SQLite export complete:[/green] [bold]{export_path}[/bold]"
+                    f"[green]SQLite export complete:[/green] [bold]{export_path}[/bold]"
                 )
                 console.print(
-                    f"   ┗━ Table: [cyan]{table_name}[/cyan] | Rows: [yellow]{len(df)}[/yellow] | Columns: [yellow]{len(df.columns)}[/yellow]"
+                    f"   Table: [cyan]{table_name}[/cyan] | Rows: [yellow]{len(df)}[/yellow] | Columns: [yellow]{len(df.columns)}[/yellow]"
                 )
 
             except Exception as e:
-                console.print(f"[red]❌ Failed to export SQLite DB: {e}[/red]")
+                console.print(f"[red]Failed to export SQLite DB: {e}[/red]")
 
     else:
         raise ValueError(f"Unsupported export format: {export_format}")
