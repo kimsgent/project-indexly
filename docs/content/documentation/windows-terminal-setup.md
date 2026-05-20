@@ -40,11 +40,11 @@ It replaces the old Windows Terminal customization page and aligns with the actu
 - `dotfiles-windows` for shell, terminal, package manager, and editor setup
 - `project-indexly/setup.ps1` for repo-specific dependencies and virtual environment setup
 
-{{< alert title="Scope" color="primary" >}}
+{{% alert title="Scope" color="primary" %}}
 Use this page when your goal is: "I want a Windows workstation that matches the maintained Indexly development flow."
 
 If you only want to install Indexly as a user, start with [Install Indexly](indexly-installation.md) instead.
-{{< /alert >}}
+{{% /alert %}}
 
 ## What This Setup Covers
 

@@ -4,6 +4,7 @@ slug: "time-series-visualization"
 description: "How Indexly detects, prepares, resamples, and visualizes time-series data using Plotly and Matplotlib. A complete guide to frequency conversion, rolling windows, dual-axis handling, and statistical considerations."
 summary: "Learn how Indexly performs statistical time-series visualization via analyze-csv, covering auto-detection, resampling, rolling means, aggregation, dual-axis logic, and interactive/static plotting modes."
 type: docs
+weight: 113
 tags: ["indexly", "visualization", "timeseries", "statistics", "csv-analysis", "plotly", "matplotlib"]
 date: 2025-11-29
 draft: false

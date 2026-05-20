@@ -27,7 +27,7 @@ For most users:
 - Use **Homebrew** on macOS/Linux
 - Use **pip** on Windows
 
-{{< alert title="Contributor Note" color="info" >}}
+{{% alert title="Contributor Note" color="info" %}}
 This page covers product installation.
 
 If you are preparing a contributor workstation rather than just installing the CLI, use:
@@ -35,7 +35,7 @@ If you are preparing a contributor workstation rather than just installing the C
 - [Windows Development Environment Setup](windows-terminal-setup.md)
 - [Linux Development Environment Setup](linux-development-environment.md)
 - [Indexly Developer Guide](developer.md)
-{{< /alert >}}
+{{% /alert %}}
 
 ## 1. Install on macOS/Linux with Homebrew (Recommended)
 

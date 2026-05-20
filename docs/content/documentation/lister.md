@@ -2,7 +2,7 @@
 title: "Lister – Analyze Organized Files & Detect Duplicates"
 description: "Use Indexly Lister to analyze organizer logs, filter files by extension, category, date, and detect duplicates with zero risk."
 slug: "lister"
-weight: 20
+weight: 95
 type: docs
 keywords:
   - indexly lister

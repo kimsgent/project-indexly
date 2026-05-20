@@ -11,7 +11,7 @@ keywords:
   - SQLite relationships
   - data exploration CLI
 slug: "database-analysis-sqlite"
-weight: 20
+weight: 120
 type: docs
 date: "2026-04-22"
 lastmod: "2026-05-20"

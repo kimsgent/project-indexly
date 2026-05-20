@@ -1,322 +1,193 @@
 ---
-title: "Cleaning CSV Data with Indexly"
-description: "Automate CSV data cleaning in Indexly with intelligent type inference, datetime normalization, missing value imputation, and persistence. Ideal for data analysts and Python developers."
+title: "Clean CSV Data"
+linkTitle: "Clean CSV Data"
+description: "Clean CSV files with Indexly using datetime parsing, missing-value filling, derived date features, normalization, outlier removal, and analysis persistence."
 slug: "cleaning-csv-utilities"
 type: docs
+weight: 112
 keywords:
   - csv data cleaning
-  - data preprocessing
-  - type inference
-  - datetime normalization
-  - missing value imputation
-  - data analysis automation
-  - python data tools
-  - indexly auto-clean
-  - csv imputation pipeline
-  - machine learning preprocessing
-tags:
-  - data cleaning
-  - imputation
-  - normalization
+  - indexly auto clean
   - datetime parsing
-  - auto-clean
-  - indexly
+  - missing value filling
+  - csv normalization
+  - csv outlier removal
+tags:
+  - csv
+  - cleaning
+  - analysis
+  - preprocessing
 author: "N. K. Franklin-Gent"
 date: 2025-10-12
-lastmod: 2026-05-16
+lastmod: 2026-05-19
 draft: false
+toc: true
 categories:
   - Documentation
   - Data Analysis
-  - CLI Tools
 canonicalURL: "/en/documentation/cleaning-csv-utilities/"
-summary: "Learn how Indexly’s Auto Clean feature transforms messy CSV files into structured, analysis-ready datasets with automated imputation, datetime parsing, and type inference. Includes commands, logic breakdown, and examples."
-seo_title: "CSV Data Cleaning with Indexly | Automated Preprocessing and Type Inference"
-og_title: "Cleaning CSV Data with Indexly – Automatic Type Inference and Imputation"
-og_description: "Discover Indexly’s Auto Clean pipeline for CSVs — featuring type detection, datetime normalization, and statistical imputation for ready-to-analyze datasets."
-og_type: "article"
-og_image: "/images/auto-clean-preview.png"
-twitter_card: "summary_large_image"
-twitter_title: "Cleaning CSV Data with Indexly"
-twitter_description: "Automatically clean and normalize CSV data using Indexly’s CLI with type inference, imputation, and datetime parsing."
-twitter_image: "/images/auto-clean-preview.png"
+aliases:
+  - "/en/documentation/clean-csv-data/"
+summary: "Use Indexly's CSV cleaning pipeline to prepare messy exports for analysis, visualization, observers, and repeatable reporting."
+params:
+  summary: "Clean CSV files before analysis with parser-accurate options and persistence behavior."
 ---
 
----
+## Who This Page Is For
 
+- Users preparing exported CSV files for reliable analysis
+- Analysts who need consistent datetime, numeric, and missing-value handling
+- Developers checking how the `analyze-csv` parser maps to the cleaning pipeline
 
-Indexly’s **Auto Clean** pipeline transforms messy CSV files into analysis-ready datasets with **type inference**, **missing value imputation**, and **datetime normalization** — all seamlessly integrated with [`analyze-csv`](data-analysis.md).
+{{< alert title="Current behavior" color="info" >}}
+CSV cleaning is triggered with `--auto-clean` on `indexly analyze-csv` or on `indexly analyze-file` when the detected file type is CSV. Since `v2.0.2`, cleaned CSV data and raw snapshots are persisted through the orchestrator's single write path unless you pass `--no-persist`.
+{{< /alert >}}
 
-Before cleaning a folder of exported CSVs, use [Rename File](rename-file.md) to make file names consistent and easier to search, compare, and organize later.
----
-
-## 🎯 Overview
-
-The `--auto-clean` flag in `indexly analyze-csv` enables a robust preprocessing pipeline that:
-
- *Detects and normalizes **mixed datetime formats**
- *Infers **data types* *(numeric, categorical, datetime)
- *Fills missing values using **statistical imputation**
- *Summarizes the cleaning results in a **rich table**
- *Optionally **saves cleaned data* *for later reuse
-
-> 💡 Clean data can be visualized before or after cleaning — see  [Visual Exploration](data-analysis.md#visual-exploration).
-
----
-
-## ✨ Key Highlights
-
-| Capability                | Description                                                                 |
-| -------------------------- | --------------------------------------------------------------------------- |
-| 🧠   **Type Inference**      | Automatically detects numeric, string, and datetime columns                |
-| 📅   **Datetime Parsing**    | Dynamically parses mixed formats using user-provided patterns              |
-| 🧮   **NaN Imputation**      | Fills missing numeric/categorical data using mean/median/mode              |
-| ⚖️   **Threshold Validation**| Skips unreliable columns based on valid ratio thresholds                   |
-| 📊   **Summary Reporting**   | Renders terminal tables showing actions taken on each column               |
-| 💾   **Persistence**         | Saves cleaned datasets for future analysis with `--use-cleaned`            |
-
----
-
-## Quick Start Example
-
-### Example CSV (`mixed _dates.csv`)
-
-```csv
-User,Start _Date,End _Timestamp,Notes
-Alice,12/05/2021,2021-05-20 14:00:00,Normal entry
-Bob,2021/06/01,2021-06-02T09:30:00,Manual import
-Charlie,05-07-2021,2021.07.10,Missing format
-David,13.08.2021,,Invalid time
-Eva,,2021-08-25 17:15:00,Skipped row
-````
-
-### Run Command
+## Quick Start
 
 ```bash
-indexly analyze-csv mixed _dates.csv
-  --auto-clean
-  --datetime-formats "%d/%m/%Y" "%Y-%m-%d %H:%M:%S" "%Y/%m/%d" "%m-%d-%Y" "%d.%m.%Y" "%Y-%m-%dT%H:%M:%S"
-  --date-threshold 0.1
+indexly analyze-csv sales.csv --auto-clean --show-summary
+```
+
+For a stricter run with explicit date formats and no database writes:
+
+```bash
+indexly analyze-csv sales.csv \
+  --auto-clean \
+  --datetime-formats "%Y-%m-%d" "%d/%m/%Y" "%Y-%m-%dT%H:%M:%S" \
+  --date-threshold 0.6 \
+  --derive-dates minimal \
+  --fill-method median \
+  --no-persist \
   --show-summary
-  --save-data
 ```
 
-### Example Output
+The same CSV options are also available through the universal dispatcher:
 
 ```bash
-CSV Analysis ⚙️ Running robust cleaning pipeline using MEAN fill method...
-
-⚠️ Skipped `Start_Date` — less than 60% valid dates (20.0%)
-⚠️ Skipped `End_Timestamp` — less than 60% valid dates (20.0%)
-✅ Cleaning complete: 5 rows remain (0 duplicates removed)
-
-                       🧼 Cleaning Summary
-┏━━━━━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━┓
-┃ Column        ┃ Type   ┃ Action ┃ NaNs Filled ┃ Fill Strategy ┃
-┡━━━━━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━┩
-│ User          │ string │ none   │           0 │ -             │
-│ Start_Date    │ string │ none   │           0 │ -             │
-│ End_Timestamp │ string │ none   │           0 │ -             │
-│ Notes         │ string │ none   │           0 │ -             │
-└───────────────┴────────┴────────┴─────────────┴───────────────┘
-
-💾 Cleaned data saved for future reuse
-⚠️ No numeric or datetime-derived columns found.
-
+indexly analyze-file sales.csv --auto-clean --show-summary
 ```
 
----
+## What The Cleaner Does
 
-## Cleaning Logic Explained
+The cleaning stage runs before statistics and visualization.
 
-The pipeline works in three primary stages:
+| Step | Behavior |
+| --- | --- |
+| Load | Detects the delimiter and reads the CSV as UTF-8. |
+| Datetime handling | Parses likely date, time, timestamp, created, modified, or day columns, plus columns whose sample values look date-like. |
+| Derived date fields | Adds derived fields according to `--derive-dates`. |
+| Missing values | Fills numeric missing values with `mean` or `median`; fills non-numeric missing values with the mode. |
+| Optional normalization | Applies z-score normalization when `--normalize` is set. |
+| Optional outlier removal | Removes numeric outliers with the IQR rule when `--remove-outliers` is set. |
+| Analysis | Computes CSV statistics and optional charts after cleaning. |
+| Persistence | Saves cleaned data and raw snapshot metadata unless `--no-persist` is set. |
 
-### 1 . Type Inference
+## Parser-Accurate Options
 
-Infers likely column types using heuristics and pandas’ dtype inference.
+| Option | Values | Notes |
+| --- | --- | --- |
+| `--auto-clean` | flag | Enables the cleaning pipeline. |
+| `--fill-method` | `mean`, `median` | Applies to numeric missing values. Non-numeric columns use the most common value. |
+| `--datetime-formats` | one or more `strftime` formats | Tried before the mixed/automatic fallback parser. |
+| `--derive-dates` | `all`, `minimal`, `none` | Controls generated datetime feature columns. Default is `all`. |
+| `--date-threshold` | float, default `0.3` | Minimum valid parse ratio required before a column is converted to datetime. |
+| `--normalize` | flag | Normalizes numeric columns after cleaning. |
+| `--remove-outliers` | flag | Removes IQR outliers after cleaning. |
+| `--use-cleaned` | flag | Loads a previously persisted cleaned dataset when available. |
+| `--no-persist` | flag | Disables the analysis database write for this run. |
 
-```python
-df =  _infer_types(df)
-```
+{{< alert title="No --save-data flag" color="warning" >}}
+Current parser help does not include `--save-data`. Persistence is on by default for analysis commands and is disabled with `--no-persist`.
+{{< /alert >}}
 
- *Converts numeric strings to floats/ints where possible
- *Flags likely date columns before parsing
+## Datetime Parsing
 
----
+Indexly only attempts datetime conversion on likely candidates. A column is a candidate when its name suggests time-like data or its sample values match common date patterns.
 
-### 2 . Datetime Normalization
+The parser tries formats in this order:
 
-Automatically parses mixed date formats:
+1. User-provided `--datetime-formats`
+2. Built-in defaults such as ISO dates, `dd/mm/YYYY`, `mm-dd-YYYY`, dotted dates, and ISO timestamps
+3. Pandas mixed-format parsing
+4. Pandas automatic parsing
 
-```python
-df, date_summaries = _auto_parse_dates(
-    df,
-    date_formats=date_formats,
-    min _valid_ratio=0.3
-)
-```
+A column is converted only when the ratio of successfully parsed source values meets `--date-threshold`. Otherwise, the original text values are preserved and reported as below threshold.
 
-If a column has fewer than 30% valid datetimes (controlled via `--date-threshold`), it is skipped and retained as string.
+## Derived Date Columns
 
-Derived columns can also be generated:
+When a column is accepted as datetime, Indexly can create analysis-friendly columns.
 
- * `<col> _year`
- * `<col> _month`
- * `<col> _day`
- * `<col> _weekday`
+| `--derive-dates` | Derived columns |
+| --- | --- |
+| `minimal` | `_year`, `_month`, `_day`, `_weekday`, `_hour` |
+| `all` | Minimal fields plus `_quarter`, `_monthname`, `_week`, `_dayofyear`, `_minute`, `_iso`, `_timestamp` |
+| `none` | No derived date fields |
 
----
+The `_timestamp` field is numeric, so CSV analysis can still produce statistics when the original dataset only had datetime values.
 
-### 3. Missing Value Imputation
+## Missing Values
 
-Fills missing numeric/categorical data:
+Numeric columns use the configured `--fill-method`:
 
-| Strategy   | Description                            | Example         |
-| ---------- | -------------------------------------- | --------------- |
-|  **mean**  | replaces NaNs with column mean         | height = 172.4  |
-|  **median**| replaces NaNs with column median       | salary = 52,000 |
-|  **mode**  | replaces NaNs with most frequent value | country = "DE"  |
+| Method | Behavior |
+| --- | --- |
+| `mean` | Replaces missing numeric values with the column average. |
+| `median` | Replaces missing numeric values with the column median. |
 
-CLI control:
+Text and categorical columns use the most common non-empty value. Columns with no valid fill value keep their missing values and are reported as preserved.
+
+## Persistence And Reuse
+
+By default, the orchestrator persists:
+
+- cleaned data sample
+- raw CSV snapshot
+- summary statistics
+- cleaning metadata and derived-column mapping
+
+Use `--no-persist` for throwaway analysis:
 
 ```bash
---fill-method mean|median|mode
+indexly analyze-csv sales.csv --auto-clean --no-persist
 ```
 
----
-
-## Validation & Thresholds
-
-Columns are only parsed as datetime or numeric if the ratio of valid values exceeds the threshold (default `0.3`).
+Use `--use-cleaned` when you want to load a previously persisted cleaned dataset:
 
 ```bash
---date-threshold 0.1
+indexly analyze-file sales.csv --use-cleaned --show-summary
 ```
 
-For instance, if fewer than 10% of entries in `Start _Date` are valid, the column is skipped with a warning.
-
----
-
-## Visual Feedback
-
-The cleaning process generates real-time feedback in the console:
-
- * **ASCII summary table**(as shown above)
- * **Warnings** for skipped or invalid columns
- * **Counts of NaNs filled**, duplicate removal
- * **Optional histograms** in visualization mode (see [Visual Exploration](data-analysis.md#visual-exploration))
-
----
-
-## Export & Reuse
-
-After cleaning, the processed dataset is saved optionally with (--save-data) to Indexly’s SQLite store:
+To remove saved cleaned records, use the separate cleanup command:
 
 ```bash
-indexly analyze-csv dataset.csv --use-cleaned
+indexly clear-data sales.csv
+indexly clear-data --all
 ```
 
-This avoids reprocessing the same dataset repeatedly.
+## Cleaning With Visualization
 
----
-
-## Behind the Scenes ([Developer Notes](developer.md))
-
-### `_handle_datetime_columns()`
-
-Parses dates with flexible formats and skips those below validity threshold.
-
-```python
-def  _handle_datetime_columns(df, date _formats, min _valid _ratio=0.3):
-    for col in df.columns:
-        parsed = pd.to _datetime(df [col], format=fmt, errors="coerce")
-        valid _ratio = parsed.notna().mean()
-        if valid _ratio >= min _valid _ratio:
-            df [col] = parsed
-        else:
-            console.print(f"⚠️ Skipped '{col}' — less than {min _valid _ratio *100:.0f}% valid dates")
-    return df
-```
-
----
-
-### `_summarize_cleaning_results()`
-
-Builds structured summary tables with cleaning actions and statistics.
-
-```python
-def  _summarize_cleaning_results(df, summary _records):
-    table = Table(title="🧼 Cleaning Summary")
-    for col, dtype, action, nan_count, strategy in summary_records:
-        table.add _row(col, dtype, action, str(nan_count), strategy)
-    console.print(table)
-```
-
----
-
-### `_infer_types()`
-
-Lightweight dtype inference helper for early normalization.
-
-```python
-def  _infer_types(df):
-    for col in df.columns:
-        try:
-            df [col] = pd.to _numeric(df [col])
-        except Exception:
-            pass
-    return df
-```
-
----
-
-### `auto_clean_csv()`
-
-Top-level orchestrator coordinating the entire cleaning workflow.
-
-```python
-def auto _clean _csv(df, file _path, method="mean", save _cleaned=False, date _formats=None):
-    df =  _infer _types(df)
-    df, date _summaries =  _auto _parse _dates(df, date _formats, min _valid _ratio=0.3)
-    df =  _fill _missing _values(df, method)
-     _summarize _cleaning _results(df, date _summaries)
-    if save _cleaned:
-         _save _cleaned _dataset(df, file _path)
-    return df
-```
-
----
-
-## Pro Tips
-
- * Combine `--auto-clean` with `--visualize` to instantly inspect cleaned distributions
- * Use `--date-threshold 0.1` for tolerant datetime detection on mixed sources
- * Reuse cleaned data with `--use-cleaned` to skip repetitive parsing
- * Adjust fill strategy for skewed data: `--fill-method median`
- * Use [semantic observers](observers.md) to create CSV snapshot history after analysis persistence:
+Cleaning happens before CSV visualization, so charts can use parsed dates, filled numeric values, normalized columns, or outlier-filtered rows.
 
 ```bash
-indexly analyze-csv dataset.csv --show-summary
-indexly observe audit
+indexly analyze-csv sales.csv \
+  --auto-clean \
+  --show-chart ascii \
+  --chart-type hist \
+  --transform auto
 ```
 
-The CSV observer compares persisted cleaned-data snapshots for column, row-count, and summary changes.
+For full visualization behavior, see [Analyze CSV Data](data-analysis.md) and [Time-Series Visualization](time-series-visualization.md).
 
----
+## Operational Notes
 
-## Next Steps
+- Use [Rename File](rename-file.md) before analysis when exported CSV names are inconsistent.
+- Use [Observers](observers.md) after persisted analysis if you want CSV snapshot comparisons over time.
+- Use [Indexly Doctor](indexly-doctor.md) when analysis persistence or database health needs inspection.
 
- * Continue with [Analyze CSV Visualization](data-analysis.md#visual-exploration) / [Time-Series Visualization→](time-series-visualization.md)
- * Standardize exports with [Rename File](rename-file.md)
- * Explore [Statistical Transformation  & Scaling](data-analysis.md#transformation--scaling)
- * Learn about [Data Tagging  & Metadata Indexing](tagging.md)
+## Related Pages
 
----
-
-## Summary
-
-The **Indexly Auto Clean** module provides a statistically grounded, extensible preprocessing pipeline designed for both command-line use and programmatic workflows. Whether you’re preparing raw exports, sensor logs, or mixed-format spreadsheets — `--auto-clean` ensures your data is ready for immediate visualization and analysis.
-
-
-
-
+- [Analyze CSV Data](data-analysis.md)
+- [Data Analysis Overview](data-analysis-overview.md)
+- [Time-Series Visualization](time-series-visualization.md)
+- [Developer Guide](developer.md)

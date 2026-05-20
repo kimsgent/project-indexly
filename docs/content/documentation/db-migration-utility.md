@@ -9,7 +9,7 @@ summary: "A comprehensive guide to Indexly’s database management tools — upd
 keywords: ["indexly", "database migration", "update-db", "fts5 rebuild", "sqlite", "schema migration", "cli tools", "data management"]
 categories: ["Features", "Database"]
 tags: ["migration", "fts5", "update-db", "cli", "schema"]
-weight: 42
+weight: 191
 draft: false
 ---
 

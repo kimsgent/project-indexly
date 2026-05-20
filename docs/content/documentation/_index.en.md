@@ -12,7 +12,7 @@ keywords:
   - indexly cli commands
   - indexly data analysis
   - indexly autodoctor
-weight: 5
+weight: 1
 type: docs
 toc: true
 date: "2026-04-22"
@@ -67,6 +67,8 @@ This documentation works best when you enter through the path that matches your 
 - Daily workflows: [Usage Guide](usage.md)
 - Quick answers: [FAQ](faq.md)
 - Structured files and databases: [Data Analysis Overview](data-analysis-overview.md)
+- CSV analysis: [Analyze CSV](data-analysis.md)
+- CSV cleaning: [Clean CSV Data](clean-csv-data.md)
 - Configuration and filtering: [Configuration](config.md)
 - Engineering and contributions: [Developer Guide](developer.md)
 
@@ -95,6 +97,8 @@ flowchart LR
 | Get short answers for setup, paths, file support, and troubleshooting | [FAQ](faq.md) |
 | Choose the right analysis command and pipeline | [Data Analysis Overview](data-analysis-overview.md) |
 | Analyze JSON, NDJSON, search cache JSON, or Socrata-style JSON | [Analyze JSON And NDJSON Files](analyze-json-files.md) |
+| Analyze CSV files with summaries, charts, and exports | [Analyze CSV](data-analysis.md) |
+| Clean CSV files before analysis | [Clean CSV Data](clean-csv-data.md) |
 | Analyze AutoDoctor report JSON, telemetry JSON, or SQLite output | [Analyze AutoDoctor Artifacts](analyze-autodoctor-artifacts.md) |
 | Improve indexing quality and ignore rules | [Ignore Rules & Index Hygiene](ignore-rules-index-hygiene.md) |
 | Organize folders and inspect logs | [Organizer](organizer.md), [Lister](lister.md) |
@@ -112,6 +116,8 @@ flowchart LR
 - [Clear Search Results Safely](clear-search.md)
 - [Rename File](rename-file.md)
 - [Tagging](tagging.md)
+- [Analyze CSV](data-analysis.md)
+- [Clean CSV Data](clean-csv-data.md)
 - [Analyze AutoDoctor Artifacts](analyze-autodoctor-artifacts.md)
 - [Analyze JSON And NDJSON Files](analyze-json-files.md)
 - [Semantic Indexing Overview](semantic-indexing-overview.md)
