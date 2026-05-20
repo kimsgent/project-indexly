@@ -80,6 +80,7 @@ def coerce_probable_numeric_columns(
 
         normalized_name = str(col).lower().replace("_", "").replace("-", "")
         if any(token in normalized_name for token in identifier_tokens):
+            df[col] = df[col].astype(object)
             continue
 
         non_null = df[col].notna().sum()

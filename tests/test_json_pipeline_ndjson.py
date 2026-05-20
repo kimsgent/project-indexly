@@ -56,13 +56,14 @@ def test_record_list_pipeline_promotes_single_key_objects():
 def test_record_list_pipeline_preserves_mixed_identifier_strings():
     records = [{"code": "A"}, {"code": "2"}]
 
-    df, summary_dict, table_output, tree_dict = run_record_list_json_pipeline(
-        records=records,
-        file_path=Path("codes.ndjson"),
-        metadata={"json_mode": "ndjson"},
-        show_treeview=False,
-        verbose=False,
-    )
+    with pd.option_context("future.infer_string", True):
+        df, summary_dict, table_output, tree_dict = run_record_list_json_pipeline(
+            records=records,
+            file_path=Path("codes.ndjson"),
+            metadata={"json_mode": "ndjson"},
+            show_treeview=False,
+            verbose=False,
+        )
 
     assert list(df["code"]) == ["A", "2"]
     assert df["code"].dtype == object
