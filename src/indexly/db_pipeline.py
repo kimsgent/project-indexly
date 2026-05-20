@@ -11,6 +11,11 @@ from .db_detect import IndexlyDBDetector
 from .db_summary_indexly import IndexlySummaryBuilder
 
 console = Console()
+DB_PREVIEW_ROW_LIMIT = 10_000
+
+
+def _quote_identifier(name: str) -> str:
+    return '"' + str(name).replace('"', '""') + '"'
 
 
 def generate_numeric_summary(df: pd.DataFrame) -> pd.DataFrame:
@@ -119,7 +124,10 @@ def run_db_pipeline(
 
         table_name = getattr(args, "table", None) or tables[0]
         console.print(f"📋 Reading table: [cyan]{table_name}[/cyan]")
-        df = pd.read_sql_query(f"SELECT * FROM '{table_name}'", conn)
+        df = pd.read_sql_query(
+            f"SELECT * FROM {_quote_identifier(table_name)} LIMIT {DB_PREVIEW_ROW_LIMIT}",
+            conn,
+        )
 
     except Exception as e:
         console.print(f"[red]❌ Failed to read from {db_path}: {e}[/red]")
@@ -147,8 +155,23 @@ def run_db_pipeline(
     df_stats = generate_numeric_summary(df)
 
     # --- Pretty output for generic table
-    meta = {"rows": int(df.shape[0]), "cols": int(df.shape[1]), "table": table_name}
-    lines = [f"Rows: {meta['rows']}, Columns: {meta['cols']}", "\nColumn overview:"]
+    total_rows = None
+    try:
+        total_rows = int(raw.get("counts", {}).get(table_name))
+    except Exception:
+        total_rows = None
+
+    meta = {
+        "rows": int(total_rows if total_rows is not None else df.shape[0]),
+        "preview_rows": int(df.shape[0]),
+        "cols": int(df.shape[1]),
+        "table": table_name,
+        "sampled": bool(total_rows is not None and df.shape[0] < total_rows),
+    }
+    row_line = f"Rows: {meta['rows']}, Columns: {meta['cols']}"
+    if meta["sampled"]:
+        row_line += f" (previewed {meta['preview_rows']})"
+    lines = [row_line, "\nColumn overview:"]
     for c in df.columns:
         dtype = str(df[c].dtype)
         n_unique = int(df[c].nunique(dropna=True))

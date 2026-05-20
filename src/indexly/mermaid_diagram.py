@@ -3,11 +3,12 @@ from typing import Dict
 
 def build_mermaid_from_schema(schema_summary: dict, relations: dict) -> str:
     lines = ["erDiagram"]
+    tables = schema_summary.get("tables", schema_summary)
 
     #
     # 1. Render real tables only
     #
-    for tbl, info in schema_summary.items():
+    for tbl, info in tables.items():
         cols = info.get("columns", [])
         if not cols:
             continue
@@ -34,8 +35,8 @@ def build_mermaid_from_schema(schema_summary: dict, relations: dict) -> str:
     #
     for fk in relations.get("foreign_keys", []):
         add_edge(
-            fk["from_table"],
             fk["to_table"],
+            fk["from_table"],
             f"{fk['from_column']} → {fk['to_column']}"
         )
 
@@ -46,8 +47,8 @@ def build_mermaid_from_schema(schema_summary: dict, relations: dict) -> str:
         tgt = h.get("possible_target")
         if tgt:
             add_edge(
-                h["from_table"],
                 tgt,
+                h["from_table"],
                 f"{h['from_column']} (heuristic)"
             )
 
@@ -55,13 +56,16 @@ def build_mermaid_from_schema(schema_summary: dict, relations: dict) -> str:
     # 5. FTS virtual / shadow tables (SQLite only)
     #
     for r in relations.get("fts_relations", []):
-        add_edge(r["shadow"], r["base"], "fts-shadow")
+        add_edge(r["base"], r["shadow"], "fts-shadow")
 
     #
     # 6. Adjacency graph (only add nodes not already FK-connected)
     #
     graph = relations.get("graph", {})
-    fk_pairs = {(fk["from_table"], fk["to_table"]) for fk in relations.get("foreign_keys", [])}
+    fk_pairs = set()
+    for fk in relations.get("foreign_keys", []):
+        fk_pairs.add((fk["to_table"], fk["from_table"]))
+        fk_pairs.add((fk["from_table"], fk["to_table"]))
 
     for a, targets in graph.items():
         for b in targets:

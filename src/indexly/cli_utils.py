@@ -1260,14 +1260,20 @@ def build_parser():
 
     analyze_db_parser.add_argument(
         "--export",
-        choices=["json", "md", "html"],
-        help="Export summary in the chosen format.",
+        help="Export summary in one or more comma-separated formats: json, md, html.",
     )
 
     analyze_db_parser.add_argument(
         "--diagram",
         choices=["mermaid"],
         help="Include diagrams in MD/HTML export.",
+    )
+
+    analyze_db_parser.add_argument(
+        "--max-preview",
+        type=int,
+        default=10,
+        help="Maximum sample rows to show in the terminal preview.",
     )
 
     analyze_db_parser.set_defaults(func=_lazy_analyze_db)

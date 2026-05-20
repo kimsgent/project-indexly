@@ -103,6 +103,8 @@ It:
 
 Use this when you want one command for mixed datasets.
 
+For SQLite files, this route is intentionally a quick preview path. It loads bounded table previews for generic database inspection. Use `analyze-db` when you need relationship discovery, table profiling controls, diagrams, or exportable database summaries.
+
 ### `indexly analyze-json <file>`
 
 This is the JSON-focused route.
@@ -131,6 +133,8 @@ It is best for:
 - table-by-table profiling
 - relationship discovery
 - schema exports and diagrams
+
+By default, large tables are profiled with bounded sampling. Use `--sample-size` to choose a profile size, `--fast` or `--fast-mode` for lighter metrics, and `--all-data` only when full-table profiling is required.
 
 When the database matches AutoDoctor’s schema, Indexly switches to an operational summary instead of staying in the generic inspection path.
 

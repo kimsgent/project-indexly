@@ -120,60 +120,94 @@ def compute_vocab_size(conn: sqlite3.Connection, table_candidates: Iterable[str]
     return total
 
 
-def compute_text_volume_and_doccount(conn: sqlite3.Connection, fts_tables: Iterable[str]) -> Tuple[int, int]:
+def _quote_identifier(name: str) -> str:
+    return '"' + str(name).replace('"', '""') + '"'
+
+
+def _text_column_for_table(cur: sqlite3.Cursor, table: str) -> str | None:
+    text_cols = ["content", "text", "body", "data"]
+    quoted_table = _quote_identifier(table)
+
+    try:
+        cur.execute(f"PRAGMA table_info({quoted_table})")
+        cols = cur.fetchall()
+    except Exception:
+        return None
+
+    lower_cols = {r[1].lower(): r[1] for r in cols}
+    for col in text_cols:
+        if col in lower_cols:
+            return lower_cols[col]
+
+    for cid, name, ctype, nullable, dflt, pk in cols:
+        if ctype and (
+            "CHAR" in ctype.upper()
+            or "TEXT" in ctype.upper()
+            or "CLOB" in ctype.upper()
+        ):
+            return name
+
+    if cols:
+        return cols[0][1]
+    return None
+
+
+def compute_text_volume_and_doccount(
+    conn: sqlite3.Connection,
+    fts_tables: Iterable[str],
+    *,
+    exact: bool = False,
+    sample_size: int = 500,
+) -> Tuple[int, int, bool]:
     """Sum length of text columns for given FTS tables and count documents.
     This is best-effort: try common column names, otherwise fall back to `COUNT(*)`.
     """
     cur = conn.cursor()
     total_bytes = 0
     total_docs = 0
-
-    # common column candidates in FTS-backed tables
-    text_cols = ["content", "text", "body", "data"]
+    estimated = False
 
     for tbl in fts_tables:
         doc_count = 0
+        quoted_tbl = _quote_identifier(tbl)
         try:
             # try COUNT(*) first
-            cur.execute(f"SELECT COUNT(1) FROM '{tbl}'")
+            cur.execute(f"SELECT COUNT(1) FROM {quoted_tbl}")
             doc_count = _safe_int(cur.fetchone()[0])
             total_docs += doc_count
         except Exception:
             # skip if table inaccessible
             continue
 
-        # try to sum lengths for a known column
-        summed = 0
-        for col in text_cols:
-            try:
-                cur.execute(f"SELECT SUM(LENGTH({col})) FROM '{tbl}'")
-                val = cur.fetchone()[0]
-                if val:
-                    summed = _safe_int(val)
-                    break
-            except Exception:
-                continue
+        text_col_name = _text_column_for_table(cur, tbl)
+        if not text_col_name:
+            continue
 
-        # if not found, try to inspect pragma_table_info to pick a TEXT column
-        if summed == 0:
+        quoted_col = _quote_identifier(text_col_name)
+        summed = 0
+        if exact:
             try:
-                cur.execute(f"PRAGMA table_info('{tbl}')")
-                cols = cur.fetchall()
-                text_col_name = None
-                for cid, name, ctype, nullable, dflt, pk in cols:
-                    if ctype and 'CHAR' in ctype.upper() or 'TEXT' in (ctype or '').upper() or 'CLOB' in (ctype or '').upper():
-                        text_col_name = name
-                        break
-                if text_col_name:
-                    cur.execute(f"SELECT SUM(LENGTH({text_col_name})) FROM '{tbl}'")
-                    val = cur.fetchone()[0]
-                    summed = _safe_int(val)
+                cur.execute(f"SELECT SUM(LENGTH({quoted_col})) FROM {quoted_tbl}")
+                summed = _safe_int(cur.fetchone()[0])
+            except Exception:
+                summed = 0
+        else:
+            limit = max(1, int(sample_size or 500))
+            try:
+                cur.execute(
+                    f"SELECT AVG(LENGTH({quoted_col})) FROM "
+                    f"(SELECT {quoted_col} FROM {quoted_tbl} LIMIT {limit})"
+                )
+                avg_len = cur.fetchone()[0]
+                if avg_len is not None:
+                    summed = int(float(avg_len) * doc_count)
+                    estimated = True
             except Exception:
                 summed = 0
 
         total_bytes += summed
 
-    return total_bytes, total_docs
+    return total_bytes, total_docs, estimated
 
 
 def sample_token_distribution(conn: sqlite3.Connection, fts_tables: Iterable[str], sample_size: int = 500) -> Dict[str, int]:
@@ -183,16 +217,14 @@ def sample_token_distribution(conn: sqlite3.Connection, fts_tables: Iterable[str
     cur = conn.cursor()
     tokens: Dict[str, int] = {}
 
-    # collect candidates for sampling: try to select a text-like column
-    text_cols = ["content", "text", "body", "data"]
-
     rows_sampled = 0
     for tbl in fts_tables:
         if rows_sampled >= sample_size:
             break
+        quoted_tbl = _quote_identifier(tbl)
         # get doc count to allow random sampling
         try:
-            cur.execute(f"SELECT COUNT(1) FROM '{tbl}'")
+            cur.execute(f"SELECT COUNT(1) FROM {quoted_tbl}")
             count = _safe_int(cur.fetchone()[0])
         except Exception:
             continue
@@ -200,47 +232,17 @@ def sample_token_distribution(conn: sqlite3.Connection, fts_tables: Iterable[str
         if count == 0:
             continue
 
-        # pick a column
-        chosen_col = None
-        for col in text_cols:
-            try:
-                cur.execute(f"PRAGMA table_info('{tbl}')")
-                cols = [r[1].lower() for r in cur.fetchall()]
-                if col in cols:
-                    chosen_col = col
-                    break
-            except Exception:
-                continue
-
-        if not chosen_col:
-            # pick any column with TEXT affinity
-            try:
-                cur.execute(f"PRAGMA table_info('{tbl}')")
-                for cid, name, ctype, nullable, dflt, pk in cur.fetchall():
-                    if ctype and ('CHAR' in ctype.upper() or 'TEXT' in ctype.upper() or 'CLOB' in ctype.upper()):
-                        chosen_col = name
-                        break
-            except Exception:
-                chosen_col = None
-
-        if not chosen_col:
-            # fallback to the first column
-            try:
-                cur.execute(f"PRAGMA table_info('{tbl}')")
-                cols = cur.fetchall()
-                if cols:
-                    chosen_col = cols[0][1]
-            except Exception:
-                chosen_col = None
-
+        chosen_col = _text_column_for_table(cur, tbl)
         if not chosen_col:
             continue
+
+        quoted_col = _quote_identifier(chosen_col)
 
         # sample row ids (use LIMIT if small, otherwise random offsets)
         to_sample = min(sample_size - rows_sampled, max(10, min(100, count)))
         # if table small, just select all
         if count <= to_sample:
-            q = f"SELECT {chosen_col} FROM '{tbl}' LIMIT {to_sample}"
+            q = f"SELECT {quoted_col} FROM {quoted_tbl} LIMIT {to_sample}"
             try:
                 cur.execute(q)
                 for (txt,) in cur.fetchall():
@@ -258,7 +260,9 @@ def sample_token_distribution(conn: sqlite3.Connection, fts_tables: Iterable[str
             while rows_sampled < sample_size and tried < attempts:
                 idx = random.randint(0, count - 1)
                 try:
-                    cur.execute(f"SELECT {chosen_col} FROM '{tbl}' LIMIT 1 OFFSET {idx}")
+                    cur.execute(
+                        f"SELECT {quoted_col} FROM {quoted_tbl} LIMIT 1 OFFSET {idx}"
+                    )
                     row = cur.fetchone()
                     tried += 1
                     if not row:
@@ -280,7 +284,14 @@ def sample_token_distribution(conn: sqlite3.Connection, fts_tables: Iterable[str
     return {}
 
 
-def build_indexly_block(conn: sqlite3.Connection, schemas: Dict[str, Any]) -> Dict[str, Any]:
+def build_indexly_block(
+    conn: sqlite3.Connection,
+    schemas: Dict[str, Any],
+    *,
+    exact_metrics: bool = False,
+    fast_mode: bool = False,
+    sample_size: int | None = None,
+) -> Dict[str, Any]:
     """Main public API: generate the indexly block given a DB connection and schema info.
 
     `schemas` is the usual mapping table -> list(columns) used by analyze-db pipeline.
@@ -303,9 +314,19 @@ def build_indexly_block(conn: sqlite3.Connection, schemas: Dict[str, Any]) -> Di
     vocab_candidates = [t for t in table_names if t.lower().endswith('_vocab') or 'vocab' in t.lower()]
     vocab_size = compute_vocab_size(conn, vocab_candidates)
 
-    text_volume, doc_count = compute_text_volume_and_doccount(conn, inferred_fts)
+    metric_sample_size = sample_size or (100 if fast_mode else 500)
+    text_volume, doc_count, text_volume_estimated = compute_text_volume_and_doccount(
+        conn,
+        inferred_fts,
+        exact=exact_metrics,
+        sample_size=metric_sample_size,
+    )
 
-    token_dist = sample_token_distribution(conn, inferred_fts, sample_size=500)
+    token_dist = (
+        {}
+        if fast_mode
+        else sample_token_distribution(conn, inferred_fts, sample_size=metric_sample_size)
+    )
 
     is_indexly = False
     # heuristics to determine Indexly-ness
@@ -325,6 +346,7 @@ def build_indexly_block(conn: sqlite3.Connection, schemas: Dict[str, Any]) -> Di
             "metrics": {
                 "vocab_size": int(vocab_size),
                 "text_volume_bytes": int(text_volume),
+                "text_volume_estimated": bool(text_volume_estimated),
                 "document_count": int(doc_count),
                 "token_distribution_sample": token_dist,
             },
