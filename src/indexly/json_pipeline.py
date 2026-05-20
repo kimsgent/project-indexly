@@ -5,14 +5,17 @@ from typing import Tuple, Dict, Any, Optional
 import pandas as pd
 import json
 from rich.console import Console
-from .universal_loader import _safe_read_json_text
+from .universal_loader import (
+    _parse_ndjson_records_from_path,
+    _safe_read_json_text,
+    load_json_or_ndjson,
+)
 from .visualize_json import (
     summarize_json_dataframe,
     json_preview,
     json_build_tree,
     json_render_terminal,
 )
-
 
 console = Console()
 
@@ -61,6 +64,47 @@ def _parse_ndjson_record_list(text: str) -> list[dict] | None:
     return records or None
 
 
+def coerce_probable_numeric_columns(
+    df: pd.DataFrame,
+    min_parse_ratio: float = 0.8,
+) -> pd.DataFrame:
+    """
+    Convert object columns only when they are overwhelmingly numeric.
+    Identifier-like string columns stay textual to avoid turning mixed keys into NaN.
+    """
+    identifier_tokens = ("id", "code", "key", "zip", "postal", "phone")
+
+    for col in df.columns:
+        if pd.api.types.is_numeric_dtype(df[col]):
+            continue
+
+        normalized_name = str(col).lower().replace("_", "").replace("-", "")
+        if any(token in normalized_name for token in identifier_tokens):
+            continue
+
+        non_null = df[col].notna().sum()
+        if non_null == 0:
+            continue
+
+        coerced = pd.to_numeric(df[col], errors="coerce")
+        parse_ratio = coerced.notna().sum() / non_null
+        if parse_ratio > min_parse_ratio:
+            df[col] = coerced
+
+    return df
+
+
+def _json_chunk_size(args, default: int = 50000) -> int:
+    value = getattr(args, "chunk_size", None) if args is not None else None
+    if value is None and isinstance(args, dict):
+        value = args.get("chunk_size")
+    try:
+        parsed = int(value) if value else default
+    except (TypeError, ValueError):
+        parsed = default
+    return max(parsed, 1)
+
+
 def run_record_list_json_pipeline(
     records: list[dict],
     file_path: Path,
@@ -91,15 +135,12 @@ def run_record_list_json_pipeline(
     setattr(df, "_source_file_path", str(file_path))
 
     if not df.empty:
-        for col in df.columns:
-            coerced = pd.to_numeric(df[col], errors="coerce")
-            if coerced.notna().sum() > 0:
-                df[col] = coerced
+        df = coerce_probable_numeric_columns(df)
 
     if not df.empty and df.shape[1] > 0:
         try:
             numeric_summary, non_numeric_summary = summarize_json_dataframe(df)
-            table_output = build_json_table_output(df)
+            table_output = build_json_table_output(df, render=verbose)
         except Exception:
             numeric_summary = {}
             non_numeric_summary = {}
@@ -154,17 +195,46 @@ def run_json_pipeline(
     """
 
     path_obj = Path(file_path)
+    chunk_size = _json_chunk_size(args)
 
     # -------------------------------------------------------------------------
     # NEW BLOCK (Point 2)
     # Detect “search-cache” JSON files BEFORE any normal JSON pipeline logic
     # -------------------------------------------------------------------------
     prefetched_raw_json = None
+    prefetched_meta = None
     if df is None:
         try:
-            with open(path_obj, "r", encoding="utf-8-sig") as f:
-                raw_json = json.load(f)
+            raw_json, prefetched_meta = load_json_or_ndjson(
+                path_obj,
+                max_rows=chunk_size,
+            )
+            if raw_json is None:
+                return None, None, None
             prefetched_raw_json = raw_json
+
+            if (prefetched_meta or {}).get("json_mode") == "ndjson":
+                if verbose:
+                    console.print(
+                        "[cyan]↪ Rerouting to orchestrator NDJSON record-list pipeline[/cyan]"
+                    )
+
+                df, _, table_dict, _ = run_record_list_json_pipeline(
+                    records=raw_json,
+                    file_path=path_obj,
+                    metadata=prefetched_meta,
+                    show_treeview=bool(getattr(args, "treeview", False)),
+                    verbose=verbose,
+                )
+                if df is None or df.empty:
+                    return None, None, None
+
+                try:
+                    df_stats = df.describe(include="all", datetime_is_numeric=True)
+                except Exception:
+                    df_stats = None
+
+                return df, df_stats, table_dict
 
             if is_search_cache_json(raw_json):
                 if verbose:
@@ -190,7 +260,7 @@ def run_json_pipeline(
     data = None
 
     # Only load JSON if orchestrator did NOT preload the DataFrame
-    should_load = df is None or getattr(df, "_from_orchestrator", False) is False
+    should_load = df is None
 
     if should_load:
         if verbose:
@@ -239,7 +309,11 @@ def run_json_pipeline(
                 return None, None, None
 
         # Convert to DataFrame
-        data, df = load_json_as_dataframe(str(path_obj), raw_json=raw_json)
+        data, df = load_json_as_dataframe(
+            str(path_obj),
+            raw_json=raw_json,
+            max_rows=chunk_size,
+        )
 
         if df is not None:
             setattr(df, "_from_orchestrator", True)
@@ -284,7 +358,7 @@ def run_json_pipeline(
         return df, df_stats, None
 
     # Step 4 — Build table output for terminal / UI
-    table_dict = build_json_table_output(df, dt_summary=dt_summary)
+    table_dict = build_json_table_output(df, dt_summary=dt_summary, render=verbose)
 
     # Step 5 — Return
     return df, df_stats, table_dict
@@ -353,6 +427,7 @@ def run_json_generic_pipeline(
     args = args or {}
     show_tree = bool(args.get("treeview", False))
     path_obj = Path(file_path)
+    chunk_size = _json_chunk_size(args)
 
     if meta:
         args["meta"] = meta  # merge into args
@@ -362,11 +437,16 @@ def run_json_generic_pipeline(
     # -------------------------------------------------------------------------
     if df is None and raw is None:
         try:
-            with open(path_obj, "r", encoding="utf-8-sig") as f:
-                raw_json = json.load(f)
+            text = _safe_read_json_text(path_obj, max_lines=None)
+            if text is None:
+                raw_json = None
+            else:
+                raw_json = json.loads(text)
             if is_search_cache_json(raw_json):
                 if verbose:
-                    console.print("[cyan]🔍 Detected search-cache JSON → normalizing[/cyan]")
+                    console.print(
+                        "[cyan]🔍 Detected search-cache JSON → normalizing[/cyan]"
+                    )
                 df = normalize_search_cache_json(path_obj)
                 stats = df.describe(include="all")
                 table_output = {
@@ -380,7 +460,7 @@ def run_json_generic_pipeline(
     # -------------------------------------------------------------------------
     # 2. Load JSON if not preloaded
     # -------------------------------------------------------------------------
-    should_load = df is None or getattr(df, "_from_orchestrator", False) is False
+    should_load = df is None
     raw_json = raw  # <-- use raw if provided
     if should_load and raw_json is None:
         text = _safe_read_json_text(path_obj, max_lines=None)
@@ -390,8 +470,86 @@ def run_json_generic_pipeline(
         try:
             raw_json = json.loads(text)
         except Exception as e:
-            console.print(f"[red]❌ Invalid JSON: {e}[/red]")
+            try:
+                records, ndjson_meta = _parse_ndjson_records_from_path(
+                    path_obj,
+                    max_rows=chunk_size,
+                )
+            except ValueError as ndjson_error:
+                console.print(f"[red]❌ Invalid JSON: {e}; {ndjson_error}[/red]")
+                return None, None, None
+            if not records:
+                console.print(f"[red]❌ Invalid JSON: {e}[/red]")
+                return None, None, None
+            return run_record_list_json_pipeline(
+                records=records,
+                file_path=path_obj,
+                metadata={"json_mode": "ndjson", **ndjson_meta},
+                show_treeview=show_tree,
+                verbose=verbose,
+            )[:3]
+
+    if (
+        isinstance(raw_json, dict)
+        and isinstance(raw_json.get("columns"), list)
+        and isinstance(raw_json.get("data"), list)
+    ):
+        data_rows = raw_json.get("data", [])
+        rows_total = len(data_rows)
+        if rows_total > chunk_size:
+            args["meta"] = args.get("meta", {})
+            args["meta"]["sampled"] = True
+            args["meta"]["rows_total"] = rows_total
+            args["meta"]["rows_sampled"] = chunk_size
+        _, df = load_json_as_dataframe(
+            path_obj,
+            raw_json=raw_json,
+            max_rows=chunk_size,
+        )
+        if df is None or df.empty:
             return None, None, None
+        setattr(df, "_from_orchestrator", True)
+        setattr(df, "_source_file_path", str(path_obj))
+        raw_json_for_tree = raw_json
+
+        dt_summary = {}
+        try:
+            df, dt_summary = normalize_datetime_columns(df, source_type="json")
+        except Exception as e:
+            console.print(f"[yellow]⚠️ Datetime normalization failed: {e}[/yellow]")
+
+        numeric_summary, non_numeric_summary = summarize_json_dataframe(df)
+        summary_dict = {
+            "numeric_summary": numeric_summary,
+            "non_numeric_summary": non_numeric_summary,
+            "datetime_summary": dt_summary,
+            "rows": len(df),
+            "cols": len(df.columns),
+            "metadata": {
+                "file": str(path_obj),
+                "json_mode": "socrata",
+                **(args.get("meta", {})),
+            },
+        }
+        table_output = build_json_table_output(
+            df,
+            dt_summary=dt_summary,
+            render=verbose,
+        )
+        summary_dict.update(
+            {
+                "summary_meta": table_output.get("summary_meta", {}),
+            }
+        )
+        tree_dict = {}
+        if show_tree:
+            try:
+                tree_obj = json_build_tree(raw_json_for_tree, root_name=path_obj.name)
+                tree_dict = {"tree": tree_obj}
+                summary_dict["preview"] = json_preview(raw_json_for_tree)
+            except Exception as e:
+                tree_dict = {"note": f"Failed to build tree: {e}"}
+        return df, summary_dict, tree_dict or table_output
 
     # -------------------------------------------------------------------------
     # 2a. Promote single-key dicts in list (e.g., {"employee": {...}}) before flattening
@@ -406,42 +564,7 @@ def run_json_generic_pipeline(
         raw_json = promoted_raw
 
     # -------------------------------------------------------------------------
-    # 2b. Socrata detection + Lite mode guard
-    # -------------------------------------------------------------------------
-    socrata_mode = False
-    socrata_rows = None
-
-    if isinstance(raw_json, dict):
-        meta_block = raw_json.get("meta")
-        columns_block = raw_json.get("columns")
-        data_block = raw_json.get("data")
-
-        if meta_block and isinstance(columns_block, list) and isinstance(data_block, list):
-            socrata_mode = True
-            socrata_rows = len(data_block)
-
-            # Always notify user — even before big file test
-            console.print(f"[cyan]📘 Detected Socrata JSON structure ({socrata_rows} rows)[/cyan]")
-
-            # Trigger Lite mode for very large datasets
-            if socrata_rows > 500000:
-                console.print(
-                    "[yellow]⚠ Large Socrata dataset detected → Using Socrata-Lite mode (safe partial flatten)[/yellow]"
-                )
-
-                # take first 10k rows only
-                preview_limit = 10000
-                truncated = raw_json.copy()
-                truncated["data"] = data_block[:preview_limit]
-
-                raw_json = truncated
-                args["meta"] = args.get("meta", {})
-                args["meta"]["json_mode"] = "socrata-lite"
-                args["meta"]["rows_total"] = socrata_rows
-                args["meta"]["rows_sampled"] = preview_limit
-
-    # -------------------------------------------------------------------------
-    # 2c. Flatten JSON
+    # 2b. Flatten generic JSON
     # -------------------------------------------------------------------------
     flattened_records = flatten_nested_json(raw_json)
     df = pd.DataFrame(flattened_records) if flattened_records else pd.DataFrame()
@@ -496,6 +619,8 @@ def run_json_generic_pipeline(
         if tree_dict.get("tree"):
             json_render_terminal(tree_dict["tree"], summary_dict)
         else:
-            build_json_table_output(df, dt_summary=dt_summary)  # only once
+            build_json_table_output(
+                df, dt_summary=dt_summary, render=verbose
+            )  # only once
 
     return df, summary_dict, tree_dict or table_output

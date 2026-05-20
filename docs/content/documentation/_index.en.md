@@ -16,7 +16,7 @@ weight: 5
 type: docs
 toc: true
 date: "2026-04-22"
-lastmod: "2026-05-16"
+lastmod: "2026-05-20"
 draft: false
 categories:
   - Overview
@@ -43,10 +43,11 @@ This documentation works best when you enter through the path that matches your 
 
 ## What Is New
 
-{{< alert title="Recent Focus Areas" color="primary" >}}
+{{% alert title="Recent Focus Areas" color="primary" %}}
 <div class="p-3 rounded" style="background:#ffffff; color:#1f2937;">
   <h4 class="mb-2" style="color:#0f172a;">What changed recently</h4>
   <ul class="mb-3">
+    <li>JSON and NDJSON analysis now uses bounded detection, strict malformed-line handling, chunk-limited record materialization, and safer mixed identifier handling.</li>
     <li>`v2.1.1` hardens backup verification, dry-run restore, incremental base selection, and restore safety checks.</li>
     <li>Semantic observers now persist snapshots more reliably and fall back when home paths are unwritable.</li>
     <li>Compare, organizer, lister, and rename workflows include tighter handling around profiles, caches, counters, and database sync.</li>
@@ -56,7 +57,7 @@ This documentation works best when you enter through the path that matches your 
   <a href="/en/releases/" class="btn btn-primary btn-sm me-2">View Release Notes</a>
   <a href="/en/documentation/data-analysis-pipeline/" class="btn btn-outline-secondary btn-sm">Open Analysis Guide</a>
 </div>
-{{< /alert >}}
+{{% /alert %}}
 
 ## Start Here
 
@@ -93,6 +94,7 @@ flowchart LR
 | Diagnose search, cache, analysis DB, and integrity issues | [Indexly Doctor](indexly-doctor.md) |
 | Get short answers for setup, paths, file support, and troubleshooting | [FAQ](faq.md) |
 | Choose the right analysis command and pipeline | [Data Analysis Overview](data-analysis-overview.md) |
+| Analyze JSON, NDJSON, search cache JSON, or Socrata-style JSON | [Analyze JSON And NDJSON Files](analyze-json-files.md) |
 | Analyze AutoDoctor report JSON, telemetry JSON, or SQLite output | [Analyze AutoDoctor Artifacts](analyze-autodoctor-artifacts.md) |
 | Improve indexing quality and ignore rules | [Ignore Rules & Index Hygiene](ignore-rules-index-hygiene.md) |
 | Organize folders and inspect logs | [Organizer](organizer.md), [Lister](lister.md) |
@@ -111,6 +113,7 @@ flowchart LR
 - [Rename File](rename-file.md)
 - [Tagging](tagging.md)
 - [Analyze AutoDoctor Artifacts](analyze-autodoctor-artifacts.md)
+- [Analyze JSON And NDJSON Files](analyze-json-files.md)
 - [Semantic Indexing Overview](semantic-indexing-overview.md)
 - [Observers](observers.md)
 - [Backup & Restore](backup-restore.md)

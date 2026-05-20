@@ -7,7 +7,7 @@ type: docs
 slug: "data-analysis-pipeline"
 weight: 18
 date: "2026-04-22"
-lastmod: "2026-05-16"
+lastmod: "2026-05-20"
 draft: false
 toc: true
 canonicalURL: "/en/documentation/data-analysis-pipeline/"
@@ -41,9 +41,9 @@ params:
 - Developers tracing how Indexly routes structured files through the loader and orchestrator
 - Operators analyzing AutoDoctor report JSON, telemetry JSON, or SQLite output with Indexly
 
-{{< alert title="What changed recently" color="info" >}}
-Since `v2.0.2`, Indexly’s JSON analysis path has become more reliable for NDJSON-style inputs. Current staging builds also add dedicated AutoDoctor-aware analysis for report JSON, telemetry JSON, and SQLite databases.
-{{< /alert >}}
+{{% alert title="What changed recently" color="info" %}}
+Current staging builds include stricter JSON and NDJSON handling: bounded JSON detection, chunk-limited NDJSON materialization, malformed-line rejection, safer mixed identifier handling, Socrata-style table mapping, and clearer sampling metadata. See [Analyze JSON And NDJSON Files](analyze-json-files.md) for the JSON-specific workflow.
+{{% /alert %}}
 
 ## Supported Formats
 
@@ -59,6 +59,9 @@ Indexly provides analysis and summarization for these structured formats:
 
 - Standard list and dictionary JSON
 - NDJSON / record-list JSON
+- `.json` files that contain NDJSON records
+- Compressed `*.json.gz` files
+- Socrata-style `columns` and `data` JSON
 - Indexly search cache JSON
 - AutoDoctor report JSON
 - AutoDoctor telemetry JSON
@@ -81,7 +84,7 @@ Indexly provides analysis and summarization for these structured formats:
 | --- | --- | --- |
 | Unknown structured file | `indexly analyze-file <file>` | Lets the universal loader detect the file and route it automatically |
 | Exported CSVs or reports with inconsistent names | `indexly rename-file <folder> --dry-run` before analysis | Standardizes filenames so later analysis, search, and organizer logs are easier to compare |
-| Large JSON or NDJSON file | `indexly analyze-json <file>` | Uses JSON-specific validation and fallback handling |
+| Large JSON or NDJSON file | `indexly analyze-json <file> --chunk-size 10000` | Uses JSON-specific detection and chunk-limited NDJSON materialization |
 | Generic SQLite inspection | `indexly analyze-db <db>` | Focused on schema, table profiling, and export |
 | AutoDoctor report JSON, telemetry JSON, or `autodoctor.db` | `indexly analyze-autodoctor <path>` | Produces an operational summary instead of a generic table dump |
 | AutoDoctor artifact, but you want auto-detection through the generic path | `indexly analyze-file <path>` | The orchestrator detects AutoDoctor and switches to the specialized path |
@@ -108,9 +111,15 @@ It is best for:
 
 - plain JSON
 - NDJSON
+- compressed JSON
+- Socrata-style table JSON
 - JSON files that may need structural fallback logic
 
 It now shares more routing behavior with the orchestrator, which helps prevent the old failure mode where NDJSON-style `.json` files summarized correctly but could not persist cleanly.
+
+Use `--chunk-size` on this command when a newline-delimited source is too large to materialize fully.
+
+See [Analyze JSON And NDJSON Files](analyze-json-files.md).
 
 ### `indexly analyze-db <db>`
 
@@ -219,7 +228,8 @@ indexly analyze-file workbook.xlsx --sheet-name Sheet1 --show-summary
 
 ```bash
 indexly analyze-json iris.json --show-summary
-indexly analyze-json events.ndjson --show-summary
+indexly analyze-json events.ndjson --chunk-size 10000 --show-summary
+indexly analyze-json records.json.gz --show-summary
 ```
 
 ### SQLite analysis
@@ -241,6 +251,7 @@ indexly analyze-autodoctor .\autodoctor.db --show-summary
 
 - [Usage Guide](usage.md)
 - [Rename File](rename-file.md)
+- [Analyze JSON And NDJSON Files](analyze-json-files.md)
 - [Cleaning CSV Data](clean-csv-data.md)
 - [Analyze SQLite Databases](analyze-sqlite-databases.md)
 - [Analyze AutoDoctor Artifacts](analyze-autodoctor-artifacts.md)

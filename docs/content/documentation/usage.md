@@ -5,7 +5,7 @@ icon: "mdi:play-circle"
 weight: 2
 type: docs
 date: 2026-04-01
-lastmod: 2026-05-16
+lastmod: 2026-05-20
 summary: "Learn the day-to-day Indexly workflow: install, index, search, tag, analyze, compare, and back up with practical command examples."
 description: "Practical Indexly usage guide for Windows, macOS, and Linux. Covers indexing, search, regex, tagging, analysis, organizing, backup/restore, and common troubleshooting."
 keywords: [
@@ -291,9 +291,12 @@ Analyze other formats with one command:
 ```bash
 indexly analyze-file data.json --show-summary
 indexly analyze-json events.ndjson --show-summary
+indexly analyze-json events.json --chunk-size 10000 --show-summary
 indexly analyze-file dataset.xlsx --sheet-name Sheet1 --show-summary
 indexly analyze-file metrics.parquet --show-summary
 ```
+
+Use `analyze-json` for large JSON or NDJSON files when you need `--chunk-size`. Use `analyze-file` when you want one generic dispatcher for mixed structured files.
 
 Analyze SQLite directly when you want schema-aware inspection:
 
@@ -323,7 +326,7 @@ Run statistical inference on indexed CSV datasets:
 indexly infer-csv sales_q1.csv sales_q2.csv --merge-on customer_id --test ttest --x group --y revenue
 ```
 
-Use [Rename File](rename-file.md) when exported datasets need predictable names before analysis. See [Data Analysis Overview](data-analysis-overview.md) and [Time-Series Visualization](time-series-visualization.md).
+Use [Rename File](rename-file.md) when exported datasets need predictable names before analysis. See [Data Analysis Overview](data-analysis-overview.md), [Analyze JSON And NDJSON Files](analyze-json-files.md), and [Time-Series Visualization](time-series-visualization.md).
 
 For AutoDoctor-specific guidance, see [Analyze AutoDoctor Artifacts](analyze-autodoctor-artifacts.md).
 

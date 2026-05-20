@@ -5,6 +5,7 @@ import pandas as pd
 
 from indexly.json_pipeline import (
     run_json_pipeline,
+    run_json_generic_pipeline,
     run_record_list_json_pipeline,
 )
 
@@ -50,3 +51,43 @@ def test_record_list_pipeline_promotes_single_key_objects():
     assert summary_dict["rows"] == 2
     assert isinstance(table_output, dict)
     assert tree_dict == {}
+
+
+def test_record_list_pipeline_preserves_mixed_identifier_strings():
+    records = [{"code": "A"}, {"code": "2"}]
+
+    df, summary_dict, table_output, tree_dict = run_record_list_json_pipeline(
+        records=records,
+        file_path=Path("codes.ndjson"),
+        metadata={"json_mode": "ndjson"},
+        show_treeview=False,
+        verbose=False,
+    )
+
+    assert list(df["code"]) == ["A", "2"]
+    assert df["code"].dtype == object
+    assert summary_dict["rows"] == 2
+    assert isinstance(table_output, dict)
+    assert tree_dict == {}
+
+
+def test_generic_pipeline_uses_socrata_columns_as_table_schema():
+    raw = {
+        "columns": [{"fieldName": "id"}, {"fieldName": "value"}],
+        "data": [[1, 10], [2, 20]],
+    }
+
+    df, summary_dict, table_output = run_json_generic_pipeline(
+        file_path=Path("socrata.json"),
+        args={"verbose": False, "treeview": False},
+        raw=raw,
+        verbose=False,
+    )
+
+    assert list(df.columns) == ["id", "value"]
+    assert df.to_dict(orient="records") == [
+        {"id": 1, "value": 10},
+        {"id": 2, "value": 20},
+    ]
+    assert summary_dict["rows"] == 2
+    assert table_output["rows"] == 2

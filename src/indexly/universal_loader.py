@@ -48,6 +48,13 @@ def _open_text_maybe_gz(path: str | Path):
     return open(path_str, "r", encoding="utf-8")
 
 
+def _open_json_text_maybe_gz(path: str | Path):
+    path_str = str(path)
+    if path_str.endswith(".gz"):
+        return gzip.open(path_str, "rt", encoding="utf-8-sig")
+    return open(path_str, "r", encoding="utf-8-sig")
+
+
 def _safe_read_text(path: str | Path, max_lines: int | None = None) -> Optional[str]:
     """
     Safely read text from a file (supports .gz).
@@ -69,7 +76,9 @@ def _safe_read_text(path: str | Path, max_lines: int | None = None) -> Optional[
         return None
 
 
-def _safe_read_json_text(path: str | Path, max_lines: int | None = None) -> Optional[str]:
+def _safe_read_json_text(
+    path: str | Path, max_lines: int | None = None
+) -> Optional[str]:
     """
     Safely read JSON text while tolerating optional UTF-8 BOM markers.
     """
@@ -88,6 +97,69 @@ def _safe_read_json_text(path: str | Path, max_lines: int | None = None) -> Opti
             return "".join(lines)
     except Exception:
         return None
+
+
+def _safe_read_json_head(path: str | Path, max_chars: int = 65536) -> Optional[str]:
+    """
+    Read a bounded JSON text prefix while tolerating optional UTF-8 BOM markers
+    and gzip compression.
+    """
+    try:
+        with _open_json_text_maybe_gz(path) as fh:
+            return fh.read(max_chars)
+    except Exception:
+        return None
+
+
+def _is_probable_ndjson_head(text: str) -> bool:
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    if len(lines) < 2:
+        return False
+    sample = lines[: min(5, len(lines))]
+    if not all(line.startswith("{") and line.endswith("}") for line in sample):
+        return False
+    return True
+
+
+def _parse_ndjson_records_from_path(
+    path: str | Path,
+    max_rows: int | None = None,
+) -> Tuple[list[dict], dict]:
+    """
+    Parse NDJSON records strictly. Invalid lines fail the load instead of being
+    silently omitted. When max_rows is set, only the first max_rows records are
+    materialized and metadata marks the result as sampled.
+    """
+    records: list[dict] = []
+    sampled = False
+    line_count = 0
+
+    with _open_json_text_maybe_gz(path) as fh:
+        for line_number, line in enumerate(fh, start=1):
+            stripped = line.strip()
+            if not stripped:
+                continue
+            line_count += 1
+            if max_rows is not None and len(records) >= max_rows:
+                sampled = True
+                break
+            try:
+                obj = json.loads(stripped)
+            except json.JSONDecodeError as exc:
+                raise ValueError(
+                    f"Invalid NDJSON at line {line_number}: {exc.msg}"
+                ) from exc
+            if not isinstance(obj, dict):
+                raise ValueError(
+                    f"Invalid NDJSON at line {line_number}: expected object record"
+                )
+            records.append(obj)
+
+    return records, {
+        "rows_sampled": len(records),
+        "rows_seen": line_count,
+        "sampled": sampled,
+    }
 
 
 def _normalize_raw_to_df(raw: Any) -> Optional[pd.DataFrame]:
@@ -142,18 +214,12 @@ def load_json_or_ndjson(
       - Otherwise falls back to normal full-parse classification.
     """
     path = Path(path)
-    try:
-        text_head = path.read_text(
-            encoding="utf-8-sig",
-            errors="ignore",
-        )
-    except Exception:
-        # fallback to safe None on read error
+    text_head = _safe_read_json_head(path)
+    if text_head is None:
         return None, None
 
     # cheap head scan to detect Socrata markers (fast, won't parse entire file)
-    head_check_size = 65536  # first ~64KB
-    head = text_head[:head_check_size]
+    head = text_head
 
     def _cheap_socrata_hint(s: str) -> bool:
         # look for the common top-level keys in Socrata dumps
@@ -169,7 +235,7 @@ def load_json_or_ndjson(
 
         text = None
         # We'll stream-read the file as text to locate the arrays. This avoids json.loads on full file.
-        with open(p, "r", encoding="utf-8", errors="ignore") as fh:
+        with _open_json_text_maybe_gz(p) as fh:
             # Read in chunks; keep a sliding buffer to find "columns" and "data"
             buffer = ""
             found_columns = False
@@ -287,9 +353,8 @@ def load_json_or_ndjson(
                 if size <= 20 * 1024 * 1024:  # 20 MB
                     # try safe full parse
                     try:
-                        full = json.loads(
-                            path.read_text(encoding="utf-8-sig", errors="ignore")
-                        )
+                        with _open_json_text_maybe_gz(path) as full_fh:
+                            full = json.load(full_fh)
                         if (
                             isinstance(full, dict)
                             and "data" in full
@@ -309,16 +374,25 @@ def load_json_or_ndjson(
 
     # If we detected an NDJSON-ish head (many lines of JSON objects), parse as ndjson quickly
     def _cheap_ndjson_detect(s: str) -> bool:
-        lines = [ln.strip() for ln in s.splitlines() if ln.strip()]
-        if not lines:
-            return False
-        # check first few lines
-        return all(
-            line.startswith("{") and line.endswith("}")
-            for line in lines[: min(5, len(lines))]
-        )
+        return _is_probable_ndjson_head(s)
 
     # --- Branching logic ---
+    if path.suffix.lower() == ".ndjson" or _cheap_ndjson_detect(head):
+        try:
+            objs, ndjson_meta = _parse_ndjson_records_from_path(path, max_rows=max_rows)
+        except ValueError as exc:
+            console.print(f"[red]❌ {exc}[/red]")
+            return None, None
+        if objs:
+            meta = {
+                "type": "ndjson",
+                "json_mode": "ndjson",
+                "is_list": True,
+                "is_record_list": True,
+                **ndjson_meta,
+            }
+            return objs, meta
+
     # 1) If cheap head hints Socrata, attempt a safe extraction (columns + first N rows)
     if socrata_hint:
         file_size = path.stat().st_size if path.exists() else None
@@ -327,7 +401,8 @@ def load_json_or_ndjson(
         if file_size is not None and file_size <= size_threshold:
             # safe to fully parse
             try:
-                full = json.loads(path.read_text(encoding="utf-8-sig", errors="ignore"))
+                with _open_json_text_maybe_gz(path) as fh:
+                    full = json.load(fh)
                 if isinstance(full, dict) and "data" in full and "columns" in full:
                     data_len = (
                         len(full.get("data", []))
@@ -360,7 +435,8 @@ def load_json_or_ndjson(
         if columns is None:
             # extraction failed — fall back to standard full parse attempt (may fail)
             try:
-                parsed = json.loads(path.read_text(encoding="utf-8-sig", errors="ignore"))
+                with _open_json_text_maybe_gz(path) as fh:
+                    parsed = json.load(fh)
                 # continue to usual classification below
                 parsed_obj = parsed
             except Exception:
@@ -392,22 +468,22 @@ def load_json_or_ndjson(
     # --- Not Socrata hint or extraction failed: try regular full parse / classify ---
     # Try to fully parse (this is the previous behavior)
     try:
-        parsed = json.loads(path.read_text(encoding="utf-8-sig", errors="ignore"))
+        with _open_json_text_maybe_gz(path) as fh:
+            parsed = json.load(fh)
     except json.JSONDecodeError:
         # try NDJSON fallback
-        lines = [line.strip() for line in text_head.splitlines() if line.strip()]
-        objs = []
-        for line in lines:
-            try:
-                objs.append(json.loads(line))
-            except Exception:
-                continue
+        try:
+            objs, ndjson_meta = _parse_ndjson_records_from_path(path, max_rows=max_rows)
+        except ValueError as exc:
+            console.print(f"[red]❌ {exc}[/red]")
+            return None, None
         if objs:
             meta = {
                 "type": "ndjson",
                 "json_mode": "ndjson",
                 "is_list": True,
                 "is_record_list": all(isinstance(x, dict) for x in objs),
+                **ndjson_meta,
             }
             return objs, meta
         return None, None
@@ -723,8 +799,6 @@ def _load_sqlite(path: Path) -> tuple[dict, dict[str, pd.DataFrame]]:
             pass
 
 
-
-
 # ---------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------
@@ -800,7 +874,6 @@ def detect_file_type(path: Path) -> str:
                 return "ndjson"
         return "json"
 
-
     return "unknown"
 
 
@@ -845,7 +918,14 @@ def detect_and_load(file_path: str | Path, args=None) -> Dict[str, Any]:
     # ============================================================
     elif file_type in {"json", "ndjson", "generic_json"}:
         loader_fn = LOADER_REGISTRY.get(file_type)
-        raw, struct_meta = loader_fn(path) if loader_fn else (None, None)
+        chunk_size = getattr(args, "chunk_size", None)
+        try:
+            max_rows = int(chunk_size) if chunk_size else 10000
+        except (TypeError, ValueError):
+            max_rows = 10000
+        raw, struct_meta = (
+            loader_fn(path, max_rows=max_rows) if loader_fn else (None, None)
+        )
 
         if raw is None:
             return None
@@ -962,7 +1042,6 @@ def detect_and_load(file_path: str | Path, args=None) -> Dict[str, Any]:
             "metadata": metadata,
             "loader_spec": f"loader:{loader_fn.__name__}" if loader_fn else None,
         }
-
 
     # ============================================================
     # --- Other loaders (XML, Excel, YAML, etc.)
