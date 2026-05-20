@@ -1606,10 +1606,13 @@ def build_parser():
     read_json_parser = subparsers.add_parser(
         "read-json",
         help="Read and display indexly JSON file",
-        description="Read and view Indexly JSON files.",
+        description=(
+            "Read and view persisted Indexly JSON summary files, such as "
+            "*.db.analysis.json files produced by analyze-db."
+        ),
     )
 
-    read_json_parser.add_argument("file", help="Path to Indexly JSON file")
+    read_json_parser.add_argument("file", help="Path to persisted Indexly JSON summary")
 
     read_json_parser.add_argument(
         "--treeview", action="store_true", help="Display full Rich tree view"
@@ -1619,13 +1622,20 @@ def build_parser():
         "--preview",
         type=int,
         default=3,
-        help="Number of top-level keys/items to preview in compact view",
+        help="Number of persisted tables/relations/items to preview",
     )
 
     read_json_parser.add_argument(
         "--show-summary",
         action="store_true",
-        help="Display database-aware summary of JSON content",
+        default=True,
+        help="Display persisted database summary content (default)",
+    )
+    read_json_parser.add_argument(
+        "--no-summary",
+        action="store_false",
+        dest="show_summary",
+        help="Do not display the persisted summary; useful with --treeview only",
     )
 
     # IMPORTANT: always set func → otherwise argparse prints top-level help

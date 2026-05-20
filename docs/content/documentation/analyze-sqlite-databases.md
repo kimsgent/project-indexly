@@ -14,7 +14,7 @@ slug: "database-analysis-sqlite"
 weight: 20
 type: docs
 date: "2026-04-22"
-lastmod: "2026-04-22"
+lastmod: "2026-05-20"
 draft: false
 images:
   - "images/database-analysis-overview.png"
@@ -30,9 +30,9 @@ tags:
 ---
 Indexly provides a powerful pipeline for inspecting SQLite databases, allowing you to extract meaningful insights and visualize table relationships efficiently. Whether you're exploring your own datasets or working with sample DBs such as [Chinook](https://github.com/lerocha/chinook-database), `analyze-db` gives you the ability to summarize, profile, and export your data.
 
-{{< alert title="AutoDoctor-aware behavior" color="info" >}}
+{{% alert title="AutoDoctor-aware behavior" color="info" %}}
 If the SQLite schema matches AutoDoctor’s persistence tables, Indexly switches from generic DB inspection to a specialized operational summary. Use [Analyze AutoDoctor Artifacts](analyze-autodoctor-artifacts.md) when your input is `autodoctor.db`.
-{{< /alert >}}
+{{% /alert %}}
 
 ## Key Features
 
@@ -63,7 +63,14 @@ indexly analyze-db Chinook.db --show-summary --table customers --export md --dia
 ✔ Persisted summary to Chinook.db.analysis.json
 ```
 
-> Learn how to read JSON summary export
+Read the persisted JSON summary later:
+
+```bash
+indexly read-json Chinook.db.analysis.json --show-summary
+indexly read-json Chinook.db.analysis.json --treeview --preview 5
+```
+
+`read-json` is a reader for persisted Indexly summary JSON. It displays stored summary blocks from `*.analysis.json` files and does not re-analyze the original database.
 
 ──────────────────── Dataset Summary Preview ────────────────────
 DB Tables Overview

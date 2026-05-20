@@ -1,4 +1,12 @@
-# read_indexly_json_summary_v5.py - COMPLETE VERSION
+"""
+Read persisted Indexly JSON summaries.
+
+This module is intentionally a reader, not an analyzer. Files such as
+``chinook.db.analysis.json`` already contain summary blocks produced by
+``indexly analyze-db``; read-json should render those blocks as stored and avoid
+recomputing database statistics.
+"""
+
 import json
 import sys
 from pathlib import Path
@@ -16,7 +24,10 @@ def load_indexly_json(file_path: str | Path) -> dict:
     if not file_path.exists() or not file_path.is_file():
         raise FileNotFoundError(file_path)
     with file_path.open("r", encoding="utf-8") as f:
-        return json.load(f)
+        data = json.load(f)
+    if not isinstance(data, dict):
+        raise ValueError("Indexly JSON summaries must be top-level JSON objects.")
+    return data
 
 
 # ---------------- Human-readable size ----------------
@@ -28,9 +39,40 @@ def _human_readable_size(n_bytes: int) -> str:
     return f"{n_bytes:.1f} TB"
 
 
+def _type_matches(col_type: Any, token: str) -> bool:
+    return token in str(col_type or "").upper()
+
+
 # ---------------- DB-style JSON Detection ----------------
 def _is_db_style_json(obj: dict) -> bool:
     return isinstance(obj, dict) and {"global", "schemas", "meta"}.issubset(obj.keys())
+
+
+def _column_count(value: Any) -> str:
+    if isinstance(value, list):
+        return str(len(value))
+    if isinstance(value, int):
+        return str(value)
+    return str(value or "?")
+
+
+def _render_compact_preview(data: dict, preview: int = 3) -> None:
+    """Render top-level summary keys without deriving new statistics."""
+    console.print("\n[bold]🔹 Indexly JSON Preview[/bold]")
+    table = Table(show_header=True, header_style="bold cyan")
+    table.add_column("Key", style="magenta")
+    table.add_column("Type")
+    table.add_column("Preview")
+
+    for key, value in list(data.items())[: max(preview, 1)]:
+        if isinstance(value, dict):
+            sample = ", ".join(list(value.keys())[: max(preview, 1)])
+        elif isinstance(value, list):
+            sample = f"{len(value)} item(s)"
+        else:
+            sample = str(value)
+        table.add_row(str(key), type(value).__name__, sample[:80])
+    console.print(table)
 
 
 # ---------------- Schema Analyzer ----------------
@@ -49,37 +91,13 @@ def _summarize_schemas(schemas: Dict[str, List[Dict]]) -> None:
     for tname, cols in sorted(schemas.items()):
         total = len(cols)
         pks = sum(1 for col in cols if col.get("primary_key"))
-        integer = sum(1 for col in cols if "INTEGER" in col.get("type", ""))
-        nvarchar = sum(1 for col in cols if "NVARCHAR" in col.get("type", ""))
+        integer = sum(1 for col in cols if _type_matches(col.get("type"), "INTEGER"))
+        nvarchar = sum(1 for col in cols if _type_matches(col.get("type"), "NVARCHAR"))
         nullable = sum(1 for col in cols if not col.get("not_null"))
         table1.add_row(
             tname, str(total), str(pks), str(integer), str(nvarchar), str(nullable)
         )
     console.print(table1)
-
-    console.print("\n[italic]Likely Foreign Key Columns[/italic]")
-    table2 = Table(show_header=True, header_style="bold green")
-    table2.add_column("Table", style="cyan")
-    table2.add_column("Column")
-    table2.add_column("Type")
-    table2.add_column("Nullable")
-
-    fk_candidates = []
-    for tname, cols in schemas.items():
-        for col in cols:
-            col_name = col.get("name", "")
-            if col_name.endswith("Id") and not col.get("primary_key"):
-                fk_candidates.append(
-                    (
-                        tname,
-                        col_name,
-                        col.get("type", "?"),
-                        "Yes" if not col.get("not_null") else "No",
-                    )
-                )
-    for tname, col, typ, nullable in sorted(fk_candidates)[:12]:
-        table2.add_row(tname, col, typ, nullable)
-    console.print(table2)
 
 
 # ---------------- Sample Data Preview ----------------
@@ -104,26 +122,28 @@ def _preview_sample_data(
             if pk_col:
                 sample_cols.append(pk_col)
 
-            text_cols = [c for c in cols if "NVARCHAR" in c.get("type", "")]
+            text_cols = [c for c in cols if _type_matches(c.get("type"), "NVARCHAR")]
             num_cols = [
                 c
                 for c in cols
-                if "INTEGER" in c.get("type", "") or "NUMERIC" in c.get("type", "")
+                if _type_matches(c.get("type"), "INTEGER")
+                or _type_matches(c.get("type"), "NUMERIC")
             ]
             if text_cols:
                 sample_cols.append(text_cols[0]["name"])
             if num_cols and len(sample_cols) < 3:
                 sample_cols.append(num_cols[0]["name"])
 
+            sample_cols = list(dict.fromkeys(sample_cols))
             col_names = ", ".join(sample_cols[:3])
             preview_str = f"{row_count} rows × {len(cols)} cols"
             table_data.append((tname, row_count, col_names, preview_str))
 
-    for tname, rows, cols, preview in table_data[:8]:
-        table.add_row(tname, str(rows), cols, preview)
+    for tname, rows, cols, preview_str in table_data[: max(preview, 1)]:
+        table.add_row(tname, str(rows), cols, preview_str)
     console.print(table)
 
-    console.print("\n[italic]Business Entities[/italic]")
+    console.print("\n[italic]Known Business Entities[/italic]")
     entities = {
         "customers": f"📧 {counts.get('customers', '?')} customers",
         "employees": f"👥 {counts.get('employees', '?')} employees",
@@ -131,8 +151,48 @@ def _preview_sample_data(
         "tracks": f"🎵 {counts.get('tracks', '?')} tracks",
         "albums": f"💿 {counts.get('albums', '?')} albums",
     }
+    printed_any = False
     for entity, desc in entities.items():
-        console.print(f"  {desc}")
+        if entity in counts:
+            console.print(f"  {desc}")
+            printed_any = True
+    if not printed_any:
+        console.print("  No known Chinook-style entity table names found.")
+
+
+def _render_relations(relations: Dict[str, Any], preview: int = 3) -> None:
+    """Render relationships already persisted by analyze-db."""
+    if not isinstance(relations, dict):
+        return
+
+    foreign_keys = relations.get("foreign_keys") or []
+    heuristic_relations = relations.get("heuristic_relations") or []
+
+    if foreign_keys:
+        console.print("\n[bold]🔹 Persisted Foreign Keys[/bold]")
+        table = Table(show_header=True, header_style="bold green")
+        table.add_column("From")
+        table.add_column("To")
+        for rel in foreign_keys[: max(preview, 1)]:
+            table.add_row(
+                f"{rel.get('from_table', '?')}.{rel.get('from_column', '?')}",
+                f"{rel.get('to_table', '?')}.{rel.get('to_column', '?')}",
+            )
+        console.print(table)
+
+    if heuristic_relations:
+        console.print("\n[bold]🔹 Persisted Heuristic Relations[/bold]")
+        table = Table(show_header=True, header_style="bold yellow")
+        table.add_column("From")
+        table.add_column("Possible Target")
+        table.add_column("Confidence")
+        for rel in heuristic_relations[: max(preview, 1)]:
+            table.add_row(
+                f"{rel.get('from_table', '?')}.{rel.get('from_column', '?')}",
+                str(rel.get("possible_target", "?")),
+                str(rel.get("confidence", "?")),
+            )
+        console.print(table)
 
 
 # ---------------- Full Summary Renderer ----------------
@@ -156,7 +216,7 @@ def summarize_indexly_json(data: dict, preview: int = 3):
     table.add_column("Rows")
     for tname in sorted(schema_summary.keys() or counts.keys()):
         meta = schema_summary.get(tname, {})
-        cols = meta.get("columns", "?")
+        cols = _column_count(meta.get("columns", "?"))
         pk_list = meta.get("primary_keys", [])
         pk_str = ", ".join(pk_list) if isinstance(pk_list, list) else str(pk_list or "")
         row_count = counts.get(tname, "?")
@@ -167,6 +227,8 @@ def summarize_indexly_json(data: dict, preview: int = 3):
     if schemas:
         _summarize_schemas(schemas)
         _preview_sample_data(schemas, counts, preview)
+
+    _render_relations(data.get("relations", {}), preview=preview)
 
     profiles = data.get("profiles", {})
     if profiles:
@@ -240,10 +302,19 @@ def read_indexly_json(
             f"❌ Error: Invalid JSON format in file: {file_path}\n" f"👉 Details: {e}"
         )
         sys.exit(1)
+    except ValueError as e:
+        print(f"❌ Error: Unsupported Indexly JSON shape in file: {file_path}\n👉 {e}")
+        sys.exit(1)
 
     db_mode = _is_db_style_json(data)
     if db_mode and show_summary:
         summarize_indexly_json(data, preview=preview)
+    elif show_summary:
+        console.print(
+            "[yellow]⚠️ This file is valid JSON, but it is not an Indexly "
+            "database analysis summary. read-json will not re-analyze it.[/yellow]"
+        )
+        _render_compact_preview(data, preview=preview)
     if treeview:
         render_tree(data)
     return data
