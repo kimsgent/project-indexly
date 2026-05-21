@@ -1,20 +1,24 @@
 ---
 title: "Configuration and Runtime Files"
 linkTitle: "Configuration"
-description: "Configure Indexly runtime paths, search profiles, cache behavior, tags, OCR choices, and maintenance commands without changing the indexing pipeline."
+description: "Configure Indexly runtime paths, search profiles, search cache behavior, analysis persistence, indexing log artifacts, tags, OCR choices, and maintenance commands."
 slug: "configuration"
 aliases:
   - "/en/documentation/config/"
 keywords:
   - indexly configuration
   - indexly runtime files
+  - indexly analysis database
   - search profiles
   - search cache
+  - indexing logs
   - indexly tags
   - indexly ocr
 tags:
   - configuration
   - indexing
+  - analysis
+  - logging
   - search
   - tagging
   - performance
@@ -24,20 +28,29 @@ categories:
 weight: 30
 type: docs
 date: 2025-10-12
-lastmod: 2026-04-27
+lastmod: 2026-05-21
 draft: false
+toc: true
 ---
 
-Indexly stores runtime state outside the source tree by default. The main files are resolved from `INDEXLY_HOME` when set, otherwise from the platform-specific user data directory.
+Indexly stores search runtime state outside the source tree by default. The main search files are resolved from `INDEXLY_HOME` when set, otherwise from the platform-specific user data directory.
 
 ## Runtime Files
 
-| File | Purpose |
+| File or directory | Purpose |
 | --- | --- |
 | `fts_index.db` | SQLite database for indexed files, FTS content, tags, and metadata |
 | `profiles.json` | Saved search profiles |
 | `search_cache.json` | Cached search results |
-| `log/` | Runtime logs |
+| `log/` | Structured indexing log artifacts and runtime logs |
+
+Default runtime directories:
+
+| Platform | Default location |
+| --- | --- |
+| Windows | `%APPDATA%\indexly` |
+| macOS | `~/Library/Application Support/indexly` |
+| Linux | `$XDG_DATA_HOME/indexly` when set, otherwise `~/.local/share/indexly` |
 
 Set a custom location when you want a portable or isolated environment:
 
@@ -47,6 +60,40 @@ indexly stats
 ```
 
 On PowerShell, use `$env:INDEXLY_HOME = "D:\indexly-state"` for the current session.
+
+{{% alert title="Separate persistence stores" color="info" %}}
+`INDEXLY_HOME` controls the search runtime directory. Persisted analysis results currently use a separate SQLite database at `~/.indexly/indexly.db`.
+{{% /alert %}}
+
+## Analysis Database
+
+Analysis commands persist cleaned or summarized data in `~/.indexly/indexly.db` unless persistence is disabled for the command. This database contains the `cleaned_data` table used by CSV, JSON, AutoDoctor-aware, and related analysis workflows.
+
+Keep this separate from `fts_index.db` when troubleshooting:
+
+| Database | Used by | Maintenance path |
+| --- | --- | --- |
+| `fts_index.db` | `indexly index`, `search`, `regex`, tags, and `clear-search` | `indexly doctor`, `indexly doctor --profile-db`, `indexly update-db` |
+| `~/.indexly/indexly.db` | persisted analysis results in `cleaned_data` | `indexly doctor --analysis-db` |
+
+Use `--no-persist` on analysis commands when you want an in-memory or export-only run. For the full database boundary, see [Database Design](database-design.md); for health checks, see [Indexly Doctor](indexly-doctor.md#analysis-database-checks).
+
+## Indexing Log Artifacts
+
+Indexing writes structured NDJSON log artifacts under the configured runtime `log/` directory. Current logs are partitioned by year and month, then rotated by date and size:
+
+```text
+<runtime-dir>/log/YYYY/MM/YYYY-MM-DD_index_events.ndjson
+<runtime-dir>/log/YYYY/MM/YYYY-MM-DD_index_events_1.ndjson
+```
+
+The log configuration is defined in code with conservative defaults: daily partitions, 5 MB rotation, and 30 days of retention. Treat these logs as analysis-ready artifacts, not just diagnostic text files:
+
+```bash
+indexly analyze-file "D:\indexly-state\log\2026\05\2026-05-21_index_events.ndjson"
+```
+
+For field structure, legacy `.log` conversion, and the full log pipeline, see [Indexly Logging System](indexly-logging-system.md).
 
 ## Search Profiles
 
@@ -110,6 +157,7 @@ Use these commands when behavior differs between machines or after upgrades:
 ```bash
 indexly stats
 indexly doctor
+indexly doctor --analysis-db
 indexly update-db
 indexly migrate check
 ```
@@ -117,6 +165,11 @@ indexly migrate check
 ## Related Pages
 
 - [Search Files with Indexly](/searching/)
+- [Install Indexly](indexly-installation.md)
+- [Indexly Developer Guide](developer.md)
 - [Index Files and Folders](indexing.md)
+- [Indexly Logging System](indexly-logging-system.md)
+- [Indexly Doctor](indexly-doctor.md)
+- [Database Design](database-design.md)
 - [Ignore Rules and Index Hygiene](ignore-rules-index-hygiene.md)
 - [DB Migration Utility](db-migration-utility.md)
