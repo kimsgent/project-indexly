@@ -130,6 +130,8 @@ If Chrome is installed in a non-standard location, set:
 $env:AUTO_DOCTOR_CHROMIUM_PATH = "C:\Program Files\Google\Chrome\Application\chrome.exe"
 ```
 
+Chrome does not need to be on `PATH` for automatic PDF export. AutoDoctor also checks common Chrome and Chromium install folders and Windows browser registration entries.
+
 ## Recommended Workflows
 
 - For a fast non-technical handoff, use `User` + `Print Summary`.

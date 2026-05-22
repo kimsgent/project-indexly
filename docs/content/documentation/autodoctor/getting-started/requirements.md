@@ -67,6 +67,7 @@ AutoDoctor always creates HTML, JSON, and Markdown reports. PDF generation is op
 - Optional override with `AUTO_DOCTOR_CHROMIUM_PATH` if Chrome is not in a standard path
 
 If Chrome is missing, the scan still completes. Only automatic PDF export is skipped.
+Chrome does not need to be on `PATH`; AutoDoctor checks common system and user install locations, plus Windows browser registration entries.
 
 ## Build-Time Requirements (for Developers)
 
@@ -96,7 +97,8 @@ py -3 --version
 python --version
 python -c "import win32serviceutil,servicemanager,fastapi,uvicorn; print('ok')"
 
-# Optional PDF export check
+# Optional PDF export checks
+Test-Path "C:\Program Files\Google\Chrome\Application\chrome.exe"
 Get-Command chrome.exe -ErrorAction SilentlyContinue
 ```
 
@@ -104,7 +106,8 @@ Expected outcome:
 
 - Admin check returns `True`
 - Python checks succeed only if you plan to use system-Python service mode
-- Chrome check resolves only if you want automatic PDF output during scans
+- Chrome checks are needed only if you want automatic PDF output during scans
+- `Get-Command` only verifies `PATH`; a standard Chrome install can still work when that command returns nothing
 
 ## Next Steps
 
