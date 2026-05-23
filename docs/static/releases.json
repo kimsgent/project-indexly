@@ -1,13 +1,20 @@
 {
   "project": "FTS5 File Search Tool",
   "latest": {
-    "version": "2.1.1",
-    "date": "2026-05-16",
-    "link": "/en/releases/v2.1.1/",
-    "summary": "feat(backup): add local backup verification and dry-run restore workflows | fix(backup): harden restore safety checks, incremental base selection, temp-root registry handling, and cryptography dependency coverage",
+    "version": "2.1.2",
+    "date": "2026-05-23",
+    "link": "/en/releases/v2.1.2/",
+    "summary": "fix(csv): harden CSV analysis semantics, delimiter detection, date parsing, and pipeline metadata propagation | fix(json): harden JSON, NDJSON, Socrata-style JSON, gzip loading, and mixed identifier preservation",
     "prerelease": false
   },
   "recent": [
+    {
+      "version": "2.1.1",
+      "date": "2026-05-16",
+      "link": "/en/releases/v2.1.1/",
+      "summary": "feat(backup): add local backup verification and dry-run restore workflows | fix(backup): harden restore safety checks, incremental base selection, temp-root registry handling, and cryptography dependency coverage",
+      "prerelease": false
+    },
     {
       "version": "2.1.0",
       "date": "2026-05-09",
@@ -34,18 +41,18 @@
       "date": "2026-04-05",
       "link": "/en/releases/v2.0.0/",
       "summary": "feat(release): enforce release retention and archive old release pages | feat(ux): improve show-help UX and documentation entry experience",
-      "prerelease": false
-    },
-    {
-      "version": "1.2.4",
-      "date": "2026-03-28",
-      "link": "/en/releases/v1.2.4/",
-      "summary": "feat(inference): add outlier diagnostics and Durbin-Watson integration | feat(csv): introduce boxplot visualization engine with CLI integration",
       "prerelease": false
     }
   ],
   "archive": [
     {
+      "version": "2.1.1",
+      "date": "2026-05-16",
+      "link": "/en/releases/v2.1.1/",
+      "summary": "feat(backup): add local backup verification and dry-run restore workflows | fix(backup): harden restore safety checks, incremental base selection, temp-root registry handling, and cryptography dependency coverage",
+      "prerelease": false
+    },
+    {
       "version": "2.1.0",
       "date": "2026-05-09",
       "link": "/en/releases/v2.1.0/",
@@ -72,17 +79,10 @@
       "link": "/en/releases/v2.0.0/",
       "summary": "feat(release): enforce release retention and archive old release pages | feat(ux): improve show-help UX and documentation entry experience",
       "prerelease": false
-    },
-    {
-      "version": "1.2.4",
-      "date": "2026-03-28",
-      "link": "/en/releases/v1.2.4/",
-      "summary": "feat(inference): add outlier diagnostics and Durbin-Watson integration | feat(csv): introduce boxplot visualization engine with CLI integration",
-      "prerelease": false
     }
   ],
   "archived": {
-    "count": 31,
+    "count": 32,
     "link": "/en/releases/Archive/"
   },
   "retention": {
