@@ -9,7 +9,6 @@ from rich.console import Console
 from rich.table import Table
 from typing import Any
 
-
 console = Console()
 
 
@@ -65,61 +64,85 @@ def _auto_parse_dates(df, date_formats=None, min_valid_ratio=0.3, verbose=False)
         if sample.str.contains(pattern_like, regex=True, na=False).any():
             candidates.append(col)
 
+    def _valid_ratio(parsed: pd.Series, original: pd.Series) -> float:
+        """Measure parse quality against values that were present in the source."""
+        source_present = original.notna()
+        if not source_present.any():
+            return 0.0
+        return float(parsed[source_present].notna().sum() / source_present.sum())
+
     # --- Main loop ---
     for col in candidates:
         original_series = df[col].copy()
         original_dtype = df[col].dtype
-        best_fmt = None
-        best_ratio = 0.0
-        best_parsed = None
         used_formats = []
+        parsed = pd.Series(pd.NaT, index=df.index, dtype="datetime64[ns, UTC]")
+        source_present = original_series.notna()
 
-        # Try explicit formats first
+        # Try explicit formats cumulatively. Real-world CSVs often mix ISO,
+        # locale, and application-specific timestamp formats in one column.
         for fmt in date_formats:
             try:
+                remaining = source_present & parsed.isna()
+                if not remaining.any():
+                    break
                 parsed_tmp = pd.to_datetime(
-                    df[col], format=fmt, errors="coerce", utc=True
+                    original_series[remaining], format=fmt, errors="coerce", utc=True
                 )
-                ratio = parsed_tmp.notna().mean()
-                if ratio > best_ratio:
-                    best_ratio = ratio
-                    best_fmt = fmt
-                    best_parsed = parsed_tmp
-                    used_formats = [fmt]
+                hits = parsed_tmp.notna()
+                if hits.any():
+                    parsed.loc[parsed_tmp.index[hits]] = parsed_tmp[hits]
+                    used_formats.append(fmt)
             except Exception:
                 continue
 
-        # Try auto/regex fallback
-        if best_ratio < min_valid_ratio:
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", UserWarning)
-                parsed_tmp = pd.to_datetime(df[col], errors="coerce", utc=True)
-            ratio = parsed_tmp.notna().mean()
-            if ratio > best_ratio:
-                best_ratio = ratio
-                best_fmt = "regex/auto"
-                best_parsed = parsed_tmp
-                used_formats = ["auto"]
+        # Try auto/mixed fallback only for values not handled by explicit formats.
+        remaining = source_present & parsed.isna()
+        if remaining.any():
+            for kwargs, label in (
+                ({"format": "mixed"}, "mixed"),
+                ({}, "auto"),
+            ):
+                try:
+                    with warnings.catch_warnings():
+                        warnings.simplefilter("ignore", UserWarning)
+                        parsed_tmp = pd.to_datetime(
+                            original_series[remaining],
+                            errors="coerce",
+                            utc=True,
+                            **kwargs,
+                        )
+                    hits = parsed_tmp.notna()
+                    if hits.any():
+                        parsed.loc[parsed_tmp.index[hits]] = parsed_tmp[hits]
+                        used_formats.append(label)
+                    remaining = source_present & parsed.isna()
+                    if not remaining.any():
+                        break
+                except Exception:
+                    continue
+
+        parse_ratio = _valid_ratio(parsed, original_series)
 
         # --- Decision phase ---
-        if best_parsed is not None and best_ratio >= min_valid_ratio:
-            df[col] = pd.to_datetime(best_parsed, errors="coerce", utc=True)
+        if parse_ratio >= min_valid_ratio:
+            df[col] = parsed
             summary_records.append(
                 {
                     "column": col,
                     "dtype": "datetime",
-                    "action": f"fallback parsed ({best_ratio*100:.1f}% valid)",
+                    "action": f"parsed ({parse_ratio*100:.1f}% valid)",
                     "n_filled": int(df[col].isna().sum()),
-                    "strategy": best_fmt or "auto",
-                    "valid_ratio": round(best_ratio, 3),
+                    "strategy": ", ".join(used_formats) if used_formats else "auto",
+                    "valid_ratio": round(parse_ratio, 3),
                 }
             )
             if verbose:
                 console.print(
-                    f"[green]✅ Parsed '{col}' using {used_formats} ({best_ratio:.1%})[/green]"
+                    f"[green]Parsed '{col}' using {used_formats} ({parse_ratio:.1%})[/green]"
                 )
         else:
-            # ⚠️ Preserve original: do NOT overwrite
+            # Preserve original: do not overwrite.
             df[col] = original_series
             summary_records.append(
                 {
@@ -128,12 +151,12 @@ def _auto_parse_dates(df, date_formats=None, min_valid_ratio=0.3, verbose=False)
                     "action": "preserved (below threshold)",
                     "n_filled": int(original_series.isna().sum()),
                     "strategy": "-",
-                    "valid_ratio": round(best_ratio, 3),
+                    "valid_ratio": round(parse_ratio, 3),
                 }
             )
             if verbose:
                 console.print(
-                    f"[yellow]⚠️ Preserved '{col}' (valid_ratio {best_ratio:.1%} < {min_valid_ratio:.0%})[/yellow]"
+                    f"[yellow][!] Preserved '{col}' (valid_ratio {parse_ratio:.1%} < {min_valid_ratio:.0%})[/yellow]"
                 )
 
     return df, summary_records
@@ -184,7 +207,7 @@ def _handle_datetime_columns(
                 }
                 auto_summary.append(rec)
                 if verbose:
-                    console.print(f"[green]ℹ️ Recognized '{col}' as datetime64[/green]")
+                    console.print(f"[green]Recognized '{col}' as datetime64[/green]")
 
     # -----------------------
     # Step 2: Generate derived datetime features
@@ -227,10 +250,15 @@ def _handle_datetime_columns(
                 _safe_add(f"{col}_dayofyear", dt_series.dt.day_of_year.astype("Int64"))
                 _safe_add(f"{col}_minute", dt_series.dt.minute.astype("Int64"))
                 _safe_add(f"{col}_iso", dt_series.dt.strftime("%Y-%m-%dT%H:%M:%SZ"))
-                ts = (dt_series.astype("int64") // 10**9).astype("Int64")
+                ts = pd.Series(pd.NA, index=df.index, dtype="Int64")
+                valid_ts = dt_series.notna()
+                if valid_ts.any():
+                    ts.loc[valid_ts] = (
+                        dt_series.loc[valid_ts].astype("int64") // 10**9
+                    ).astype("Int64")
                 _safe_add(f"{col}_timestamp", ts)
         except Exception as e:
-            console.print(f"[red]⚠️ Derived creation failed for {col}: {e}[/red]")
+            console.print(f"[red][!] Derived creation failed for {col}: {e}[/red]")
 
         datetime_summary.append(rec)
         for dcol in derived_map[col]:
@@ -285,7 +313,7 @@ def _summarize_cleaning_result(summary: list[dict[str, Any]]):
         console.print("[dim]No post-clean summary available.[/dim]")
         return
 
-    table = Table(title="🧩 Cleaning Summary", header_style="bold cyan")
+    table = Table(title="Cleaning Summary", header_style="bold cyan")
     # Create columns based on summary keys
     keys = summary[0].keys()
     for k in keys:
@@ -346,9 +374,39 @@ def auto_clean_csv(
     _original_raw = getattr(df, "_raw_df", None)
 
     # -------------------------
-    # Step 1: Fill missing values
+    # Step 1: Handle datetime columns before filling missing values.
+    # -------------------------
+    datetime_columns: set[str] = set()
+    derived_columns: set[str] = set()
+    try:
+        df, dt_summary = _handle_datetime_columns(
+            df,
+            verbose=verbose,
+            user_formats=user_datetime_formats,
+            derive_level=derive_dates,
+            min_valid_ratio=date_threshold,
+        )
+        for record in dt_summary:
+            col_name = record.get("column")
+            if record.get("dtype") == "datetime":
+                datetime_columns.add(col_name)
+            if record.get("dtype") == "derived" and record.get("action", "").startswith(
+                "derived from"
+            ):
+                base_col = record["action"].split("derived from ")[-1]
+                derived_map.setdefault(base_col, []).append(col_name)
+                derived_columns.add(col_name)
+        summary_records.extend(dt_summary)
+    except Exception as e:
+        console.print(f"[red][!] Datetime handling failed: {e}[/red]")
+
+    # -------------------------
+    # Step 2: Fill missing values in non-datetime columns only.
     # -------------------------
     for col in df.columns:
+        if col in datetime_columns or col in derived_columns:
+            continue
+
         series = df[col]
         n_missing = series.isna().sum()
 
@@ -375,14 +433,34 @@ def auto_clean_csv(
         else:
             fill_value = series.mode().iloc[0] if not series.mode().empty else ""
 
+        if pd.isna(fill_value):
+            summary_records.append(
+                {
+                    "column": col,
+                    "action": "preserved missing values",
+                    "n_filled": 0,
+                    "strategy": "no valid fill value",
+                    "fill_method": fill_method,
+                }
+            )
+            if verbose:
+                console.print(
+                    f"[yellow]Preserved {n_missing} missing values in '{col}' "
+                    "because no valid fill value exists[/yellow]"
+                )
+            continue
+
+        missing_before = int(series.isna().sum())
+
         # Fill safely
         df = _safe_fillna(df, col, fill_value)
+        n_filled = missing_before - int(df[col].isna().sum())
 
         summary_records.append(
             {
                 "column": col,
                 "action": "filled missing values",
-                "n_filled": n_missing,
+                "n_filled": n_filled,
                 "strategy": f"fill={fill_value!r}",
                 "fill_method": fill_method,
             }
@@ -390,31 +468,8 @@ def auto_clean_csv(
 
         if verbose:
             console.print(
-                f"[cyan]Filled {n_missing} missing values in '{col}' using {fill_method}[/cyan]"
+                f"[cyan]Filled {n_filled} missing values in '{col}' using {fill_method}[/cyan]"
             )
-
-    # -------------------------
-    # Step 2: Handle datetime columns
-    # -------------------------
-    try:
-        df, dt_summary = _handle_datetime_columns(
-            df,
-            verbose=verbose,
-            user_formats=user_datetime_formats,
-            derive_level=derive_dates,
-            min_valid_ratio=date_threshold,
-        )
-        # Track derived columns
-        for record in dt_summary:
-            col_name = record.get("column")
-            if record.get("dtype") == "derived" and record.get("action", "").startswith(
-                "derived from"
-            ):
-                base_col = record["action"].split("derived from ")[-1]
-                derived_map.setdefault(base_col, []).append(col_name)
-        summary_records.extend(dt_summary)
-    except Exception as e:
-        console.print(f"[red]⚠️ Datetime handling failed: {e}[/red]")
 
     # -------------------------
     # Step 3: Optional persistence
@@ -422,11 +477,16 @@ def auto_clean_csv(
     # --- Temporarily disable persistence for testing orchestrator-level save ---
     if persist and verbose:
         console.print(
-            f"[dim]💾 Skipping internal persistence (handled by orchestrator)...[/dim]"
+            f"[dim]Skipping internal persistence (handled by orchestrator)...[/dim]"
         )
     # Restore raw_df after transformations
     if _original_raw is not None:
-        df._raw_df = _original_raw
+        object.__setattr__(df, "_raw_df", _original_raw)
+
+    object.__setattr__(df, "_summary_records", summary_records)
+    object.__setattr__(df, "_derived_map", derived_map)
+    df.attrs["_summary_records"] = summary_records
+    df.attrs["_derived_map"] = derived_map
 
     # Always return cleaned DataFrame and summaries
     return df, summary_records, derived_map

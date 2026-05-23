@@ -1,6 +1,6 @@
 ---
 title: "Why This Matters"
-weight: 1
+weight: 2
 description: "Understand why Indexly's semantic-aware indexing makes search reliable, fast, and human-friendly."
 slug: "semantic-indexing"
 keywords: ["semantic indexing", "indexly search", "FTS", "relevance", "search quality"]

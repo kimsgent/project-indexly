@@ -1,6 +1,6 @@
 ---
 title: "Semantic Indexing & Vocabulary Quality"
-weight: 10
+weight: 61
 type: docs
 ---
 

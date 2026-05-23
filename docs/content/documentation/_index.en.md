@@ -12,11 +12,11 @@ keywords:
   - indexly cli commands
   - indexly data analysis
   - indexly autodoctor
-weight: 5
+weight: 1
 type: docs
 toc: true
 date: "2026-04-22"
-lastmod: "2026-05-16"
+lastmod: "2026-05-20"
 draft: false
 categories:
   - Overview
@@ -43,20 +43,22 @@ This documentation works best when you enter through the path that matches your 
 
 ## What Is New
 
-{{< alert title="Recent Focus Areas" color="primary" >}}
+{{% alert title="Recent Focus Areas" color="primary" %}}
 <div class="p-3 rounded" style="background:#ffffff; color:#1f2937;">
   <h4 class="mb-2" style="color:#0f172a;">What changed recently</h4>
   <ul class="mb-3">
+    <li>`v2.1.2` hardens CSV, JSON, NDJSON, and SQLite analysis semantics, including bounded detection, strict malformed-line handling, chunk-limited record materialization, and safer mixed identifier handling.</li>
+    <li>CSV analysis dependency coverage now includes the table-rendering and statistical packages used by the current pipeline.</li>
+    <li>Indexing now ignores Office lock files before they enter the search pipeline.</li>
     <li>`v2.1.1` hardens backup verification, dry-run restore, incremental base selection, and restore safety checks.</li>
     <li>Semantic observers now persist snapshots more reliably and fall back when home paths are unwritable.</li>
     <li>Compare, organizer, lister, and rename workflows include tighter handling around profiles, caches, counters, and database sync.</li>
-    <li>BMP image metadata extraction is now handled consistently with the broader image metadata pipeline.</li>
     <li>`v2.1.0` introduced `indexly clear-search` for safe search-index cleanup by path, tag, or full index.</li>
   </ul>
   <a href="/en/releases/" class="btn btn-primary btn-sm me-2">View Release Notes</a>
   <a href="/en/documentation/data-analysis-pipeline/" class="btn btn-outline-secondary btn-sm">Open Analysis Guide</a>
 </div>
-{{< /alert >}}
+{{% /alert %}}
 
 ## Start Here
 
@@ -66,6 +68,8 @@ This documentation works best when you enter through the path that matches your 
 - Daily workflows: [Usage Guide](usage.md)
 - Quick answers: [FAQ](faq.md)
 - Structured files and databases: [Data Analysis Overview](data-analysis-overview.md)
+- CSV analysis: [Analyze CSV](data-analysis.md)
+- CSV cleaning: [Clean CSV Data](clean-csv-data.md)
 - Configuration and filtering: [Configuration](config.md)
 - Engineering and contributions: [Developer Guide](developer.md)
 
@@ -93,6 +97,9 @@ flowchart LR
 | Diagnose search, cache, analysis DB, and integrity issues | [Indexly Doctor](indexly-doctor.md) |
 | Get short answers for setup, paths, file support, and troubleshooting | [FAQ](faq.md) |
 | Choose the right analysis command and pipeline | [Data Analysis Overview](data-analysis-overview.md) |
+| Analyze JSON, NDJSON, search cache JSON, or Socrata-style JSON | [Analyze JSON And NDJSON Files](analyze-json-files.md) |
+| Analyze CSV files with summaries, charts, and exports | [Analyze CSV](data-analysis.md) |
+| Clean CSV files before analysis | [Clean CSV Data](clean-csv-data.md) |
 | Analyze AutoDoctor report JSON, telemetry JSON, or SQLite output | [Analyze AutoDoctor Artifacts](analyze-autodoctor-artifacts.md) |
 | Improve indexing quality and ignore rules | [Ignore Rules & Index Hygiene](ignore-rules-index-hygiene.md) |
 | Organize folders and inspect logs | [Organizer](organizer.md), [Lister](lister.md) |
@@ -110,7 +117,10 @@ flowchart LR
 - [Clear Search Results Safely](clear-search.md)
 - [Rename File](rename-file.md)
 - [Tagging](tagging.md)
+- [Analyze CSV](data-analysis.md)
+- [Clean CSV Data](clean-csv-data.md)
 - [Analyze AutoDoctor Artifacts](analyze-autodoctor-artifacts.md)
+- [Analyze JSON And NDJSON Files](analyze-json-files.md)
 - [Semantic Indexing Overview](semantic-indexing-overview.md)
 - [Observers](observers.md)
 - [Backup & Restore](backup-restore.md)

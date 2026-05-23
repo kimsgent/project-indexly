@@ -7,7 +7,7 @@ aliases:
   - "/en/documentation/renaming-file/"
 date: "2025-10-10"
 lastmod: "2026-05-16"
-weight: 5
+weight: 80
 type: docs
 toc: true
 draft: false

@@ -11,6 +11,29 @@ _PRESET_FILES = {
     "aggressive": "aggressive.txt",
 }
 
+_OFFICE_LOCK_RULE = "~$*"
+_PRESETS_WITH_OFFICE_LOCK_RULE = {"standard", "aggressive"}
+
+
+def _with_office_lock_rule(name: str, template: str) -> str:
+    if name not in _PRESETS_WITH_OFFICE_LOCK_RULE:
+        return template
+
+    lines = template.splitlines()
+    if _OFFICE_LOCK_RULE in {line.strip() for line in lines}:
+        return template
+
+    try:
+        insert_at = next(
+            index for index, line in enumerate(lines) if line.strip() == "*.temp"
+        ) + 1
+        lines.insert(insert_at, _OFFICE_LOCK_RULE)
+    except StopIteration:
+        lines.append(_OFFICE_LOCK_RULE)
+
+    ending = "\n" if template.endswith(("\n", "\r\n")) else ""
+    return "\n".join(lines) + ending
+
 
 def load_preset(name: str = "standard") -> str:
     """
@@ -31,7 +54,7 @@ def load_preset(name: str = "standard") -> str:
             template = preset_file.read_text(encoding="utf-8")
             valid, _ = validate_template(template)
             if valid:
-                return template
+                return _with_office_lock_rule(name, template)
             warnings.warn(f"Preset '{name}' invalid, falling back.", stacklevel=2)
     except Exception:
         pass
@@ -43,7 +66,7 @@ def load_preset(name: str = "standard") -> str:
             template = dev_path.read_text(encoding="utf-8")
             valid, _ = validate_template(template)
             if valid:
-                return template
+                return _with_office_lock_rule(name, template)
             warnings.warn(f"Dev preset '{name}' invalid, falling back.", stacklevel=2)
         except Exception:
             pass
@@ -54,5 +77,6 @@ def load_preset(name: str = "standard") -> str:
         ".cache/\n"
         "__pycache__/\n"
         "*.tmp\n"
+        "~$*\n"
         "*.log\n"
     )

@@ -9,6 +9,7 @@ Enhanced normalizer for Indexly search-cache JSON files:
 from __future__ import annotations
 import pandas as pd
 from pathlib import Path
+import gzip
 import json
 import re
 from typing import Any, Dict, List
@@ -68,6 +69,7 @@ def _clean_tag(tag: str) -> str | None:
         return None
     return tag
 
+
 def _print_search_summary(df: pd.DataFrame, console):
     if df.empty or "derived_date" not in df.columns:
         console.print("[yellow]No date information available.[/yellow]")
@@ -80,9 +82,7 @@ def _print_search_summary(df: pd.DataFrame, console):
     df = df.sort_values("derived_date")
 
     # Grouping: year → month → week
-    grouped = (
-        df.groupby(["year", "month_name", "_week"], dropna=True, sort=True)
-    )
+    grouped = df.groupby(["year", "month_name", "_week"], dropna=True, sort=True)
 
     for (year, month, week), group in grouped:
         console.print(f"\n{year}")
@@ -91,7 +91,9 @@ def _print_search_summary(df: pd.DataFrame, console):
 
         for idx, row in enumerate(group.itertuples(), start=1):
             raw_dates = ", ".join(row.date_raw_list) if row.date_raw_list else "—"
-            tags = json.loads(row.tags) if isinstance(row.tags, str) else (row.tags or [])
+            tags = (
+                json.loads(row.tags) if isinstance(row.tags, str) else (row.tags or [])
+            )
             snippet = (row.snippet[:50] + "…") if len(row.snippet) > 50 else row.snippet
 
             console.print(
@@ -124,11 +126,13 @@ def _print_search_summary(df: pd.DataFrame, console):
         else:
             console.print(f"- {col}: {vals.nunique()} unique")
 
+
 # ---------------------------------------------------------
 # Normalization Core
 # ---------------------------------------------------------
 def normalize_search_cache_json(path: Path) -> pd.DataFrame:
-    with open(path, "r", encoding="utf-8") as f:
+    opener = gzip.open if str(path).endswith(".gz") else open
+    with opener(path, "rt", encoding="utf-8-sig") as f:
         raw = json.load(f)
 
     rows = []
@@ -201,6 +205,7 @@ def normalize_search_cache_json(path: Path) -> pd.DataFrame:
     if df["derived_date"].notna().any():
 
         df["year"] = df["derived_date"].dt.year
+        df["month"] = df["derived_date"].dt.month
         df["month_name"] = df["derived_date"].dt.month_name()
         df["_date"] = df["derived_date"].dt.date
 
@@ -210,6 +215,7 @@ def normalize_search_cache_json(path: Path) -> pd.DataFrame:
 
     else:
         df["year"] = None
+        df["month"] = None
         df["month_name"] = None
         df["_date"] = None
         df["_week"] = None
@@ -234,9 +240,9 @@ def normalize_search_cache_json(path: Path) -> pd.DataFrame:
         "years": sorted({int(y) for y in df["year"].dropna()}),
         "months": sorted({m for m in df["month_name"].dropna()}),
         "weeks": sorted({int(w) for w in df["_week"].dropna()}),
-        "calendar_week_labels": sorted({
-            f"calendar_week({int(w)})" for w in df["_week"].dropna()
-        }),
+        "calendar_week_labels": sorted(
+            {f"calendar_week({int(w)})" for w in df["_week"].dropna()}
+        ),
         "dt_summary": df.attrs.get("date_summary", {}).get("dt_summary", {}),
     }
 
@@ -244,4 +250,3 @@ def normalize_search_cache_json(path: Path) -> pd.DataFrame:
     df.attrs["summary"] = summary
 
     return df
-

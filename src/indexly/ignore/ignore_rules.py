@@ -2,6 +2,9 @@ from pathlib import Path
 import fnmatch
 
 
+BUILTIN_BLOCKED_RULES = ("~$*",)
+
+
 class IgnoreRules:
     __slots__ = ("_rules",)
 
@@ -12,6 +15,9 @@ class IgnoreRules:
             for r in rules
             if r.strip() and not r.lstrip().startswith("#")
         ]
+        for rule in BUILTIN_BLOCKED_RULES:
+            if rule not in self._rules:
+                self._rules.append(rule)
 
     def should_ignore(self, path: Path, root: Path | None = None) -> bool:
         """

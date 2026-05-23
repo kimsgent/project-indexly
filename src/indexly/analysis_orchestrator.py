@@ -10,6 +10,7 @@ from .export_utils import safe_export
 from .analysis_result import AnalysisResult
 from .csv_pipeline import run_csv_pipeline
 from .json_pipeline import (
+    coerce_probable_numeric_columns,
     run_json_pipeline,
     run_json_generic_pipeline,
     run_record_list_json_pipeline,
@@ -44,6 +45,21 @@ from indexly.universal_loader import (
 console = Console()
 
 
+def _sort_json_date_columns(df: pd.DataFrame, args) -> pd.DataFrame:
+    if not isinstance(df, pd.DataFrame) or "derived_date" not in df.columns:
+        return df
+
+    mode = getattr(args, "sortdate_by", "date") or "date"
+    sort_map = {
+        "date": ["derived_date"],
+        "year": ["year", "derived_date"],
+        "month": ["year", "month", "derived_date"],
+        "week": ["year", "_week", "derived_date"],
+    }
+    columns = [col for col in sort_map.get(mode, ["derived_date"]) if col in df.columns]
+    return df.sort_values(columns or ["derived_date"], ascending=True)
+
+
 # --- Universal persistence block ---
 def _persist_analysis(
     df: pd.DataFrame | None,
@@ -62,7 +78,9 @@ def _persist_analysis(
     # Respect --no-persist CLI flag
     if getattr(args, "no_persist", False):
         if verbose:
-            console.print(f"[dim]💤 Skipping persistence (--no-persist) for {file_path.name}[/dim]")
+            console.print(
+                f"[dim]💤 Skipping persistence (--no-persist) for {file_path.name}[/dim]"
+            )
         return False
 
     # Avoid double writes
@@ -74,7 +92,9 @@ def _persist_analysis(
     data_to_save = df if df is not None else df_preview
     if data_to_save is None or data_to_save.empty:
         if verbose:
-            console.print(f"[yellow]⚠️ Nothing to persist for {file_path.name}[/yellow]")
+            console.print(
+                f"[yellow]⚠️ Nothing to persist for {file_path.name}[/yellow]"
+            )
         return False
 
     def _serialize_timestamps(obj):
@@ -89,19 +109,41 @@ def _persist_analysis(
             return obj
 
     try:
-        summary_records = getattr(df, "_summary_records", None)
-        derived_map = derived_map or getattr(df, "_derived_map", None)
+        summary_records = getattr(df, "_summary_records", None) or (
+            df.attrs.get("_summary_records") if df is not None else None
+        )
+        df_stats = getattr(df, "_df_stats", None)
+        if df_stats is None and df is not None:
+            df_stats = df.attrs.get("_df_stats")
+        derived_map = (
+            derived_map
+            or getattr(df, "_derived_map", None)
+            or (df.attrs.get("_derived_map") if df is not None else None)
+        )
         raw_df = getattr(df, "_raw_df", None) if df is not None else None
 
         # Serialize summary safely
-        summary_safe = _serialize_timestamps(summary_records or table_output or {})
+        summary_source = df_stats if df_stats is not None else (table_output or {})
+        summary_safe = _serialize_timestamps(summary_source)
+        metadata = {}
+        if derived_map:
+            metadata["derived_map"] = derived_map
+        if summary_records:
+            metadata["cleaning_summary"] = summary_records
+
+        if isinstance(summary_safe, pd.DataFrame):
+            summary_df = summary_safe
+        elif isinstance(summary_safe, dict):
+            summary_df = pd.DataFrame(summary_safe)
+        else:
+            summary_df = None
 
         save_analysis_result(
             file_path=str(file_path),
             file_type=file_type,
-            summary=pd.DataFrame(summary_safe) if isinstance(summary_safe, dict) else None,
+            summary=summary_df,
             sample_data=data_to_save.head(10) if df is not None else None,
-            metadata=derived_map or {},
+            metadata=metadata,
             row_count=len(data_to_save),
             col_count=len(data_to_save.columns),
             raw_df=raw_df,
@@ -131,7 +173,9 @@ def _persist_analysis(
                     f"[green]✔ Persisted cleaned + raw data for {file_path.name}[/green]"
                 )
             else:
-                console.print(f"[green]✔ Persisted cleaned data for {file_path.name}[/green]")
+                console.print(
+                    f"[green]✔ Persisted cleaned data for {file_path.name}[/green]"
+                )
 
         return True
 
@@ -290,10 +334,7 @@ def analyze_file(args) -> Optional[AnalysisResult]:
                     df_stats = {}
                     table_output = None
 
-                    # sorting if required
-                    sort_order = getattr(args, "sortdate_by", "asc")
-                    ascending = sort_order == "asc"
-                    df = df.sort_values("derived_date", ascending=ascending)
+                    df = _sort_json_date_columns(df, args)
 
                     if getattr(args, "summarize_search", False):
                         _print_search_summary(df, console)
@@ -341,12 +382,14 @@ def analyze_file(args) -> Optional[AnalysisResult]:
             elif isinstance(loader_raw, list) and all(
                 isinstance(x, dict) for x in loader_raw
             ):
-                df, summary_dict, table_output, tree_dict = run_record_list_json_pipeline(
-                    records=loader_raw,
-                    file_path=file_path,
-                    metadata=metadata,
-                    show_treeview=show_treeview,
-                    verbose=True,
+                df, summary_dict, table_output, tree_dict = (
+                    run_record_list_json_pipeline(
+                        records=loader_raw,
+                        file_path=file_path,
+                        metadata=metadata,
+                        show_treeview=show_treeview,
+                        verbose=True,
+                    )
                 )
 
             # ======================================================
@@ -364,6 +407,7 @@ def analyze_file(args) -> Optional[AnalysisResult]:
                         "verbose": True,  # pipeline handles printing
                         "treeview": False,  # tree built separately
                         "meta": metadata,
+                        "chunk_size": getattr(args, "chunk_size", None),
                     },
                     raw=loader_raw,
                     meta=metadata,
@@ -372,16 +416,14 @@ def analyze_file(args) -> Optional[AnalysisResult]:
                 summary_dict = {}  # initialize to avoid "not associated" error
 
                 if isinstance(df, pd.DataFrame) and not df.empty:
-                    # ----- Coerce numeric-like strings to numbers -----
-                    for col in df.columns:
-                        coerced = pd.to_numeric(df[col], errors="coerce")
-                        if coerced.notna().sum() > 0:
-                            df[col] = coerced
+                    df = coerce_probable_numeric_columns(df)
 
                     # ----- Ensure JSON-safe summary -----
                     def _serialize_timestamps(obj):
                         if isinstance(obj, dict):
-                            return {str(k): _serialize_timestamps(v) for k, v in obj.items()}
+                            return {
+                                str(k): _serialize_timestamps(v) for k, v in obj.items()
+                            }
                         elif isinstance(obj, list):
                             return [_serialize_timestamps(v) for v in obj]
                         elif isinstance(obj, pd.Timestamp):
@@ -390,9 +432,15 @@ def analyze_file(args) -> Optional[AnalysisResult]:
                             return obj
 
                     for k, v in pipeline_summary.items():
-                        safe_key = str(k) if not isinstance(k, (str, int, float, bool, type(None))) else k
+                        safe_key = (
+                            str(k)
+                            if not isinstance(k, (str, int, float, bool, type(None)))
+                            else k
+                        )
                         if isinstance(v, pd.DataFrame):
-                            summary_dict[safe_key] = _serialize_timestamps(v.reset_index().to_dict(orient="records"))
+                            summary_dict[safe_key] = _serialize_timestamps(
+                                v.reset_index().to_dict(orient="records")
+                            )
                         else:
                             summary_dict[safe_key] = _serialize_timestamps(v)
 
@@ -409,9 +457,7 @@ def analyze_file(args) -> Optional[AnalysisResult]:
             # ======================================================
             # Optional sorting (unchanged)
             # ======================================================
-            if isinstance(df, pd.DataFrame) and "derived_date" in df.columns:
-                ascending = getattr(args, "sortdate_by", "asc") == "asc"
-                df = df.sort_values("derived_date", ascending=ascending)
+            df = _sort_json_date_columns(df, args)
 
             if getattr(args, "summarize_search", False):
                 _print_search_summary(df, console)
@@ -500,9 +546,9 @@ def analyze_file(args) -> Optional[AnalysisResult]:
             elif file_type in {"sqlite", "db"}:
                 # Receive everything from universal loader
                 load_result = detect_and_load(file_path, args)
-                raw = load_result.get("raw")        # dict: tables, schemas, counts
-                dfs = load_result.get("dfs", {})    # dict[str, DataFrame]
-                df = load_result.get("df")          # default df (first table) or None
+                raw = load_result.get("raw")  # dict: tables, schemas, counts
+                dfs = load_result.get("dfs", {})  # dict[str, DataFrame]
+                df = load_result.get("df")  # default df (first table) or None
 
                 # Run DB pipeline (Indexly or generic)
                 result = run_db_pipeline(file_path, args, raw=raw, df=df)
@@ -519,11 +565,10 @@ def analyze_file(args) -> Optional[AnalysisResult]:
                     if dfs:
                         df_stats = pd.DataFrame(
                             [(t, dfs[t].shape[0], dfs[t].shape[1]) for t in dfs],
-                            columns=["table", "rows", "cols"]
+                            columns=["table", "rows", "cols"],
                         )
                     else:
                         df_stats = pd.DataFrame(columns=["table", "rows", "cols"])
-
 
             elif file_type in {"yaml", "yml"}:
                 from indexly.yaml_pipeline import run_yaml_pipeline
@@ -650,7 +695,7 @@ def analyze_file(args) -> Optional[AnalysisResult]:
 
     # --- Export
     export_path = getattr(args, "export_path", None)
-    export_fmt = getattr(args, "format", "txt")
+    export_fmt = getattr(args, "export_format", None) or getattr(args, "format", "txt")
     compress_export = getattr(args, "compress_export", False)
     db_mode = getattr(args, "db_mode", "replace")  # Smart bonus
     # For CSV/Excel/Parquet, pass dict directly

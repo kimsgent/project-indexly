@@ -1,7 +1,9 @@
 import json
+import gzip
 import pandas as pd
 from indexly.universal_loader import detect_and_load
 from tests.helpers import assert_passthrough
+
 
 def test_yaml_loading(tmp_path):
     p = tmp_path / "data.yaml"
@@ -51,6 +53,7 @@ def test_csv_fallback(tmp_path):
     assert isinstance(result["df"], pd.DataFrame)
     assert result["metadata"]["rows"] == 2
 
+
 def test_json_fallback(tmp_path):
     import pandas as pd
     import json
@@ -85,8 +88,8 @@ def test_json_fallback(tmp_path):
             "verbose": False,
             "treeview": False,
             "meta": metadata,
-            "raw": result["raw"]
-        }
+            "raw": result["raw"],
+        },
     )
 
     assert isinstance(df, pd.DataFrame)
@@ -97,7 +100,39 @@ def test_json_fallback(tmp_path):
         assert "records.x" in df.columns
 
 
+def test_ndjson_loader_uses_chunk_size_without_dropping_valid_rows(tmp_path):
+    p = tmp_path / "records.json"
+    p.write_text(
+        '{"id": 1, "name": "A"}\n{"id": 2, "name": "B"}\n{"id": 3, "name": "C"}\n',
+        encoding="utf-8",
+    )
+
+    class Args:
+        chunk_size = 2
+
+    result = detect_and_load(p, Args())
+
+    assert result["raw"] == [{"id": 1, "name": "A"}, {"id": 2, "name": "B"}]
+    struct = result["metadata"]["json_structure"]
+    assert struct["json_mode"] == "ndjson"
+    assert struct["sampled"] is True
+    assert struct["rows_sampled"] == 2
 
 
+def test_ndjson_loader_rejects_malformed_lines(tmp_path):
+    p = tmp_path / "bad.json"
+    p.write_text('{"id": 1}\nnot json\n{"id": 2}\n', encoding="utf-8")
+
+    assert detect_and_load(p) is None
 
 
+def test_json_gz_loader_supports_standard_json(tmp_path):
+    p = tmp_path / "records.json.gz"
+    with gzip.open(p, "wt", encoding="utf-8") as fh:
+        json.dump([{"id": 1}, {"id": 2}], fh)
+
+    result = detect_and_load(p)
+
+    assert result["file_type"] == "json"
+    assert result["raw"] == [{"id": 1}, {"id": 2}]
+    assert result["metadata"]["json_structure"]["is_record_list"] is True

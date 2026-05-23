@@ -32,10 +32,6 @@ from rich.table import Table
 from .db_utils import _migrate_cleaned_data_schema
 from .analyze_utils import save_analysis_result
 
-
-
-
-
 console = Console()
 
 # attempt to import project helpers
@@ -51,6 +47,18 @@ def _safe_export_file(path: str, content: str):
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         f.write(content)
+
+
+def _should_coerce_json_numeric(column_name: str, series: pd.Series) -> bool:
+    identifier_tokens = ("id", "code", "key", "zip", "postal", "phone")
+    normalized_name = column_name.lower().replace("_", "").replace("-", "")
+    if any(token in normalized_name for token in identifier_tokens):
+        return False
+    non_null = series.notna().sum()
+    if non_null == 0:
+        return False
+    coerced = pd.to_numeric(series, errors="coerce")
+    return (coerced.notna().sum() / non_null) > 0.8
 
 
 # -------------------------
@@ -118,7 +126,10 @@ def load_json_as_dataframe(
 
             # Build DataFrame safely
             df = pd.DataFrame(
-                [[row[j] if j < len(row) else None for j in range(len(cols))] for row in limited_rows],
+                [
+                    [row[j] if j < len(row) else None for j in range(len(cols))]
+                    for row in limited_rows
+                ],
                 columns=cols,
             )
 
@@ -136,14 +147,22 @@ def load_json_as_dataframe(
         # -------------------------
         elif isinstance(data, dict):
             preferred = next(
-                (data[k] for k in ["data", "records", "rows", "items"] if k in data and isinstance(data[k], list)),
+                (
+                    data[k]
+                    for k in ["data", "records", "rows", "items"]
+                    if k in data and isinstance(data[k], list)
+                ),
                 None,
             )
             if preferred is not None:
                 df = pd.json_normalize(preferred[:max_rows])
             else:
                 list_fields = [v for v in data.values() if isinstance(v, list)]
-                df = pd.json_normalize(list_fields[0][:max_rows]) if list_fields else pd.json_normalize(data)
+                df = (
+                    pd.json_normalize(list_fields[0][:max_rows])
+                    if list_fields
+                    else pd.json_normalize(data)
+                )
         else:
             df = pd.DataFrame({"value": [str(data)]})
 
@@ -167,17 +186,22 @@ def load_json_as_dataframe(
     return data, df
 
 
-
 # -------------------------
 # DataFrame analysis
 # -------------------------
-def analyze_json_dataframe(df: pd.DataFrame) -> Tuple[pd.DataFrame, str, Dict[str, Any]]:
+def analyze_json_dataframe(
+    df: pd.DataFrame,
+) -> Tuple[pd.DataFrame, str, Dict[str, Any]]:
     """
     Analyze a DataFrame created from JSON and return:
       df_stats (DataFrame), pretty_text_output (str), meta (dict)
     """
     if df is None or df.empty:
-        return None, "[yellow]⚠️ No data available to analyze.[/yellow]", {"rows": 0, "cols": 0}
+        return (
+            None,
+            "[yellow]⚠️ No data available to analyze.[/yellow]",
+            {"rows": 0, "cols": 0},
+        )
 
     meta = {"rows": int(df.shape[0]), "cols": int(df.shape[1])}
 
@@ -187,9 +211,8 @@ def analyze_json_dataframe(df: pd.DataFrame) -> Tuple[pd.DataFrame, str, Dict[st
     for col in df.columns:
         if pd.api.types.is_numeric_dtype(df[col]):
             continue
-        coerced = pd.to_numeric(df[col], errors="coerce")
-        if coerced.notna().mean() > 0.8:
-            df[col] = coerced
+        if _should_coerce_json_numeric(str(col), df[col]):
+            df[col] = pd.to_numeric(df[col], errors="coerce")
 
     numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
     df_stats = None
@@ -201,20 +224,22 @@ def analyze_json_dataframe(df: pd.DataFrame) -> Tuple[pd.DataFrame, str, Dict[st
             q3 = float(vals.quantile(0.75)) if not vals.empty else None
             iqr_val = float(q3 - q1) if (q1 is not None and q3 is not None) else None
 
-            stats_list.append({
-                "column": col,
-                "count": int(vals.count()),
-                "nulls": int(df[col].isna().sum()),
-                "mean": float(vals.mean()) if not vals.empty else None,
-                "median": float(vals.median()) if not vals.empty else None,
-                "std": float(vals.std()) if not vals.empty else None,
-                "sum": float(vals.sum()) if not vals.empty else None,
-                "min": float(vals.min()) if not vals.empty else None,
-                "max": float(vals.max()) if not vals.empty else None,
-                "q1": q1,
-                "q3": q3,
-                "iqr": iqr_val,
-            })
+            stats_list.append(
+                {
+                    "column": col,
+                    "count": int(vals.count()),
+                    "nulls": int(df[col].isna().sum()),
+                    "mean": float(vals.mean()) if not vals.empty else None,
+                    "median": float(vals.median()) if not vals.empty else None,
+                    "std": float(vals.std()) if not vals.empty else None,
+                    "sum": float(vals.sum()) if not vals.empty else None,
+                    "min": float(vals.min()) if not vals.empty else None,
+                    "max": float(vals.max()) if not vals.empty else None,
+                    "q1": q1,
+                    "q3": q3,
+                    "iqr": iqr_val,
+                }
+            )
         df_stats = pd.DataFrame(stats_list).set_index("column")
 
     # -------------------------------
@@ -226,7 +251,9 @@ def analyze_json_dataframe(df: pd.DataFrame) -> Tuple[pd.DataFrame, str, Dict[st
 
     for c in df.columns:
         dtype = str(df[c].dtype)
-        safe_series = df[c].apply(lambda x: str(x) if isinstance(x, (list, dict, np.ndarray)) else x)
+        safe_series = df[c].apply(
+            lambda x: str(x) if isinstance(x, (list, dict, np.ndarray)) else x
+        )
         try:
             n_unique = int(safe_series.nunique(dropna=True))
         except Exception:
@@ -235,7 +262,9 @@ def analyze_json_dataframe(df: pd.DataFrame) -> Tuple[pd.DataFrame, str, Dict[st
         lines.append(f" - {c} : {dtype} | unique={n_unique} | sample={sample}")
 
     lines.append("\nNumeric summary:")
-    lines.append(str(df_stats) if df_stats is not None else "No numeric columns detected.")
+    lines.append(
+        str(df_stats) if df_stats is not None else "No numeric columns detected."
+    )
 
     pretty = "\n".join(lines)
     return df_stats, pretty, meta
@@ -252,6 +281,7 @@ def run_analyze_json(args):
     Uses unified run_json_pipeline() + DB storage + export.
     """
     from .json_pipeline import run_json_pipeline
+
     file_path = args.file
     if not file_path:
         console.print("[red]❌ No JSON file provided.[/red]")
@@ -263,10 +293,7 @@ def run_analyze_json(args):
     # Call main pipeline
     # ---------------------------------------------------------
     df, stats_df, table_dict = run_json_pipeline(
-        file_path=Path(file_path),
-        args=args,
-        df=None,
-        verbose=True
+        file_path=Path(file_path), args=args, df=None, verbose=True
     )
 
     if df is None:
@@ -293,12 +320,12 @@ def run_analyze_json(args):
         save_analysis_result(
             conn=conn,
             file_path=file_path,
-            raw_data=None,               # optional for JSON
+            raw_data=None,  # optional for JSON
             cleaned_df=df,
             meta={"table": table_dict},
             analysis_type="json",
             stats_df=stats_df,
-            dt_summary=None
+            dt_summary=None,
         )
 
         conn.close()

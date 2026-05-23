@@ -5,7 +5,7 @@ description: "Use Indexly to analyze AutoDoctor report JSON, telemetry JSON, and
 summary: "Practical guidance for choosing the right Indexly command for AutoDoctor reports, telemetry snapshots, and SQLite persistence files."
 type: docs
 slug: "analyze-autodoctor-artifacts"
-weight: 19
+weight: 130
 date: "2026-04-22"
 lastmod: "2026-05-09"
 draft: false

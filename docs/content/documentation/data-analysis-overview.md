@@ -5,9 +5,9 @@ description: "Understand how Indexly analyzes CSV, JSON, NDJSON, SQLite, Excel, 
 summary: "A practical map of Indexly’s analysis commands, supported formats, routing behavior, and AutoDoctor-aware workflows."
 type: docs
 slug: "data-analysis-pipeline"
-weight: 18
+weight: 110
 date: "2026-04-22"
-lastmod: "2026-05-16"
+lastmod: "2026-05-20"
 draft: false
 toc: true
 canonicalURL: "/en/documentation/data-analysis-pipeline/"
@@ -41,9 +41,9 @@ params:
 - Developers tracing how Indexly routes structured files through the loader and orchestrator
 - Operators analyzing AutoDoctor report JSON, telemetry JSON, or SQLite output with Indexly
 
-{{< alert title="What changed recently" color="info" >}}
-Since `v2.0.2`, Indexly’s JSON analysis path has become more reliable for NDJSON-style inputs. Current staging builds also add dedicated AutoDoctor-aware analysis for report JSON, telemetry JSON, and SQLite databases.
-{{< /alert >}}
+{{% alert title="What changed recently" color="info" %}}
+Current staging builds include stricter JSON and NDJSON handling: bounded JSON detection, chunk-limited NDJSON materialization, malformed-line rejection, safer mixed identifier handling, Socrata-style table mapping, and clearer sampling metadata. CSV analysis persists cleaned and raw data through a single orchestrator write path, and AutoDoctor report JSON, telemetry JSON, and SQLite databases have dedicated analysis paths. See [Analyze JSON And NDJSON Files](analyze-json-files.md) for the JSON-specific workflow.
+{{% /alert %}}
 
 ## Supported Formats
 
@@ -52,13 +52,17 @@ Indexly provides analysis and summarization for these structured formats:
 ### CSV
 
 - Delimiter detection
-- Summary statistics and cleaning workflows via `analyze-csv`
+- Summary statistics, optional cleaning, visualization, and persistence via `analyze-csv`
+- CSV routing through `analyze-file` when you want one command for mixed structured files
 - Statistical inference through the [Inference Docs](/inference/)
 
 ### JSON and NDJSON
 
 - Standard list and dictionary JSON
 - NDJSON / record-list JSON
+- `.json` files that contain NDJSON records
+- Compressed `*.json.gz` files
+- Socrata-style `columns` and `data` JSON
 - Indexly search cache JSON
 - AutoDoctor report JSON
 - AutoDoctor telemetry JSON
@@ -79,14 +83,29 @@ Indexly provides analysis and summarization for these structured formats:
 
 | Scenario | Best command | Why |
 | --- | --- | --- |
+| Known CSV file | `indexly analyze-csv <file>` | Uses the dedicated CSV parser, cleaning flags, visualizations, and CSV analysis exports |
+| CSV file inside a mixed-format workflow | `indexly analyze-file <file> --auto-clean` | Lets the universal dispatcher detect CSV while still accepting CSV-specific options |
 | Unknown structured file | `indexly analyze-file <file>` | Lets the universal loader detect the file and route it automatically |
 | Exported CSVs or reports with inconsistent names | `indexly rename-file <folder> --dry-run` before analysis | Standardizes filenames so later analysis, search, and organizer logs are easier to compare |
-| Large JSON or NDJSON file | `indexly analyze-json <file>` | Uses JSON-specific validation and fallback handling |
+| Large JSON or NDJSON file | `indexly analyze-json <file> --chunk-size 10000` | Uses JSON-specific detection and chunk-limited NDJSON materialization |
 | Generic SQLite inspection | `indexly analyze-db <db>` | Focused on schema, table profiling, and export |
 | AutoDoctor report JSON, telemetry JSON, or `autodoctor.db` | `indexly analyze-autodoctor <path>` | Produces an operational summary instead of a generic table dump |
 | AutoDoctor artifact, but you want auto-detection through the generic path | `indexly analyze-file <path>` | The orchestrator detects AutoDoctor and switches to the specialized path |
 
 ## Command Behaviors
+
+### `indexly analyze-csv <file>`
+
+This is the dedicated CSV route.
+
+It is best for:
+
+- delimiter detection and numeric summary statistics
+- optional `--auto-clean`, `--normalize`, and `--remove-outliers`
+- terminal, static, or interactive CSV visualizations
+- CSV analysis exports in `txt`, `md`, or `json`
+
+For parser-accurate CSV options, see [Analyze CSV Data](data-analysis.md) and [Clean CSV Data](clean-csv-data.md).
 
 ### `indexly analyze-file <file>`
 
@@ -100,6 +119,8 @@ It:
 
 Use this when you want one command for mixed datasets.
 
+For SQLite files, this route is intentionally a quick preview path. It loads bounded table previews for generic database inspection. Use `analyze-db` when you need relationship discovery, table profiling controls, diagrams, or exportable database summaries.
+
 ### `indexly analyze-json <file>`
 
 This is the JSON-focused route.
@@ -108,9 +129,15 @@ It is best for:
 
 - plain JSON
 - NDJSON
+- compressed JSON
+- Socrata-style table JSON
 - JSON files that may need structural fallback logic
 
 It now shares more routing behavior with the orchestrator, which helps prevent the old failure mode where NDJSON-style `.json` files summarized correctly but could not persist cleanly.
+
+Use `--chunk-size` on this command when a newline-delimited source is too large to materialize fully.
+
+See [Analyze JSON And NDJSON Files](analyze-json-files.md).
 
 ### `indexly analyze-db <db>`
 
@@ -122,6 +149,8 @@ It is best for:
 - table-by-table profiling
 - relationship discovery
 - schema exports and diagrams
+
+By default, large tables are profiled with bounded sampling. Use `--sample-size` to choose a profile size, `--fast` or `--fast-mode` for lighter metrics, and `--all-data` only when full-table profiling is required.
 
 When the database matches AutoDoctor’s schema, Indexly switches to an operational summary instead of staying in the generic inspection path.
 
@@ -207,9 +236,18 @@ indexly rename-file ./exports --pattern "{date}-{title}" --recursive
 
 Use [Rename File](rename-file.md) when exported CSVs, reports, or logs need stable names before analysis or organization.
 
+### CSV analysis and cleaning
+
+```bash
+indexly analyze-csv sales.csv --show-summary
+indexly analyze-csv sales.csv --auto-clean --show-summary --no-persist
+indexly analyze-csv sales.csv --show-chart ascii --chart-type hist --transform auto
+```
+
 ### Generic structured-file analysis
 
 ```bash
+indexly analyze-file sales.csv --auto-clean --show-summary
 indexly analyze-file data.json --show-summary
 indexly analyze-file metrics.parquet --show-summary
 indexly analyze-file workbook.xlsx --sheet-name Sheet1 --show-summary
@@ -219,7 +257,8 @@ indexly analyze-file workbook.xlsx --sheet-name Sheet1 --show-summary
 
 ```bash
 indexly analyze-json iris.json --show-summary
-indexly analyze-json events.ndjson --show-summary
+indexly analyze-json events.ndjson --chunk-size 10000 --show-summary
+indexly analyze-json records.json.gz --show-summary
 ```
 
 ### SQLite analysis
@@ -241,7 +280,8 @@ indexly analyze-autodoctor .\autodoctor.db --show-summary
 
 - [Usage Guide](usage.md)
 - [Rename File](rename-file.md)
-- [Cleaning CSV Data](clean-csv-data.md)
+- [Analyze JSON And NDJSON Files](analyze-json-files.md)
+- [Clean CSV Data](clean-csv-data.md)
 - [Analyze SQLite Databases](analyze-sqlite-databases.md)
 - [Analyze AutoDoctor Artifacts](analyze-autodoctor-artifacts.md)
 - [Developer Guide](developer.md)

@@ -3,7 +3,7 @@ title: "Indexly Tagging System"
 slug: "tagging"
 type: docs
 icon: "mdi:tag-multiple"
-weight: 2
+weight: 70
 date: 2025-10-12
 summary: "Organize your files smarter with Indexly's tagging system — add, remove, and search tags across indexed files and folders for faster file discovery."
 description: "Learn how to use Indexly's powerful file tagging system to categorize, organize, and search files effortlessly. Supports bulk tagging, recursive folder tagging, and instant tag lookups."

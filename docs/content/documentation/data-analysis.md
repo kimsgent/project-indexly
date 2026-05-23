@@ -1,266 +1,221 @@
 ---
-title: "Analyze CSV: Visualize, Transform & Understand Your Data"
-description: "Explore, visualize, and normalize CSV datasets in Indexly using statistical summaries, skew detection, and ASCII visualizations. Perfect for data analysts and developers working with terminal-based data exploration."
+title: "Analyze CSV Data"
+linkTitle: "Analyze CSV"
+description: "Analyze CSV files with Indexly using delimiter detection, numeric statistics, optional cleaning, terminal charts, static or interactive visualizations, and exports."
 slug: data-analysis
 type: docs
+weight: 111
 keywords:
-  - indexly csv analysis
+  - indexly analyze-csv
+  - csv analysis
   - csv visualization
   - terminal histogram
-  - ascii boxplot
-  - log transform
-  - sqrt transform
-  - skew detection
-  - data normalization
-  - statistical analysis
-  - cli data exploration
+  - csv statistics
+  - csv export
 tags:
   - csv
   - analysis
   - visualization
-  - transformation
   - statistics
-  - normalization
-  - cli
 author: "N. K. Franklin-Gent"
 date: 2025-10-19
-lastmod: 2026-05-16
+lastmod: 2026-05-19
 draft: false
+toc: true
 categories:
   - Documentation
   - Data Analysis
-  - CLI Tools
 canonicalURL: "/en/documentation/data-analysis/"
-summary: "Learn how Indexly’s analyze-csv command transforms raw CSVs into visual insights — from statistical summaries to adaptive ASCII histograms and automatic skew normalization."
-seo_title: "Analyze CSV Data in Indexly | Transform, Visualize, and Normalize Your Data"
-og_title: "Analyze CSV with Indexly — Terminal Visualization and Statistical Insights"
-og_description: "Discover how Indexly analyzes CSV files using adaptive transformations, statistical summaries, and ASCII visualizations directly in the terminal."
-og_type: "article"
-og_image: "/images/analyze-csv-preview.png"
-twitter_card: "summary_large_image"
-twitter_title: "Analyze CSV with Indexly — Visualize and Normalize Data"
-twitter_description: "Use Indexly’s analyze-csv command to explore and transform datasets with terminal histograms, boxplots, and statistical analysis."
-twitter_image: "/images/analyze-csv-preview.png"
+summary: "Use `indexly analyze-csv` to inspect CSV files, compute statistics, clean data, visualize distributions, and export analysis results."
+params:
+  summary: "Parser-aligned reference for Indexly CSV analysis and visualization."
 ---
 
+## Who This Page Is For
 
----
+- Users who want quick CSV statistics from the command line
+- Analysts preparing CSV data for charts, reports, observers, or inference
+- Developers checking the current `analyze-csv` parser and pipeline behavior
 
-## Overview
-
-The `analyze-csv` command in **Indexly** turns raw CSV files into meaningful insights.  
-With a single command, you can:
-
-- Compute detailed **summary statistics** (mean, median, std, IQR, skew, etc.)
-- Apply **numeric transformations** (`log`, `sqrt`, `softplus`, `exp-log`, or `auto`)
-- Visualize results using **ASCII histograms** or **boxplots**
-- Auto-adjust scaling and binning for **highly skewed data**
-- Export results as Markdown or HTML for reporting
-
-This feature bridges quick terminal exploration with statistical understanding — all without leaving your CLI.
-> ![csv-preview](/images/analyze-csv-preview.png)
----
-
-## Key Highlights
-
-- 📈 **Smart transformations** — detect skew automatically and apply optimal scaling (`auto` mode).  
-- 🎨 **ASCII visualizations** — view histograms or boxplots directly in the terminal.  
-- 🔍 **Skew and distribution insight** — see before/after skew changes at a glance.  
-- ⚙️ **Adaptive scaling** — use log or sqrt scaling for long-tailed distributions.  
-- 🧮 **Statistical summary** — mean, median, std, and quartiles per column.  
-- 🧾 **Export options** — save as Markdown (`--export md`) or plot as interactive HTML (`--mode interactive`).  
-
----
-
-## Quick Start Example
-
-Let’s analyze a dataset called `sales_data.csv`:
+## Quick Start
 
 ```bash
-indexly analyze-csv sales_data.csv --show-chart ascii --chart-type hist --transform auto
-````
-
-If your exports arrive with inconsistent names, standardize them first:
-
-```bash
-indexly rename-file ./exports --pattern "{date}-{title}" --recursive --dry-run
+indexly analyze-csv sales.csv --show-summary
 ```
 
-See [Rename File](rename-file.md) for safe previews and optional organizer handoff.
-
-**Output Example:**
+Add cleaning and a terminal histogram:
 
 ```bash
-
-📈 Transformation Statistics Overview
-────────────────────────────────────────────
-┌───────────────┬──────────────┬──────────────┬──────────────┬──────────────┬──────────────┬──────────────┬──────────────┬──────────────┬──────────┐
-│ Column        │ Mean (Before)│ Mean (After) │ Median (Before) │ Median (After) │ Std (Before) │ Std (After) │ Skew (Before) │ Skew (After) │ ΔSkew │
-├───────────────┼──────────────┼──────────────┼──────────────┼──────────────┼──────────────┼──────────────┼──────────────┼──────────────┼──────────┤
-│ revenue       │ 8123.33      │ 6.21         │ 4100.00      │ 6.02         │ 9255.50      │ 2.12         │ 4.12         │ 0.41         │ -3.71   │
-└───────────────┴──────────────┴──────────────┴──────────────┴──────────────┴──────────────┴──────────────┴──────────────┴──────────────┴──────────┘
-
+indexly analyze-csv sales.csv \
+  --auto-clean \
+  --show-summary \
+  --show-chart ascii \
+  --chart-type hist \
+  --transform auto
 ```
 
-This table compares pre- and post-transformation statistics, clearly showing how the **skew reduced by 3.7 points**.
-
----
-
-## Statistical Insights
-
-Indexly automatically calculates:
-
-| Metric            | Description                                     |
-| :---------------- | :---------------------------------------------- |
-| **Count**         | Total non-null values per column                |
-| **Nulls**         | Missing entries                                 |
-| **Mean**          | Average value                                   |
-| **Median**        | 50th percentile                                 |
-| **Std Dev**       | Spread of the data                              |
-| **Sum**           | Total cumulative value                          |
-| **Q1 / Q3 / IQR** | Quartiles and interquartile range               |
-| **Skew**          | Measures symmetry — positive means right-tailed |
-
-Skewed data can distort interpretation, so Indexly includes a transformation pipeline to normalize it automatically.
-
----
-
-## Transformation & Scaling
-
-When you run with `--transform auto`, Indexly examines each numeric column’s **skewness** and selects the most appropriate transformation:
-
-| Skew Range | Transformation Applied |
-| :--------- | :--------------------- |
-| `> 3`      | Log transform          |
-| `1–3`      | Square root transform  |
-| `< -1`     | Softplus transform     |
-| otherwise  | No transform           |
-
-For manual control, use:
+For mixed file folders, use the universal dispatcher:
 
 ```bash
+indexly analyze-file sales.csv --auto-clean --show-summary
+```
+
+## What `analyze-csv` Does
+
+The CSV pipeline runs in this order:
+
+1. Detect the delimiter from common delimiters such as comma, semicolon, tab, pipe, colon, and tilde.
+2. Load the CSV with UTF-8 handling.
+3. Optionally run the cleaning pipeline when `--auto-clean` is set.
+4. Infer numeric columns when most values in a text column can be converted.
+5. Compute statistics for numeric columns or derived timestamp columns.
+6. Optionally render charts or export analysis output.
+7. Persist analysis results unless `--no-persist` is set.
+
+{{% alert title="Cleaning is optional" color="info" %}}
+Use `--auto-clean` when the CSV needs datetime parsing, missing-value filling, derived date features, normalization, or outlier removal. See [Clean CSV Data](clean-csv-data.md) for the detailed cleaning behavior.
+{{% /alert %}}
+
+## Statistics Produced
+
+Indexly computes these statistics for each numeric column:
+
+| Metric | Meaning |
+| --- | --- |
+| `Count` | Non-null values used in analysis |
+| `Nulls` | Missing values in the source column |
+| `Mean` | Average value |
+| `Median` | Middle value |
+| `Std Dev` | Standard deviation |
+| `Sum` | Column total |
+| `Min` / `Max` | Range endpoints |
+| `Q1` / `Q3` | First and third quartiles |
+| `IQR` | Interquartile range |
+
+If a cleaned CSV only contains datetime values, derived `_timestamp` fields can provide numeric columns for analysis.
+
+## Visualization Options
+
+Use `--show-chart` to choose where the chart renders:
+
+| Mode | Behavior |
+| --- | --- |
+| `ascii` | Renders terminal charts. |
+| `static` | Uses Matplotlib for static charts. |
+| `interactive` | Uses Plotly-style interactive output where supported. |
+
+Supported chart types:
+
+```bash
+--chart-type bar
+--chart-type line
+--chart-type box
+--chart-type hist
+--chart-type scatter
+--chart-type pie
+```
+
+Common chart controls:
+
+```bash
+--x-col date
+--y-col revenue profit
+--export-plot chart.html
+--agg sum
+```
+
+For histogram and boxplot distribution work, transformation can improve readability:
+
+```bash
+--transform none
 --transform log
 --transform sqrt
 --transform softplus
 --transform exp-log
+--transform auto
 ```
 
-### Adaptive Scaling
+`--transform auto` chooses a transformation from column skew. ASCII histogram bars use `--bar-scale sqrt` by default and also accept `--bar-scale log`.
 
-Histograms automatically switch to **log scaling** if the ratio between the highest and lowest bin counts exceeds 1,000 — ensuring readability in extremely uneven distributions.
+## Time-Series Analysis
 
----
-
-## Visual Exploration
-
-You can visualize your data directly in the terminal:
-
-### 1. Histogram Mode
+For date-indexed CSVs:
 
 ```bash
-indexly analyze-csv sales_data.csv --chart-type hist
+indexly analyze-csv sales.csv \
+  --auto-clean \
+  --timeseries \
+  --x order_date \
+  --y revenue,profit \
+  --freq M \
+  --agg sum \
+  --rolling 3 \
+  --mode interactive \
+  --output sales-trend.html
 ```
 
-Produces an ASCII histogram like this:
+See [Time-Series Visualization](time-series-visualization.md) for dedicated examples.
+
+## Boxplot Engine
+
+For focused boxplot work, use the isolated boxplot engine:
 
 ```bash
-[revenue (Δskew=-3.71)]
-Min: 0.00   Q1: 2.10   Median: 6.02   Q3: 8.20   Max: 10.80
-[0.00, 1.08]  ██████████████████████████████████████████████  62.3% (589)
-[1.08, 2.16]  ████                                          9.4% (89)
-[2.16, 3.24]  ██                                            4.8% (45)
-
+indexly analyze-csv sales.csv \
+  --boxplot \
+  --group-by region \
+  --y-col revenue profit \
+  --show-mean
 ```
 
+Useful boxplot options include:
 
-Bars scale dynamically based on bin counts. Extremely small bins (<0.1%) display as `<0.1%`, ensuring even sparse data remains visible.
+| Option | Values |
+| --- | --- |
+| `--use-raw` | Use raw data for boxplot rendering. |
+| `--use-clean` | Use cleaned data for boxplot rendering. |
+| `--norm` | `zscore`, `minmax` |
+| `--outliers` | `classic`, `robust`, `show`, `hide` |
+| `--merge-on` | Merge column for multi-file comparison. |
+| `--merge-how` | `inner`, `left`, `right`, `outer` |
 
----
+## Export Results
 
-### 2. Boxplot Mode
+Export the analysis table:
 
 ```bash
-indexly analyze-csv sales_data.csv --chart-type box
+indexly analyze-csv sales.csv --export-path reports/sales.md --format md
 ```
 
-Shows an ASCII boxplot with quartiles and median indicators:
+Supported `analyze-csv` formats are:
+
+- `txt`
+- `md`
+- `json`
+
+Use `--compress-export` with JSON output when you want `.json.gz`:
 
 ```bash
-[revenue] (transform=log)
-   0.00 ╞═════════│═════════════════════════════════════╡ 10.80
-           Q1          Med                Q3
-→ Range=10.80, IQR=3.25, Median=6.02
+indexly analyze-csv sales.csv --export-path reports/sales.json --format json --compress-export
 ```
 
----
+`--export-format` is accepted as an alias for CSV analysis output format. For broader tabular export formats such as CSV, Parquet, Excel, or SQLite, use `indexly analyze-file` with `--format`.
 
-## Export & Integration
-
-### Export as Markdown
+## Practical Workflow
 
 ```bash
-indexly analyze-csv sales_data.csv --export md
+indexly rename-file ./exports --pattern "{date}-{title}" --recursive --dry-run
+indexly analyze-csv ./exports/sales.csv --auto-clean --show-summary
+indexly analyze-csv ./exports/sales.csv --show-chart ascii --chart-type hist --transform auto
+indexly observe audit
 ```
 
-Saves a Markdown table of all summary statistics for documentation or reports.
+This keeps filenames stable, cleans and analyzes the CSV, then lets observers compare persisted snapshots when observer data is available.
 
-### Generate Interactive Charts
+## Related Pages
 
-```bash
-indexly analyze-csv sales_data.csv --mode interactive
-```
-
-Uses **Plotly** to produce dynamic visualizations viewable in the browser.
-
----
-
-## Behind the Scenes
-
-* **Binning Strategy:**
-
-  * For normal data or mild skew, uses equal-width bins.
-  * For extreme skew (|skew| > 5), switches to **quantile-based binning** for better visibility.
-
-* **Adaptive Decimal Precision:**
-  Decimal places adjust automatically based on bin width using:
-
-  ```python
-  decimals = max(2, int(-np.floor(np.log10(bin_width))))
-  ```
-
-* **ΔSkew Calculation:**
-  Displayed as `(After - Before)` to show the direction of improvement.
-  Example: `Δskew=-3.71` means skew reduced by 3.71 after transformation.
-
----
-
-## Pro Tips
-
-* Use `--transform auto` for mixed datasets — Indexly will normalize each column automatically.
-* Use `--scale sqrt` for moderate skew instead of full log scaling.
-* For quick terminal analysis, combine with:
-
-  ```bash
-  indexly analyze-csv data.csv --show-chart ascii --chart-type hist --bins 15
-  ```
-* Export results for documentation:
-
-  ```bash
-  indexly analyze-csv data.csv --export md > analysis.md
-  ```
-
----
-
-## Next Steps
-
-Continue exploring Indexly’s analytical capabilities:
-
-* 🔍 [Configuration & Optimization](config.md)
-* Prepare exported datasets with [Rename File](rename-file.md)
-* 🏷️ [Tagging & Metadata Management](tagging.md)
-* ⚡ [Real-Time Watchdog Indexing](config.md#watchdog-real-time-indexing)
-* 📊 [Search & Filter with FTS5](/features/_index.en.md#search)
-* 🧠 [Apply Statistical Inference with `infer-csv`](/inference/) — move from descriptive summaries (`analyze-csv`) to rigorous hypothesis testing and structured statistical evaluation
----
-
-✨ **Indexly makes your data talk — visually, statistically, and intelligently.**
+- [Data Analysis Overview](data-analysis-overview.md)
+- [Clean CSV Data](clean-csv-data.md)
+- [Time-Series Visualization](time-series-visualization.md)
+- [Inference Docs](/inference/)
+- [Rename File](rename-file.md)

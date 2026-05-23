@@ -8,7 +8,7 @@ keywords:
   - indexly compare
   - context folding
   - similarity scoring
-weight: 45
+weight: 150
 type: docs
 ---
 

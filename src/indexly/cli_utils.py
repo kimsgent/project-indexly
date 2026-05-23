@@ -23,7 +23,6 @@ from .migration_manager import run_migrations
 from .rename_utils import SUPPORTED_DATE_FORMATS
 from .log_utils import handle_log_clean
 
-
 # CLI display configurations here
 command_titles = {
     "index": "[I] n  d  e  x  i  n  g",
@@ -461,9 +460,7 @@ def build_parser():
         "clear-search",
         help="Safely remove entries from the FTS search index",
     )
-    clear_search_group = clear_search_parser.add_mutually_exclusive_group(
-        required=True
-    )
+    clear_search_group = clear_search_parser.add_mutually_exclusive_group(required=True)
     clear_search_group.add_argument(
         "--path",
         help="Delete a matching file path, directory-like prefix, or basename",
@@ -544,7 +541,7 @@ def build_parser():
         "--export-path", help="Export analysis table to file (txt, md)"
     )
     csv_parser.add_argument(
-        "--format", choices=["txt", "md"], default="txt", help="Export format"
+        "--format", choices=["txt", "md", "json"], default="txt", help="Export format"
     )
     csv_parser.add_argument(
         "--compress-export",
@@ -568,7 +565,9 @@ def build_parser():
         "--export-plot", help="Export chart to file (png, svg, html)"
     )
     csv_parser.add_argument("--x-col", help="X-axis column for scatter and box plot")
-    csv_parser.add_argument("--y-col", nargs="+", help="Y-axis column for scatter and box plot")
+    csv_parser.add_argument(
+        "--y-col", nargs="+", help="Y-axis column for scatter and box plot"
+    )
     csv_parser.add_argument(
         "--transform",
         choices=["none", "log", "sqrt", "softplus", "exp-log", "auto"],
@@ -696,8 +695,8 @@ def build_parser():
     csv_parser.add_argument(
         "--export-format",
         choices=["txt", "md", "json"],
-        default="csv",
-        help="Format for cleaned dataset export",
+        default=None,
+        help="Export format alias for CSV analysis output",
     )
     csv_parser.add_argument(
         "--show-summary",
@@ -1261,14 +1260,20 @@ def build_parser():
 
     analyze_db_parser.add_argument(
         "--export",
-        choices=["json", "md", "html"],
-        help="Export summary in the chosen format.",
+        help="Export summary in one or more comma-separated formats: json, md, html.",
     )
 
     analyze_db_parser.add_argument(
         "--diagram",
         choices=["mermaid"],
         help="Include diagrams in MD/HTML export.",
+    )
+
+    analyze_db_parser.add_argument(
+        "--max-preview",
+        type=int,
+        default=10,
+        help="Maximum sample rows to show in the terminal preview.",
     )
 
     analyze_db_parser.set_defaults(func=_lazy_analyze_db)
@@ -1607,10 +1612,13 @@ def build_parser():
     read_json_parser = subparsers.add_parser(
         "read-json",
         help="Read and display indexly JSON file",
-        description="Read and view Indexly JSON files.",
+        description=(
+            "Read and view persisted Indexly JSON summary files, such as "
+            "*.db.analysis.json files produced by analyze-db."
+        ),
     )
 
-    read_json_parser.add_argument("file", help="Path to Indexly JSON file")
+    read_json_parser.add_argument("file", help="Path to persisted Indexly JSON summary")
 
     read_json_parser.add_argument(
         "--treeview", action="store_true", help="Display full Rich tree view"
@@ -1620,13 +1628,20 @@ def build_parser():
         "--preview",
         type=int,
         default=3,
-        help="Number of top-level keys/items to preview in compact view",
+        help="Number of persisted tables/relations/items to preview",
     )
 
     read_json_parser.add_argument(
         "--show-summary",
         action="store_true",
-        help="Display database-aware summary of JSON content",
+        default=True,
+        help="Display persisted database summary content (default)",
+    )
+    read_json_parser.add_argument(
+        "--no-summary",
+        action="store_false",
+        dest="show_summary",
+        help="Do not display the persisted summary; useful with --treeview only",
     )
 
     # IMPORTANT: always set func → otherwise argparse prints top-level help

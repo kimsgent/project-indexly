@@ -10,7 +10,7 @@ keywords:
   - ER diagram example
   - Indexly database analysis
 slug: "chinook-database-story"
-weight: 30
+weight: 122
 type: docs
 images:
   - "images/chinook-database-story.png"

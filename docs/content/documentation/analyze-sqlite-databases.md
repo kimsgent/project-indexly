@@ -11,10 +11,10 @@ keywords:
   - SQLite relationships
   - data exploration CLI
 slug: "database-analysis-sqlite"
-weight: 20
+weight: 120
 type: docs
 date: "2026-04-22"
-lastmod: "2026-04-22"
+lastmod: "2026-05-20"
 draft: false
 images:
   - "images/database-analysis-overview.png"
@@ -30,9 +30,9 @@ tags:
 ---
 Indexly provides a powerful pipeline for inspecting SQLite databases, allowing you to extract meaningful insights and visualize table relationships efficiently. Whether you're exploring your own datasets or working with sample DBs such as [Chinook](https://github.com/lerocha/chinook-database), `analyze-db` gives you the ability to summarize, profile, and export your data.
 
-{{< alert title="AutoDoctor-aware behavior" color="info" >}}
+{{% alert title="AutoDoctor-aware behavior" color="info" %}}
 If the SQLite schema matches AutoDoctor’s persistence tables, Indexly switches from generic DB inspection to a specialized operational summary. Use [Analyze AutoDoctor Artifacts](analyze-autodoctor-artifacts.md) when your input is `autodoctor.db`.
-{{< /alert >}}
+{{% /alert %}}
 
 ## Key Features
 
@@ -52,7 +52,7 @@ indexly analyze-db <db_path> [--show-summary] [--table <table_name>] [--all-tabl
                      [--sample-size N]
                      [--persist-level {minimal,full,none}]
                      [--no-persist]
-                     [--export {json,md,html}]
+                     [--export json,md,html]
                      [--max-preview ROWS]
 ```
 
@@ -63,7 +63,14 @@ indexly analyze-db Chinook.db --show-summary --table customers --export md --dia
 ✔ Persisted summary to Chinook.db.analysis.json
 ```
 
-> Learn how to read JSON summary export
+Read the persisted JSON summary later:
+
+```bash
+indexly read-json Chinook.db.analysis.json --show-summary
+indexly read-json Chinook.db.analysis.json --treeview --preview 5
+```
+
+`read-json` is a reader for persisted Indexly summary JSON. It displays stored summary blocks from `*.analysis.json` files and does not re-analyze the original database.
 
 ──────────────────── Dataset Summary Preview ────────────────────
 DB Tables Overview
@@ -158,9 +165,9 @@ indexly analyze-db Chinook.db --table tracks --sample-size 20 --show-summary
 | **Argument**    | **Type / Action** | **Description**                                                 |
 | --------------- | ----------------- | --------------------------------------------------------------- |
 | `--sample-size` | int               | Max rows per table for profiling. Adaptive sampling if omitted. |
-| `--all-data`    | flag              | Disable sampling, use full table data.                          |
-| `--fast`        | flag              | Lighter profiling for huge tables.                              |
-| `--fast-mode`   | flag              | Enable fast profiling mode (lighter metrics, faster).           |
+| `--all-data`    | flag              | Disable sampling and profile full table data. Use cautiously on large DBs. |
+| `--fast`        | flag              | Lighter profiling for huge tables. Uses bounded previews and skips expensive metrics. |
+| `--fast-mode`   | flag              | Alias-style fast profiling control retained for compatibility. |
 | `--timeout`     | int               | Per-table profiling timeout in seconds.                         |
 
 ### Output Controls
@@ -170,10 +177,11 @@ indexly analyze-db Chinook.db --table tracks --sample-size 20 --show-summary
 | `--show-summary`  | flag                      | Print analysis overview to terminal.        |
 | `--no-persist`    | flag                      | Do not write summary file to disk.          |
 | `--persist-level` | choice: minimal/full/none | Level of detail to persist. Default: full   |
-| `--export`        | choice: json/md/html      | Export summary in the chosen format.        |
+| `--export`        | comma-separated json/md/html | Export summary in one or more formats, for example `--export json,md`. |
 | `--diagram`       | choice: mermaid           | Include diagrams in MD/HTML export.         |
 | `--parallel`      | flag                      | Profile multiple tables in parallel.        |
 | `--max-workers`   | int                       | Max parallel workers (default = CPU count). |
+| `--max-preview`   | int                       | Max sample rows to show in terminal preview. Default: 10. |
 
 ----
 
@@ -196,7 +204,7 @@ Even for very large tables, accurate summary statistics can often be derived fro
 
 1. **Rare-value detection** – If a category appears in **0.1% of rows**, a sample of **10,000** ensures near certainty of capturing it. Smaller samples may miss these rare occurrences entirely.
 
-**Conclusion:** Indexly applies **adaptive sampling** to balance speed and accuracy. Users can override defaults with `--sample-size` or `--all-data` depending on whether speed or completeness is prioritized.
+**Conclusion:** Indexly applies **adaptive sampling** to balance speed and accuracy. Users can override defaults with `--sample-size` for a bounded profile or `--all-data` when full-table completeness is more important than speed and memory use.
 
 ----
 

@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-from concurrent.futures import ProcessPoolExecutor, as_completed, TimeoutError
+from concurrent.futures import ProcessPoolExecutor, as_completed
 import sqlite3
-import json
 import os
 from pathlib import Path
 from rich.console import Console
@@ -17,6 +16,11 @@ from .indexly_detector import build_indexly_block
 from .autodoctor_detect import detect_autodoctor_db
 
 console = Console()
+EXPORT_FORMATS = {"json", "md", "html"}
+
+
+def _quote_identifier(name: str) -> str:
+    return '"' + str(name).replace('"', '""') + '"'
 
 
 def _print_unified_table(inspect_res, schema_summary, profiles=None, filter_table: str | None = None):
@@ -43,6 +47,8 @@ def _print_unified_table(inspect_res, schema_summary, profiles=None, filter_tabl
             prof = profiles.get(tbl, {})
             if prof.get("skipped"):
                 status = "[yellow]SKIPPED[/yellow]"
+            elif prof.get("warning"):
+                status = "[yellow]WARN[/yellow]"
             elif not prof:
                 status = "[red]FAILED[/red]"
 
@@ -50,6 +56,40 @@ def _print_unified_table(inspect_res, schema_summary, profiles=None, filter_tabl
 
     console.print(t)
 
+
+def _parse_export_formats(raw_export: str | None) -> list[str]:
+    if not raw_export:
+        return []
+    formats = [
+        part.strip().lower()
+        for part in str(raw_export).split(",")
+        if part.strip()
+    ]
+    invalid = [fmt for fmt in formats if fmt not in EXPORT_FORMATS]
+    if invalid:
+        raise ValueError(
+            f"Unsupported export format(s): {', '.join(invalid)}. "
+            f"Choose from: {', '.join(sorted(EXPORT_FORMATS))}"
+        )
+    return list(dict.fromkeys(formats))
+
+
+def _summary_for_persist(summary: dict, persist_level: str) -> dict:
+    if persist_level == "full":
+        return summary
+    if persist_level == "minimal":
+        return {
+            "meta": summary.get("meta", {}),
+            "global": summary.get("global", {}),
+            "schema_summary": summary.get("schema_summary", {}),
+            "relations": summary.get("relations", {}),
+            "adjacency_graph": summary.get("adjacency_graph", {}),
+            "counts": summary.get("counts", {}),
+            "row_estimates": summary.get("row_estimates", {}),
+            "indexly": summary.get("indexly", {}),
+            "warnings": summary.get("warnings", []),
+        }
+    return {}
 
 
 def analyze_db(args):
@@ -119,12 +159,12 @@ def analyze_db(args):
     # --------------------------------------------------------------
     profiles = {}
     table_warnings: dict[str, str] = {}
-    timeout_sec = getattr(args, "timeout", 300)  # default 5 min per table
-    max_workers = getattr(args, "max_workers", os.cpu_count())
+    timeout_sec = getattr(args, "timeout", None)
+    max_workers = max(1, int(getattr(args, "max_workers", os.cpu_count()) or 1))
+    use_full_data = bool(getattr(args, "all_data", False))
+    fast_mode = bool(getattr(args, "fast_mode", False) or getattr(args, "fast", False))
 
     if getattr(args, "parallel", False) and len(tables_to_profile) > 1:
-
-
         with ProcessPoolExecutor(max_workers=max_workers) as executor:
             futures = {
                 executor.submit(
@@ -132,8 +172,9 @@ def analyze_db(args):
                     db_path,
                     tbl,
                     args.sample_size,
-                    True,  # full_stats
-                    getattr(args, "fast_mode", False),
+                    use_full_data,
+                    fast_mode,
+                    timeout_sec,
                 ): tbl
                 for tbl in tables_to_profile
             }
@@ -141,13 +182,8 @@ def analyze_db(args):
             for future in as_completed(futures):
                 tbl = futures[future]
                 try:
-                    tbl, result = future.result(timeout=timeout_sec)
+                    tbl, result = future.result()
                     profiles[tbl] = result
-                except TimeoutError:
-                    warning = f"Profiling timed out after {timeout_sec}s"
-                    console.print(f"[yellow]⚠ {tbl}: {warning}[/yellow]")
-                    profiles[tbl] = {}
-                    table_warnings[tbl] = warning
                 except Exception as e:
                     warning = f"Profiling failed: {e}"
                     console.print(f"[red]⚠ {tbl}: {warning}[/red]")
@@ -160,8 +196,9 @@ def analyze_db(args):
                     db_path,
                     tbl,
                     sample_size=args.sample_size,
-                    full_stats=True,
-                    fast_mode=getattr(args, "fast_mode", False),
+                    full_stats=use_full_data,
+                    fast_mode=fast_mode,
+                    timeout=timeout_sec,
                 )
             except Exception as e:
                 warning = f"Profiling failed: {e}"
@@ -180,6 +217,12 @@ def analyze_db(args):
     for tbl, w in table_warnings.items():
         profiles.setdefault(tbl, {})["warning"] = w
         warnings.append(f"{tbl}: {w}")
+
+    for tbl, prof in profiles.items():
+        if prof.get("warning"):
+            msg = f"{tbl}: {prof['warning']}"
+            if msg not in warnings:
+                warnings.append(msg)
 
     # Add generic database warnings
     if not inspect_res.get("tables"):
@@ -200,7 +243,7 @@ def analyze_db(args):
 
     if total_rows > 5_000_000:
         warnings.append(
-            f"Database appears large (≈{total_rows} rows). Consider --sample-size or --fast."
+            f"Database appears large (≈{total_rows} rows). Consider --sample-size, --fast, or --fast-mode."
         )
 
     global_block = {
@@ -218,7 +261,13 @@ def analyze_db(args):
 
     conn = sqlite3.connect(db_path)
     try:
-        indexly_block = build_indexly_block(conn, normalized_schemas).get("indexly", {})
+        indexly_block = build_indexly_block(
+            conn,
+            normalized_schemas,
+            exact_metrics=use_full_data,
+            fast_mode=fast_mode,
+            sample_size=args.sample_size,
+        ).get("indexly", {})
     finally:
         conn.close()
 
@@ -247,7 +296,7 @@ def analyze_db(args):
     # --------------------------------------------------------------
     if not args.no_persist and args.persist_level != "none":
         out_base = Path(db_path)
-        saved = save_json(summary, out_base)
+        saved = save_json(_summary_for_persist(summary, args.persist_level), out_base)
         console.print(f"[green]✔ Persisted summary to {saved}[/green]")
 
     # --------------------------------------------------------------
@@ -256,7 +305,12 @@ def analyze_db(args):
     if args.show_summary:
         console.print()
         console.rule("[bold]Dataset Summary Preview")
-        _print_unified_table(inspect_res, schema_summary)
+        _print_unified_table(
+            inspect_res,
+            schema_summary,
+            profiles=profiles,
+            filter_table=args.table,
+        )
 
         rels = schema_summary.get("relations", {})
         if rels:
@@ -296,8 +350,10 @@ def analyze_db(args):
             try:
                 import pandas as pd
                 conn = sqlite3.connect(db_path)
+                max_preview = max(1, int(getattr(args, "max_preview", 10) or 10))
                 preview = pd.read_sql_query(
-                    f"SELECT * FROM '{first_tbl}' LIMIT 10", conn
+                    f"SELECT * FROM {_quote_identifier(first_tbl)} LIMIT {max_preview}",
+                    conn,
                 )
                 conn.close()
                 console.print("\n[bold]📊 Sample Rows[/bold]")
@@ -312,8 +368,14 @@ def analyze_db(args):
             t.add_column("Value")
 
             t.add_row("rows", str(prof.get("rows")))
+            if prof.get("sampled"):
+                t.add_row("profiled_rows", str(prof.get("profiled_rows")))
+                t.add_row("sample_strategy", str(prof.get("sample_strategy")))
             t.add_row("cols", str(len(prof.get("columns", []))))
             t.add_row("key_hints", ", ".join(prof.get("key_hints", [])))
+            identifiers = prof.get("identifier_columns", [])
+            if identifiers:
+                t.add_row("identifier_columns", ", ".join(identifiers))
 
             for col, stats in prof.get("numeric_summary", {}).items():
                 for k, v in stats.items():
@@ -330,22 +392,29 @@ def analyze_db(args):
     # --------------------------------------------------------------
     out_base = Path(args.db_path)
 
-    if args.export == "json":
-        saved = save_json(summary, out_base)
-        console.print(f"[green]Exported JSON → {saved}[/green]")
+    try:
+        export_formats = _parse_export_formats(getattr(args, "export", None))
+    except ValueError as e:
+        console.print(f"[red]{e}[/red]")
+        return
 
-    elif args.export == "md":
-        saved = save_markdown(
-            summary,
-            out_base,
-            include_diagram=(getattr(args, "diagram", None) == "mermaid"),
-        )
-        console.print(f"[green]Exported Markdown → {saved}[/green]")
+    for export_format in export_formats:
+        if export_format == "json":
+            saved = save_json(summary, out_base)
+            console.print(f"[green]Exported JSON → {saved}[/green]")
 
-    elif args.export == "html":
-        saved = save_html(
-            summary,
-            out_base,
-            include_diagram=(getattr(args, "diagram", None) == "mermaid"),
-        )
-        console.print(f"[green]Exported HTML → {saved}[/green]")
+        elif export_format == "md":
+            saved = save_markdown(
+                summary,
+                out_base,
+                include_diagram=(getattr(args, "diagram", None) == "mermaid"),
+            )
+            console.print(f"[green]Exported Markdown → {saved}[/green]")
+
+        elif export_format == "html":
+            saved = save_html(
+                summary,
+                out_base,
+                include_diagram=(getattr(args, "diagram", None) == "mermaid"),
+            )
+            console.print(f"[green]Exported HTML → {saved}[/green]")

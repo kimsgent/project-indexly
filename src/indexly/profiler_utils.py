@@ -34,8 +34,11 @@ def sample_dataframe(df: pd.DataFrame, user_size: int | None) -> pd.DataFrame:
 # ---------------------------------------
 # Numeric statistics (fast_mode aware)
 # ---------------------------------------
-def numeric_stats(df: pd.DataFrame, fast_mode: bool = False,
-                  percentiles=[0.25, 0.5, 0.75]) -> Dict[str, Any]:
+def numeric_stats(
+    df: pd.DataFrame,
+    fast_mode: bool = False,
+    percentiles=[0.25, 0.5, 0.75],
+) -> Dict[str, Any]:
     numeric = df.select_dtypes(include="number")
     if numeric.empty:
         return {}
@@ -82,6 +85,20 @@ def numeric_stats(df: pd.DataFrame, fast_mode: bool = False,
         for k, v in out[col].items():
             out[col][k] = None if pd.isna(v) else v
 
+    return out
+
+
+def infer_semantic_types(df: pd.DataFrame) -> Dict[str, str]:
+    """Lightweight column role hints to avoid treating ids as measurements."""
+    out: Dict[str, str] = {}
+    for col in df.columns:
+        name = str(col).lower()
+        if name == "id" or name.endswith("_id") or name.endswith("id"):
+            out[col] = "identifier"
+        elif pd.api.types.is_numeric_dtype(df[col]):
+            out[col] = "measure"
+        else:
+            out[col] = "category"
     return out
 
 
@@ -188,13 +205,30 @@ def profile_dataframe(
     fast_mode: bool = False
 ) -> Dict[str, Any]:
 
+    total_rows = len(df)
     if not full_data:
         df = sample_dataframe(df, sample_size)
 
+    semantic_types = infer_semantic_types(df)
+    identifier_columns = [
+        col for col, kind in semantic_types.items() if kind == "identifier"
+    ]
+    numeric_summary = numeric_stats(df, fast_mode=fast_mode)
+    numeric_measure_summary = {
+        col: stats
+        for col, stats in numeric_summary.items()
+        if semantic_types.get(col) != "identifier"
+    }
+
     return {
         "row_count": len(df),
+        "source_row_count": total_rows,
+        "sampled": len(df) < total_rows,
         "columns": list(df.columns),
-        "numeric_summary": numeric_stats(df, fast_mode=fast_mode),
+        "semantic_types": semantic_types,
+        "identifier_columns": identifier_columns,
+        "numeric_summary": numeric_summary,
+        "numeric_measure_summary": numeric_measure_summary,
         "null_ratios": null_ratios(df),
         "duplicate_columns": duplicate_stats(df, fast_mode=fast_mode),
         "duplicate_rows": duplicate_rows(df, fast_mode=fast_mode),

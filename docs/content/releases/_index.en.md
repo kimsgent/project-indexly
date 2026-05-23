@@ -9,34 +9,32 @@ weight: 10
 
 _Retention policy: latest release + 5 previous releases are shown here. Older releases are moved to Archive._
 
-## Latest Release: v2.1.1 (2026-05-16)
+## Latest Release: v2.1.2 (2026-05-23)
 
 ### Changes
-- feat(backup): add local backup verification and dry-run restore workflows
-- fix(backup): harden restore safety checks, incremental base selection, temp-root registry handling, and cryptography dependency coverage
-- feat(observers): stabilize the semantic observer pipeline and snapshot persistence
-- fix(observers): fall back gracefully when home paths are unwritable
-- fix(compare): harden file and folder comparison workflows
-- fix(organize): stabilize lister root handling, cache fallback behavior, organizer execution, and profile-specific flags
-- fix(rename): reserve implicit collision counters, avoid duplicate date prefixes, and harden database sync with organizer handoff
-- fix(metadata): handle BMP image metadata extraction
-- docs(organize): document lister cache and fallback behavior
-- perf(organize): group lister extension sorting for more predictable scans
-- chore(release): promote package metadata from 2.1.1b to 2.1.1
+- fix(csv): harden CSV analysis semantics, delimiter detection, date parsing, and pipeline metadata propagation
+- fix(json): harden JSON, NDJSON, Socrata-style JSON, gzip loading, and mixed identifier preservation
+- fix(sqlite): harden SQLite analysis sampling, export parsing, schema rendering, and summary persistence
+- fix(indexing): ignore Office lock files during indexing
+- fix(deps): align analysis dependency coverage for CI, dev, and package extras
+- fix(docs): resolve npm audit advisories and preserve markdown links in docs alert cards
+- chore(brew): add Homebrew tap update helper
+- docs: update CSV, JSON, SQLite, configuration, runtime, and AutoDoctor guidance
+- chore(release): prepare package metadata for v2.1.2
 - breaking: none
 
 ---
 
 ## Recent Previous Releases
 
+- [Release v2.1.1](/releases/v2.1.1/) (2026-05-16)
 - [Release v2.1.0](/releases/v2.1.0/) (2026-05-09)
 - [Release v2.0.2](/releases/v2.0.2/) (2026-04-18)
 - [Release v2.0.1](/releases/v2.0.1/) (2026-04-05)
 - [Release v2.0.0](/releases/v2.0.0/) (2026-04-05)
-- [Release v1.2.4](/releases/v1.2.4/) (2026-03-28)
 
 ---
 
 ## Older Releases
 
-- 31 older releases moved to [Archive](/releases/Archive/).
+- 32 older releases moved to [Archive](/releases/Archive/).

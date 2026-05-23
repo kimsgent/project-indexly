@@ -478,6 +478,7 @@ def handle_ignore_init(args):
             ".cache/\n"
             "__pycache__/\n"
             "*.tmp\n"
+            "~$*\n"
             "*.log\n"
         )
 

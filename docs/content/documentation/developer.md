@@ -2,7 +2,7 @@
 title: "Indexly Developer Guide"
 slug: "developer-guide"
 icon: "mdi:code-braces"
-weight: 5
+weight: 220
 date: 2026-04-01
 lastmod: 2026-05-09
 summary: "Production-grade developer guide for Indexly: architecture, dependency policy, local setup, testing, packaging, and contribution workflow."
@@ -50,14 +50,14 @@ Indexly is maintained with these priorities:
 
 ## Local Setup
 
-{{< alert title="Platform Setup Notes" color="info" >}}
+{{% alert title="Platform Setup Notes" color="info" %}}
 If you want the maintained contributor workstation flow, start with:
 
 - [Windows Development Environment Setup](windows-terminal-setup.md) for the maintained Windows workflow
 - [Linux Development Environment Setup](linux-development-environment.md) for the maintained Ubuntu/Linux workflow
 
 This page focuses on repo-local development once your shell and workstation are ready.
-{{< /alert >}}
+{{% /alert %}}
 
 Clone and create a virtual environment:
 

@@ -12,7 +12,7 @@ keywords:
   - automatic file organization
   - cli file organizer
   - indexly organizer
-weight: 10
+weight: 90
 ---
 
 

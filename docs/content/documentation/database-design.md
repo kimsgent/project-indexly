@@ -1,6 +1,6 @@
 ---
 title: "Database Design"
-weight: 20
+weight: 190
 type: docs
 lastmod: "2026-05-09"
 ---

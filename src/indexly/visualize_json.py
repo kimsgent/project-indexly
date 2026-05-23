@@ -6,7 +6,6 @@ from rich.tree import Tree
 from rich.console import Console
 from rich.table import Table
 
-
 console = Console()
 
 
@@ -84,18 +83,32 @@ def summarize_json_dataframe(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     return numeric_stats, non_numeric_summary
 
 
-
-def build_json_table_output(df: pd.DataFrame, dt_summary: dict = None, max_rows: int = 1000, max_cols: int = 50) -> dict:
+def build_json_table_output(
+    df: pd.DataFrame,
+    dt_summary: dict = None,
+    max_rows: int = 1000,
+    max_cols: int = 50,
+    render: bool = True,
+) -> dict:
     """Build JSON table output safely, with sampling for large DataFrames."""
-    
+    total_rows, total_cols = df.shape
+    sampled_rows = total_rows > max_rows
+    sampled_cols = total_cols > max_cols
+
     # Limit columns for analysis to avoid huge tables
-    if df.shape[1] > max_cols:
-        console.print(f"[yellow]⚠️ Limiting analysis to first {max_cols} columns of {df.shape[1]}[/yellow]")
+    if sampled_cols:
+        if render:
+            console.print(
+                f"[yellow]⚠️ Limiting analysis to first {max_cols} columns of {total_cols}[/yellow]"
+            )
         df = df.iloc[:, :max_cols]
 
     # Sample rows if too large
-    if df.shape[0] > max_rows:
-        console.print(f"[yellow]⚠️ Sampling {max_rows} rows from {df.shape[0]} total[/yellow]")
+    if sampled_rows:
+        if render:
+            console.print(
+                f"[yellow]⚠️ Sampling {max_rows} rows from {total_rows} total[/yellow]"
+            )
         df_sample = df.sample(n=max_rows, random_state=1)
     else:
         df_sample = df
@@ -125,10 +138,22 @@ def build_json_table_output(df: pd.DataFrame, dt_summary: dict = None, max_rows:
     table_output = {
         "numeric_summary": numeric_summary,
         "non_numeric_summary": non_numeric_summary,
-        "rows": len(df),
-        "cols": len(df.columns),
+        "rows": total_rows,
+        "cols": total_cols,
         "datetime_summary": dt_summary,
+        "summary_meta": {
+            "sampled": sampled_rows or sampled_cols,
+            "sampled_rows": sampled_rows,
+            "sampled_columns": sampled_cols,
+            "summary_rows": len(df_sample),
+            "summary_columns": len(df_sample.columns),
+            "total_rows": total_rows,
+            "total_columns": total_cols,
+        },
     }
+
+    if not render:
+        return table_output
 
     # Console print safely
     console.print("\n📊 [bold cyan]Numeric Summary Statistics[/bold cyan]")
@@ -158,7 +183,6 @@ def build_json_table_output(df: pd.DataFrame, dt_summary: dict = None, max_rows:
                 console.print(f"- {col}: [red]Could not display summary[/red]")
 
     return table_output
-
 
 
 # -------------------------------------------------------

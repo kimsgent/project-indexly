@@ -2,7 +2,7 @@
 title: "Backup & Restore"
 description: "Incremental, encrypted backups with automatic scheduling and reliable restore chains in Indexly."
 slug: "backup-restore"
-weight: 30
+weight: 160
 lastmod: "2026-05-13"
 type: docs
 draft: false

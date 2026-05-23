@@ -11,7 +11,7 @@ keywords:
   - Indexly semantic filtering
   - document search accuracy
 slug: "semantic-indexing-overview"
-weight: 20
+weight: 60
 images:
   - "images/indexly-semantic-overview.png"
 categories:
