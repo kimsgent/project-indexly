@@ -37,11 +37,15 @@ def run_ttest(
         }
     )
 
+    selected_route = route
+
     # 🔁 Automatic rerouting
     if auto_route:
         if route == "mannwhitney":
             result = run_mannwhitney(df, value_col, group_col)
             result.metadata["auto_rerouted_from"] = "independent_ttest"
+            result.metadata["route_selected"] = "mannwhitney"
+            result.metadata["recommended_route"] = route
             return result
 
         elif route == "welch":
@@ -50,6 +54,7 @@ def run_ttest(
             stat, p = ttest_ind(g1, g2, equal_var=True)
     else:
         stat, p = ttest_ind(g1, g2, equal_var=homogeneity["equal_variance"])
+        selected_route = "ttest" if homogeneity["equal_variance"] else "welch"
 
     d = cohens_d_independent(g1, g2)
     if use_bootstrap:
@@ -78,7 +83,9 @@ def run_ttest(
             "power": power,
             "mean1": float(np.mean(g1)),
             "mean2": float(np.mean(g2)),
-            "route_selected": route,
+            "route_selected": selected_route,
+            "recommended_route": route,
+            "auto_route": auto_route,
             "bootstrap_used": use_bootstrap,
         },
     )

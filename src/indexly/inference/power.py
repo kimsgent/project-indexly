@@ -1,5 +1,4 @@
-from statsmodels.stats.power import TTestIndPower, FTestAnovaPower
-from scipy.stats import f
+from statsmodels.stats.power import TTestIndPower, FTestAnovaPower, FTestPowerF2
 import numpy as np
 
 
@@ -31,23 +30,20 @@ def power_ols(f2, k, n, alpha=0.05):
     - df2 = n - k - 1 (denominator degrees of freedom)
     - This is an approximate analytical computation.
     """
-    # Numerator degrees of freedom (number of predictors)
-    df1 = k
+    if k < 1:
+        return np.nan
 
-    # Denominator degrees of freedom (residual df)
-    df2 = n - k - 1
+    df_denom = n - k - 1
+    if df_denom <= 0:
+        return np.nan
 
-    # Critical F value under H0 at given alpha
-    f_crit = f.ppf(1 - alpha, df1, df2)
-
-    # Non-centrality parameter (lambda) for OLS F-test
-    # lambda = f² * df2
-    f_noncentral = f2 * df2
-
-    # Power = P(F > F_crit | noncentral F)
-    power = 1 - f.cdf(f_crit, df1, df2, f_noncentral)
-
-    return power
+    analysis = FTestPowerF2()
+    return analysis.power(
+        effect_size=f2,
+        df_num=k,
+        df_denom=df_denom,
+        alpha=alpha,
+    )
 
 
 def power_ttest(effect_size, n1, n2, alpha=0.05):
@@ -115,3 +111,14 @@ def power_anova(effect_size, k_groups, n_total, alpha=0.05):
     )
 
     return power
+
+
+def eta_squared_to_cohen_f(eta2: float) -> float:
+    """
+    Convert eta-squared to Cohen's f for ANOVA power analysis.
+    """
+    if eta2 is None or eta2 < 0:
+        return np.nan
+    if eta2 >= 1:
+        return float("inf")
+    return np.sqrt(eta2 / (1 - eta2))
