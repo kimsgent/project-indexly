@@ -79,7 +79,7 @@ The SQLite database remains the metadata layer. Large tabular payloads should us
 
 ## Analytical Backends
 
-`infer-csv` keeps SQLite as the catalog and Parquet as the analytical payload store. The inference engine still receives a pandas DataFrame, but multi-file joins can be executed through a backend first:
+`infer-csv` keeps SQLite as the catalog and Parquet as the analytical payload store. The inference engine still receives a pandas DataFrame, but multi-file joins can be executed through a backend first. This routing is shared by both statistical tests and `--boxplot`, so boxplot mode reuses the same routed/projection-aware DataFrame instead of reloading datasets separately.
 
 - `auto` uses DuckDB for registered Parquet artifacts when DuckDB is installed and all joined inputs have artifacts.
 - `pandas` forces the existing pandas/PyArrow behavior.
@@ -104,7 +104,7 @@ indexly infer-csv asteps.csv sleepday.csv \
   --analysis-backend auto
 ```
 
-If Parquet artifacts are unavailable, Indexly falls back to materialized pandas DataFrames from the resolver. Legacy `cleaned_data` JSON remains supported for older saved analyses.
+If Parquet artifacts are unavailable, Indexly falls back to materialized pandas DataFrames from the resolver. Legacy `cleaned_data` JSON remains supported for older saved analyses. Using `--analysis-backend duckdb` requires both DuckDB and registered Parquet artifacts for all joined inputs.
 
 ## Artifact Freshness
 
