@@ -112,6 +112,29 @@ def test_ols_single_predictor_vif_and_robust_ci_are_valid():
     assert np.allclose(reported_ci, robust.conf_int()[1])
 
 
+def test_ols_converts_autoclean_datetime_predictor_to_numeric_epoch():
+    df = pd.DataFrame(
+        {
+            "time": pd.date_range("2026-01-01", periods=24, freq="h", tz="UTC"),
+            "avg_totalsteps": np.linspace(1000, 5000, 24),
+        }
+    )
+    df["total_daily_activity"] = (
+        10 + np.arange(len(df)) * 0.25 + df["avg_totalsteps"] * 0.01
+    )
+
+    result = run_ols(
+        df,
+        "total_daily_activity",
+        ["time", "avg_totalsteps"],
+        interaction_terms=["time", "avg_totalsteps"],
+        auto_route=False,
+    )
+
+    assert result.test_name == "ols_regression"
+    assert result.metadata["datetime_predictors_converted"] == ["time"]
+
+
 def test_mixed_effects_dispatcher_builds_formula_from_cli_style_args():
     df = pd.DataFrame(
         {
