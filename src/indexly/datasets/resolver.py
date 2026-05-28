@@ -36,17 +36,16 @@ def resolve_dataset(
     columns = _dedupe(columns)
     required_columns = _dedupe(required_columns)
     version = "raw" if use_raw else "cleaned"
+    path = Path(identifier).expanduser()
 
     conn = _get_db_connection()
     try:
         record = get_dataset_by_name(conn, identifier)
         if record:
-            df, warnings = _load_catalog_record(
+            df, warnings, resolution = _load_catalog_record(
                 conn, record, version, columns, required_columns, ignore_hash
             )
-            return ResolvedDataset(
-                identifier, "dataset_registry.name", df, record, tuple(warnings)
-            )
+            return ResolvedDataset(identifier, resolution, df, record, tuple(warnings))
 
         file_name = os.path.basename(identifier)
         legacy_row = conn.execute(
@@ -56,29 +55,37 @@ def resolve_dataset(
         if legacy_row:
             df = _load_legacy_row(legacy_row, use_cleaned=use_cleaned, use_raw=use_raw)
             df = _select_existing_columns(df, columns)
-            return ResolvedDataset(identifier, "cleaned_data.file_name", df, None)
+            return ResolvedDataset(identifier, _legacy_resolution(version), df, None)
 
         record = get_dataset_by_file_name(conn, file_name)
         if record:
-            df, warnings = _load_catalog_record(
-                conn, record, version, columns, required_columns, ignore_hash
+            resolved = _try_load_catalog_or_existing_csv(
+                conn,
+                identifier=identifier,
+                path=path,
+                record=record,
+                version=version,
+                columns=columns,
+                required_columns=required_columns,
+                ignore_hash=ignore_hash,
             )
-            return ResolvedDataset(
-                identifier, "dataset_registry.file_name", df, record, tuple(warnings)
-            )
+            if resolved:
+                return resolved
 
         source_record = get_dataset_by_source_path(conn, identifier)
         if source_record:
-            df, warnings = _load_catalog_record(
-                conn, source_record, version, columns, required_columns, ignore_hash
+            resolved = _try_load_catalog_or_existing_csv(
+                conn,
+                identifier=identifier,
+                path=path,
+                record=source_record,
+                version=version,
+                columns=columns,
+                required_columns=required_columns,
+                ignore_hash=ignore_hash,
             )
-            return ResolvedDataset(
-                identifier,
-                "dataset_registry.source_path",
-                df,
-                source_record,
-                tuple(warnings),
-            )
+            if resolved:
+                return resolved
 
         legacy_source = _find_legacy_source_row(conn, identifier)
         if legacy_source:
@@ -88,12 +95,11 @@ def resolve_dataset(
                 use_raw=use_raw,
             )
             df = _select_existing_columns(df, columns)
-            return ResolvedDataset(identifier, "cleaned_data.source_path", df, None)
+            return ResolvedDataset(identifier, _legacy_resolution(version), df, None)
 
     finally:
         conn.close()
 
-    path = Path(identifier).expanduser()
     if path.exists() and path.is_file():
         if path.suffix.lower() == ".csv":
             df = _load_ephemeral_csv(path, columns)
@@ -113,7 +119,7 @@ def _load_catalog_record(
     columns: list[str] | None,
     required_columns: list[str] | None,
     ignore_hash: bool,
-) -> tuple[pd.DataFrame, list[str]]:
+) -> tuple[pd.DataFrame, list[str], str]:
     warnings = []
     artifact_path = (
         record.raw_artifact_path if version == "raw" else record.cleaned_artifact_path
@@ -137,7 +143,11 @@ def _load_catalog_record(
             required_columns=required_columns,
             dataset_name=record.dataset_name,
         )
-        return read_artifact(artifact_path, columns=read_columns), warnings
+        return (
+            read_artifact(artifact_path, columns=read_columns),
+            warnings,
+            f"dataset_registry.{version}_artifact",
+        )
 
     if columns and record.id is not None:
         available = _artifact_columns(conn, record, version)
@@ -163,12 +173,47 @@ def _load_catalog_record(
             use_cleaned=(version == "cleaned"),
             use_raw=(version == "raw"),
         )
-        return _select_existing_columns(df, columns), warnings
+        return (
+            _select_existing_columns(df, columns),
+            warnings,
+            _legacy_resolution(version),
+        )
 
     raise DatasetResolutionError(
         f"Dataset '{record.dataset_name}' is registered, but no {version} artifact "
         "or legacy JSON payload is available."
     )
+
+
+def _try_load_catalog_or_existing_csv(
+    conn,
+    *,
+    identifier: str,
+    path: Path,
+    record: DatasetRecord,
+    version: str,
+    columns: list[str] | None,
+    required_columns: list[str] | None,
+    ignore_hash: bool,
+) -> ResolvedDataset | None:
+    try:
+        df, warnings, resolution = _load_catalog_record(
+            conn, record, version, columns, required_columns, ignore_hash
+        )
+        return ResolvedDataset(identifier, resolution, df, record, tuple(warnings))
+    except DatasetResolutionError as exc:
+        if "no " not in str(exc) or "artifact or legacy JSON payload" not in str(exc):
+            raise
+        if not path.exists() or not path.is_file() or path.suffix.lower() != ".csv":
+            raise
+        df = _load_ephemeral_csv(path, columns)
+        return ResolvedDataset(identifier, "ephemeral.csv", df, None)
+
+
+def _legacy_resolution(version: str) -> str:
+    if version == "raw":
+        return "cleaned_data.raw_data_json"
+    return "cleaned_data.cleaned_data_json"
 
 
 def _artifact_columns(conn, record: DatasetRecord, version: str) -> list[str]:

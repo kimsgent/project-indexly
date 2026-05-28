@@ -78,6 +78,11 @@ def _selected_columns(args, merge_keys: list[str]) -> list[str]:
         columns.append(args.group)
     if getattr(args, "interaction", None):
         columns.extend(args.interaction)
+    if getattr(args, "x_col", None):
+        columns.append(args.x_col)
+    if getattr(args, "y_col", None):
+        y_cols = args.y_col if isinstance(args.y_col, list) else [args.y_col]
+        columns.extend(y_cols)
     return list(dict.fromkeys(column for column in columns if column))
 
 
