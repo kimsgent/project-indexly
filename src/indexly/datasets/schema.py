@@ -24,9 +24,12 @@ class DatasetRecord:
 class ResolvedDataset:
     identifier: str
     resolution: str
-    df: Any
+    df: Any | None
     record: DatasetRecord | None = None
     warnings: tuple[str, ...] = ()
+    artifact_path: str | None = None
+    artifact_version: str | None = None
+    selected_columns: tuple[str, ...] = ()
 
     @property
     def label(self) -> str:
@@ -36,11 +39,21 @@ class ResolvedDataset:
 
     @property
     def row_count(self) -> int:
-        return len(self.df)
+        if self.df is not None:
+            return len(self.df)
+        if self.record and self.record.row_count is not None:
+            return self.record.row_count
+        return 0
 
     @property
     def col_count(self) -> int:
-        return len(self.df.columns)
+        if self.df is not None:
+            return len(self.df.columns)
+        if self.selected_columns:
+            return len(self.selected_columns)
+        if self.record and self.record.col_count is not None:
+            return self.record.col_count
+        return 0
 
 
 class DatasetResolutionError(ValueError):

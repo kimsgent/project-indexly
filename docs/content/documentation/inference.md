@@ -76,6 +76,35 @@ The catalog tracks dataset name, file name, source path, source hash, row and co
 
 The SQLite database remains the metadata layer. Large tabular payloads should use columnar artifacts when available, while legacy JSON remains the fallback path.
 
+## Analytical Backends
+
+`infer-csv` keeps SQLite as the catalog and Parquet as the analytical payload store. The inference engine still receives a pandas DataFrame, but multi-file joins can be executed through a backend first:
+
+- `auto` uses DuckDB for registered Parquet artifacts when DuckDB is installed and all joined inputs have artifacts.
+- `pandas` forces the existing pandas/PyArrow behavior.
+- `duckdb` requires DuckDB and registered Parquet artifacts, and gives an actionable error if either is missing.
+
+DuckDB is optional and loaded lazily. Install it only when you want accelerated Parquet-backed joins:
+
+```bash
+pip install duckdb
+```
+
+Select a backend explicitly with:
+
+```bash
+indexly infer-csv asteps.csv sleepday.csv \
+  --boxplot \
+  --x-col avg_daily_steps \
+  --y-col TotalMinutesAsleep \
+  --merge-on Id \
+  --merge-how inner \
+  --agg mean \
+  --analysis-backend auto
+```
+
+If Parquet artifacts are unavailable, Indexly falls back to materialized pandas DataFrames from the resolver. Legacy `cleaned_data` JSON remains supported for older saved analyses.
+
 ## Artifact Freshness
 
 When a registered analytical artifact has a source hash and the source CSV still exists, `infer-csv` checks whether the file changed after registration. If the hash changed, Indexly asks you to refresh the artifact:
@@ -111,10 +140,13 @@ indexly infer-csv a.csv b.csv --merge-on Id Date --test correlation --x steps --
 Before inference, Indexly reports:
 
 - input datasets and resolution path
+- source backend used
+- artifact paths when applicable
 - original row counts
 - join keys
 - join cardinality
 - duplicate-key status
+- estimated joined row count when feasible
 - merged row count
 - selected inference columns
 

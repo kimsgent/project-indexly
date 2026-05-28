@@ -756,6 +756,15 @@ def build_parser():
             "Without this flag, stale artifacts ask you to rerun analyze-csv."
         ),
     )
+    infer_parser.add_argument(
+        "--analysis-backend",
+        choices=["auto", "pandas", "duckdb"],
+        default="auto",
+        help=(
+            "Analytical backend for multi-file joins. auto uses DuckDB for "
+            "registered Parquet artifacts when installed, otherwise pandas."
+        ),
+    )
 
     # -------------------------
     # Column selection

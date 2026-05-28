@@ -340,6 +340,78 @@ def test_router_prunes_multi_file_columns_for_available_artifact_columns(
     assert "right_unused" not in routed.df.columns
 
 
+def test_router_pandas_backend_loads_projected_parquet_artifacts_after_resolution(
+    tmp_path, monkeypatch
+):
+    configure_analysis_home(tmp_path, monkeypatch)
+    left_source = tmp_path / "left.csv"
+    right_source = tmp_path / "right.csv"
+    left_source.write_text("id,x,left_unused\n1,10,999\n2,20,888\n", encoding="utf-8")
+    right_source.write_text(
+        "id,y,right_unused\n1,100,aaa\n2,200,bbb\n", encoding="utf-8"
+    )
+
+    from indexly.analyze_utils import save_analysis_result
+    from indexly.datasets import backend as backend_module
+    from indexly.inference.dataset_router import route_inference_datasets
+
+    save_analysis_result(
+        file_path=str(left_source),
+        file_type="csv",
+        sample_data=pd.DataFrame({"id": [1], "x": [10], "left_unused": [999]}),
+        cleaned_df=pd.DataFrame(
+            {"id": [1, 2], "x": [10, 20], "left_unused": [999, 888]}
+        ),
+        row_count=2,
+        col_count=3,
+    )
+    save_analysis_result(
+        file_path=str(right_source),
+        file_type="csv",
+        sample_data=pd.DataFrame({"id": [1], "y": [100], "right_unused": ["aaa"]}),
+        cleaned_df=pd.DataFrame(
+            {"id": [1, 2], "y": [100, 200], "right_unused": ["aaa", "bbb"]}
+        ),
+        row_count=2,
+        col_count=3,
+    )
+
+    original_read_artifact = backend_module.read_artifact
+    artifact_reads = []
+
+    def spy_read_artifact(path, columns=None):
+        artifact_reads.append(list(columns or []))
+        return original_read_artifact(path, columns=columns)
+
+    monkeypatch.setattr(backend_module, "read_artifact", spy_read_artifact)
+    monkeypatch.setattr(
+        "indexly.datasets.resolver._load_legacy_row",
+        lambda *args, **kwargs: pytest.fail("legacy JSON should not be loaded"),
+    )
+
+    routed = route_inference_datasets(
+        SimpleNamespace(
+            files=["left", "right"],
+            merge_on=["id"],
+            use_raw=False,
+            x=["x"],
+            y="y",
+            group=None,
+            interaction=None,
+            ignore_hash=False,
+            merge_how="inner",
+            agg="none",
+            analysis_backend="pandas",
+        )
+    )
+
+    assert artifact_reads == [["id", "x"], ["id", "y"]]
+    assert list(routed.datasets[0].df.columns) == ["id", "x"]
+    assert list(routed.datasets[1].df.columns) == ["id", "y"]
+    assert list(routed.df.columns) == ["id", "x", "y"]
+    assert routed.merge_metadata["source_backend"] == "pandas"
+
+
 def test_router_includes_boxplot_columns_for_multi_file_artifact_loading(
     tmp_path, monkeypatch
 ):

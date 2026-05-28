@@ -6,10 +6,13 @@ import pandas as pd
 from rich.console import Console
 from rich.table import Table
 
+from indexly.datasets.backend import (
+    AnalysisBackendName,
+    JoinSafetyError,
+    select_backend,
+)
 from indexly.datasets.resolver import resolve_dataset
 from indexly.datasets.schema import ResolvedDataset
-
-from .merge_engine import merge_dataframes
 
 console = Console()
 
@@ -27,6 +30,7 @@ def route_inference_datasets(args) -> RoutedInferenceDataset:
     merge_keys = _merge_keys(getattr(args, "merge_on", None))
     selected_columns = _selected_columns(args, merge_keys)
     files = getattr(args, "files", [])
+    materialize = len(files) == 1
     required_columns = selected_columns if len(files) == 1 else merge_keys
 
     resolved = [
@@ -37,6 +41,7 @@ def route_inference_datasets(args) -> RoutedInferenceDataset:
             columns=selected_columns,
             required_columns=required_columns,
             ignore_hash=getattr(args, "ignore_hash", False),
+            materialize=materialize,
         )
         for identifier in files
     ]
@@ -53,12 +58,24 @@ def route_inference_datasets(args) -> RoutedInferenceDataset:
     if not merge_keys:
         raise ValueError("--merge-on is required when multiple files are provided.")
 
-    merged, merge_metadata = merge_dataframes(
-        dfs=[dataset.df for dataset in resolved],
-        merge_on=merge_keys,
-        how=getattr(args, "merge_how", "inner"),
-        agg=getattr(args, "agg", "none"),
+    backend = select_backend(
+        _analysis_backend(getattr(args, "analysis_backend", "auto")),
+        resolved,
     )
+    try:
+        result = backend.join(
+            datasets=resolved,
+            merge_on=merge_keys,
+            how=getattr(args, "merge_how", "inner"),
+            agg=getattr(args, "agg", "none"),
+            selected_columns=selected_columns,
+        )
+    except JoinSafetyError as exc:
+        _print_merge_diagnostics(resolved, exc.metadata, selected_columns)
+        raise ValueError(str(exc)) from exc
+    merged = result.df
+    resolved = result.datasets or resolved
+    merge_metadata = result.metadata
     _print_merge_diagnostics(resolved, merge_metadata, selected_columns)
     return RoutedInferenceDataset(
         df=merged,
@@ -94,6 +111,12 @@ def _merge_keys(value) -> list[str]:
     return list(value)
 
 
+def _analysis_backend(value: str) -> AnalysisBackendName:
+    if value in {"auto", "pandas", "duckdb"}:
+        return value
+    raise ValueError("--analysis-backend must be one of: auto, pandas, duckdb.")
+
+
 def _print_single_dataset_diagnostics(
     dataset: ResolvedDataset, selected_columns: list[str]
 ) -> None:
@@ -124,14 +147,19 @@ def _print_merge_diagnostics(
     table = Table(title="Merge Diagnostics", show_header=True, header_style="bold cyan")
     table.add_column("Input")
     table.add_column("Resolved via")
+    table.add_column("Backend")
+    table.add_column("Artifact")
     table.add_column("Rows")
     table.add_column("Duplicate keys")
 
     duplicate_flags = metadata.get("duplicate_keys_detected", [])
+    artifacts = metadata.get("artifact_paths", [])
     for index, dataset in enumerate(datasets):
         table.add_row(
             dataset.identifier,
             dataset.resolution,
+            metadata.get("source_backend", "pandas"),
+            artifacts[index] if index < len(artifacts) and artifacts[index] else "-",
             str(metadata.get("original_row_counts", [dataset.row_count])[index]),
             "yes" if duplicate_flags[index] else "no",
         )
@@ -142,6 +170,11 @@ def _print_merge_diagnostics(
         f"[dim]Join type: {metadata.get('join_cardinality', 'unknown')}[/dim]"
     )
     console.print(f"[dim]Merged rows: {metadata.get('merged_row_count', 0)}[/dim]")
+    if metadata.get("estimated_joined_row_count") is not None:
+        console.print(
+            "[dim]Estimated joined rows: "
+            f"{metadata.get('estimated_joined_row_count')}[/dim]"
+        )
     console.print(
         f"[dim]Aggregation mode: {metadata.get('aggregation_mode', 'none')}[/dim]"
     )
