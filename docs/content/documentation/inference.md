@@ -84,7 +84,7 @@ The SQLite database remains the metadata layer. Large tabular payloads should us
 - `pandas` forces the existing pandas/PyArrow behavior.
 - `duckdb` requires DuckDB and registered Parquet artifacts, and gives an actionable error if either is missing.
 
-DuckDB is optional and loaded lazily. Install it only when you want accelerated Parquet-backed joins:
+DuckDB is optional and loaded lazily. It is not installed by the standard `analysis` extra, and Indexly uses it as an in-memory query engine rather than creating a persistent DuckDB database. Install it only when you want accelerated Parquet-backed joins:
 
 ```bash
 pip install duckdb
