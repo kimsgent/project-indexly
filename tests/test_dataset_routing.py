@@ -233,6 +233,40 @@ def test_resolver_reads_only_requested_artifact_columns(tmp_path, monkeypatch):
     assert list(resolved.df.columns) == ["id", "value"]
 
 
+def test_resolver_prefers_catalog_artifact_over_legacy_file_name_for_csv_identifier(
+    tmp_path, monkeypatch
+):
+    configure_analysis_home(tmp_path, monkeypatch)
+    source = tmp_path / "wide.csv"
+    source.write_text("id,value,unused\n1,10,999\n2,20,888\n", encoding="utf-8")
+
+    from indexly.analyze_utils import save_analysis_result
+    from indexly.datasets.resolver import resolve_dataset
+
+    save_analysis_result(
+        file_path=str(source),
+        file_type="csv",
+        sample_data=pd.DataFrame({"id": [1], "value": [10], "unused": [999]}),
+        cleaned_df=pd.DataFrame(
+            {"id": [1, 2], "value": [10, 20], "unused": [999, 888]}
+        ),
+        row_count=2,
+        col_count=3,
+    )
+
+    resolved = resolve_dataset(
+        "wide.csv",
+        columns=["id", "value"],
+        required_columns=["id"],
+        materialize=False,
+    )
+
+    assert resolved.resolution == "dataset_registry.cleaned_artifact"
+    assert resolved.artifact_path
+    assert resolved.df is None
+    assert resolved.selected_columns == ("id", "value")
+
+
 def test_stale_artifact_requires_refresh_unless_hash_is_ignored(tmp_path, monkeypatch):
     configure_analysis_home(tmp_path, monkeypatch)
     source = tmp_path / "stale.csv"

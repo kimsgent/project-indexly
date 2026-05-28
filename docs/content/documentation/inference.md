@@ -54,9 +54,10 @@ indexly infer-csv steps --test ci-mean --y total_daily_activity
 `infer-csv` resolves each input through a routing layer before statistics run:
 
 1. Registered dataset name in the analytical catalog.
-2. Exact `cleaned_data.file_name` for legacy compatibility.
-3. Registered or legacy `source_path`.
-4. Existing CSV file path loaded ephemerally for the current command.
+2. Registered file name in the analytical catalog.
+3. Exact `cleaned_data.file_name` for legacy compatibility.
+4. Registered or legacy `source_path`.
+5. Existing CSV file path loaded ephemerally for the current command.
 
 Passing an existing CSV path does not register or persist it. To make it reusable by name, run `analyze-csv` first.
 

@@ -66,15 +66,6 @@ def resolve_dataset(
             )
 
         file_name = os.path.basename(identifier)
-        legacy_row = conn.execute(
-            "SELECT * FROM cleaned_data WHERE file_name = ?",
-            (identifier,),
-        ).fetchone()
-        if legacy_row:
-            df = _load_legacy_row(legacy_row, use_cleaned=use_cleaned, use_raw=use_raw)
-            df = _select_existing_columns(df, columns)
-            return ResolvedDataset(identifier, _legacy_resolution(version), df, None)
-
         record = get_dataset_by_file_name(conn, file_name)
         if record:
             resolved = _try_load_catalog_or_existing_csv(
@@ -90,6 +81,15 @@ def resolve_dataset(
             )
             if resolved:
                 return resolved
+
+        legacy_row = conn.execute(
+            "SELECT * FROM cleaned_data WHERE file_name = ?",
+            (identifier,),
+        ).fetchone()
+        if legacy_row:
+            df = _load_legacy_row(legacy_row, use_cleaned=use_cleaned, use_raw=use_raw)
+            df = _select_existing_columns(df, columns)
+            return ResolvedDataset(identifier, _legacy_resolution(version), df, None)
 
         source_record = get_dataset_by_source_path(conn, identifier)
         if source_record:
