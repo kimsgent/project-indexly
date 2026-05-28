@@ -12,12 +12,12 @@ from rich.table import Table
 from .csv_analyzer import detect_delimiter
 from .db_utils import _migrate_cleaned_data_schema, _get_db_connection
 from .csv_analyzer import _json_safe
+from .datasets.registry import register_analysis_dataset
 from datetime import datetime, date
 from .universal_loader import _safe_read_json_text
 
 
 from .db_utils import _get_db_connection
-
 
 console = Console()
 
@@ -27,7 +27,6 @@ import gzip
 from rich.console import Console
 
 console = Console()
-
 
 
 def validate_json_content(file_path: Path) -> bool:
@@ -187,6 +186,7 @@ def save_analysis_result(
     row_count: int | None = None,
     col_count: int | None = None,
     raw_df: pd.DataFrame | None = None,
+    cleaned_df: pd.DataFrame | None = None,
 ) -> None:
     """
     Robust unified persistence:
@@ -312,6 +312,18 @@ def save_analysis_result(
         )
 
         conn.commit()
+        register_analysis_dataset(
+            conn,
+            file_path=file_path,
+            file_type=file_type,
+            cleaned_df=(
+                cleaned_df
+                if isinstance(cleaned_df, pd.DataFrame)
+                else sample_data if isinstance(sample_data, pd.DataFrame) else None
+            ),
+            raw_df=raw_df if isinstance(raw_df, pd.DataFrame) else None,
+            metadata=metadata_json if isinstance(metadata_json, dict) else {},
+        )
         conn.close()
 
         console.print(

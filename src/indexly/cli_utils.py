@@ -723,7 +723,8 @@ def build_parser():
 
     infer_parser.add_argument(
         "--merge-on",
-        help="Column name to merge multiple datasets on (required if multiple files).",
+        nargs="+",
+        help="Column name(s) to merge multiple datasets on (required if multiple files).",
     )
 
     infer_parser.add_argument(

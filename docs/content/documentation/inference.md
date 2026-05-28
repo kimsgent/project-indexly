@@ -1,0 +1,115 @@
+---
+title: "CSV Inference"
+linkTitle: "Inference"
+description: "Run statistical inference over persisted or path-based CSV datasets with explicit dataset resolution and merge diagnostics."
+slug: inference
+type: docs
+weight: 112
+keywords:
+  - indexly infer-csv
+  - csv inference
+  - dataset registry
+  - analytical storage
+  - merge diagnostics
+tags:
+  - csv
+  - inference
+  - analysis
+author: "N. K. Franklin-Gent"
+date: 2026-05-28
+lastmod: 2026-05-28
+draft: false
+toc: true
+categories:
+  - Documentation
+  - Data Analysis
+canonicalURL: "/en/documentation/inference/"
+summary: "Use `indexly infer-csv` for statistical tests over analyzed CSV datasets, legacy cleaned data, or existing CSV paths."
+params:
+  summary: "Resolver and merge behavior for CSV inference."
+---
+
+## Quick Start
+
+Persist a CSV analysis first:
+
+```bash
+indexly analyze-csv steps.csv --auto-clean --show-summary
+```
+
+Then run inference by the persisted file name:
+
+```bash
+indexly infer-csv steps.csv --test ols --y total_daily_activity --x time avg_totalsteps
+```
+
+You can also resolve a registered dataset by catalog name:
+
+```bash
+indexly infer-csv steps --test ci-mean --y total_daily_activity
+```
+
+## Dataset Resolution Order
+
+`infer-csv` resolves each input through a routing layer before statistics run:
+
+1. Registered dataset name in the analytical catalog.
+2. Exact `cleaned_data.file_name` for legacy compatibility.
+3. Registered or legacy `source_path`.
+4. Existing CSV file path loaded ephemerally for the current command.
+
+Passing an existing CSV path does not register or persist it. To make it reusable by name, run `analyze-csv` first.
+
+## Analytical Catalog
+
+Indexly keeps the legacy `cleaned_data` table readable and adds a dataset catalog in the same analysis database:
+
+```text
+~/.indexly/indexly.db
+```
+
+The catalog tracks dataset name, file name, source path, source hash, row and column counts, column types, artifact paths, and update timestamps. When Parquet support is available, CSV analysis also writes cleaned and raw analytical artifacts under:
+
+```text
+~/.indexly/datasets/
+```
+
+The SQLite database remains the metadata layer. Large tabular payloads should use columnar artifacts when available, while legacy JSON remains the fallback path.
+
+## Multi-Dataset Inference
+
+Multiple datasets require explicit merge keys:
+
+```bash
+indexly infer-csv activity.csv sleepday.csv \
+  --merge-on Id \
+  --test ols \
+  --y TotalMinutesAsleep \
+  --x TotalSteps
+```
+
+Multiple keys are supported:
+
+```bash
+indexly infer-csv a.csv b.csv --merge-on Id Date --test correlation --x steps --y sleep
+```
+
+Before inference, Indexly reports:
+
+- input datasets and resolution path
+- original row counts
+- join keys
+- join cardinality
+- duplicate-key status
+- merged row count
+- selected inference columns
+
+Many-to-many joins fail by default because they can multiply rows unexpectedly. Use `--agg mean` or `--agg sum` when duplicate keys should be aggregated before joining.
+
+## Related Pages
+
+- [Analyze CSV Data](/documentation/data-analysis/)
+- [Clean CSV Data](/documentation/clean-csv-data/)
+- [Data Analysis Overview](/documentation/data-analysis-overview/)
+- [Database Design](/documentation/database-design/)
+

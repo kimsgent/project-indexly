@@ -105,7 +105,7 @@ flowchart LR
 | Organize folders and inspect logs | [Organizer](organizer.md), [Lister](lister.md) |
 | Run semantic observers and audit stored snapshots | [Observers](observers.md) |
 | Analyze generic SQLite datasets deeply | [Analyze SQLite Databases](analyze-sqlite-databases.md) |
-| Run statistical inference for CSV datasets | [Inference Docs](/inference/) |
+| Run statistical inference for CSV datasets | [CSV Inference](inference.md) |
 | Compare files and folders safely | [File & Folder Comparison](file-folder-comparison.md) |
 | Maintain health and schema consistency | [Indexly Doctor](indexly-doctor.md), [DB Migration Utility](db-migration-utility.md) |
 | Extend or contribute to the project | [Developer Guide](developer.md) |

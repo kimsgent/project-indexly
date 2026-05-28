@@ -217,5 +217,5 @@ This keeps filenames stable, cleans and analyzes the CSV, then lets observers co
 - [Data Analysis Overview](data-analysis-overview.md)
 - [Clean CSV Data](clean-csv-data.md)
 - [Time-Series Visualization](time-series-visualization.md)
-- [Inference Docs](/inference/)
+- [CSV Inference](inference.md)
 - [Rename File](rename-file.md)

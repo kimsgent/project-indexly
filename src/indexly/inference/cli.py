@@ -12,7 +12,7 @@ from .posthoc import run_tukey
 from .regression import run_ols
 from .formatter import format_result, display_inference_result
 from .mixed_effects import run_mixed_effects
-from .merge_engine import merge_dataframes
+from .dataset_router import route_inference_datasets
 from .exporter import export_report
 from .models import InferenceResult
 from .confidence_intervals import (
@@ -100,7 +100,9 @@ def run_inference_engine(
 
     elif test == "corr-spearman":
         if not x or len(x) != 1 or y is None:
-            raise ValueError("Spearman correlation requires exactly one --x and one --y.")
+            raise ValueError(
+                "Spearman correlation requires exactly one --x and one --y."
+            )
         return spearman_corr(df, x[0], y)
 
     elif test == "corr-lag":
@@ -300,10 +302,11 @@ def handle_infer_csv(args):
         use_cleaned = False
 
     # -----------------------------
-    # Load datasets
+    # Resolve and route datasets
     # -----------------------------
     try:
-        dfs = [load_dataframe(file_name=f, use_cleaned=use_cleaned) for f in args.files]
+        routed = route_inference_datasets(args)
+        df = routed.df
     except ValueError as e:
         print(f"\n❌ {e}\n")
         return
@@ -399,29 +402,6 @@ def handle_infer_csv(args):
                     style="bold red",
                 )
                 return
-
-    # -----------------------------
-    # Merge if multiple
-    # -----------------------------
-    if len(dfs) > 1:
-        if not args.merge_on:
-            raise ValueError("--merge-on is required when multiple files are provided.")
-
-        df, merge_meta = merge_dataframes(
-            dfs=dfs,
-            merge_on=args.merge_on,
-            how="inner",
-            agg=args.agg,
-        )
-
-        print(f"[INFO] Merge complete.")
-        print(f"       Original rows: {merge_meta['original_row_counts']}")
-        print(f"       Merged rows:   {merge_meta['merged_row_count']}")
-        print(f"       Aggregation mode: {merge_meta['aggregation_mode']}")
-        print(f"       Duplicate keys:   {merge_meta['duplicate_keys_detected']}")
-
-    else:
-        df = dfs[0]
 
     # -----------------------------
     # Column validation

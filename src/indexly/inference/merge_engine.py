@@ -1,14 +1,13 @@
 import pandas as pd
 from typing import Literal, Tuple, List, Dict
 
-
 # Allowed aggregation strategies when duplicate merge keys exist
 AggMode = Literal["none", "mean", "sum"]
 
 
 def merge_dataframes(
     dfs: List[pd.DataFrame],
-    merge_on: str,
+    merge_on: str | list[str],
     how: str = "inner",
     agg: AggMode = "none",
     max_rows: int = 5_000_000,
@@ -47,11 +46,17 @@ def merge_dataframes(
     # Ensure merge key is explicitly provided
     if not merge_on:
         raise ValueError("merge_on column must be specified.")
+    merge_keys = [merge_on] if isinstance(merge_on, str) else list(merge_on)
 
     # Validate that merge key exists in all datasets
     for i, df in enumerate(dfs):
-        if merge_on not in df.columns:
-            raise ValueError(f"Column '{merge_on}' not found in dataset index {i}.")
+        missing = [key for key in merge_keys if key not in df.columns]
+        if missing:
+            raise ValueError(
+                f"Column(s) {', '.join(missing)} not found in dataset index {i}."
+            )
+
+    _validate_merge_key_types(dfs, merge_keys)
 
     # Track original dataset sizes for reporting
     original_counts = [len(df) for df in dfs]
@@ -64,27 +69,27 @@ def merge_dataframes(
 
     for i, df in enumerate(dfs):
         # Detect whether duplicate keys exist
-        has_dupes = df[merge_on].duplicated().any()
+        has_dupes = df.duplicated(subset=merge_keys).any()
         duplicate_flags.append(has_dupes)
 
         if has_dupes:
-            # If duplicates exist but no aggregation allowed → fail fast
-            if agg == "none":
-                raise ValueError(
-                    f"Dataset {i} contains duplicate merge keys. "
-                    "Use --agg mean|sum to aggregate before merging."
-                )
-
             # Aggregate numeric columns by mean
             if agg == "mean":
-                df = df.groupby(merge_on, as_index=False).mean(numeric_only=True)
+                df = _aggregate_duplicates(df, merge_keys, "mean")
 
             # Aggregate numeric columns by sum
             elif agg == "sum":
-                df = df.groupby(merge_on, as_index=False).sum(numeric_only=True)
+                df = _aggregate_duplicates(df, merge_keys, "sum")
 
         # Append processed (possibly aggregated) DataFrame
         processed_dfs.append(df)
+
+    join_cardinality = _classify_join_cardinality(duplicate_flags)
+    if join_cardinality == "many-to-many" and agg == "none":
+        raise ValueError(
+            "Many-to-many merge detected. Use --agg mean|sum to aggregate duplicate "
+            "keys before merging, or narrow the merge keys with --merge-on."
+        )
 
     # ---------------------------------------
     # Sequential safe merge
@@ -93,7 +98,7 @@ def merge_dataframes(
 
     for df in processed_dfs[1:]:
         # Perform incremental merge
-        merged = pd.merge(merged, df, on=merge_on, how=how)
+        merged = pd.merge(merged, df, on=merge_keys, how=how)
 
         # Protect against uncontrolled row explosion (many-to-many joins)
         if len(merged) > max_rows:
@@ -107,7 +112,44 @@ def merge_dataframes(
         "original_row_counts": original_counts,
         "merged_row_count": len(merged),
         "duplicate_keys_detected": duplicate_flags,
+        "join_keys": merge_keys,
+        "join_cardinality": join_cardinality,
         "aggregation_mode": agg,
     }
 
     return merged, metadata
+
+
+def _validate_merge_key_types(dfs: List[pd.DataFrame], merge_keys: list[str]) -> None:
+    for key in merge_keys:
+        dtypes = [str(df[key].dtype) for df in dfs]
+        inferred = [pd.api.types.infer_dtype(df[key], skipna=True) for df in dfs]
+        if len(set(inferred)) > 1:
+            raise ValueError(
+                f"Merge key '{key}' has incompatible inferred types: "
+                f"{', '.join(dtypes)}."
+            )
+
+
+def _aggregate_duplicates(
+    df: pd.DataFrame, merge_keys: list[str], agg: Literal["mean", "sum"]
+) -> pd.DataFrame:
+    numeric_cols = [
+        col
+        for col in df.select_dtypes(include="number").columns
+        if col not in merge_keys
+    ]
+    if not numeric_cols:
+        return df.drop_duplicates(subset=merge_keys)
+    grouped = getattr(df.groupby(merge_keys, as_index=False)[numeric_cols], agg)()
+    return grouped
+
+
+def _classify_join_cardinality(duplicate_flags: list[bool]) -> str:
+    if not any(duplicate_flags):
+        return "one-to-one"
+    if sum(bool(flag) for flag in duplicate_flags) > 1:
+        return "many-to-many"
+    if duplicate_flags[0]:
+        return "many-to-one"
+    return "one-to-many"
