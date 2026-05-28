@@ -187,6 +187,7 @@ def save_analysis_result(
     col_count: int | None = None,
     raw_df: pd.DataFrame | None = None,
     cleaned_df: pd.DataFrame | None = None,
+    keep_artifact_history: bool = False,
 ) -> None:
     """
     Robust unified persistence:
@@ -323,6 +324,7 @@ def save_analysis_result(
             ),
             raw_df=raw_df if isinstance(raw_df, pd.DataFrame) else None,
             metadata=metadata_json if isinstance(metadata_json, dict) else {},
+            keep_artifact_history=keep_artifact_history,
         )
         conn.close()
 

@@ -39,7 +39,10 @@ def infer_boxplot_args(**overrides):
         "analysis_backend": "pandas",
         "merge_on": None,
         "merge_how": "inner",
-        "agg": "mean",
+        "merge_agg": None,
+        "boxplot_agg": None,
+        "agg": None,
+        "use_clean": False,
         "x": None,
         "y": None,
         "group": None,
@@ -391,3 +394,146 @@ def test_infer_boxplot_duckdb_uses_routed_dataframe_when_available(
 
     assert routed_metadata["merge"]["source_backend"] == "duckdb"
     assert captured["df"]["value"].tolist() == [100, 200]
+
+
+def test_infer_boxplot_bypasses_stat_test_when_both_are_provided(monkeypatch):
+    from indexly.inference import cli as inference_cli
+    from indexly.inference.dataset_router import RoutedInferenceDataset
+    from indexly.visualization import boxplot_engine
+
+    routed_df = pd.DataFrame({"x": ["a", "b"], "y": [1, 2]})
+    monkeypatch.setattr(
+        inference_cli,
+        "route_inference_datasets",
+        lambda args: RoutedInferenceDataset(
+            df=routed_df,
+            datasets=[],
+            merge_metadata={"source_backend": "pandas"},
+            selected_columns=["x", "y"],
+        ),
+    )
+    monkeypatch.setattr(
+        inference_cli,
+        "run_inference_engine",
+        lambda **kwargs: pytest.fail("run_inference_engine should be bypassed"),
+    )
+
+    captured = {}
+
+    def fake_render_static_boxplot(**kwargs):
+        captured["df"] = kwargs["df"].copy()
+
+    monkeypatch.setattr(
+        boxplot_engine, "render_static_boxplot", fake_render_static_boxplot
+    )
+
+    inference_cli.handle_infer_csv(
+        infer_boxplot_args(
+            test="correlation",
+            x=["x"],
+            y="y",
+            x_col="x",
+            y_col=["y"],
+            boxplot=True,
+        )
+    )
+
+    assert captured["df"]["value"].tolist() == [1, 2]
+
+
+def test_infer_use_clean_alias_normalizes_to_use_cleaned(monkeypatch):
+    from indexly.inference import cli as inference_cli
+    from indexly.inference.dataset_router import RoutedInferenceDataset
+
+    captured = {}
+    monkeypatch.setattr(
+        inference_cli,
+        "route_inference_datasets",
+        lambda args: captured.setdefault(
+            "routed",
+            RoutedInferenceDataset(
+                df=pd.DataFrame({"x": [1], "y": [2]}),
+                datasets=[],
+                merge_metadata=None,
+                selected_columns=["x", "y"],
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        inference_cli,
+        "_run_boxplot_if_available",
+        lambda args, routed_df=None: captured.update({"boxplot_args": args}),
+    )
+
+    inference_cli.handle_infer_csv(
+        infer_boxplot_args(use_clean=True, use_cleaned=False, x_col="x", y_col=["y"])
+    )
+
+    assert captured["boxplot_args"].use_cleaned is True
+
+
+def test_deprecated_agg_maps_to_merge_agg_in_join_context(monkeypatch):
+    from indexly.inference import cli as inference_cli
+    from indexly.inference.dataset_router import RoutedInferenceDataset
+
+    captured = {}
+
+    def fake_route(args):
+        captured["merge_agg"] = args.merge_agg
+        return RoutedInferenceDataset(
+            df=pd.DataFrame({"group": ["a", "b"], "value": [1, 2]}),
+            datasets=[],
+            merge_metadata=None,
+            selected_columns=["group", "value"],
+        )
+
+    monkeypatch.setattr(inference_cli, "route_inference_datasets", fake_route)
+
+    inference_cli.handle_infer_csv(
+        infer_boxplot_args(
+            files=["a.csv", "b.csv"],
+            merge_on=["Id"],
+            boxplot=False,
+            test="ci-mean",
+            y="value",
+            agg="sum",
+        )
+    )
+
+    assert captured["merge_agg"] == "sum"
+
+
+def test_deprecated_agg_maps_to_boxplot_agg_in_boxplot_only_context(monkeypatch):
+    from indexly.inference import cli as inference_cli
+    from indexly.inference.dataset_router import RoutedInferenceDataset
+
+    captured = {}
+    monkeypatch.setattr(
+        inference_cli,
+        "route_inference_datasets",
+        lambda args: RoutedInferenceDataset(
+            df=pd.DataFrame({"x": ["a", "b"], "y": [1, 2]}),
+            datasets=[],
+            merge_metadata=None,
+            selected_columns=["x", "y"],
+        ),
+    )
+    monkeypatch.setattr(
+        inference_cli,
+        "_run_boxplot_if_available",
+        lambda args, routed_df=None: captured.update({"boxplot_agg": args.boxplot_agg}),
+    )
+
+    inference_cli.handle_infer_csv(
+        infer_boxplot_args(
+            files=["single.csv"],
+            merge_on=None,
+            boxplot=True,
+            test=None,
+            x_col="x",
+            y_col=["y"],
+            agg="median",
+        )
+    )
+
+    assert captured["boxplot_agg"] == "median"

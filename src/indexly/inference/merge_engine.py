@@ -87,7 +87,7 @@ def merge_dataframes(
     join_cardinality = _classify_join_cardinality(duplicate_flags)
     if join_cardinality == "many-to-many" and agg == "none":
         raise ValueError(
-            "Many-to-many merge detected. Use --agg mean|sum to aggregate duplicate "
+            "Many-to-many merge detected. Use --merge-agg mean|sum to aggregate duplicate "
             "keys before merging, or narrow the merge keys with --merge-on."
         )
 

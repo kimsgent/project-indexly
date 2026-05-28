@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import warnings
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable
@@ -10,7 +11,12 @@ from typing import Any, Iterable
 from indexly.path_utils import normalize_path
 
 from .schema import DatasetRecord
-from .storage import infer_column_types, sha256_file, write_parquet_artifact
+from .storage import (
+    analytical_store_dir,
+    infer_column_types,
+    sha256_file,
+    write_parquet_artifact,
+)
 
 
 def initialize_dataset_registry(conn: sqlite3.Connection) -> None:
@@ -174,6 +180,7 @@ def register_analysis_dataset(
     cleaned_df: Any,
     raw_df: Any = None,
     metadata: dict | None = None,
+    keep_artifact_history: bool = False,
 ) -> DatasetRecord | None:
     if file_type != "csv" or cleaned_df is None or cleaned_df.empty:
         return None
@@ -191,6 +198,7 @@ def register_analysis_dataset(
     now = datetime.now().isoformat()
 
     existing = get_dataset_by_source_path(conn, source_path)
+    existing_artifacts = _record_artifact_paths(existing)
     if existing:
         dataset_name = existing.dataset_name
         created_at = existing.created_at or now
@@ -252,4 +260,63 @@ def register_analysis_dataset(
         if raw_df is not None and not raw_df.empty:
             _replace_columns(conn, record.id, "raw", infer_column_types(raw_df))
     conn.commit()
+    current_artifacts = _record_artifact_paths(record)
+
+    if current_artifacts and not keep_artifact_history:
+        superseded = existing_artifacts - current_artifacts
+        _prune_paths(superseded)
+    elif keep_artifact_history and existing_artifacts != current_artifacts:
+        warnings.warn(
+            "Keeping historical analytical artifacts (--keep-artifact-history). "
+            "Run 'indexly clear-data --all --prune-artifacts' to clean up "
+            "unreferenced historical artifacts later.",
+            stacklevel=2,
+        )
+
     return record
+
+
+def prune_unreferenced_artifacts(conn: sqlite3.Connection) -> int:
+    initialize_dataset_registry(conn)
+    rows = conn.execute(
+        "SELECT cleaned_artifact_path, raw_artifact_path FROM dataset_registry"
+    ).fetchall()
+    referenced = set()
+    for row in rows:
+        for key in ("cleaned_artifact_path", "raw_artifact_path"):
+            value = row[key]
+            if value:
+                referenced.add(normalize_path(value))
+
+    removed = 0
+    for artifact in analytical_store_dir().glob("*.parquet"):
+        artifact_path = normalize_path(str(artifact))
+        if artifact_path in referenced:
+            continue
+        try:
+            artifact.unlink()
+            removed += 1
+        except OSError:
+            continue
+    return removed
+
+
+def _record_artifact_paths(record: DatasetRecord | None) -> set[str]:
+    if record is None:
+        return set()
+    return {
+        normalize_path(path)
+        for path in (record.cleaned_artifact_path, record.raw_artifact_path)
+        if path
+    }
+
+
+def _prune_paths(paths: set[str]) -> int:
+    removed = 0
+    for path in paths:
+        try:
+            Path(path).unlink(missing_ok=True)
+            removed += 1
+        except OSError:
+            continue
+    return removed

@@ -67,7 +67,7 @@ def route_inference_datasets(args) -> RoutedInferenceDataset:
             datasets=resolved,
             merge_on=merge_keys,
             how=getattr(args, "merge_how", "inner"),
-            agg=getattr(args, "agg", "none"),
+            agg=getattr(args, "merge_agg", getattr(args, "agg", "none")),
             selected_columns=selected_columns,
         )
     except JoinSafetyError as exc:

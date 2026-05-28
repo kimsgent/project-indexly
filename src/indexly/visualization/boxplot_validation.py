@@ -41,7 +41,9 @@ def validate_boxplot_args(args) -> None:
     # -------------------------------------------------
     x_col = getattr(args, "x_col", None)
     use_raw = getattr(args, "use_raw", False)
-    use_cleaned = getattr(args, "use_clean", False)
+    use_cleaned = getattr(args, "use_cleaned", False) or getattr(
+        args, "use_clean", False
+    )
 
     # normalize y_cols
     if isinstance(y_cols, str):
@@ -61,7 +63,9 @@ def validate_boxplot_args(args) -> None:
     # Raw / Cleaned conflict
     # -------------------------------------------------
     use_raw = getattr(args, "use_raw", False)
-    use_cleaned = getattr(args, "use_clean", False)
+    use_cleaned = getattr(args, "use_cleaned", False) or getattr(
+        args, "use_clean", False
+    )
 
     if use_raw and use_cleaned:
         raise ValueError("⚠️ Use either --use-raw or --use-cleaned, not both.")
@@ -69,7 +73,9 @@ def validate_boxplot_args(args) -> None:
     # -------------------------------------------------
     # Aggregation validation
     # -------------------------------------------------
-    agg = getattr(args, "agg", None)
+    agg = getattr(args, "boxplot_agg", None)
+    if agg is None:
+        agg = getattr(args, "agg", None)
     if agg:
         if isinstance(agg, str):
             agg_list = [a.strip().lower() for a in agg.split(",")]

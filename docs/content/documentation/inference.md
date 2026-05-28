@@ -100,7 +100,8 @@ indexly infer-csv asteps.csv sleepday.csv \
   --y-col TotalMinutesAsleep \
   --merge-on Id \
   --merge-how inner \
-  --agg mean \
+  --merge-agg mean \
+  --boxplot-agg median \
   --analysis-backend auto
 ```
 
@@ -151,7 +152,52 @@ Before inference, Indexly reports:
 - merged row count
 - selected inference columns
 
-Many-to-many joins fail by default because they can multiply rows unexpectedly. Use `--agg mean` or `--agg sum` when duplicate keys should be aggregated before joining.
+Many-to-many joins fail by default because they can multiply rows unexpectedly. Use `--merge-agg mean` or `--merge-agg sum` when duplicate keys should be aggregated before joining.
+
+## Aggregation Flags and Deprecation
+
+`infer-csv` now separates aggregation intent:
+
+- `--merge-agg` controls join-time duplicate-key handling (`none|mean|sum`).
+- `--boxplot-agg` controls boxplot grouping/stat aggregation (`mean|sum|count|median|min|max`).
+
+`--agg` remains as a temporary deprecated alias for one release cycle. Indexly maps it by context and prints migration guidance:
+
+- join context: mapped to `--merge-agg`
+- boxplot-only context: mapped to `--boxplot-agg`
+
+Prefer explicit flags in new scripts.
+
+## Boxplot Precedence
+
+If `--boxplot` is present, Indexly renders the boxplot and exits that command successfully without running statistical tests. If `--test` is also supplied, Indexly prints:
+
+```text
+`--boxplot` bypassed `--test`; run a second infer-csv command for statistical inference.
+```
+
+This preserves a clear two-step workflow: inspect distribution first, run inference second.
+
+## Cleaned Data Flag Notes
+
+`--use-cleaned` is the canonical inference flag.
+
+- `analyze-file` / `analyze-csv`: saved cleaned-data loading
+- `infer-csv`: cleaned-vs-raw selection
+
+Legacy `--use-clean` remains a deprecated alias in boxplot paths only and is normalized to `--use-cleaned`.
+
+## Artifact Retention
+
+On successful CSV re-analysis, the dataset registry points to the latest artifact paths. By default, superseded hash-versioned Parquet artifacts are pruned.
+
+Use `--keep-artifact-history` with `analyze-csv` or `analyze-file` when you intentionally want to preserve historical artifacts.
+
+To clean deferred history later:
+
+```bash
+indexly clear-data --all --prune-artifacts
+```
 
 ## Related Pages
 
