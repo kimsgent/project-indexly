@@ -93,12 +93,13 @@ Indexly keeps search indexing and analysis persistence separate:
 | Database | Default purpose | Typical location |
 | --- | --- | --- |
 | `fts_index.db` | FTS5 search index, tags, and file metadata used by search workflows | Indexly runtime directory, such as `%APPDATA%/indexly` on Windows |
-| `indexly.db` | Persisted cleaned analysis data in `cleaned_data` | `~/.indexly/indexly.db` |
+| `indexly.db` | Persisted cleaned analysis data in `cleaned_data`, plus the analytical dataset catalog and artifact metadata | `~/.indexly/indexly.db` |
 
 This separation matters for maintenance:
 
 - `indexly clear-search` affects only search-index tables.
 - analysis commands persist cleaned data separately.
+- CSV analysis can register analytical dataset metadata and Parquet artifact paths for inference while keeping legacy JSON readable.
 - `indexly doctor` can inspect both databases and reports them as separate sections.
 - `indexly doctor --full-integrity` runs a read-only SQLite integrity check when a deeper scan is needed.
 
@@ -110,4 +111,5 @@ Schema repairs can add normal-table columns safely, but FTS5 rebuilds require ex
 ### 🏷️ Related Topics
 
 * [Semantic Indexing & Vocabulary Quality](semantic-indexing-vocab.md) The technical model, measured results, and why a database update is required.
+* [CSV Inference](inference.md)
 * [Indexly Doctor](indexly-doctor.md)

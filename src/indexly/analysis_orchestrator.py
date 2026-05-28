@@ -147,6 +147,7 @@ def _persist_analysis(
             row_count=len(data_to_save),
             col_count=len(data_to_save.columns),
             raw_df=raw_df,
+            cleaned_df=data_to_save if isinstance(data_to_save, pd.DataFrame) else None,
         )
 
         # CSV observers depend on persisted cleaned_data state.

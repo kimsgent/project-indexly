@@ -68,7 +68,10 @@ def add_common_arguments(parser):
 
 
 def _lazy_handle_infer_csv(args):
-    from indexly.inference.cli import handle_infer_csv
+    try:
+        from indexly.inference.cli import handle_infer_csv
+    except ModuleNotFoundError as exc:
+        raise SystemExit(_missing_dependency_message(exc, "analysis")) from exc
 
     return handle_infer_csv(args)
 
@@ -723,7 +726,8 @@ def build_parser():
 
     infer_parser.add_argument(
         "--merge-on",
-        help="Column name to merge multiple datasets on (required if multiple files).",
+        nargs="+",
+        help="Column name(s) to merge multiple datasets on (required if multiple files).",
     )
 
     infer_parser.add_argument(

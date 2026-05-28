@@ -12,14 +12,13 @@ Usage:
     Used during indexing, searching, and tagging operations.
 """
 
-
 import os
 import re
 import signal
 import logging
 import sqlite3
 import json
-from .config import DB_FILE
+from .config import DB_FILE, get_analysis_db_file
 from .path_utils import normalize_path
 from pathlib import Path
 from datetime import datetime
@@ -67,8 +66,7 @@ def connect_db(db_path: str | None = None):
     conn.create_function("REGEXP", 2, regexp)
 
     # Ensure required tables exist (idempotent)
-    conn.execute(
-        """
+    conn.execute("""
         CREATE VIRTUAL TABLE IF NOT EXISTS file_index
         USING fts5(
             path,
@@ -80,8 +78,7 @@ def connect_db(db_path: str | None = None):
             tokenize = 'porter',
             prefix='2 3 4'
         );
-        """
-    )
+        """)
 
     cursor = conn.cursor()
     cursor.execute(
@@ -90,8 +87,7 @@ def connect_db(db_path: str | None = None):
     cursor.execute(
         "CREATE TABLE IF NOT EXISTS file_tags (path TEXT PRIMARY KEY, tags TEXT);"
     )
-    cursor.execute(
-        """
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS file_metadata (
             path TEXT PRIMARY KEY,
             title TEXT,
@@ -108,8 +104,7 @@ def connect_db(db_path: str | None = None):
             gps TEXT,
             metadata TEXT
         );
-        """
-    )
+        """)
 
     conn.commit()
     return conn
@@ -180,6 +175,7 @@ def _sync_path_in_db(old_path: str, new_path: str, db_path: str | None = None):
         if conn is not None:
             conn.close()
 
+
 # ------------------------------------------------------
 # 🧱 1. Connection Helper
 # ------------------------------------------------------
@@ -187,7 +183,7 @@ def _get_db_connection():
 
     import os, sqlite3
 
-    db_path = os.path.join(os.path.expanduser("~"), ".indexly", "indexly.db")
+    db_path = get_analysis_db_file()
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
 
     conn = sqlite3.connect(db_path)
@@ -215,6 +211,12 @@ def _get_db_connection():
 
     # Apply migrations / schema evolution
     _migrate_cleaned_data_schema(conn)
+    try:
+        from .datasets.registry import initialize_dataset_registry
+
+        initialize_dataset_registry(conn)
+    except Exception as exc:
+        logger.debug("Dataset registry migration skipped: %s", exc)
 
     return conn
 
@@ -237,7 +239,7 @@ def _migrate_cleaned_data_schema(conn: sqlite3.Connection) -> None:
         "id",
         "file_name",
         "file_type",
-        "source_path",         # <-- new column
+        "source_path",  # <-- new column
         "summary_json",
         "sample_json",
         "metadata_json",
@@ -283,6 +285,7 @@ def _migrate_cleaned_data_schema(conn: sqlite3.Connection) -> None:
         console.print(
             f"[yellow]Migrated cleaned_data schema to include: {', '.join(sorted(missing))}[/yellow]"
         )
+
 
 def regexp(pattern, string):
     if user_interrupted:

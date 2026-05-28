@@ -10,17 +10,15 @@ Key Features:
 
 Usage:
     Import constants into main script (e.g., `indexly.py`) or utility modules.
-    
+
 Access fonts in code with something like
 
 import importlib.resources
 
 with importlib.resources.path("indexly.assets", "DejaVuSans.ttf") as font_path:
     print("Font path:", font_path)
-    
+
 """
-
-
 
 import os
 import sys
@@ -59,6 +57,17 @@ PROFILE_FILE = os.path.join(BASE_DIR, "profiles.json")
 DB_FILE = os.path.join(BASE_DIR, "fts_index.db")
 CACHE_FILE = os.path.join(BASE_DIR, "search_cache.json")
 
+
+def get_analysis_db_file() -> str:
+    """Return the legacy analysis database path used by cleaned_data workflows."""
+    explicit = os.environ.get("INDEXLY_ANALYSIS_DB")
+    if explicit:
+        return str(Path(explicit).expanduser())
+    return str(Path.home() / ".indexly" / "indexly.db")
+
+
+ANALYSIS_DB_FILE = get_analysis_db_file()
+
 MAX_REFRESH_ENTRIES = 50
 CACHE_REFRESH_INTERVAL = 86400  # 24h
 
@@ -91,7 +100,7 @@ SEMANTIC_METADATA_KEYS = {
     "subject",
     "camera",
     "format",
-    "source",          # added: already used in async_index_file
+    "source",  # added: already used in async_index_file
 }
 
 
