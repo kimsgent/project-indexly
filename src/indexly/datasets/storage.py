@@ -3,8 +3,7 @@ from __future__ import annotations
 import hashlib
 import os
 from pathlib import Path
-
-import pandas as pd
+from typing import Any
 
 from indexly.config import get_analysis_db_file
 from indexly.path_utils import normalize_path
@@ -40,7 +39,7 @@ def artifact_path_for(source_path: str, version: str, source_hash: str | None) -
 
 
 def write_parquet_artifact(
-    df: pd.DataFrame | None,
+    df: Any,
     source_path: str,
     version: str,
     source_hash: str | None,
@@ -56,12 +55,14 @@ def write_parquet_artifact(
         return None
 
 
-def read_artifact(path: str, columns: list[str] | None = None) -> pd.DataFrame:
+def read_artifact(path: str, columns: list[str] | None = None) -> Any:
     try:
+        import pandas as pd
+
         return pd.read_parquet(path, columns=columns)
     except Exception as exc:
         raise ValueError(f"Failed to read dataset artifact '{path}': {exc}") from exc
 
 
-def infer_column_types(df: pd.DataFrame) -> dict[str, str]:
+def infer_column_types(df: Any) -> dict[str, str]:
     return {str(column): str(dtype) for column, dtype in df.dtypes.items()}

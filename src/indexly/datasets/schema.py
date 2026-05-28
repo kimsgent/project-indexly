@@ -3,8 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-import pandas as pd
-
 
 @dataclass(frozen=True)
 class DatasetRecord:
@@ -26,7 +24,7 @@ class DatasetRecord:
 class ResolvedDataset:
     identifier: str
     resolution: str
-    df: pd.DataFrame
+    df: Any
     record: DatasetRecord | None = None
 
     @property

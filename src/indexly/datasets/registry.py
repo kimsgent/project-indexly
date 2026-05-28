@@ -5,9 +5,7 @@ import os
 import sqlite3
 from datetime import datetime
 from pathlib import Path
-from typing import Iterable
-
-import pandas as pd
+from typing import Any, Iterable
 
 from indexly.path_utils import normalize_path
 
@@ -173,8 +171,8 @@ def register_analysis_dataset(
     conn: sqlite3.Connection,
     file_path: str,
     file_type: str,
-    cleaned_df: pd.DataFrame | None,
-    raw_df: pd.DataFrame | None = None,
+    cleaned_df: Any,
+    raw_df: Any = None,
     metadata: dict | None = None,
 ) -> DatasetRecord | None:
     if file_type != "csv" or cleaned_df is None or cleaned_df.empty:

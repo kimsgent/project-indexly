@@ -68,7 +68,10 @@ def add_common_arguments(parser):
 
 
 def _lazy_handle_infer_csv(args):
-    from indexly.inference.cli import handle_infer_csv
+    try:
+        from indexly.inference.cli import handle_infer_csv
+    except ModuleNotFoundError as exc:
+        raise SystemExit(_missing_dependency_message(exc, "analysis")) from exc
 
     return handle_infer_csv(args)
 
