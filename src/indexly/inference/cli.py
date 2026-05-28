@@ -25,7 +25,7 @@ from rich.console import Console
 console = Console()
 
 
-def _run_boxplot_if_available(args):
+def _run_boxplot_if_available(args, routed_df=None):
     try:
         from indexly.visualization.boxplot_engine import run_boxplot
     except ModuleNotFoundError as exc:
@@ -33,7 +33,7 @@ def _run_boxplot_if_available(args):
             "Boxplot rendering requires optional visualization dependencies. "
             "Install with: pip install indexly[visualization]."
         ) from exc
-    return run_boxplot(args)
+    return run_boxplot(args, routed_df=routed_df)
 
 
 def _export_report_if_available(result, fmt: str):
@@ -478,7 +478,8 @@ def handle_infer_csv(args):
                     normalize=getattr(args, "normalize", None),
                     mode=getattr(args, "mode", "static"),
                     show_mean=True,
-                )
+                ),
+                routed_df=df,
             )
         except RuntimeError as e:
             print(f"\n[Inference Error] {e}\n")

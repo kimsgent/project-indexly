@@ -3,7 +3,6 @@
 from typing import List, Dict, Optional
 import matplotlib.pyplot as plt
 import pandas as pd
-import numpy as np
 from pathlib import Path
 from indexly.visualization.boxplot_validation import validate_boxplot_args
 from indexly.visualization.boxplot_preprocessor import (
@@ -33,7 +32,7 @@ MAX_ROWS = 1_000_000
 console = Console()
 
 
-def run_boxplot(args):
+def run_boxplot(args, routed_df: Optional[pd.DataFrame] = None):
     validate_boxplot_args(args)
 
     file_names: List[str] = args.input_files
@@ -47,106 +46,127 @@ def run_boxplot(args):
     if isinstance(y_cols, str):
         y_cols = [y_cols]
 
-    # -----------------------------------------------------
-    # 1️⃣ Load Datasets
-    # -----------------------------------------------------
+    if routed_df is not None:
+        if routed_df.empty:
+            raise ValueError("Routed dataset is empty.")
 
-    datasets: Dict[str, pd.DataFrame] = {}
-
-    for name in file_names:
-        # ensure only the file name is passed to the loader, not full path
-        db_file_name = Path(name).name
-
-        df = load_dataframe(
-            db_file_name,
-            use_cleaned=use_cleaned_for_load,
-            use_raw=use_raw,
-        )
-
-        if df.empty:
-            raise ValueError(f"Dataset '{db_file_name}' is empty.")
-
-        datasets[db_file_name] = df.copy()
-
-    # -----------------------------------------------------
-    # 2️⃣ Optional Merge
-    # -----------------------------------------------------
-
-    if args.merge_on:
-        if len(datasets) < 2:
-            raise ValueError("Merge requires at least two datasets.")
-
-        merged_df, metadata = merge_dataframes(
-            dfs=list(datasets.values()),
-            merge_on=args.merge_on,
-            how=args.merge_how or "inner",
-            agg=getattr(args, "merge_agg", None) or "none",
-        )
-
+        dataset_name = Path(file_names[0]).name if len(file_names) == 1 else "merged"
         if use_raw or use_clean:
-            # Use raw columns, no aggregation
-            df_processed = merged_df[[x_col] + y_cols].copy()
+            df_processed = _project_boxplot_columns(routed_df, x_col, y_cols)
         else:
             df_processed = apply_group_aggregation(
-                merged_df.copy(),
+                routed_df.copy(),
                 x_col=x_col,
                 y_cols=y_cols,
                 agg_list=args.agg,
             )
-
         long_df = reshape_to_long(
             df_processed,
             y_cols=y_cols,
-            dataset_name="merged",
+            dataset_name=dataset_name,
             x_col=x_col,
         )
+    else:
+        # -----------------------------------------------------
+        # 1️⃣ Load Datasets
+        # -----------------------------------------------------
 
-    # -----------------------------------------------------
-    # 3️⃣ Multi-file (No Merge)
-    # -----------------------------------------------------
+        datasets: Dict[str, pd.DataFrame] = {}
 
-    elif len(datasets) > 1:
-        processed = {}
+        for name in file_names:
+            # ensure only the file name is passed to the loader, not full path
+            db_file_name = Path(name).name
 
-        for name, df in datasets.items():
+            df = load_dataframe(
+                db_file_name,
+                use_cleaned=use_cleaned_for_load,
+                use_raw=use_raw,
+            )
+
+            if df.empty:
+                raise ValueError(f"Dataset '{db_file_name}' is empty.")
+
+            datasets[db_file_name] = df.copy()
+
+        # -----------------------------------------------------
+        # 2️⃣ Optional Merge
+        # -----------------------------------------------------
+
+        if args.merge_on:
+            if len(datasets) < 2:
+                raise ValueError("Merge requires at least two datasets.")
+
+            merged_df, _ = merge_dataframes(
+                dfs=list(datasets.values()),
+                merge_on=args.merge_on,
+                how=args.merge_how or "inner",
+                agg=getattr(args, "merge_agg", None) or "none",
+            )
+
             if use_raw or use_clean:
-                df_agg = df[[x_col] + y_cols].copy()
+                # Use raw columns, no aggregation
+                df_processed = _project_boxplot_columns(merged_df, x_col, y_cols)
             else:
-                df_agg = apply_group_aggregation(
+                df_processed = apply_group_aggregation(
+                    merged_df.copy(),
+                    x_col=x_col,
+                    y_cols=y_cols,
+                    agg_list=args.agg,
+                )
+
+            long_df = reshape_to_long(
+                df_processed,
+                y_cols=y_cols,
+                dataset_name="merged",
+                x_col=x_col,
+            )
+
+        # -----------------------------------------------------
+        # 3️⃣ Multi-file (No Merge)
+        # -----------------------------------------------------
+
+        elif len(datasets) > 1:
+            processed = {}
+
+            for name, df in datasets.items():
+                if use_raw or use_clean:
+                    df_agg = _project_boxplot_columns(df, x_col, y_cols)
+                else:
+                    df_agg = apply_group_aggregation(
+                        df.copy(),
+                        x_col=x_col,
+                        y_cols=y_cols,
+                        agg_list=args.agg,
+                    )
+                processed[name] = df_agg
+
+            long_df = combine_datasets_long(
+                processed,
+                y_cols=y_cols,
+                x_col=x_col,
+            )
+
+        # -----------------------------------------------------
+        # 4️⃣ Single Dataset
+        # -----------------------------------------------------
+
+        else:
+            name, df = next(iter(datasets.items()))
+            if use_raw or use_clean:
+                df_processed = _project_boxplot_columns(df, x_col, y_cols)
+            else:
+                df_processed = apply_group_aggregation(
                     df.copy(),
                     x_col=x_col,
                     y_cols=y_cols,
                     agg_list=args.agg,
                 )
-            processed[name] = df_agg
-
-        long_df = combine_datasets_long(
-            processed,
-            y_cols=y_cols,
-            x_col=x_col,
-        )
-
-    # -----------------------------------------------------
-    # 4️⃣ Single Dataset
-    # -----------------------------------------------------
-
-    else:
-        name, df = next(iter(datasets.items()))
-        if use_raw or use_clean:
-            df_processed = df[[x_col] + y_cols].copy()
-        else:
-            df_processed = apply_group_aggregation(
-                df.copy(),
-                x_col=x_col,
+            long_df = reshape_to_long(
+                df_processed,
                 y_cols=y_cols,
-                agg_list=args.agg,
+                dataset_name=name,
+                x_col=x_col,
             )
-        long_df = reshape_to_long(
-            df_processed,
-            y_cols=y_cols,
-            dataset_name=name,
-            x_col=x_col,
-        )
 
     # -----------------------------------------------------
     # 5️⃣ Safety Guard
@@ -244,3 +264,10 @@ def _apply_normalization(df: pd.DataFrame, method: str):
         df["value"] = (df["value"] - min_v) / (max_v - min_v)
 
     return df
+
+
+def _project_boxplot_columns(
+    df: pd.DataFrame, x_col: Optional[str], y_cols: List[str]
+) -> pd.DataFrame:
+    columns = [*([x_col] if x_col else []), *y_cols]
+    return df[columns].copy()
