@@ -34,6 +34,8 @@ xmltodict>=0.13.0
 # --- Visualization (CI-safe) ---
 numpy>=2.0,<2.3
 matplotlib>=3.8.0,<4.0
+seaborn>=0.13,<0.14
+plotly>=5.22,<6.0
 plotext>=5.2.8
 
 # --- Statistical inference (used by infer-csv CLI) ---
