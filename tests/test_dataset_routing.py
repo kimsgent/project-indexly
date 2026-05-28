@@ -1,4 +1,5 @@
 import json
+import warnings
 from types import SimpleNamespace
 
 import pandas as pd
@@ -177,6 +178,31 @@ def test_save_analysis_result_registers_catalog_and_keeps_legacy_fallback(
     assert catalog_row["row_count"] == 2
     assert catalog_row["dataset_name"] == "registered"
     assert catalog_row["file_name"] == "registered.csv"
+
+
+def test_parquet_artifact_write_ignores_unserializable_dataframe_attrs(
+    tmp_path, monkeypatch
+):
+    configure_analysis_home(tmp_path, monkeypatch)
+    source = tmp_path / "attrs.csv"
+    source.write_text("id,value\n1,10\n", encoding="utf-8")
+    df = pd.DataFrame({"id": [1], "value": [10]})
+    df.attrs["profile"] = pd.DataFrame({"metric": ["rows"], "value": [1]})
+
+    from indexly.datasets.storage import write_parquet_artifact
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        artifact_path = write_parquet_artifact(
+            df,
+            source_path=str(source),
+            version="cleaned",
+            source_hash="abc123",
+        )
+
+    messages = [str(warning.message) for warning in caught]
+    assert artifact_path is not None
+    assert not any("Could not serialize pd.DataFrame.attrs" in msg for msg in messages)
 
 
 def test_resolver_reads_only_requested_artifact_columns(tmp_path, monkeypatch):
