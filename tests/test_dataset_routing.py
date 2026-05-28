@@ -1,4 +1,6 @@
 import json
+import warnings
+from types import SimpleNamespace
 
 import pandas as pd
 import pytest
@@ -43,6 +45,22 @@ def test_resolver_preserves_legacy_cleaned_data_file_name(tmp_path, monkeypatch)
     assert df.to_dict(orient="records") == [{"id": 1, "steps": 100}]
 
 
+def test_resolver_labels_legacy_raw_payload(tmp_path, monkeypatch):
+    configure_analysis_home(tmp_path, monkeypatch)
+    insert_legacy_dataset(
+        "steps.csv",
+        cleaned=[{"id": 1, "steps": 100}],
+        raw=[{"id": 1, "steps": 150}],
+    )
+
+    from indexly.datasets.resolver import resolve_dataset
+
+    resolved = resolve_dataset("steps.csv", use_raw=True)
+
+    assert resolved.resolution == "cleaned_data.raw_data_json"
+    assert resolved.df.to_dict(orient="records") == [{"id": 1, "steps": 150}]
+
+
 def test_resolver_finds_legacy_source_path(tmp_path, monkeypatch):
     configure_analysis_home(tmp_path, monkeypatch)
     source = tmp_path / "data" / "sleepday.csv"
@@ -57,7 +75,7 @@ def test_resolver_finds_legacy_source_path(tmp_path, monkeypatch):
 
     resolved = resolve_dataset(str(source))
 
-    assert resolved.resolution == "cleaned_data.source_path"
+    assert resolved.resolution == "cleaned_data.cleaned_data_json"
     assert list(resolved.df.columns) == ["Id", "TotalMinutesAsleep"]
 
 
@@ -80,6 +98,52 @@ def test_existing_csv_path_loads_ephemerally_without_registering(tmp_path, monke
     assert len(resolved.df) == 2
     assert registry_count == 0
     assert legacy_count == 0
+
+
+def test_existing_csv_path_falls_back_when_catalog_payload_was_cleared(
+    tmp_path, monkeypatch
+):
+    configure_analysis_home(tmp_path, monkeypatch)
+    monkeypatch.chdir(tmp_path)
+    source = tmp_path / "asteps.csv"
+    source.write_text("Id,avg_daily_steps\n1,10\n2,20\n", encoding="utf-8")
+
+    from indexly.db_utils import _get_db_connection
+    from indexly.datasets.resolver import resolve_dataset
+    from indexly.path_utils import normalize_path
+
+    conn = _get_db_connection()
+    conn.execute(
+        """
+        INSERT INTO dataset_registry(
+            dataset_name, file_name, source_path, source_hash,
+            row_count, col_count, cleaned_artifact_path, raw_artifact_path,
+            metadata_json, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "asteps",
+            "asteps.csv",
+            normalize_path(str(source)),
+            "old-hash",
+            2,
+            2,
+            None,
+            None,
+            "{}",
+            "2026-01-01T00:00:00",
+            "2026-01-01T00:00:00",
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    resolved = resolve_dataset("asteps.csv", columns=["Id"])
+
+    assert resolved.resolution == "ephemeral.csv"
+    assert list(resolved.df.columns) == ["Id"]
+    assert len(resolved.df) == 2
 
 
 def test_save_analysis_result_registers_catalog_and_keeps_legacy_fallback(
@@ -116,6 +180,97 @@ def test_save_analysis_result_registers_catalog_and_keeps_legacy_fallback(
     assert catalog_row["file_name"] == "registered.csv"
 
 
+def test_parquet_artifact_write_ignores_unserializable_dataframe_attrs(
+    tmp_path, monkeypatch
+):
+    configure_analysis_home(tmp_path, monkeypatch)
+    source = tmp_path / "attrs.csv"
+    source.write_text("id,value\n1,10\n", encoding="utf-8")
+    df = pd.DataFrame({"id": [1], "value": [10]})
+    df.attrs["profile"] = pd.DataFrame({"metric": ["rows"], "value": [1]})
+
+    from indexly.datasets.storage import write_parquet_artifact
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        artifact_path = write_parquet_artifact(
+            df,
+            source_path=str(source),
+            version="cleaned",
+            source_hash="abc123",
+        )
+
+    messages = [str(warning.message) for warning in caught]
+    assert artifact_path is not None
+    assert not any("Could not serialize pd.DataFrame.attrs" in msg for msg in messages)
+
+
+def test_resolver_reads_only_requested_artifact_columns(tmp_path, monkeypatch):
+    configure_analysis_home(tmp_path, monkeypatch)
+    source = tmp_path / "wide.csv"
+    source.write_text("id,value,unused\n1,10,999\n2,20,888\n", encoding="utf-8")
+
+    from indexly.analyze_utils import save_analysis_result
+    from indexly.datasets.resolver import resolve_dataset
+
+    save_analysis_result(
+        file_path=str(source),
+        file_type="csv",
+        sample_data=pd.DataFrame({"id": [1], "value": [10], "unused": [999]}),
+        cleaned_df=pd.DataFrame(
+            {"id": [1, 2], "value": [10, 20], "unused": [999, 888]}
+        ),
+        row_count=2,
+        col_count=3,
+    )
+
+    resolved = resolve_dataset(
+        "wide",
+        columns=["id", "value"],
+        required_columns=["id"],
+    )
+
+    assert list(resolved.df.columns) == ["id", "value"]
+
+
+def test_stale_artifact_requires_refresh_unless_hash_is_ignored(tmp_path, monkeypatch):
+    configure_analysis_home(tmp_path, monkeypatch)
+    source = tmp_path / "stale.csv"
+    source.write_text("id,value\n1,10\n", encoding="utf-8")
+
+    from indexly.analyze_utils import save_analysis_result
+    from indexly.datasets.resolver import DatasetResolutionError, resolve_dataset
+
+    save_analysis_result(
+        file_path=str(source),
+        file_type="csv",
+        sample_data=pd.DataFrame({"id": [1], "value": [10]}),
+        cleaned_df=pd.DataFrame({"id": [1], "value": [10]}),
+        row_count=1,
+        col_count=2,
+    )
+    source.write_text("id,value\n1,99\n", encoding="utf-8")
+
+    with pytest.raises(DatasetResolutionError) as exc_info:
+        resolve_dataset("stale", columns=["id"], required_columns=["id"])
+
+    message = str(exc_info.value)
+    assert "source CSV hash has changed" in message
+    assert "indexly analyze-csv" in message
+    assert "--ignore-hash" in message
+
+    resolved = resolve_dataset(
+        "stale",
+        columns=["id"],
+        required_columns=["id"],
+        ignore_hash=True,
+    )
+
+    assert resolved.warnings
+    assert "source CSV hash has changed" in resolved.warnings[0]
+    assert list(resolved.df.columns) == ["id"]
+
+
 def test_missing_dataset_error_is_actionable_without_csv_guess(tmp_path, monkeypatch):
     configure_analysis_home(tmp_path, monkeypatch)
 
@@ -127,3 +282,129 @@ def test_missing_dataset_error_is_actionable_without_csv_guess(tmp_path, monkeyp
     message = str(exc_info.value)
     assert "Did you mean" not in message
     assert "existing CSV path" in message
+
+
+def test_router_prunes_multi_file_columns_for_available_artifact_columns(
+    tmp_path, monkeypatch
+):
+    configure_analysis_home(tmp_path, monkeypatch)
+    left_source = tmp_path / "left.csv"
+    right_source = tmp_path / "right.csv"
+    left_source.write_text("id,x,left_unused\n1,10,999\n2,20,888\n", encoding="utf-8")
+    right_source.write_text(
+        "id,y,right_unused\n1,100,aaa\n2,200,bbb\n", encoding="utf-8"
+    )
+
+    from indexly.analyze_utils import save_analysis_result
+    from indexly.inference.dataset_router import route_inference_datasets
+
+    save_analysis_result(
+        file_path=str(left_source),
+        file_type="csv",
+        sample_data=pd.DataFrame({"id": [1], "x": [10], "left_unused": [999]}),
+        cleaned_df=pd.DataFrame(
+            {"id": [1, 2], "x": [10, 20], "left_unused": [999, 888]}
+        ),
+        row_count=2,
+        col_count=3,
+    )
+    save_analysis_result(
+        file_path=str(right_source),
+        file_type="csv",
+        sample_data=pd.DataFrame({"id": [1], "y": [100], "right_unused": ["aaa"]}),
+        cleaned_df=pd.DataFrame(
+            {"id": [1, 2], "y": [100, 200], "right_unused": ["aaa", "bbb"]}
+        ),
+        row_count=2,
+        col_count=3,
+    )
+
+    routed = route_inference_datasets(
+        SimpleNamespace(
+            files=["left", "right"],
+            merge_on=["id"],
+            use_raw=False,
+            x=["x"],
+            y="y",
+            group=None,
+            interaction=None,
+            ignore_hash=False,
+            merge_how="inner",
+            agg="none",
+        )
+    )
+
+    assert list(routed.datasets[0].df.columns) == ["id", "x"]
+    assert list(routed.datasets[1].df.columns) == ["id", "y"]
+    assert "left_unused" not in routed.df.columns
+    assert "right_unused" not in routed.df.columns
+
+
+def test_router_includes_boxplot_columns_for_multi_file_artifact_loading(
+    tmp_path, monkeypatch
+):
+    configure_analysis_home(tmp_path, monkeypatch)
+    left_source = tmp_path / "asteps.csv"
+    right_source = tmp_path / "sleepday.csv"
+    left_source.write_text(
+        "Id,avg_daily_steps,left_unused\n1,10,999\n2,20,888\n",
+        encoding="utf-8",
+    )
+    right_source.write_text(
+        "Id,TotalMinutesAsleep,right_unused\n1,100,aaa\n2,200,bbb\n",
+        encoding="utf-8",
+    )
+
+    from indexly.analyze_utils import save_analysis_result
+    from indexly.inference.dataset_router import route_inference_datasets
+
+    save_analysis_result(
+        file_path=str(left_source),
+        file_type="csv",
+        sample_data=pd.DataFrame(
+            {"Id": [1], "avg_daily_steps": [10], "left_unused": [999]}
+        ),
+        cleaned_df=pd.DataFrame(
+            {"Id": [1, 2], "avg_daily_steps": [10, 20], "left_unused": [999, 888]}
+        ),
+        row_count=2,
+        col_count=3,
+    )
+    save_analysis_result(
+        file_path=str(right_source),
+        file_type="csv",
+        sample_data=pd.DataFrame(
+            {"Id": [1], "TotalMinutesAsleep": [100], "right_unused": ["aaa"]}
+        ),
+        cleaned_df=pd.DataFrame(
+            {
+                "Id": [1, 2],
+                "TotalMinutesAsleep": [100, 200],
+                "right_unused": ["aaa", "bbb"],
+            }
+        ),
+        row_count=2,
+        col_count=3,
+    )
+
+    routed = route_inference_datasets(
+        SimpleNamespace(
+            files=["asteps", "sleepday"],
+            merge_on=["Id"],
+            use_raw=False,
+            x=None,
+            y=None,
+            group=None,
+            interaction=None,
+            x_col="avg_daily_steps",
+            y_col=["TotalMinutesAsleep"],
+            ignore_hash=False,
+            merge_how="inner",
+            agg="none",
+        )
+    )
+
+    assert list(routed.datasets[0].df.columns) == ["Id", "avg_daily_steps"]
+    assert list(routed.datasets[1].df.columns) == ["Id", "TotalMinutesAsleep"]
+    assert "left_unused" not in routed.df.columns
+    assert "right_unused" not in routed.df.columns

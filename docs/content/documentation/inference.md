@@ -76,6 +76,20 @@ The catalog tracks dataset name, file name, source path, source hash, row and co
 
 The SQLite database remains the metadata layer. Large tabular payloads should use columnar artifacts when available, while legacy JSON remains the fallback path.
 
+## Artifact Freshness
+
+When a registered analytical artifact has a source hash and the source CSV still exists, `infer-csv` checks whether the file changed after registration. If the hash changed, Indexly asks you to refresh the artifact:
+
+```bash
+indexly analyze-csv path/to/file.csv
+```
+
+Use `--ignore-hash` only when you intentionally want to continue with the existing artifact:
+
+```bash
+indexly infer-csv steps --ignore-hash --test ci-mean --y total_daily_activity
+```
+
 ## Multi-Dataset Inference
 
 Multiple datasets require explicit merge keys:
@@ -112,4 +126,3 @@ Many-to-many joins fail by default because they can multiply rows unexpectedly. 
 - [Clean CSV Data](/documentation/clean-csv-data/)
 - [Data Analysis Overview](/documentation/data-analysis-overview/)
 - [Database Design](/documentation/database-design/)
-

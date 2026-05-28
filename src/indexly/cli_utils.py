@@ -748,6 +748,15 @@ def build_parser():
         "--use-raw", action="store_true", help="Use raw_data_json."
     )
 
+    infer_parser.add_argument(
+        "--ignore-hash",
+        action="store_true",
+        help=(
+            "Warn and continue when a registered analytical artifact is stale. "
+            "Without this flag, stale artifacts ask you to rerun analyze-csv."
+        ),
+    )
+
     # -------------------------
     # Column selection
     # -------------------------

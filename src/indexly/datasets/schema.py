@@ -26,6 +26,7 @@ class ResolvedDataset:
     resolution: str
     df: Any
     record: DatasetRecord | None = None
+    warnings: tuple[str, ...] = ()
 
     @property
     def label(self) -> str:

@@ -1,6 +1,7 @@
 # indexly/visualization/boxplot_render_static.py
 
 from typing import Optional
+import logging
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
@@ -74,7 +75,13 @@ def render_static_boxplot(
         linewidth=1.2,
     )
 
-    ax = sns.boxplot(**boxplot_kwargs)
+    category_logger = logging.getLogger("matplotlib.category")
+    previous_level = category_logger.level
+    category_logger.setLevel(logging.WARNING)
+    try:
+        ax = sns.boxplot(**boxplot_kwargs)
+    finally:
+        category_logger.setLevel(previous_level)
 
     # Axis scaling
     if y_min is not None or y_max is not None:

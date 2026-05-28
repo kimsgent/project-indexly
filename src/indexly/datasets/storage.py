@@ -49,7 +49,9 @@ def write_parquet_artifact(
 
     try:
         artifact_path = artifact_path_for(source_path, version, source_hash)
-        df.to_parquet(artifact_path, index=False)
+        artifact_df = df.copy()
+        artifact_df.attrs = {}
+        artifact_df.to_parquet(artifact_path, index=False)
         return str(artifact_path)
     except Exception:
         return None
