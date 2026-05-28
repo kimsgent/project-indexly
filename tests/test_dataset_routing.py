@@ -587,3 +587,87 @@ def test_router_includes_boxplot_columns_for_multi_file_artifact_loading(
     assert list(routed.datasets[1].df.columns) == ["Id", "TotalMinutesAsleep"]
     assert "left_unused" not in routed.df.columns
     assert "right_unused" not in routed.df.columns
+
+
+def test_router_duckdb_join_uses_projected_artifacts_and_defers_materialization(
+    tmp_path, monkeypatch
+):
+    pytest.importorskip("duckdb")
+    configure_analysis_home(tmp_path, monkeypatch)
+    left_source = tmp_path / "asteps.csv"
+    right_source = tmp_path / "sleepday.csv"
+    left_source.write_text(
+        "Id,avg_daily_steps,left_unused\n1,10,999\n2,20,888\n",
+        encoding="utf-8",
+    )
+    right_source.write_text(
+        "Id,TotalMinutesAsleep,right_unused\n1,100,aaa\n2,200,bbb\n",
+        encoding="utf-8",
+    )
+
+    from indexly.analyze_utils import save_analysis_result
+    from indexly.inference.dataset_router import route_inference_datasets
+
+    save_analysis_result(
+        file_path=str(left_source),
+        file_type="csv",
+        sample_data=pd.DataFrame(
+            {"Id": [1], "avg_daily_steps": [10], "left_unused": [999]}
+        ),
+        cleaned_df=pd.DataFrame(
+            {"Id": [1, 2], "avg_daily_steps": [10, 20], "left_unused": [999, 888]}
+        ),
+        row_count=2,
+        col_count=3,
+    )
+    save_analysis_result(
+        file_path=str(right_source),
+        file_type="csv",
+        sample_data=pd.DataFrame(
+            {"Id": [1], "TotalMinutesAsleep": [100], "right_unused": ["aaa"]}
+        ),
+        cleaned_df=pd.DataFrame(
+            {
+                "Id": [1, 2],
+                "TotalMinutesAsleep": [100, 200],
+                "right_unused": ["aaa", "bbb"],
+            }
+        ),
+        row_count=2,
+        col_count=3,
+    )
+
+    monkeypatch.setattr(
+        "indexly.datasets.resolver._load_legacy_row",
+        lambda *args, **kwargs: pytest.fail("legacy JSON should not be loaded"),
+    )
+
+    routed = route_inference_datasets(
+        SimpleNamespace(
+            files=["asteps", "sleepday"],
+            merge_on=["Id"],
+            use_raw=False,
+            x=["avg_daily_steps"],
+            y="TotalMinutesAsleep",
+            group=None,
+            interaction=None,
+            x_col=None,
+            y_col=None,
+            ignore_hash=False,
+            merge_how="inner",
+            agg="none",
+            analysis_backend="duckdb",
+        )
+    )
+
+    assert routed.merge_metadata["source_backend"] == "duckdb"
+    assert routed.merge_metadata["selected_output_columns"] == [
+        "Id",
+        "TotalMinutesAsleep",
+        "avg_daily_steps",
+    ]
+    assert list(routed.df.columns) == ["Id", "avg_daily_steps", "TotalMinutesAsleep"]
+    assert "left_unused" not in routed.df.columns
+    assert "right_unused" not in routed.df.columns
+    assert routed.datasets[0].df is None
+    assert routed.datasets[1].df is None
