@@ -37,6 +37,28 @@ try:
 except Exception:
     xmltodict = None
 
+try:
+    from tqdm import tqdm as _tqdm
+except Exception:
+    _tqdm = None
+
+
+class _NoopProgress:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def update(self, _count=1):
+        return None
+
+
+def _progress(total: int, desc: str, unit: str):
+    if _tqdm is None:
+        return _NoopProgress()
+    return _tqdm(total=total, desc=desc, unit=unit)
+
 
 # ---------------------------------------------------------------------
 # Helpers
@@ -880,7 +902,6 @@ def detect_file_type(path: Path) -> str:
 # ---------------------------------------------------------------------
 # Main detect_and_load
 # ---------------------------------------------------------------------
-from tqdm import tqdm
 import time
 
 
@@ -1062,7 +1083,7 @@ def detect_and_load(file_path: str | Path, args=None) -> Dict[str, Any]:
         loader_spec = f"loader:{loader_fn.__name__}"
         try:
             desc = f"Loading {file_type.upper()} via loader"
-            with tqdm(total=1, desc=desc, unit="file") as pbar:
+            with _progress(total=1, desc=desc, unit="file") as pbar:
                 if file_type in {"excel", "xls", "xlsx"}:
                     try:
                         excel_file = pd.ExcelFile(path, engine="openpyxl")

@@ -13,18 +13,38 @@ from .regression import run_ols
 from .formatter import format_result, display_inference_result
 from .mixed_effects import run_mixed_effects
 from .dataset_router import route_inference_datasets
-from .exporter import export_report
 from .models import InferenceResult
 from .confidence_intervals import (
     ci_mean,
     ci_mean_difference_independent,
     ci_proportion,
 )
-from indexly.visualization.boxplot_engine import run_boxplot
 from rich.table import Table
 from rich.console import Console
 
 console = Console()
+
+
+def _run_boxplot_if_available(args):
+    try:
+        from indexly.visualization.boxplot_engine import run_boxplot
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(
+            "Boxplot rendering requires optional visualization dependencies. "
+            "Install with: pip install indexly[visualization]."
+        ) from exc
+    return run_boxplot(args)
+
+
+def _export_report_if_available(result, fmt: str):
+    try:
+        from .exporter import export_report
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(
+            "Inference report export requires optional dependencies. "
+            "Install with: pip install indexly[pdf_export]."
+        ) from exc
+    return export_report(result, fmt)
 
 
 def run_inference(
@@ -443,23 +463,26 @@ def handle_infer_csv(args):
     # Optional visualization (boxplot)
     # -----------------------------
     if getattr(args, "boxplot", False):
-
-        run_boxplot(
-            SimpleNamespace(
-                input_files=args.files,
-                x_col=getattr(args, "x_col", None),
-                y_col=getattr(args, "y_col", None),
-                merge_on=args.merge_on,
-                merge_how=getattr(args, "merge_how", "inner"),
-                merge_agg=args.agg,
-                agg=args.agg,
-                use_raw=args.use_raw,
-                use_cleaned=args.use_cleaned,
-                normalize=getattr(args, "normalize", None),
-                mode=getattr(args, "mode", "static"),
-                show_mean=True,
+        try:
+            _run_boxplot_if_available(
+                SimpleNamespace(
+                    input_files=args.files,
+                    x_col=getattr(args, "x_col", None),
+                    y_col=getattr(args, "y_col", None),
+                    merge_on=args.merge_on,
+                    merge_how=getattr(args, "merge_how", "inner"),
+                    merge_agg=args.agg,
+                    agg=args.agg,
+                    use_raw=args.use_raw,
+                    use_cleaned=args.use_cleaned,
+                    normalize=getattr(args, "normalize", None),
+                    mode=getattr(args, "mode", "static"),
+                    show_mean=True,
+                )
             )
-        )
+        except RuntimeError as e:
+            print(f"\n[Inference Error] {e}\n")
+            return
 
     # -----------------------------
     # Dispatch to inference engine
@@ -481,9 +504,11 @@ def handle_infer_csv(args):
             )
 
             if args.export:
-                export_report(results, args.export)
+                _export_report_if_available(results, args.export)
             else:
                 display_inference_result(results)
 
         except ValueError as e:
+            print(f"\n[Inference Error] {e}\n")
+        except RuntimeError as e:
             print(f"\n[Inference Error] {e}\n")
