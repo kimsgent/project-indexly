@@ -446,6 +446,79 @@ def test_router_pandas_backend_loads_projected_parquet_artifacts_after_resolutio
     assert routed.merge_metadata["source_backend"] == "pandas"
 
 
+def test_router_merges_auto_cleaned_parquet_artifacts_with_datetime_columns(
+    tmp_path, monkeypatch
+):
+    configure_analysis_home(tmp_path, monkeypatch)
+    left_source = tmp_path / "steps.csv"
+    right_source = tmp_path / "activity.csv"
+    left_source.write_text(
+        "Id,time,avg_totalsteps\n"
+        "1,2026-01-01T00:00:00Z,1000\n"
+        "2,2026-01-02T00:00:00Z,2000\n",
+        encoding="utf-8",
+    )
+    right_source.write_text(
+        "Id,total_daily_activity\n1,30\n2,45\n",
+        encoding="utf-8",
+    )
+
+    from indexly.analyze_utils import save_analysis_result
+    from indexly.cleaning.auto_clean import auto_clean_csv
+    from indexly.inference.dataset_router import route_inference_datasets
+
+    left_raw = pd.read_csv(left_source)
+    right_raw = pd.read_csv(right_source)
+    left_cleaned, _, _ = auto_clean_csv(left_raw.copy(), verbose=False, persist=False)
+    right_cleaned, _, _ = auto_clean_csv(right_raw.copy(), verbose=False, persist=False)
+
+    save_analysis_result(
+        file_path=str(left_source),
+        file_type="csv",
+        sample_data=left_cleaned.head(1),
+        raw_df=left_raw,
+        cleaned_df=left_cleaned,
+        row_count=len(left_cleaned),
+        col_count=len(left_cleaned.columns),
+    )
+    save_analysis_result(
+        file_path=str(right_source),
+        file_type="csv",
+        sample_data=right_cleaned.head(1),
+        raw_df=right_raw,
+        cleaned_df=right_cleaned,
+        row_count=len(right_cleaned),
+        col_count=len(right_cleaned.columns),
+    )
+
+    routed = route_inference_datasets(
+        SimpleNamespace(
+            files=["steps.csv", "activity.csv"],
+            merge_on=["Id"],
+            use_raw=False,
+            x=["time", "avg_totalsteps"],
+            y="total_daily_activity",
+            group=None,
+            interaction=["time", "avg_totalsteps"],
+            ignore_hash=False,
+            merge_how="inner",
+            agg="none",
+            analysis_backend="pandas",
+        )
+    )
+
+    assert routed.datasets[0].artifact_path
+    assert routed.datasets[1].artifact_path
+    assert pd.api.types.is_datetime64_any_dtype(routed.df["time"])
+    assert "time_timestamp" not in routed.df.columns
+    assert list(routed.df.columns) == [
+        "Id",
+        "time",
+        "avg_totalsteps",
+        "total_daily_activity",
+    ]
+
+
 def test_router_includes_boxplot_columns_for_multi_file_artifact_loading(
     tmp_path, monkeypatch
 ):

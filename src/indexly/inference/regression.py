@@ -32,6 +32,29 @@ def _is_categorical(series: pd.Series) -> bool:
     return series.dtype == "object" or isinstance(series.dtype, pd.CategoricalDtype)
 
 
+def _coerce_datetime_predictors(
+    df: pd.DataFrame, columns: list[str]
+) -> tuple[pd.DataFrame, list[str]]:
+    df_work = df.copy()
+    converted = []
+
+    for col in columns:
+        if col not in df_work.columns:
+            continue
+        if not pd.api.types.is_datetime64_any_dtype(df_work[col]):
+            continue
+
+        parsed = pd.to_datetime(df_work[col], errors="coerce", utc=True)
+        numeric = pd.Series(np.nan, index=df_work.index, dtype="float64")
+        valid = parsed.notna()
+        if valid.any():
+            numeric.loc[valid] = parsed.loc[valid].astype("int64") / 1_000_000_000
+        df_work[col] = numeric
+        converted.append(col)
+
+    return df_work, converted
+
+
 def run_ols(
     df: pd.DataFrame,
     y_col: str,
@@ -46,6 +69,17 @@ def run_ols(
     """
 
     df_work = df.copy()
+    model_columns = [y_col, *(x_cols or []), *(interaction_terms or [])]
+    df_work, datetime_predictors = _coerce_datetime_predictors(
+        df_work,
+        [column for column in model_columns if column != y_col],
+    )
+
+    if pd.api.types.is_datetime64_any_dtype(df_work[y_col]):
+        raise ValueError(
+            f"OLS dependent variable '{y_col}' is datetime typed. "
+            "Use a numeric derived datetime column such as '<column>_timestamp'."
+        )
 
     # ------------------------
     # Outlier detection (IQR)
@@ -77,8 +111,7 @@ def run_ols(
                 inter_name = (
                     f"C({col1}):C({col2})"
                     if (
-                        _is_categorical(df_work[col1])
-                        or _is_categorical(df_work[col2])
+                        _is_categorical(df_work[col1]) or _is_categorical(df_work[col2])
                     )
                     else f"{col1}:{col2}"
                 )
@@ -172,6 +205,7 @@ def run_ols(
             "independent": x_cols,
             "interaction_terms": interaction_names,
             "n": len(df_work),
+            "datetime_predictors_converted": datetime_predictors,
             "power": power,
             "route_selected": selected_route,
             "recommended_route": route,
