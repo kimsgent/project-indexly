@@ -63,6 +63,11 @@ $$
 
 Post-hoc uses Tukey HSD.
 
+## Welch ANOVA
+
+When group normality is acceptable but variances are unequal, Indexly routes to Welch ANOVA with `--auto-route`.
+Welch ANOVA uses group-specific variances and adjusted denominator degrees of freedom rather than assuming a common pooled variance.
+
 ---
 
 # Mann–Whitney U
@@ -108,6 +113,7 @@ $$
 $$
 
 Standard errors derived from residual variance.
+When residual diagnostics indicate heteroscedasticity or non-normality and auto-routing is enabled, Indexly reports HC3 robust covariance results and recomputes coefficient confidence intervals from the robust model.
 
 ---
 
@@ -133,6 +139,51 @@ $$
 $$
 
 CI derived from empirical percentiles.
+
+---
+
+# Bayesian Independent T-Test
+
+Indexly reports BF10, the Bayes factor for the alternative over the null, using the JZS Cauchy-prior t-test formulation.
+
+Interpretation:
+
+* BF10 < 1 → evidence favors the null
+* 1 ≤ BF10 < 3 → anecdotal evidence for the alternative
+* 3 ≤ BF10 < 10 → moderate evidence for the alternative
+* BF10 ≥ 10 → strong evidence for the alternative
+
+---
+
+# Statistical Power
+
+## OLS Regression
+
+Indexly uses Cohen's \(f^2\):
+
+$$
+f^2 = \frac{R^2}{1 - R^2}
+$$
+
+Power is computed for the model F-test with numerator degrees of freedom equal to the number of model predictors and denominator degrees of freedom:
+
+$$
+df_2 = n - k - 1
+$$
+
+## ANOVA
+
+ANOVA effect size is reported as eta-squared:
+
+$$
+\eta^2 = \frac{SS_{between}}{SS_{total}}
+$$
+
+Power uses Cohen's \(f\), converted from eta-squared:
+
+$$
+f = \sqrt{\frac{\eta^2}{1 - \eta^2}}
+$$
 
 ---
 
@@ -227,4 +278,3 @@ See [Developer API](developer-api.md) for programmatic usage of the Indexly infe
           throwOnError: false,
           macros: { '\\RR': '\\mathbb{R}' }
         });"></script>
-

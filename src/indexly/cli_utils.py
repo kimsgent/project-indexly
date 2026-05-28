@@ -826,6 +826,12 @@ def build_parser():
         choices=["bonferroni", "holm", "bh"],
         help="Multiple comparison correction method. 'bh' = Benjamini-Hochberg (also known as FDR correction).",
     )
+    infer_parser.add_argument(
+        "--alpha",
+        type=float,
+        default=0.05,
+        help="Significance level for confidence intervals and tests that expose alpha (default: 0.05).",
+    )
     # -------------------------
     # Boxplot Visualization
     # -------------------------

@@ -12,7 +12,24 @@ from .assumptions import (
 )
 from .power import power_ols
 from .advanced_decision import decide_regression_route
-from .bootstrap import bootstrap
+
+
+def _coefficient_ci_table(model, alpha=0.05):
+    ci = model.conf_int(alpha=alpha)
+    names = getattr(model, "params", None)
+    if hasattr(ci, "loc"):
+        return ci
+
+    if hasattr(names, "index"):
+        index = names.index
+    else:
+        index = model.model.exog_names
+
+    return pd.DataFrame(ci, index=index, columns=[0, 1])
+
+
+def _is_categorical(series: pd.Series) -> bool:
+    return series.dtype == "object" or isinstance(series.dtype, pd.CategoricalDtype)
 
 
 def run_ols(
@@ -47,9 +64,7 @@ def run_ols(
     # ------------------------
     formula_terms = []
     for col in x_cols:
-        if df_work[col].dtype == "object" or pd.api.types.is_categorical_dtype(
-            df_work[col]
-        ):
+        if _is_categorical(df_work[col]):
             formula_terms.append(f"C({col})")
         else:
             formula_terms.append(col)
@@ -62,8 +77,8 @@ def run_ols(
                 inter_name = (
                     f"C({col1}):C({col2})"
                     if (
-                        df_work[col1].dtype == "object"
-                        or df_work[col2].dtype == "object"
+                        _is_categorical(df_work[col1])
+                        or _is_categorical(df_work[col2])
                     )
                     else f"{col1}:{col2}"
                 )
@@ -81,27 +96,6 @@ def run_ols(
         raise ValueError(f"[Inference Error] OLS fit failed: {e}")
 
     # ------------------------
-    # Bootstrap if requested
-    # ------------------------
-    ci_table = model.conf_int()
-    if bootstrap_coefficients:
-        boot_cis = {}
-        for name in model.params.index:
-
-            def coef_stat(df_sample):
-                m = smf.ols(formula, data=df_sample).fit()
-                return m.params[name]
-
-            try:
-                lower, upper = bootstrap(coef_stat, df_work, n_boot=5000)
-            except Exception:
-                lower, upper = None, None
-
-            boot_cis[name] = (lower, upper)
-
-        ci_table = boot_cis
-
-    # ------------------------
     # Effect size & assumptions
     # ------------------------
     f2 = cohen_f_squared(model)
@@ -113,15 +107,47 @@ def run_ols(
     route = decide_regression_route(
         normality["normal"], homoscedasticity["homoscedastic"]
     )
+    selected_route = "ols"
     if auto_route and route == "robust":
         model = model.get_robustcov_results(cov_type="HC3")
+        selected_route = "robust"
+
+    # ------------------------
+    # Coefficient confidence intervals
+    # ------------------------
+    ci_table = _coefficient_ci_table(model)
+    if bootstrap_coefficients:
+        rng = np.random.default_rng()
+        boot_cis = {}
+        param_names = list(ci_table.index)
+
+        for name in param_names:
+            stats = []
+            for _ in range(5000):
+                idx = rng.integers(0, len(df_work), len(df_work))
+                df_sample = df_work.iloc[idx]
+                try:
+                    sample_model = smf.ols(formula, data=df_sample).fit()
+                    if name in sample_model.params.index:
+                        stats.append(sample_model.params[name])
+                except Exception:
+                    continue
+
+            if stats:
+                lower, upper = np.percentile(stats, [2.5, 97.5])
+                boot_cis[name] = (float(lower), float(upper))
+            else:
+                boot_cis[name] = (None, None)
+
+        ci_table = boot_cis
 
     # ------------------------
     # Multicollinearity & power
     # ------------------------
     X_numeric = pd.get_dummies(df_work[x_cols], drop_first=True)
     vif_table = compute_vif(X_numeric)
-    power = power_ols(f2, len(X_numeric.columns), len(df_work))
+    model_df = int(round(getattr(model, "df_model", len(X_numeric.columns))))
+    power = power_ols(f2, model_df, len(df_work))
 
     return InferenceResult(
         test_name="ols_regression",
@@ -147,7 +173,9 @@ def run_ols(
             "interaction_terms": interaction_names,
             "n": len(df_work),
             "power": power,
-            "route_selected": route,
+            "route_selected": selected_route,
+            "recommended_route": route,
+            "auto_route": auto_route,
             "bootstrap_coefficients": bootstrap_coefficients,
         },
     )

@@ -83,25 +83,34 @@ def run_inference_engine(
     No side effects.
     """
 
+    if not 0 < alpha < 1:
+        raise ValueError("alpha must be between 0 and 1.")
+
     # -----------------------------
     # Correlations
     # -----------------------------
     if test == "correlation":
-        if len(x) != 1:
+        if not x or len(x) != 1:
             raise ValueError(
                 "Correlation test requires exactly one --x variable and one --y variable."
             )
         if y is None:
             raise ValueError("Correlation test requires --y to be specified.")
-        return pearson_corr(df, x[0], y)
+        return pearson_corr(df, x[0], y, alpha=alpha)
 
     elif test == "corr-spearman":
+        if not x or len(x) != 1 or y is None:
+            raise ValueError("Spearman correlation requires exactly one --x and one --y.")
         return spearman_corr(df, x[0], y)
 
     elif test == "corr-lag":
+        if not x or len(x) != 1 or y is None:
+            raise ValueError("Lag correlation requires exactly one --x and one --y.")
         return lag_corr(df, x[0], y, lag=lag)
 
     elif test == "corr-matrix":
+        if not x or len(x) < 2:
+            raise ValueError("Correlation matrix requires at least two --x variables.")
         corr_matrix, p_matrix = correlation_matrix(
             df,
             x,
@@ -140,6 +149,8 @@ def run_inference_engine(
         )
 
     elif test == "paired-ttest":
+        if not x or len(x) != 2:
+            raise ValueError("Paired t-test requires exactly two --x columns.")
         return run_paired_ttest(
             df,
             x[0],
@@ -167,7 +178,7 @@ def run_inference_engine(
             y,
             group,
             auto_route=auto_route,
-            correction=None,  # explicitly disable external correction
+            correction=correction,
         )
 
     elif test == "anova-posthoc":
@@ -175,7 +186,7 @@ def run_inference_engine(
             df,
             y,
             group,
-            correction=None,  # Tukey already controls FWER
+            correction=correction,
         )
 
     # -----------------------------
@@ -192,7 +203,7 @@ def run_inference_engine(
         )
 
     elif test == "mixed":
-        return run_mixed_effects(df, y, group)
+        return run_mixed_effects(df, y, group, x_cols=x)
 
     # -----------------------------
     # CI: Single Mean
@@ -303,10 +314,18 @@ def handle_infer_csv(args):
     if args.test:
 
         # Tests requiring only y
-        if args.test in ["ci-mean", "ci-proportion", "ci-diff"]:
+        if args.test in ["ci-mean", "ci-proportion"]:
             if not args.y:
                 console.print(
                     f"[red]Error:[/] --y is required for [bold]{args.test}[/bold].",
+                    style="bold red",
+                )
+                return
+
+        elif args.test == "ci-diff":
+            if not args.y or not args.group:
+                console.print(
+                    "[red]Error:[/] --test ci-diff requires --y and --group.",
                     style="bold red",
                 )
                 return
@@ -327,11 +346,56 @@ def handle_infer_csv(args):
                 )
                 return
 
-        # Group comparison tests (kruskal, anova etc.)
-        elif args.test in ["kruskal", "anova"]:
+        elif args.test == "paired-ttest":
+            if not args.x or len(args.x) != 2:
+                console.print(
+                    "[red]Error:[/] --test paired-ttest requires exactly two --x columns.",
+                    style="bold red",
+                )
+                return
+
+        elif args.test in ["corr-spearman", "corr-lag"]:
+            if not args.x or len(args.x) != 1 or not args.y:
+                console.print(
+                    f"[red]Error:[/] --test {args.test} requires exactly one --x and --y.",
+                    style="bold red",
+                )
+                return
+
+        elif args.test == "corr-matrix":
+            if not args.x or len(args.x) < 2:
+                console.print(
+                    "[red]Error:[/] --test corr-matrix requires at least two --x columns.",
+                    style="bold red",
+                )
+                return
+
+        # Group comparison tests
+        elif args.test in [
+            "ttest",
+            "bayes-ttest",
+            "mannwhitney",
+            "kruskal",
+            "anova",
+            "anova-posthoc",
+        ]:
             if not args.y or not args.group:
                 console.print(
                     f"[red]Error:[/] --test {args.test} requires --y and --group.",
+                    style="bold red",
+                )
+                return
+
+        elif args.test in ["ols", "mixed"]:
+            if not args.y or not args.x:
+                console.print(
+                    f"[red]Error:[/] --test {args.test} requires --y and --x.",
+                    style="bold red",
+                )
+                return
+            if args.test == "mixed" and not args.group:
+                console.print(
+                    "[red]Error:[/] --test mixed requires --group.",
                     style="bold red",
                 )
                 return
@@ -433,6 +497,7 @@ def handle_infer_csv(args):
                 auto_route=args.auto_route,
                 bootstrap=args.bootstrap,
                 correction=args.correction,
+                alpha=getattr(args, "alpha", 0.05),
             )
 
             if args.export:

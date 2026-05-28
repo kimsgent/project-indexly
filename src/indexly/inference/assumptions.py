@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
-from scipy.stats import shapiro, levene
+from scipy.stats import normaltest, shapiro, levene
 from statsmodels.stats.diagnostic import het_breuschpagan
 from statsmodels.stats.stattools import durbin_watson
 from statsmodels.regression.linear_model import RegressionResults
@@ -27,12 +27,39 @@ def detect_outliers_iqr(series):
     }
 
 def test_normality(series):
-    stat, p = shapiro(series)
+    series = pd.Series(series).dropna()
+    n = len(series)
+
+    if n < 3:
+        return {
+            "test": "Shapiro-Wilk",
+            "statistic": np.nan,
+            "p_value": np.nan,
+            "normal": False,
+            "n": n,
+            "warning": "normality requires at least 3 observations",
+        }
+
+    if n <= 5000:
+        stat, p = shapiro(series)
+        test_name = "Shapiro-Wilk"
+        warning = None
+    elif n >= 8:
+        stat, p = normaltest(series)
+        test_name = "D'Agostino K^2"
+        warning = "large sample: normality tests can flag trivial deviations"
+    else:
+        stat, p = np.nan, np.nan
+        test_name = "Normality"
+        warning = "normality test unavailable for this sample size"
+
     return {
-        "test": "Shapiro-Wilk",
+        "test": test_name,
         "statistic": stat,
         "p_value": p,
         "normal": p > 0.05,
+        "n": n,
+        "warning": warning,
     }
 
 
@@ -45,6 +72,27 @@ def test_homogeneity(group1, group2):
         "equal_variance": p > 0.05,
     }
 
+
+def test_homogeneity_groups(samples):
+    clean_samples = [pd.Series(sample).dropna() for sample in samples]
+    if len(clean_samples) < 2 or any(len(sample) < 2 for sample in clean_samples):
+        return {
+            "test": "Levene",
+            "statistic": np.nan,
+            "p_value": np.nan,
+            "equal_variance": False,
+            "warning": "homogeneity requires at least 2 observations per group",
+        }
+
+    stat, p = levene(*clean_samples, center="median")
+    return {
+        "test": "Levene",
+        "statistic": stat,
+        "p_value": p,
+        "equal_variance": p > 0.05,
+        "warning": None,
+    }
+
 def test_independence(model):
     dw = durbin_watson(model.resid)
 
@@ -55,8 +103,7 @@ def test_independence(model):
     }
 
 def test_normality_residuals(residuals):
-    stat, p = shapiro(residuals)
-    return {"test": "Shapiro-Wilk", "statistic": stat, "p_value": p, "normal": p > 0.05, "n": len(residuals),}
+    return test_normality(residuals)
 
 
 def test_homoscedasticity(model: RegressionResults, df):
@@ -88,11 +135,24 @@ def compute_vif(df: pd.DataFrame) -> pd.DataFrame:
     # Drop any rows with NaN (VIF can't handle NaN)
     df_numeric = df_numeric.dropna()
 
+    if df_numeric.shape[1] == 0:
+        return pd.DataFrame(columns=["variable", "VIF", "interpretation"])
+
+    if df_numeric.shape[1] == 1:
+        return pd.DataFrame(
+            {
+                "variable": df_numeric.columns,
+                "VIF": [1.0],
+                "interpretation": ["low"],
+            }
+        )
+
     # Compute VIF
+    exog = sm.add_constant(df_numeric, has_constant="add")
     vif_data = pd.DataFrame()
     vif_data["variable"] = df_numeric.columns
     vif_data["VIF"] = [
-        variance_inflation_factor(df_numeric.values, i)
+        variance_inflation_factor(exog.values, i + 1)
         for i in range(df_numeric.shape[1])
     ]
     vif_data["interpretation"] = vif_data["VIF"].apply(
