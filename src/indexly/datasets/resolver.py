@@ -26,20 +26,27 @@ def resolve_dataset(
     use_cleaned: bool = True,
     use_raw: bool = False,
     columns: list[str] | None = None,
+    required_columns: list[str] | None = None,
+    ignore_hash: bool = False,
 ) -> ResolvedDataset:
     """
     Resolve an inference dataset by catalog name, legacy cleaned_data file_name,
     source_path, or an existing CSV path loaded ephemerally.
     """
     columns = _dedupe(columns)
+    required_columns = _dedupe(required_columns)
     version = "raw" if use_raw else "cleaned"
 
     conn = _get_db_connection()
     try:
         record = get_dataset_by_name(conn, identifier)
         if record:
-            df = _load_catalog_record(conn, record, version, columns)
-            return ResolvedDataset(identifier, "dataset_registry.name", df, record)
+            df, warnings = _load_catalog_record(
+                conn, record, version, columns, required_columns, ignore_hash
+            )
+            return ResolvedDataset(
+                identifier, "dataset_registry.name", df, record, tuple(warnings)
+            )
 
         file_name = os.path.basename(identifier)
         legacy_row = conn.execute(
@@ -48,18 +55,29 @@ def resolve_dataset(
         ).fetchone()
         if legacy_row:
             df = _load_legacy_row(legacy_row, use_cleaned=use_cleaned, use_raw=use_raw)
+            df = _select_existing_columns(df, columns)
             return ResolvedDataset(identifier, "cleaned_data.file_name", df, None)
 
         record = get_dataset_by_file_name(conn, file_name)
         if record:
-            df = _load_catalog_record(conn, record, version, columns)
-            return ResolvedDataset(identifier, "dataset_registry.file_name", df, record)
+            df, warnings = _load_catalog_record(
+                conn, record, version, columns, required_columns, ignore_hash
+            )
+            return ResolvedDataset(
+                identifier, "dataset_registry.file_name", df, record, tuple(warnings)
+            )
 
         source_record = get_dataset_by_source_path(conn, identifier)
         if source_record:
-            df = _load_catalog_record(conn, source_record, version, columns)
+            df, warnings = _load_catalog_record(
+                conn, source_record, version, columns, required_columns, ignore_hash
+            )
             return ResolvedDataset(
-                identifier, "dataset_registry.source_path", df, source_record
+                identifier,
+                "dataset_registry.source_path",
+                df,
+                source_record,
+                tuple(warnings),
             )
 
         legacy_source = _find_legacy_source_row(conn, identifier)
@@ -69,6 +87,7 @@ def resolve_dataset(
                 use_cleaned=use_cleaned,
                 use_raw=use_raw,
             )
+            df = _select_existing_columns(df, columns)
             return ResolvedDataset(identifier, "cleaned_data.source_path", df, None)
 
     finally:
@@ -92,35 +111,127 @@ def _load_catalog_record(
     record: DatasetRecord,
     version: str,
     columns: list[str] | None,
-) -> pd.DataFrame:
+    required_columns: list[str] | None,
+    ignore_hash: bool,
+) -> tuple[pd.DataFrame, list[str]]:
+    warnings = []
     artifact_path = (
         record.raw_artifact_path if version == "raw" else record.cleaned_artifact_path
     )
     if artifact_path:
-        if columns and record.id is not None:
-            available = get_columns(conn, record.id, version)
-            missing = [column for column in columns if column not in available]
+        stale_warning = _freshness_warning(record)
+        if stale_warning:
+            if not ignore_hash:
+                raise DatasetResolutionError(
+                    f"{stale_warning}\n"
+                    f"Run 'indexly analyze-csv {record.source_path or record.file_name}' "
+                    "to refresh analytical artifacts, or pass --ignore-hash to warn "
+                    "and continue with the existing artifact."
+                )
+            warnings.append(stale_warning)
+
+        artifact_columns = _artifact_columns(conn, record, version)
+        read_columns = _columns_for_dataset(
+            available_columns=artifact_columns,
+            requested_columns=columns,
+            required_columns=required_columns,
+            dataset_name=record.dataset_name,
+        )
+        return read_artifact(artifact_path, columns=read_columns), warnings
+
+    if columns and record.id is not None:
+        available = _artifact_columns(conn, record, version)
+        if available:
+            missing = [
+                column
+                for column in required_columns or []
+                if column not in set(available)
+            ]
             if missing:
                 raise DatasetResolutionError(
-                    f"Dataset '{record.dataset_name}' is missing column(s): "
+                    f"Dataset '{record.dataset_name}' is missing required column(s): "
                     f"{', '.join(missing)}."
                 )
-        return read_artifact(artifact_path, columns=columns)
 
     row = conn.execute(
         "SELECT * FROM cleaned_data WHERE file_name = ?",
         (record.file_name,),
     ).fetchone()
     if row:
-        return _load_legacy_row(
+        df = _load_legacy_row(
             row,
             use_cleaned=(version == "cleaned"),
             use_raw=(version == "raw"),
         )
+        return _select_existing_columns(df, columns), warnings
 
     raise DatasetResolutionError(
         f"Dataset '{record.dataset_name}' is registered, but no {version} artifact "
         "or legacy JSON payload is available."
+    )
+
+
+def _artifact_columns(conn, record: DatasetRecord, version: str) -> list[str]:
+    if record.id is None:
+        return []
+    return list(get_columns(conn, record.id, version).keys())
+
+
+def _columns_for_dataset(
+    *,
+    available_columns: list[str],
+    requested_columns: list[str] | None,
+    required_columns: list[str] | None,
+    dataset_name: str,
+) -> list[str] | None:
+    if not requested_columns:
+        return None
+
+    available = set(available_columns)
+    missing_required = [
+        column
+        for column in required_columns or []
+        if available_columns and column not in available
+    ]
+    if missing_required:
+        raise DatasetResolutionError(
+            f"Dataset '{dataset_name}' is missing required column(s): "
+            f"{', '.join(missing_required)}."
+        )
+
+    if not available_columns:
+        return requested_columns
+
+    selected = [
+        column
+        for column in requested_columns
+        if column in available or column in set(required_columns or [])
+    ]
+    return selected or None
+
+
+def _select_existing_columns(
+    df: pd.DataFrame, columns: list[str] | None
+) -> pd.DataFrame:
+    if not columns:
+        return df
+    selected = [column for column in columns if column in df.columns]
+    return df[selected].copy() if selected else df
+
+
+def _freshness_warning(record: DatasetRecord) -> str | None:
+    from .storage import sha256_file
+
+    if not record.source_path or not record.source_hash:
+        return None
+
+    current_hash = sha256_file(record.source_path)
+    if current_hash is None or current_hash == record.source_hash:
+        return None
+
+    return (
+        f"Analytical artifact for dataset '{record.dataset_name}' is stale: "
+        "the source CSV hash has changed since the artifact was registered."
     )
 
 

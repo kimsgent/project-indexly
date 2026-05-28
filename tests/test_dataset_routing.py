@@ -1,4 +1,5 @@
 import json
+from types import SimpleNamespace
 
 import pandas as pd
 import pytest
@@ -116,6 +117,72 @@ def test_save_analysis_result_registers_catalog_and_keeps_legacy_fallback(
     assert catalog_row["file_name"] == "registered.csv"
 
 
+def test_resolver_reads_only_requested_artifact_columns(tmp_path, monkeypatch):
+    configure_analysis_home(tmp_path, monkeypatch)
+    source = tmp_path / "wide.csv"
+    source.write_text("id,value,unused\n1,10,999\n2,20,888\n", encoding="utf-8")
+
+    from indexly.analyze_utils import save_analysis_result
+    from indexly.datasets.resolver import resolve_dataset
+
+    save_analysis_result(
+        file_path=str(source),
+        file_type="csv",
+        sample_data=pd.DataFrame({"id": [1], "value": [10], "unused": [999]}),
+        cleaned_df=pd.DataFrame(
+            {"id": [1, 2], "value": [10, 20], "unused": [999, 888]}
+        ),
+        row_count=2,
+        col_count=3,
+    )
+
+    resolved = resolve_dataset(
+        "wide",
+        columns=["id", "value"],
+        required_columns=["id"],
+    )
+
+    assert list(resolved.df.columns) == ["id", "value"]
+
+
+def test_stale_artifact_requires_refresh_unless_hash_is_ignored(tmp_path, monkeypatch):
+    configure_analysis_home(tmp_path, monkeypatch)
+    source = tmp_path / "stale.csv"
+    source.write_text("id,value\n1,10\n", encoding="utf-8")
+
+    from indexly.analyze_utils import save_analysis_result
+    from indexly.datasets.resolver import DatasetResolutionError, resolve_dataset
+
+    save_analysis_result(
+        file_path=str(source),
+        file_type="csv",
+        sample_data=pd.DataFrame({"id": [1], "value": [10]}),
+        cleaned_df=pd.DataFrame({"id": [1], "value": [10]}),
+        row_count=1,
+        col_count=2,
+    )
+    source.write_text("id,value\n1,99\n", encoding="utf-8")
+
+    with pytest.raises(DatasetResolutionError) as exc_info:
+        resolve_dataset("stale", columns=["id"], required_columns=["id"])
+
+    message = str(exc_info.value)
+    assert "source CSV hash has changed" in message
+    assert "indexly analyze-csv" in message
+    assert "--ignore-hash" in message
+
+    resolved = resolve_dataset(
+        "stale",
+        columns=["id"],
+        required_columns=["id"],
+        ignore_hash=True,
+    )
+
+    assert resolved.warnings
+    assert "source CSV hash has changed" in resolved.warnings[0]
+    assert list(resolved.df.columns) == ["id"]
+
+
 def test_missing_dataset_error_is_actionable_without_csv_guess(tmp_path, monkeypatch):
     configure_analysis_home(tmp_path, monkeypatch)
 
@@ -127,3 +194,59 @@ def test_missing_dataset_error_is_actionable_without_csv_guess(tmp_path, monkeyp
     message = str(exc_info.value)
     assert "Did you mean" not in message
     assert "existing CSV path" in message
+
+
+def test_router_prunes_multi_file_columns_for_available_artifact_columns(
+    tmp_path, monkeypatch
+):
+    configure_analysis_home(tmp_path, monkeypatch)
+    left_source = tmp_path / "left.csv"
+    right_source = tmp_path / "right.csv"
+    left_source.write_text("id,x,left_unused\n1,10,999\n2,20,888\n", encoding="utf-8")
+    right_source.write_text(
+        "id,y,right_unused\n1,100,aaa\n2,200,bbb\n", encoding="utf-8"
+    )
+
+    from indexly.analyze_utils import save_analysis_result
+    from indexly.inference.dataset_router import route_inference_datasets
+
+    save_analysis_result(
+        file_path=str(left_source),
+        file_type="csv",
+        sample_data=pd.DataFrame({"id": [1], "x": [10], "left_unused": [999]}),
+        cleaned_df=pd.DataFrame(
+            {"id": [1, 2], "x": [10, 20], "left_unused": [999, 888]}
+        ),
+        row_count=2,
+        col_count=3,
+    )
+    save_analysis_result(
+        file_path=str(right_source),
+        file_type="csv",
+        sample_data=pd.DataFrame({"id": [1], "y": [100], "right_unused": ["aaa"]}),
+        cleaned_df=pd.DataFrame(
+            {"id": [1, 2], "y": [100, 200], "right_unused": ["aaa", "bbb"]}
+        ),
+        row_count=2,
+        col_count=3,
+    )
+
+    routed = route_inference_datasets(
+        SimpleNamespace(
+            files=["left", "right"],
+            merge_on=["id"],
+            use_raw=False,
+            x=["x"],
+            y="y",
+            group=None,
+            interaction=None,
+            ignore_hash=False,
+            merge_how="inner",
+            agg="none",
+        )
+    )
+
+    assert list(routed.datasets[0].df.columns) == ["id", "x"]
+    assert list(routed.datasets[1].df.columns) == ["id", "y"]
+    assert "left_unused" not in routed.df.columns
+    assert "right_unused" not in routed.df.columns

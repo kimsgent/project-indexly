@@ -26,15 +26,19 @@ def route_inference_datasets(args) -> RoutedInferenceDataset:
     use_cleaned = not getattr(args, "use_raw", False)
     merge_keys = _merge_keys(getattr(args, "merge_on", None))
     selected_columns = _selected_columns(args, merge_keys)
+    files = getattr(args, "files", [])
+    required_columns = selected_columns if len(files) == 1 else merge_keys
 
     resolved = [
         resolve_dataset(
             identifier,
             use_cleaned=use_cleaned,
             use_raw=getattr(args, "use_raw", False),
-            columns=selected_columns if len(getattr(args, "files", [])) == 1 else None,
+            columns=selected_columns,
+            required_columns=required_columns,
+            ignore_hash=getattr(args, "ignore_hash", False),
         )
-        for identifier in args.files
+        for identifier in files
     ]
 
     if len(resolved) == 1:
@@ -65,7 +69,7 @@ def route_inference_datasets(args) -> RoutedInferenceDataset:
 
 
 def _selected_columns(args, merge_keys: list[str]) -> list[str]:
-    columns: list[str] = []
+    columns: list[str] = list(merge_keys)
     if getattr(args, "y", None):
         columns.append(args.y)
     if getattr(args, "x", None):
@@ -74,7 +78,6 @@ def _selected_columns(args, merge_keys: list[str]) -> list[str]:
         columns.append(args.group)
     if getattr(args, "interaction", None):
         columns.extend(args.interaction)
-    columns.extend(merge_keys)
     return list(dict.fromkeys(column for column in columns if column))
 
 
@@ -101,6 +104,7 @@ def _print_single_dataset_diagnostics(
         str(dataset.col_count),
     )
     console.print(table)
+    _print_dataset_warnings([dataset])
     if selected_columns:
         console.print(
             f"[dim]Columns selected for inference: {', '.join(selected_columns)}[/dim]"
@@ -127,6 +131,7 @@ def _print_merge_diagnostics(
             "yes" if duplicate_flags[index] else "no",
         )
     console.print(table)
+    _print_dataset_warnings(datasets)
     console.print(f"[dim]Join keys: {', '.join(metadata.get('join_keys', []))}[/dim]")
     console.print(
         f"[dim]Join type: {metadata.get('join_cardinality', 'unknown')}[/dim]"
@@ -139,3 +144,9 @@ def _print_merge_diagnostics(
         console.print(
             f"[dim]Columns selected for inference: {', '.join(selected_columns)}[/dim]"
         )
+
+
+def _print_dataset_warnings(datasets: list[ResolvedDataset]) -> None:
+    for dataset in datasets:
+        for warning in dataset.warnings:
+            console.print(f"[yellow]Warning:[/] {warning}")
