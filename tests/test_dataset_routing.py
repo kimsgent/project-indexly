@@ -1,5 +1,6 @@
 import json
 import warnings
+from pathlib import Path
 from types import SimpleNamespace
 
 import pandas as pd
@@ -178,6 +179,138 @@ def test_save_analysis_result_registers_catalog_and_keeps_legacy_fallback(
     assert catalog_row["row_count"] == 2
     assert catalog_row["dataset_name"] == "registered"
     assert catalog_row["file_name"] == "registered.csv"
+
+
+def test_reanalysis_prunes_superseded_artifacts_by_default(tmp_path, monkeypatch):
+    configure_analysis_home(tmp_path, monkeypatch)
+    source = tmp_path / "prune.csv"
+    source.write_text("id,value\n1,10\n2,20\n", encoding="utf-8")
+
+    from indexly.analyze_utils import save_analysis_result
+    from indexly.db_utils import _get_db_connection
+
+    save_analysis_result(
+        file_path=str(source),
+        file_type="csv",
+        sample_data=pd.DataFrame({"id": [1], "value": [10]}),
+        cleaned_df=pd.DataFrame({"id": [1, 2], "value": [10, 20]}),
+        row_count=2,
+        col_count=2,
+    )
+    conn = _get_db_connection()
+    old_path = conn.execute(
+        "SELECT cleaned_artifact_path FROM dataset_registry WHERE dataset_name = ?",
+        ("prune",),
+    ).fetchone()["cleaned_artifact_path"]
+    conn.close()
+
+    source.write_text("id,value\n1,99\n2,50\n", encoding="utf-8")
+    save_analysis_result(
+        file_path=str(source),
+        file_type="csv",
+        sample_data=pd.DataFrame({"id": [1], "value": [99]}),
+        cleaned_df=pd.DataFrame({"id": [1, 2], "value": [99, 50]}),
+        row_count=2,
+        col_count=2,
+    )
+    conn = _get_db_connection()
+    new_path = conn.execute(
+        "SELECT cleaned_artifact_path FROM dataset_registry WHERE dataset_name = ?",
+        ("prune",),
+    ).fetchone()["cleaned_artifact_path"]
+    conn.close()
+
+    assert old_path != new_path
+    assert not Path(old_path).exists()
+    assert Path(new_path).exists()
+
+
+def test_reanalysis_can_keep_artifact_history_when_requested(tmp_path, monkeypatch):
+    configure_analysis_home(tmp_path, monkeypatch)
+    source = tmp_path / "history.csv"
+    source.write_text("id,value\n1,10\n2,20\n", encoding="utf-8")
+
+    from indexly.analyze_utils import save_analysis_result
+    from indexly.db_utils import _get_db_connection
+
+    save_analysis_result(
+        file_path=str(source),
+        file_type="csv",
+        sample_data=pd.DataFrame({"id": [1], "value": [10]}),
+        cleaned_df=pd.DataFrame({"id": [1, 2], "value": [10, 20]}),
+        row_count=2,
+        col_count=2,
+    )
+    conn = _get_db_connection()
+    old_path = conn.execute(
+        "SELECT cleaned_artifact_path FROM dataset_registry WHERE dataset_name = ?",
+        ("history",),
+    ).fetchone()["cleaned_artifact_path"]
+    conn.close()
+
+    source.write_text("id,value\n1,99\n2,50\n", encoding="utf-8")
+    with pytest.warns(UserWarning, match="keep-artifact-history"):
+        save_analysis_result(
+            file_path=str(source),
+            file_type="csv",
+            sample_data=pd.DataFrame({"id": [1], "value": [99]}),
+            cleaned_df=pd.DataFrame({"id": [1, 2], "value": [99, 50]}),
+            row_count=2,
+            col_count=2,
+            keep_artifact_history=True,
+        )
+    conn = _get_db_connection()
+    new_path = conn.execute(
+        "SELECT cleaned_artifact_path FROM dataset_registry WHERE dataset_name = ?",
+        ("history",),
+    ).fetchone()["cleaned_artifact_path"]
+    conn.close()
+
+    assert old_path != new_path
+    assert Path(old_path).exists()
+    assert Path(new_path).exists()
+
+
+def test_clear_data_prune_artifacts_removes_unreferenced_history(tmp_path, monkeypatch):
+    configure_analysis_home(tmp_path, monkeypatch)
+    source = tmp_path / "cleanup.csv"
+    source.write_text("id,value\n1,10\n2,20\n", encoding="utf-8")
+
+    from indexly.analyze_utils import save_analysis_result
+    from indexly.clean_csv import clear_cleaned_data
+    from indexly.db_utils import _get_db_connection
+
+    save_analysis_result(
+        file_path=str(source),
+        file_type="csv",
+        sample_data=pd.DataFrame({"id": [1], "value": [10]}),
+        cleaned_df=pd.DataFrame({"id": [1, 2], "value": [10, 20]}),
+        row_count=2,
+        col_count=2,
+    )
+    conn = _get_db_connection()
+    old_path = conn.execute(
+        "SELECT cleaned_artifact_path FROM dataset_registry WHERE dataset_name = ?",
+        ("cleanup",),
+    ).fetchone()["cleaned_artifact_path"]
+    conn.close()
+
+    source.write_text("id,value\n1,99\n2,50\n", encoding="utf-8")
+    with pytest.warns(UserWarning):
+        save_analysis_result(
+            file_path=str(source),
+            file_type="csv",
+            sample_data=pd.DataFrame({"id": [1], "value": [99]}),
+            cleaned_df=pd.DataFrame({"id": [1, 2], "value": [99, 50]}),
+            row_count=2,
+            col_count=2,
+            keep_artifact_history=True,
+        )
+    assert Path(old_path).exists()
+
+    clear_cleaned_data(remove_all=True, prune_artifacts=True)
+
+    assert not Path(old_path).exists()
 
 
 def test_parquet_artifact_write_ignores_unserializable_dataframe_attrs(
@@ -365,6 +498,7 @@ def test_router_prunes_multi_file_columns_for_available_artifact_columns(
             ignore_hash=False,
             merge_how="inner",
             agg="none",
+            analysis_backend="pandas",
         )
     )
 
@@ -580,6 +714,7 @@ def test_router_includes_boxplot_columns_for_multi_file_artifact_loading(
             ignore_hash=False,
             merge_how="inner",
             agg="none",
+            analysis_backend="pandas",
         )
     )
 

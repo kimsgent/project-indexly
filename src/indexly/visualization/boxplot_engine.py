@@ -33,14 +33,16 @@ console = Console()
 
 
 def run_boxplot(args, routed_df: Optional[pd.DataFrame] = None):
+    _normalize_boxplot_flags(args)
     validate_boxplot_args(args)
 
     file_names: List[str] = args.input_files
     y_cols: List[str] = args.y_col
     x_col: Optional[str] = args.x_col
     use_raw = getattr(args, "use_raw", False)
-    use_clean = getattr(args, "use_clean", False) or getattr(args, "use_cleaned", False)
-    use_cleaned_for_load = not use_raw
+    use_cleaned = getattr(args, "use_cleaned", False)
+    use_cleaned_for_load = use_cleaned and not use_raw
+    boxplot_agg = _boxplot_aggregation_list(args)
 
     # ensure y_cols is always a list
     if isinstance(y_cols, str):
@@ -51,14 +53,14 @@ def run_boxplot(args, routed_df: Optional[pd.DataFrame] = None):
             raise ValueError("Routed dataset is empty.")
 
         dataset_name = Path(file_names[0]).name if len(file_names) == 1 else "merged"
-        if use_raw or use_clean:
+        if use_raw or use_cleaned:
             df_processed = _project_boxplot_columns(routed_df, x_col, y_cols)
         else:
             df_processed = apply_group_aggregation(
                 routed_df.copy(),
                 x_col=x_col,
                 y_cols=y_cols,
-                agg_list=args.agg,
+                agg_list=boxplot_agg,
             )
         long_df = reshape_to_long(
             df_processed,
@@ -103,7 +105,7 @@ def run_boxplot(args, routed_df: Optional[pd.DataFrame] = None):
                 agg=getattr(args, "merge_agg", None) or "none",
             )
 
-            if use_raw or use_clean:
+            if use_raw or use_cleaned:
                 # Use raw columns, no aggregation
                 df_processed = _project_boxplot_columns(merged_df, x_col, y_cols)
             else:
@@ -111,7 +113,7 @@ def run_boxplot(args, routed_df: Optional[pd.DataFrame] = None):
                     merged_df.copy(),
                     x_col=x_col,
                     y_cols=y_cols,
-                    agg_list=args.agg,
+                    agg_list=boxplot_agg,
                 )
 
             long_df = reshape_to_long(
@@ -129,14 +131,14 @@ def run_boxplot(args, routed_df: Optional[pd.DataFrame] = None):
             processed = {}
 
             for name, df in datasets.items():
-                if use_raw or use_clean:
+                if use_raw or use_cleaned:
                     df_agg = _project_boxplot_columns(df, x_col, y_cols)
                 else:
                     df_agg = apply_group_aggregation(
                         df.copy(),
                         x_col=x_col,
                         y_cols=y_cols,
-                        agg_list=args.agg,
+                        agg_list=boxplot_agg,
                     )
                 processed[name] = df_agg
 
@@ -152,14 +154,14 @@ def run_boxplot(args, routed_df: Optional[pd.DataFrame] = None):
 
         else:
             name, df = next(iter(datasets.items()))
-            if use_raw or use_clean:
+            if use_raw or use_cleaned:
                 df_processed = _project_boxplot_columns(df, x_col, y_cols)
             else:
                 df_processed = apply_group_aggregation(
                     df.copy(),
                     x_col=x_col,
                     y_cols=y_cols,
-                    agg_list=args.agg,
+                    agg_list=boxplot_agg,
                 )
             long_df = reshape_to_long(
                 df_processed,
@@ -271,3 +273,34 @@ def _project_boxplot_columns(
 ) -> pd.DataFrame:
     columns = [*([x_col] if x_col else []), *y_cols]
     return df[columns].copy()
+
+
+def _boxplot_aggregation_list(args) -> list[str]:
+    agg = getattr(args, "boxplot_agg", None)
+    if agg is None:
+        agg = getattr(args, "agg", None)
+
+    if agg is None:
+        return ["mean"]
+    if isinstance(agg, str):
+        return [part.strip().lower() for part in agg.split(",") if part.strip()]
+    return [str(part).strip().lower() for part in agg if str(part).strip()]
+
+
+def _normalize_boxplot_flags(args) -> None:
+    """
+    Usage audit note (v2 contract):
+    - --use-cleaned: analyze-file/analyze-csv saved-data loading + infer-csv selection
+    - --use-clean: legacy boxplot alias
+    """
+    use_clean_alias = bool(getattr(args, "use_clean", False))
+    use_cleaned = bool(getattr(args, "use_cleaned", False) or use_clean_alias)
+
+    if use_clean_alias:
+        console.print(
+            "[yellow]⚠️ --use-clean is deprecated. "
+            "Use --use-cleaned instead.[/yellow]"
+        )
+
+    setattr(args, "use_cleaned", use_cleaned)
+    setattr(args, "use_clean", False)

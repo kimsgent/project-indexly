@@ -109,7 +109,7 @@ class PandasBackend(AnalyticalBackend):
                 _estimate_pandas_inner_join_rows(frames, merge_on, how)
             )
             raise JoinSafetyError(
-                "Many-to-many merge detected. Use --agg mean|sum to aggregate "
+                "Many-to-many merge detected. Use --merge-agg mean|sum to aggregate "
                 "duplicate keys before merging, or narrow the merge keys with "
                 "--merge-on.",
                 preflight_metadata,
@@ -189,7 +189,7 @@ class DuckDBBackend(AnalyticalBackend):
                     conn, datasets, merge_on, how
                 )
                 raise JoinSafetyError(
-                    "Many-to-many merge detected. Use --agg mean|sum to aggregate "
+                    "Many-to-many merge detected. Use --merge-agg mean|sum to aggregate "
                     "duplicate keys before merging, or narrow the merge keys with "
                     "--merge-on.",
                     metadata,

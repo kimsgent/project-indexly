@@ -159,7 +159,9 @@ def _lazy_clear_cleaned_data(args):
     except ModuleNotFoundError as exc:
         raise SystemExit(_missing_dependency_message(exc, "analysis")) from exc
     return clear_cleaned_data(
-        file_path=args.file, remove_all=getattr(args, "all", False)
+        file_path=args.file,
+        remove_all=getattr(args, "all", False),
+        prune_artifacts=getattr(args, "prune_artifacts", False),
     )
 
 
@@ -623,7 +625,9 @@ def build_parser():
         "--use-raw", action="store_true", help="Use raw (uncleaned) data for boxplot"
     )
     csv_parser.add_argument(
-        "--use-clean", action="store_true", help="Use cleaned data for boxplot"
+        "--use-clean",
+        action="store_true",
+        help="Deprecated alias for --use-cleaned in boxplot mode",
     )
     csv_parser.add_argument(
         "--norm",
@@ -688,6 +692,14 @@ def build_parser():
         help="Disable saving cleaned or analyzed results to the database",
     )
     csv_parser.add_argument(
+        "--keep-artifact-history",
+        action="store_true",
+        help=(
+            "Preserve superseded hash-versioned Parquet artifacts on re-analysis. "
+            "By default, older artifacts are pruned."
+        ),
+    )
+    csv_parser.add_argument(
         "--normalize",
         action="store_true",
         help="Normalize numeric columns after cleaning",
@@ -731,10 +743,25 @@ def build_parser():
     )
 
     infer_parser.add_argument(
-        "--agg",
+        "--merge-agg",
         choices=["none", "mean", "sum"],
         default="none",
-        help="Aggregate duplicate merge keys before merging (mean, sum, none).",
+        help="Join-time duplicate-key handling for multi-file merge (default: none).",
+    )
+    infer_parser.add_argument(
+        "--boxplot-agg",
+        choices=["mean", "sum", "count", "median", "min", "max"],
+        default="mean",
+        help="Aggregation used for boxplot grouping/stat summaries (default: mean).",
+    )
+    infer_parser.add_argument(
+        "--agg",
+        choices=["none", "mean", "sum", "count", "median", "min", "max"],
+        default=None,
+        help=(
+            "[Deprecated] Use --merge-agg for join duplicate-key handling or "
+            "--boxplot-agg for boxplot aggregation."
+        ),
     )
 
     # -------------------------
@@ -742,6 +769,11 @@ def build_parser():
     # -------------------------
     infer_parser.add_argument(
         "--use-cleaned", action="store_true", help="Use cleaned_data_json (default)."
+    )
+    infer_parser.add_argument(
+        "--use-clean",
+        action="store_true",
+        help=argparse.SUPPRESS,
     )
 
     infer_parser.add_argument(
@@ -921,6 +953,14 @@ def build_parser():
     clear_parser.add_argument(
         "--all", action="store_true", help="Remove all cleaned datasets"
     )
+    clear_parser.add_argument(
+        "--prune-artifacts",
+        action="store_true",
+        help=(
+            "Also prune unreferenced analytical Parquet artifacts. "
+            "Useful after running with --keep-artifact-history."
+        ),
+    )
     clear_parser.set_defaults(func=_lazy_clear_cleaned_data)
 
     # -------------------------------
@@ -1051,6 +1091,14 @@ def build_parser():
     )
     common.add_argument(
         "--no-persist", action="store_true", help="Disable database writes"
+    )
+    common.add_argument(
+        "--keep-artifact-history",
+        action="store_true",
+        help=(
+            "Preserve superseded hash-versioned Parquet artifacts on CSV re-analysis. "
+            "By default, older artifacts are pruned."
+        ),
     )
     common.add_argument(
         "--show-summary",

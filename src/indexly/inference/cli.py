@@ -24,6 +24,12 @@ from rich.console import Console
 
 console = Console()
 
+_AGG_DEPRECATION_TEXT = (
+    "⚠️ --agg is deprecated and will be removed in the next release. "
+    "Use --merge-agg for join duplicate-key handling and --boxplot-agg for "
+    "boxplot aggregation."
+)
+
 
 def _run_boxplot_if_available(args, routed_df=None):
     try:
@@ -45,6 +51,102 @@ def _export_report_if_available(result, fmt: str):
             "Install with: pip install indexly[pdf_export]."
         ) from exc
     return export_report(result, fmt)
+
+
+def _normalize_use_cleaned_flags(args) -> None:
+    """
+    Canonicalize cleaned/raw flags early for a single source of truth.
+
+    Usage audit note (v2 contract):
+    - --use-cleaned: analyze-file/analyze-csv saved-data loading + infer-csv selection
+    - --use-clean: legacy boxplot alias only
+    """
+    use_raw = bool(getattr(args, "use_raw", False))
+    use_cleaned_requested = bool(getattr(args, "use_cleaned", False))
+    use_clean_alias = bool(getattr(args, "use_clean", False))
+
+    if use_clean_alias:
+        console.print(
+            "[yellow]⚠️ --use-clean is deprecated. "
+            "Use --use-cleaned instead.[/yellow]"
+        )
+
+    if use_raw and (use_cleaned_requested or use_clean_alias):
+        raise ValueError("Cannot use both --use-raw and --use-cleaned.")
+
+    use_cleaned = bool(use_cleaned_requested or use_clean_alias or not use_raw)
+    setattr(args, "use_cleaned", use_cleaned)
+    setattr(args, "use_clean", False)
+
+
+def _normalize_aggregation_flags(args) -> None:
+    merge_agg = getattr(args, "merge_agg", None) or "none"
+    boxplot_agg = getattr(args, "boxplot_agg", None) or "mean"
+    deprecated_agg = getattr(args, "agg", None)
+    merge_agg_explicit = merge_agg != "none"
+    boxplot_agg_explicit = boxplot_agg != "mean"
+
+    if not deprecated_agg:
+        setattr(args, "merge_agg", merge_agg)
+        setattr(args, "boxplot_agg", boxplot_agg)
+        return
+
+    console.print(f"[yellow]{_AGG_DEPRECATION_TEXT}[/yellow]")
+
+    join_context = bool(getattr(args, "merge_on", None))
+    boxplot_only_context = bool(getattr(args, "boxplot", False) and not args.test)
+
+    if join_context:
+        if merge_agg_explicit:
+            console.print(
+                "[dim]Ignoring deprecated --agg because --merge-agg is set.[/dim]"
+            )
+        elif deprecated_agg not in {"none", "mean", "sum"}:
+            raise ValueError(
+                "Deprecated --agg value is invalid in join context. "
+                "Use --merge-agg with one of: none, mean, sum."
+            )
+        else:
+            merge_agg = deprecated_agg
+            console.print(
+                f"[dim]Mapped deprecated --agg={deprecated_agg} "
+                f"to --merge-agg={deprecated_agg}.[/dim]"
+            )
+    elif boxplot_only_context:
+        if boxplot_agg_explicit:
+            console.print(
+                "[dim]Ignoring deprecated --agg because --boxplot-agg is set.[/dim]"
+            )
+        elif deprecated_agg == "none":
+            raise ValueError(
+                "Deprecated --agg=none is invalid for boxplot aggregation. "
+                "Use --boxplot-agg with one of: mean, sum, count, median, min, max."
+            )
+        else:
+            boxplot_agg = deprecated_agg
+            console.print(
+                f"[dim]Mapped deprecated --agg={deprecated_agg} "
+                f"to --boxplot-agg={deprecated_agg}.[/dim]"
+            )
+    else:
+        if merge_agg_explicit:
+            console.print(
+                "[dim]Ignoring deprecated --agg because --merge-agg is set.[/dim]"
+            )
+        elif deprecated_agg not in {"none", "mean", "sum"}:
+            raise ValueError(
+                "Deprecated --agg value is invalid for inference joins. "
+                "Use --merge-agg with one of: none, mean, sum."
+            )
+        else:
+            merge_agg = deprecated_agg
+            console.print(
+                f"[dim]Mapped deprecated --agg={deprecated_agg} "
+                f"to --merge-agg={deprecated_agg}.[/dim]"
+            )
+
+    setattr(args, "merge_agg", merge_agg)
+    setattr(args, "boxplot_agg", boxplot_agg)
 
 
 def run_inference(
@@ -310,16 +412,8 @@ def handle_infer_csv(args):
             "--test for statistical inference or --boxplot for visualization."
         )
 
-    # -----------------------------
-    # Version validation
-    # -----------------------------
-    if args.use_raw and args.use_cleaned:
-
-        raise ValueError("Cannot use both --use-raw and --use-cleaned.")
-
-    use_cleaned = True
-    if args.use_raw:
-        use_cleaned = False
+    _normalize_use_cleaned_flags(args)
+    _normalize_aggregation_flags(args)
 
     # -----------------------------
     # Resolve and route datasets
@@ -329,6 +423,39 @@ def handle_infer_csv(args):
         df = routed.df
     except ValueError as e:
         print(f"\n❌ {e}\n")
+        return
+
+    # -----------------------------
+    # Boxplot precedence: run visualization and exit.
+    # -----------------------------
+    if getattr(args, "boxplot", False):
+        try:
+            _run_boxplot_if_available(
+                SimpleNamespace(
+                    input_files=args.files,
+                    x_col=getattr(args, "x_col", None),
+                    y_col=getattr(args, "y_col", None),
+                    merge_on=args.merge_on,
+                    merge_how=getattr(args, "merge_how", "inner"),
+                    merge_agg=getattr(args, "merge_agg", "none"),
+                    boxplot_agg=getattr(args, "boxplot_agg", "mean"),
+                    use_raw=args.use_raw,
+                    use_cleaned=args.use_cleaned,
+                    normalize=getattr(args, "normalize", None),
+                    mode=getattr(args, "mode", "static"),
+                    show_mean=True,
+                ),
+                routed_df=df,
+            )
+        except RuntimeError as e:
+            print(f"\n[Inference Error] {e}\n")
+            return
+
+        if args.test:
+            console.print(
+                "[cyan]`--boxplot` bypassed `--test`; run a second infer-csv "
+                "command for statistical inference.[/cyan]"
+            )
         return
 
     # -----------------------------
@@ -458,32 +585,6 @@ def handle_infer_csv(args):
                     working_df[col] = working_df[col].fillna(working_df[col].median())
     else:
         working_df = working_df.dropna()
-
-    # -----------------------------
-    # Optional visualization (boxplot)
-    # -----------------------------
-    if getattr(args, "boxplot", False):
-        try:
-            _run_boxplot_if_available(
-                SimpleNamespace(
-                    input_files=args.files,
-                    x_col=getattr(args, "x_col", None),
-                    y_col=getattr(args, "y_col", None),
-                    merge_on=args.merge_on,
-                    merge_how=getattr(args, "merge_how", "inner"),
-                    merge_agg=args.agg,
-                    agg=args.agg,
-                    use_raw=args.use_raw,
-                    use_cleaned=args.use_cleaned,
-                    normalize=getattr(args, "normalize", None),
-                    mode=getattr(args, "mode", "static"),
-                    show_mean=True,
-                ),
-                routed_df=df,
-            )
-        except RuntimeError as e:
-            print(f"\n[Inference Error] {e}\n")
-            return
 
     # -----------------------------
     # Dispatch to inference engine
