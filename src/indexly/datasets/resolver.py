@@ -28,6 +28,7 @@ def resolve_dataset(
     columns: list[str] | None = None,
     required_columns: list[str] | None = None,
     ignore_hash: bool = False,
+    materialize: bool = True,
 ) -> ResolvedDataset:
     """
     Resolve an inference dataset by catalog name, legacy cleaned_data file_name,
@@ -42,21 +43,29 @@ def resolve_dataset(
     try:
         record = get_dataset_by_name(conn, identifier)
         if record:
-            df, warnings, resolution = _load_catalog_record(
-                conn, record, version, columns, required_columns, ignore_hash
+            df, warnings, resolution, artifact_path, read_columns = (
+                _load_catalog_record(
+                    conn,
+                    record,
+                    version,
+                    columns,
+                    required_columns,
+                    ignore_hash,
+                    materialize,
+                )
             )
-            return ResolvedDataset(identifier, resolution, df, record, tuple(warnings))
+            return ResolvedDataset(
+                identifier,
+                resolution,
+                df,
+                record,
+                tuple(warnings),
+                artifact_path=artifact_path,
+                artifact_version=version if artifact_path else None,
+                selected_columns=tuple(read_columns or ()),
+            )
 
         file_name = os.path.basename(identifier)
-        legacy_row = conn.execute(
-            "SELECT * FROM cleaned_data WHERE file_name = ?",
-            (identifier,),
-        ).fetchone()
-        if legacy_row:
-            df = _load_legacy_row(legacy_row, use_cleaned=use_cleaned, use_raw=use_raw)
-            df = _select_existing_columns(df, columns)
-            return ResolvedDataset(identifier, _legacy_resolution(version), df, None)
-
         record = get_dataset_by_file_name(conn, file_name)
         if record:
             resolved = _try_load_catalog_or_existing_csv(
@@ -68,9 +77,19 @@ def resolve_dataset(
                 columns=columns,
                 required_columns=required_columns,
                 ignore_hash=ignore_hash,
+                materialize=materialize,
             )
             if resolved:
                 return resolved
+
+        legacy_row = conn.execute(
+            "SELECT * FROM cleaned_data WHERE file_name = ?",
+            (identifier,),
+        ).fetchone()
+        if legacy_row:
+            df = _load_legacy_row(legacy_row, use_cleaned=use_cleaned, use_raw=use_raw)
+            df = _select_existing_columns(df, columns)
+            return ResolvedDataset(identifier, _legacy_resolution(version), df, None)
 
         source_record = get_dataset_by_source_path(conn, identifier)
         if source_record:
@@ -83,6 +102,7 @@ def resolve_dataset(
                 columns=columns,
                 required_columns=required_columns,
                 ignore_hash=ignore_hash,
+                materialize=materialize,
             )
             if resolved:
                 return resolved
@@ -119,7 +139,8 @@ def _load_catalog_record(
     columns: list[str] | None,
     required_columns: list[str] | None,
     ignore_hash: bool,
-) -> tuple[pd.DataFrame, list[str], str]:
+    materialize: bool,
+) -> tuple[pd.DataFrame | None, list[str], str, str | None, list[str] | None]:
     warnings = []
     artifact_path = (
         record.raw_artifact_path if version == "raw" else record.cleaned_artifact_path
@@ -144,9 +165,11 @@ def _load_catalog_record(
             dataset_name=record.dataset_name,
         )
         return (
-            read_artifact(artifact_path, columns=read_columns),
+            read_artifact(artifact_path, columns=read_columns) if materialize else None,
             warnings,
             f"dataset_registry.{version}_artifact",
+            artifact_path,
+            read_columns,
         )
 
     if columns and record.id is not None:
@@ -177,6 +200,8 @@ def _load_catalog_record(
             _select_existing_columns(df, columns),
             warnings,
             _legacy_resolution(version),
+            None,
+            columns,
         )
 
     raise DatasetResolutionError(
@@ -195,12 +220,22 @@ def _try_load_catalog_or_existing_csv(
     columns: list[str] | None,
     required_columns: list[str] | None,
     ignore_hash: bool,
+    materialize: bool,
 ) -> ResolvedDataset | None:
     try:
-        df, warnings, resolution = _load_catalog_record(
-            conn, record, version, columns, required_columns, ignore_hash
+        df, warnings, resolution, artifact_path, read_columns = _load_catalog_record(
+            conn, record, version, columns, required_columns, ignore_hash, materialize
         )
-        return ResolvedDataset(identifier, resolution, df, record, tuple(warnings))
+        return ResolvedDataset(
+            identifier,
+            resolution,
+            df,
+            record,
+            tuple(warnings),
+            artifact_path=artifact_path,
+            artifact_version=version if artifact_path else None,
+            selected_columns=tuple(read_columns or ()),
+        )
     except DatasetResolutionError as exc:
         if "no " not in str(exc) or "artifact or legacy JSON payload" not in str(exc):
             raise

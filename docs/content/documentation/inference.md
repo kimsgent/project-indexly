@@ -54,9 +54,10 @@ indexly infer-csv steps --test ci-mean --y total_daily_activity
 `infer-csv` resolves each input through a routing layer before statistics run:
 
 1. Registered dataset name in the analytical catalog.
-2. Exact `cleaned_data.file_name` for legacy compatibility.
-3. Registered or legacy `source_path`.
-4. Existing CSV file path loaded ephemerally for the current command.
+2. Registered file name in the analytical catalog.
+3. Exact `cleaned_data.file_name` for legacy compatibility.
+4. Registered or legacy `source_path`.
+5. Existing CSV file path loaded ephemerally for the current command.
 
 Passing an existing CSV path does not register or persist it. To make it reusable by name, run `analyze-csv` first.
 
@@ -75,6 +76,35 @@ The catalog tracks dataset name, file name, source path, source hash, row and co
 ```
 
 The SQLite database remains the metadata layer. Large tabular payloads should use columnar artifacts when available, while legacy JSON remains the fallback path.
+
+## Analytical Backends
+
+`infer-csv` keeps SQLite as the catalog and Parquet as the analytical payload store. The inference engine still receives a pandas DataFrame, but multi-file joins can be executed through a backend first:
+
+- `auto` uses DuckDB for registered Parquet artifacts when DuckDB is installed and all joined inputs have artifacts.
+- `pandas` forces the existing pandas/PyArrow behavior.
+- `duckdb` requires DuckDB and registered Parquet artifacts, and gives an actionable error if either is missing.
+
+DuckDB is optional and loaded lazily. It is not installed by the standard `analysis` extra, and Indexly uses it as an in-memory query engine rather than creating a persistent DuckDB database. Install it only when you want accelerated Parquet-backed joins:
+
+```bash
+pip install duckdb
+```
+
+Select a backend explicitly with:
+
+```bash
+indexly infer-csv asteps.csv sleepday.csv \
+  --boxplot \
+  --x-col avg_daily_steps \
+  --y-col TotalMinutesAsleep \
+  --merge-on Id \
+  --merge-how inner \
+  --agg mean \
+  --analysis-backend auto
+```
+
+If Parquet artifacts are unavailable, Indexly falls back to materialized pandas DataFrames from the resolver. Legacy `cleaned_data` JSON remains supported for older saved analyses.
 
 ## Artifact Freshness
 
@@ -111,10 +141,13 @@ indexly infer-csv a.csv b.csv --merge-on Id Date --test correlation --x steps --
 Before inference, Indexly reports:
 
 - input datasets and resolution path
+- source backend used
+- artifact paths when applicable
 - original row counts
 - join keys
 - join cardinality
 - duplicate-key status
+- estimated joined row count when feasible
 - merged row count
 - selected inference columns
 
