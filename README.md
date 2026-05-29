@@ -58,12 +58,13 @@ python -m pip install "indexly[documents]"
 python -m pip install "indexly[analysis]"
 python -m pip install "indexly[visualization]"
 python -m pip install "indexly[pdf_export]"
+python -m pip install "indexly[backup]"
 ```
 
 Install all optional packs:
 
 ```bash
-python -m pip install "indexly[documents,analysis,visualization,pdf_export]"
+python -m pip install "indexly[documents,analysis,visualization,pdf_export,backup]"
 ```
 
 ## First Run in 2 Minutes
@@ -142,7 +143,7 @@ Install in editable mode with optional packs:
 
 ```bash
 python -m pip install --upgrade pip
-python -m pip install -e ".[documents,analysis,visualization,pdf_export]"
+python -m pip install -e ".[documents,analysis,visualization,pdf_export,backup]"
 python -m pip install pytest pytest-cov flake8 black isort mypy build twine
 ```
 
@@ -156,7 +157,7 @@ pytest -q
 ## Troubleshooting
 
 - If `indexly` is not found, restart your terminal after installation.
-- If a feature is missing, install its extra group, for example `indexly[analysis]` or `indexly[documents]`.
+- If a feature is missing, install its extra group, for example `indexly[analysis]`, `indexly[documents]`, or `indexly[backup]` for encrypted backup/restore.
 - If Homebrew commands are unavailable on Linux, initialize brew shell environment first.
 - Run `indexly doctor` for a quick environment health check.
 - Run `indexly doctor --full-integrity` when you need the slower read-only SQLite integrity check.

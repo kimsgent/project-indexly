@@ -1147,7 +1147,8 @@ def handle_show_help(args):
         print(
             "_Tip: install optional packs as needed: "
             "`indexly[documents]`, `indexly[analysis]`, "
-            "`indexly[visualization]`, `indexly[pdf_export]`._\n"
+            "`indexly[visualization]`, `indexly[pdf_export]`, "
+            "`indexly[backup]`._\n"
         )
 
         for category, commands in _iter_category_commands():
@@ -1254,7 +1255,8 @@ def handle_show_help(args):
         packs.append("• indexly[documents]  (PDF/DOCX/OCR/media parsing)\n")
         packs.append("• indexly[analysis]   (CSV/statistics/data profiling)\n")
         packs.append("• indexly[visualization] (matplotlib/plotly charts)\n")
-        packs.append("• indexly[pdf_export] (report PDF generation)")
+        packs.append("• indexly[pdf_export] (report PDF generation)\n")
+        packs.append("• indexly[backup]     (encrypted backup/restore support)")
         console.print(
             Panel.fit(
                 packs,

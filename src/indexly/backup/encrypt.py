@@ -1,11 +1,12 @@
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-from cryptography.hazmat.primitives import hashes
-from cryptography.fernet import Fernet
-from pathlib import Path
 import base64
 import os
+from pathlib import Path
+
+from .crypto_deps import load_crypto_primitives
+
 
 def _derive_key(password: str, salt: bytes) -> bytes:
+    hashes, PBKDF2HMAC, _ = load_crypto_primitives()
     kdf = PBKDF2HMAC(
         algorithm=hashes.SHA256(),
         length=32,
@@ -13,6 +14,7 @@ def _derive_key(password: str, salt: bytes) -> bytes:
         iterations=390000,
     )
     return base64.urlsafe_b64encode(kdf.derive(password.encode()))
+
 
 def encrypt_file(path: Path, password: str):
     return _encrypt_to_path(path, path, password)
@@ -26,6 +28,7 @@ def encrypt_archive(path: Path, password: str) -> Path:
 
 
 def _encrypt_to_path(source: Path, destination: Path, password: str) -> Path:
+    _, _, Fernet = load_crypto_primitives()
     salt = os.urandom(16)
     key = _derive_key(password, salt)
     f = Fernet(key)
@@ -36,7 +39,9 @@ def _encrypt_to_path(source: Path, destination: Path, password: str) -> Path:
     destination.write_bytes(salt + encrypted)
     return destination
 
+
 def decrypt_file(path: Path, password: str):
+    _, _, Fernet = load_crypto_primitives()
     raw = path.read_bytes()
     salt, encrypted = raw[:16], raw[16:]
     key = _derive_key(password, salt)
