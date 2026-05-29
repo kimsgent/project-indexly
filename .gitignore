@@ -75,6 +75,7 @@ docs/package-lock.json
 
 # Local pytest scratch directories
 test-tmp/
+.pytest-basetemp-*/
 pytest-cache-files-*/
 tmp-doctor-*/
 
@@ -93,6 +94,11 @@ search_cache.json
 # ----------------
 src/indexly/fts_index.db
 src/indexly/profiles.json
+/.indexly.observers.json
+/indexly.db
+/update_check.json
+/.tmp-autoclean-inference/
+/.tmp-autodean-inference/
 
 # ----------------
 # Logs
