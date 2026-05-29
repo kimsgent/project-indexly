@@ -326,7 +326,8 @@ def run_csv_pipeline(file_path: Path, args, df: pd.DataFrame = None):
         if not hasattr(args, "input_files"):
             args.input_files = [file_path.name]  # just the CSV file name, not full path
 
-        run_boxplot(args)
+        boxplot_df = raw_df if getattr(args, "use_raw", False) else df
+        run_boxplot(args, routed_df=boxplot_df)
     else:
         visualize_csv(df, df_stats, args)
 

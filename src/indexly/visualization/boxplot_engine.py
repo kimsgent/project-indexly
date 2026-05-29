@@ -55,6 +55,7 @@ def run_boxplot(args, routed_df: Optional[pd.DataFrame] = None):
         dataset_name = Path(file_names[0]).name if len(file_names) == 1 else "merged"
         if use_raw or use_cleaned:
             df_processed = _project_boxplot_columns(routed_df, x_col, y_cols)
+            value_cols = y_cols
         else:
             df_processed = apply_group_aggregation(
                 routed_df.copy(),
@@ -62,9 +63,10 @@ def run_boxplot(args, routed_df: Optional[pd.DataFrame] = None):
                 y_cols=y_cols,
                 agg_list=boxplot_agg,
             )
+            value_cols = _aggregation_value_columns(df_processed, y_cols, boxplot_agg)
         long_df = reshape_to_long(
             df_processed,
-            y_cols=y_cols,
+            y_cols=value_cols,
             dataset_name=dataset_name,
             x_col=x_col,
         )
@@ -108,6 +110,7 @@ def run_boxplot(args, routed_df: Optional[pd.DataFrame] = None):
             if use_raw or use_cleaned:
                 # Use raw columns, no aggregation
                 df_processed = _project_boxplot_columns(merged_df, x_col, y_cols)
+                value_cols = y_cols
             else:
                 df_processed = apply_group_aggregation(
                     merged_df.copy(),
@@ -115,10 +118,13 @@ def run_boxplot(args, routed_df: Optional[pd.DataFrame] = None):
                     y_cols=y_cols,
                     agg_list=boxplot_agg,
                 )
+                value_cols = _aggregation_value_columns(
+                    df_processed, y_cols, boxplot_agg
+                )
 
             long_df = reshape_to_long(
                 df_processed,
-                y_cols=y_cols,
+                y_cols=value_cols,
                 dataset_name="merged",
                 x_col=x_col,
             )
@@ -142,9 +148,15 @@ def run_boxplot(args, routed_df: Optional[pd.DataFrame] = None):
                     )
                 processed[name] = df_agg
 
+            value_cols = y_cols
+            if not use_raw and not use_cleaned:
+                value_cols = _aggregation_value_columns(
+                    next(iter(processed.values())), y_cols, boxplot_agg
+                )
+
             long_df = combine_datasets_long(
                 processed,
-                y_cols=y_cols,
+                y_cols=value_cols,
                 x_col=x_col,
             )
 
@@ -156,6 +168,7 @@ def run_boxplot(args, routed_df: Optional[pd.DataFrame] = None):
             name, df = next(iter(datasets.items()))
             if use_raw or use_cleaned:
                 df_processed = _project_boxplot_columns(df, x_col, y_cols)
+                value_cols = y_cols
             else:
                 df_processed = apply_group_aggregation(
                     df.copy(),
@@ -163,9 +176,12 @@ def run_boxplot(args, routed_df: Optional[pd.DataFrame] = None):
                     y_cols=y_cols,
                     agg_list=boxplot_agg,
                 )
+                value_cols = _aggregation_value_columns(
+                    df_processed, y_cols, boxplot_agg
+                )
             long_df = reshape_to_long(
                 df_processed,
-                y_cols=y_cols,
+                y_cols=value_cols,
                 dataset_name=name,
                 x_col=x_col,
             )
@@ -273,6 +289,19 @@ def _project_boxplot_columns(
 ) -> pd.DataFrame:
     columns = [*([x_col] if x_col else []), *y_cols]
     return df[columns].copy()
+
+
+def _aggregation_value_columns(
+    df: pd.DataFrame, y_cols: List[str], agg_list: list[str]
+) -> List[str]:
+    value_cols = [
+        f"{col}_{agg}" if agg else col
+        for col in y_cols
+        for agg in agg_list
+    ]
+    if value_cols and all(col in df.columns for col in value_cols):
+        return value_cols
+    return y_cols
 
 
 def _boxplot_aggregation_list(args) -> list[str]:
