@@ -251,6 +251,59 @@ indexly doctor
 pytest -q
 ```
 
+## WSL And VS Code Workflow
+
+On Windows machines with Ubuntu under WSL, keep the Linux checkout inside the WSL filesystem instead of under `/mnt/c` or `/mnt/d`. The recommended location is:
+
+```text
+/home/kims/dev/projects/project-indexly
+```
+
+Windows Explorer can still inspect that tree through:
+
+```text
+\\wsl.localhost\Ubuntu\home\kims\dev\projects
+```
+
+For development, open it through VS Code Remote - WSL so Python, Hugo, Node, Go, Git, file permissions, and shell helpers all run inside Ubuntu:
+
+```bash
+mkdir -p ~/dev/projects
+cd ~/dev/projects
+git clone https://github.com/kimsgent/project-indexly.git project-indexly
+cd project-indexly
+code .
+```
+
+Use the Remote - WSL extension and `.venv-codex` as the default interpreter path. After opening the WSL checkout, bootstrap the project:
+
+```bash
+python3 -m venv .venv-codex
+source .venv-codex/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements-dev.txt
+python -m pip install -e .
+```
+
+Then verify the two layers that matter most for this workflow:
+
+```bash
+python -m pytest -q
+idxdocs verify
+```
+
+Optional Windows-side VS Code tasks can proxy into the same Ubuntu checkout by calling:
+
+```powershell
+wsl.exe -d Ubuntu
+```
+
+When the same repository is opened through Remote - WSL, equivalent tasks can run directly in the Linux shell.
+
+{{% alert title="Access note" color="warning" %}}
+If Windows Explorer can browse `\\wsl.localhost\Ubuntu` but `wsl.exe -l -v` reports no installed distributions from another process, VS Code tasks and automation may be running under a different Windows user or session context. Open the repository from an Ubuntu terminal with `code .` first; that makes Remote - WSL the authority for this checkout and avoids mixing Windows-side UNC access with Linux-side tooling.
+{{% /alert %}}
+
 ## Updating The Linux Environment
 
 There are three update paths, and they intentionally do different jobs.
