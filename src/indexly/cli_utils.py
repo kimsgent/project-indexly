@@ -103,6 +103,8 @@ _MISSING_MODULE_HINTS = {
     "ebooklib": ("documents", "ebooklib"),
     "odf": ("documents", "odfpy"),
     "olefile": ("documents", "olefile"),
+    # backup extra
+    "cryptography": ("backup", "cryptography"),
     # pdf export extra
     "fpdf": ("pdf_export", "fpdf2"),
     "reportlab": ("pdf_export", "reportlab"),
@@ -235,13 +237,25 @@ def _lazy_read_indexly_json(args):
 def _lazy_handle_backup(args):
     from indexly.backup.cli import handle_backup
 
-    return handle_backup(args)
+    try:
+        return handle_backup(args)
+    except RuntimeError as exc:
+        msg = str(exc)
+        if "Feature requires optional dependency" in msg:
+            raise SystemExit(msg) from exc
+        raise
 
 
 def _lazy_handle_restore(args):
     from indexly.backup.cli_restore import handle_restore
 
-    return handle_restore(args)
+    try:
+        return handle_restore(args)
+    except RuntimeError as exc:
+        msg = str(exc)
+        if "Feature requires optional dependency" in msg:
+            raise SystemExit(msg) from exc
+        raise
 
 
 def _lazy_handle_compare(args):

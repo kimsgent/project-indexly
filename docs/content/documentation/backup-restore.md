@@ -74,6 +74,12 @@ Backups can be encrypted using a password:
 indexly backup "E:\data" --encrypt "Better-Password-2026"
 ```
 
+If encryption support is not installed yet:
+
+```bash
+python -m pip install "indexly[backup]"
+```
+
 - Encryption happens **after compression**
 - Resulting file ends with `.enc`
 - Registry tracks encryption state

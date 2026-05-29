@@ -78,12 +78,13 @@ python -m pip install "indexly[documents]"
 python -m pip install "indexly[analysis]"
 python -m pip install "indexly[visualization]"
 python -m pip install "indexly[pdf_export]"
+python -m pip install "indexly[backup]"
 ```
 
 Install all optional packs at once:
 
 ```bash
-python -m pip install "indexly[documents,analysis,visualization,pdf_export]"
+python -m pip install "indexly[documents,analysis,visualization,pdf_export,backup]"
 ```
 
 ---
@@ -417,6 +418,7 @@ Examples:
 - Document parsing features: `Feature requires: pip install indexly[documents]`
 - Visualization features: `Feature requires: pip install indexly[visualization]`
 - PDF export features: `Feature requires: pip install indexly[pdf_export]`
+- Encrypted backup/restore features: `Feature requires: pip install indexly[backup]`
 
 This lets core commands like `indexly --help` and `indexly --version` remain usable even when optional packs are not installed.
 

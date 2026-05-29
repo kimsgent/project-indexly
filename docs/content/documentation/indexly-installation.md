@@ -97,12 +97,13 @@ python -m pip install "indexly[documents]"
 python -m pip install "indexly[analysis]"
 python -m pip install "indexly[visualization]"
 python -m pip install "indexly[pdf_export]"
+python -m pip install "indexly[backup]"
 ```
 
 Install all optional groups:
 
 ```bash
-python -m pip install "indexly[documents,analysis,visualization,pdf_export]"
+python -m pip install "indexly[documents,analysis,visualization,pdf_export,backup]"
 ```
 
 ## 5. First Run
@@ -152,7 +153,7 @@ Install editable package with optional extras:
 
 ```bash
 python -m pip install --upgrade pip
-python -m pip install -e ".[documents,analysis,visualization,pdf_export]"
+python -m pip install -e ".[documents,analysis,visualization,pdf_export,backup]"
 python -m pip install pytest pytest-cov flake8 black isort mypy build twine
 ```
 

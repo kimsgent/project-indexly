@@ -7,12 +7,14 @@ from pathlib import Path
 import pytest
 
 from indexly.backup import auto, executor, extract, paths, restore, verification
+import indexly.backup.crypto_deps as crypto_deps
 from indexly.backup.decrypt import decrypt_archive
 from indexly.backup.encrypt import encrypt_archive
 from indexly.backup.manifest import diff_manifests
 from indexly.backup.metadata import serialize_metadata
 from indexly.backup.metadata_restore import apply_metadata
 import indexly.backup.registry as registry_module
+import indexly.optional_deps as optional_deps
 from indexly.backup.registry import load_registry, register_backup, save_registry
 from indexly.backup.rotation import apply_rotation
 from indexly.backup.validation import (
@@ -41,7 +43,29 @@ def _try_symlink(link: Path, target: str):
         pytest.skip(f"symlink creation is not available in this environment: {exc}")
 
 
+def _require_backup_crypto():
+    pytest.importorskip(
+        "cryptography", reason="backup encryption tests require indexly[backup]"
+    )
+
+
+def _simulate_missing_backup_crypto(monkeypatch: pytest.MonkeyPatch):
+    real_import_module = optional_deps.importlib.import_module
+
+    def _missing_crypto(module_name: str, package: str | None = None):
+        if module_name.startswith("cryptography"):
+            raise ModuleNotFoundError(
+                "No module named 'cryptography'",
+                name="cryptography",
+            )
+        return real_import_module(module_name, package)
+
+    crypto_deps.load_crypto_primitives.cache_clear()
+    monkeypatch.setattr(optional_deps.importlib, "import_module", _missing_crypto)
+
+
 def test_encrypted_archive_checksum_matches_actual_archive_name(tmp_path):
+    _require_backup_crypto()
     archive = tmp_path / "full_2026-01-01_120000.tar.gz"
     archive.write_bytes(b"backup payload")
 
@@ -140,7 +164,10 @@ def test_restore_rejects_incremental_without_parent_chain():
         )
 
 
-def test_incremental_uses_latest_full_after_stale_missing_incrementals(tmp_path, monkeypatch):
+def test_incremental_uses_latest_full_after_stale_missing_incrementals(
+    tmp_path, monkeypatch
+):
+    _require_backup_crypto()
     backup_root = tmp_path / "backups"
     _use_backup_root(monkeypatch, backup_root)
 
@@ -164,7 +191,9 @@ def test_incremental_uses_latest_full_after_stale_missing_incrementals(tmp_path,
     }
     old_incremental = {
         "type": "incremental",
-        "archive": str(backup_root / "incremental" / "incremental_2026-01-02_000000.tar.gz"),
+        "archive": str(
+            backup_root / "incremental" / "incremental_2026-01-02_000000.tar.gz"
+        ),
         "manifest": "manifest.json",
         "encrypted": False,
         "chain": [{"archive": old_full["archive"], "manifest": "manifest.json"}],
@@ -180,8 +209,46 @@ def test_incremental_uses_latest_full_after_stale_missing_incrementals(tmp_path,
     registry = load_registry(registry_path)
     latest = registry["backups"][-1]
     assert latest["type"] == "incremental"
-    assert latest["chain"] == [{"archive": latest_full["archive"], "manifest": "manifest.json"}]
+    assert latest["chain"] == [
+        {"archive": latest_full["archive"], "manifest": "manifest.json"}
+    ]
     assert Path(latest["archive"]).exists()
+
+
+def test_non_encrypted_backup_and_restore_do_not_require_cryptography(
+    tmp_path, monkeypatch
+):
+    backup_root = tmp_path / "backups"
+    _use_backup_root(monkeypatch, backup_root)
+    _simulate_missing_backup_crypto(monkeypatch)
+
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "file.txt").write_text("plain backup", encoding="utf-8")
+
+    executor.run_backup(source)
+    latest = load_registry(backup_root / "index.json")["backups"][-1]
+
+    target = tmp_path / "restore"
+    restore.restore_backup(Path(latest["archive"]).name, target=target)
+    assert (target / "file.txt").read_text(encoding="utf-8") == "plain backup"
+
+
+def test_encryption_paths_raise_clear_optional_dependency_error(tmp_path, monkeypatch):
+    _simulate_missing_backup_crypto(monkeypatch)
+
+    archive = tmp_path / "full_2026-01-01_120000.tar.gz"
+    archive.write_bytes(b"backup payload")
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    encrypted = tmp_path / "full_2026-01-01_120000.tar.gz.enc"
+    encrypted.write_bytes(b"placeholder")
+
+    with pytest.raises(RuntimeError, match=r"indexly\[backup\]"):
+        encrypt_archive(archive, "Better-Password-2026")
+
+    with pytest.raises(RuntimeError, match=r"indexly\[backup\]"):
+        decrypt_archive(encrypted, "Better-Password-2026", out_dir)
 
 
 def test_restore_dry_run_checks_chain_without_writing_target(tmp_path, monkeypatch):
@@ -284,7 +351,9 @@ def test_extract_archive_rejects_path_traversal_members(tmp_path):
         extract.extract_archive(archive, tmp_path / "restore")
 
 
-def test_rotation_keeps_registry_entries_when_archive_delete_fails(tmp_path, monkeypatch):
+def test_rotation_keeps_registry_entries_when_archive_delete_fails(
+    tmp_path, monkeypatch
+):
     registry_path = tmp_path / "index.json"
     full_archives = []
     for index in range(4):
@@ -299,16 +368,36 @@ def test_rotation_keeps_registry_entries_when_archive_delete_fails(tmp_path, mon
         registry_path,
         {
             "backups": [
-                {"type": "full", "archive": full_archives[0], "registered_at": 1, "chain": []},
+                {
+                    "type": "full",
+                    "archive": full_archives[0],
+                    "registered_at": 1,
+                    "chain": [],
+                },
                 {
                     "type": "incremental",
                     "archive": str(incremental),
                     "registered_at": 2,
                     "chain": [{"archive": full_archives[0]}],
                 },
-                {"type": "full", "archive": full_archives[1], "registered_at": 3, "chain": []},
-                {"type": "full", "archive": full_archives[2], "registered_at": 4, "chain": []},
-                {"type": "full", "archive": full_archives[3], "registered_at": 5, "chain": []},
+                {
+                    "type": "full",
+                    "archive": full_archives[1],
+                    "registered_at": 3,
+                    "chain": [],
+                },
+                {
+                    "type": "full",
+                    "archive": full_archives[2],
+                    "registered_at": 4,
+                    "chain": [],
+                },
+                {
+                    "type": "full",
+                    "archive": full_archives[3],
+                    "registered_at": 5,
+                    "chain": [],
+                },
             ]
         },
     )
@@ -331,7 +420,9 @@ def test_rotation_keeps_registry_entries_when_archive_delete_fails(tmp_path, mon
     assert str(incremental) not in archives
 
 
-def test_auto_script_falls_back_to_python_module_when_indexly_cli_missing(tmp_path, monkeypatch):
+def test_auto_script_falls_back_to_python_module_when_indexly_cli_missing(
+    tmp_path, monkeypatch
+):
     dirs = {"root": tmp_path, "logs": tmp_path / "logs"}
     dirs["logs"].mkdir()
     source = tmp_path / "source"
@@ -376,7 +467,9 @@ def test_register_backup_rejects_external_tmp_archive(tmp_path):
     registry_root = tmp_path / "backups"
     registry_root.mkdir(parents=True)
     registry_path = registry_root / "index.json"
-    external_tmp_archive = Path(tempfile.gettempdir()) / "indexly-external" / "full.tar.gz"
+    external_tmp_archive = (
+        Path(tempfile.gettempdir()) / "indexly-external" / "full.tar.gz"
+    )
 
     with pytest.raises(ValueError, match="temporary path"):
         register_backup(
@@ -395,7 +488,9 @@ def test_register_backup_rejects_external_private_tmp_archive(tmp_path, monkeypa
     registry_root = tmp_path / "backups"
     registry_root.mkdir(parents=True)
     registry_path = registry_root / "index.json"
-    monkeypatch.setattr(registry_module.tempfile, "gettempdir", lambda: str(tmp_path / "system-temp"))
+    monkeypatch.setattr(
+        registry_module.tempfile, "gettempdir", lambda: str(tmp_path / "system-temp")
+    )
     external_tmp_archive = Path("/private/tmp") / "indexly-external" / "full.tar.gz"
 
     with pytest.raises(ValueError, match="temporary path"):
