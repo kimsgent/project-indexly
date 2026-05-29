@@ -74,9 +74,10 @@ docs/package-lock.json
 .codex
 
 # Local pytest scratch directories
-test-tmp/
+.pytest-tmp/
 .pytest-basetemp-*/
 pytest-cache-files-*/
+test-tmp/
 tmp-doctor-*/
 
 # ----------------
