@@ -1,0 +1,44 @@
+services:
+  test-py313:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+      args:
+        PYTHON_VERSION: "3.13"
+    image: indexly-test:py313
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+    environment:
+      MPLBACKEND: Agg
+    command: ["python", "-m", "pytest", "-q", "--maxfail=3", "--disable-warnings"]
+
+  test-py312:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+      args:
+        PYTHON_VERSION: "3.12"
+    image: indexly-test:py312
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+    environment:
+      MPLBACKEND: Agg
+    command: ["python", "-m", "pytest", "-q", "--maxfail=3", "--disable-warnings"]
+
+  shell:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+      args:
+        PYTHON_VERSION: "${PYTHON_VERSION:-3.13}"
+    image: indexly-test:shell
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+    environment:
+      MPLBACKEND: Agg
+    command: ["bash"]
+    stdin_open: true
+    tty: true

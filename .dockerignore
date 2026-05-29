@@ -1,0 +1,41 @@
+# Git and local editor state
+.git/
+.codex/
+.idea/
+.vscode/
+*.code-workspace
+
+# Python caches and local environments
+__pycache__/
+*.py[cod]
+.mypy_cache/
+.pytest_cache/
+.pytest-tmp/
+pytest-cache-files-*/
+.venv/
+.venv-codex/
+.venv-indexly/
+venv/
+env/
+
+# Build and runtime artifacts
+build/
+dist/
+*.egg-info/
+index.db
+indexly.db
+*.sqlite3
+search_cache.json
+test-tmp/
+tmp-doctor-*/
+
+# Documentation artifacts that are not needed for Python tests
+docs/node_modules/
+docs/public/
+docs/resources/
+docs/static/pagefind/
+docs/content/videos/*.mp4
+
+# OS files
+.DS_Store
+Thumbs.db
