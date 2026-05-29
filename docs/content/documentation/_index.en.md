@@ -16,7 +16,7 @@ weight: 1
 type: docs
 toc: true
 date: "2026-04-22"
-lastmod: "2026-05-20"
+lastmod: "2026-05-29"
 draft: false
 categories:
   - Overview
@@ -47,6 +47,9 @@ This documentation works best when you enter through the path that matches your 
 <div class="p-3 rounded" style="background:#ffffff; color:#1f2937;">
   <h4 class="mb-2" style="color:#0f172a;">What changed recently</h4>
   <ul class="mb-3">
+    <li>`v2.1.3` adds analytical dataset routing with optional DuckDB support and hardens infer-csv backend workflows.</li>
+    <li>Boxplot routing now prefers catalog artifacts and keeps backend-specific rendering behavior stable across static and interactive paths.</li>
+    <li>Inference and backup optional dependencies now lazy-load more safely, reducing startup and test fragility when extras are missing.</li>
     <li>`v2.1.2` hardens CSV, JSON, NDJSON, and SQLite analysis semantics, including bounded detection, strict malformed-line handling, chunk-limited record materialization, and safer mixed identifier handling.</li>
     <li>CSV analysis dependency coverage now includes the table-rendering and statistical packages used by the current pipeline.</li>
     <li>Indexing now ignores Office lock files before they enter the search pipeline.</li>
