@@ -82,7 +82,7 @@ python -m pip install -e .
 Install optional packs for full feature development:
 
 ```bash
-python -m pip install -e ".[documents,analysis,visualization,pdf_export]"
+python -m pip install -e ".[documents,analysis,visualization,pdf_export,backup]"
 ```
 
 Install dev tooling:

@@ -68,7 +68,10 @@ def add_common_arguments(parser):
 
 
 def _lazy_handle_infer_csv(args):
-    from indexly.inference.cli import handle_infer_csv
+    try:
+        from indexly.inference.cli import handle_infer_csv
+    except ModuleNotFoundError as exc:
+        raise SystemExit(_missing_dependency_message(exc, "analysis")) from exc
 
     return handle_infer_csv(args)
 
@@ -100,6 +103,8 @@ _MISSING_MODULE_HINTS = {
     "ebooklib": ("documents", "ebooklib"),
     "odf": ("documents", "odfpy"),
     "olefile": ("documents", "olefile"),
+    # backup extra
+    "cryptography": ("backup", "cryptography"),
     # pdf export extra
     "fpdf": ("pdf_export", "fpdf2"),
     "reportlab": ("pdf_export", "reportlab"),
@@ -156,7 +161,9 @@ def _lazy_clear_cleaned_data(args):
     except ModuleNotFoundError as exc:
         raise SystemExit(_missing_dependency_message(exc, "analysis")) from exc
     return clear_cleaned_data(
-        file_path=args.file, remove_all=getattr(args, "all", False)
+        file_path=args.file,
+        remove_all=getattr(args, "all", False),
+        prune_artifacts=getattr(args, "prune_artifacts", False),
     )
 
 
@@ -230,13 +237,25 @@ def _lazy_read_indexly_json(args):
 def _lazy_handle_backup(args):
     from indexly.backup.cli import handle_backup
 
-    return handle_backup(args)
+    try:
+        return handle_backup(args)
+    except RuntimeError as exc:
+        msg = str(exc)
+        if "Feature requires optional dependency" in msg:
+            raise SystemExit(msg) from exc
+        raise
 
 
 def _lazy_handle_restore(args):
     from indexly.backup.cli_restore import handle_restore
 
-    return handle_restore(args)
+    try:
+        return handle_restore(args)
+    except RuntimeError as exc:
+        msg = str(exc)
+        if "Feature requires optional dependency" in msg:
+            raise SystemExit(msg) from exc
+        raise
 
 
 def _lazy_handle_compare(args):
@@ -620,7 +639,9 @@ def build_parser():
         "--use-raw", action="store_true", help="Use raw (uncleaned) data for boxplot"
     )
     csv_parser.add_argument(
-        "--use-clean", action="store_true", help="Use cleaned data for boxplot"
+        "--use-clean",
+        action="store_true",
+        help="Deprecated alias for --use-cleaned in boxplot mode",
     )
     csv_parser.add_argument(
         "--norm",
@@ -685,6 +706,14 @@ def build_parser():
         help="Disable saving cleaned or analyzed results to the database",
     )
     csv_parser.add_argument(
+        "--keep-artifact-history",
+        action="store_true",
+        help=(
+            "Preserve superseded hash-versioned Parquet artifacts on re-analysis. "
+            "By default, older artifacts are pruned."
+        ),
+    )
+    csv_parser.add_argument(
         "--normalize",
         action="store_true",
         help="Normalize numeric columns after cleaning",
@@ -723,14 +752,30 @@ def build_parser():
 
     infer_parser.add_argument(
         "--merge-on",
-        help="Column name to merge multiple datasets on (required if multiple files).",
+        nargs="+",
+        help="Column name(s) to merge multiple datasets on (required if multiple files).",
     )
 
     infer_parser.add_argument(
-        "--agg",
+        "--merge-agg",
         choices=["none", "mean", "sum"],
         default="none",
-        help="Aggregate duplicate merge keys before merging (mean, sum, none).",
+        help="Join-time duplicate-key handling for multi-file merge (default: none).",
+    )
+    infer_parser.add_argument(
+        "--boxplot-agg",
+        choices=["mean", "sum", "count", "median", "min", "max"],
+        default="mean",
+        help="Aggregation used for boxplot grouping/stat summaries (default: mean).",
+    )
+    infer_parser.add_argument(
+        "--agg",
+        choices=["none", "mean", "sum", "count", "median", "min", "max"],
+        default=None,
+        help=(
+            "[Deprecated] Use --merge-agg for join duplicate-key handling or "
+            "--boxplot-agg for boxplot aggregation."
+        ),
     )
 
     # -------------------------
@@ -739,9 +784,32 @@ def build_parser():
     infer_parser.add_argument(
         "--use-cleaned", action="store_true", help="Use cleaned_data_json (default)."
     )
+    infer_parser.add_argument(
+        "--use-clean",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
 
     infer_parser.add_argument(
         "--use-raw", action="store_true", help="Use raw_data_json."
+    )
+
+    infer_parser.add_argument(
+        "--ignore-hash",
+        action="store_true",
+        help=(
+            "Warn and continue when a registered analytical artifact is stale. "
+            "Without this flag, stale artifacts ask you to rerun analyze-csv."
+        ),
+    )
+    infer_parser.add_argument(
+        "--analysis-backend",
+        choices=["auto", "pandas", "duckdb"],
+        default="auto",
+        help=(
+            "Analytical backend for multi-file joins. auto uses DuckDB for "
+            "registered Parquet artifacts when installed, otherwise pandas."
+        ),
     )
 
     # -------------------------
@@ -826,6 +894,12 @@ def build_parser():
         choices=["bonferroni", "holm", "bh"],
         help="Multiple comparison correction method. 'bh' = Benjamini-Hochberg (also known as FDR correction).",
     )
+    infer_parser.add_argument(
+        "--alpha",
+        type=float,
+        default=0.05,
+        help="Significance level for confidence intervals and tests that expose alpha (default: 0.05).",
+    )
     # -------------------------
     # Boxplot Visualization
     # -------------------------
@@ -892,6 +966,14 @@ def build_parser():
     )
     clear_parser.add_argument(
         "--all", action="store_true", help="Remove all cleaned datasets"
+    )
+    clear_parser.add_argument(
+        "--prune-artifacts",
+        action="store_true",
+        help=(
+            "Also prune unreferenced analytical Parquet artifacts. "
+            "Useful after running with --keep-artifact-history."
+        ),
     )
     clear_parser.set_defaults(func=_lazy_clear_cleaned_data)
 
@@ -1023,6 +1105,14 @@ def build_parser():
     )
     common.add_argument(
         "--no-persist", action="store_true", help="Disable database writes"
+    )
+    common.add_argument(
+        "--keep-artifact-history",
+        action="store_true",
+        help=(
+            "Preserve superseded hash-versioned Parquet artifacts on CSV re-analysis. "
+            "By default, older artifacts are pruned."
+        ),
     )
     common.add_argument(
         "--show-summary",

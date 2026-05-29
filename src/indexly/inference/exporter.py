@@ -1,7 +1,4 @@
 from datetime import datetime
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.lib.units import inch
 
 
 # -------------------------------------------------
@@ -69,6 +66,16 @@ def export_markdown(result, filename):
 
 
 def export_pdf(result, filename):
+    try:
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+        from reportlab.lib.styles import getSampleStyleSheet
+        from reportlab.lib.units import inch
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(
+            "PDF export requires optional dependency 'reportlab'. "
+            "Install with: pip install reportlab "
+            "(or install Indexly with extras group 'pdf_export')."
+        ) from exc
 
     doc = SimpleDocTemplate(filename)
     styles = getSampleStyleSheet()

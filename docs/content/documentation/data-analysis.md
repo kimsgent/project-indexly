@@ -173,11 +173,18 @@ Useful boxplot options include:
 | Option | Values |
 | --- | --- |
 | `--use-raw` | Use raw data for boxplot rendering. |
-| `--use-clean` | Use cleaned data for boxplot rendering. |
+| `--use-cleaned` | Use cleaned data for boxplot rendering. |
+| `--use-clean` | Deprecated alias for `--use-cleaned` (boxplot paths only). |
 | `--norm` | `zscore`, `minmax` |
 | `--outliers` | `classic`, `robust`, `show`, `hide` |
 | `--merge-on` | Merge column for multi-file comparison. |
 | `--merge-how` | `inner`, `left`, `right`, `outer` |
+
+For analytical artifact lifecycle:
+
+- Default re-analysis behavior prunes superseded hash-versioned Parquet artifacts.
+- `--keep-artifact-history` preserves old artifacts.
+- Use `indexly clear-data --all --prune-artifacts` to remove unreferenced artifact history later.
 
 ## Export Results
 
@@ -217,5 +224,5 @@ This keeps filenames stable, cleans and analyzes the CSV, then lets observers co
 - [Data Analysis Overview](data-analysis-overview.md)
 - [Clean CSV Data](clean-csv-data.md)
 - [Time-Series Visualization](time-series-visualization.md)
-- [Inference Docs](/inference/)
+- [CSV Inference](inference.md)
 - [Rename File](rename-file.md)

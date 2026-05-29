@@ -1,11 +1,12 @@
 import numpy as np
 import pandas as pd
-import statsmodels.api as sm
-from scipy.stats import shapiro, levene
-from statsmodels.stats.diagnostic import het_breuschpagan
-from statsmodels.stats.stattools import durbin_watson
-from statsmodels.regression.linear_model import RegressionResults
-from statsmodels.stats.outliers_influence import variance_inflation_factor
+from ._deps import (
+    scipy_stats,
+    statsmodels_api,
+    statsmodels_diagnostic,
+    statsmodels_outliers,
+    statsmodels_stattools,
+)
 
 
 def detect_outliers_iqr(series):
@@ -27,17 +28,45 @@ def detect_outliers_iqr(series):
     }
 
 def test_normality(series):
-    stat, p = shapiro(series)
+    series = pd.Series(series).dropna()
+    n = len(series)
+    stats = scipy_stats()
+
+    if n < 3:
+        return {
+            "test": "Shapiro-Wilk",
+            "statistic": np.nan,
+            "p_value": np.nan,
+            "normal": False,
+            "n": n,
+            "warning": "normality requires at least 3 observations",
+        }
+
+    if n <= 5000:
+        stat, p = stats.shapiro(series)
+        test_name = "Shapiro-Wilk"
+        warning = None
+    elif n >= 8:
+        stat, p = stats.normaltest(series)
+        test_name = "D'Agostino K^2"
+        warning = "large sample: normality tests can flag trivial deviations"
+    else:
+        stat, p = np.nan, np.nan
+        test_name = "Normality"
+        warning = "normality test unavailable for this sample size"
+
     return {
-        "test": "Shapiro-Wilk",
+        "test": test_name,
         "statistic": stat,
         "p_value": p,
         "normal": p > 0.05,
+        "n": n,
+        "warning": warning,
     }
 
 
 def test_homogeneity(group1, group2):
-    stat, p = levene(group1, group2)
+    stat, p = scipy_stats().levene(group1, group2)
     return {
         "test": "Levene",
         "statistic": stat,
@@ -45,8 +74,29 @@ def test_homogeneity(group1, group2):
         "equal_variance": p > 0.05,
     }
 
+
+def test_homogeneity_groups(samples):
+    clean_samples = [pd.Series(sample).dropna() for sample in samples]
+    if len(clean_samples) < 2 or any(len(sample) < 2 for sample in clean_samples):
+        return {
+            "test": "Levene",
+            "statistic": np.nan,
+            "p_value": np.nan,
+            "equal_variance": False,
+            "warning": "homogeneity requires at least 2 observations per group",
+        }
+
+    stat, p = scipy_stats().levene(*clean_samples, center="median")
+    return {
+        "test": "Levene",
+        "statistic": stat,
+        "p_value": p,
+        "equal_variance": p > 0.05,
+        "warning": None,
+    }
+
 def test_independence(model):
-    dw = durbin_watson(model.resid)
+    dw = statsmodels_stattools().durbin_watson(model.resid)
 
     return {
         "test": "Durbin-Watson",
@@ -55,12 +105,13 @@ def test_independence(model):
     }
 
 def test_normality_residuals(residuals):
-    stat, p = shapiro(residuals)
-    return {"test": "Shapiro-Wilk", "statistic": stat, "p_value": p, "normal": p > 0.05, "n": len(residuals),}
+    return test_normality(residuals)
 
 
-def test_homoscedasticity(model: RegressionResults, df):
-    stat, pval, _, _ = het_breuschpagan(model.resid, model.model.exog)
+def test_homoscedasticity(model, df):
+    stat, pval, _, _ = statsmodels_diagnostic().het_breuschpagan(
+        model.resid, model.model.exog
+    )
     return {"test": "Breusch-Pagan", "statistic": stat, "p_value": pval, "homoscedastic": pval > 0.05}
 
 
@@ -70,8 +121,6 @@ def compute_vif(df: pd.DataFrame) -> pd.DataFrame:
     Preserves numeric columns, one-hot encodes categoricals,
     converts everything to float, and drops NaNs for VIF calculation.
     """
-    from statsmodels.stats.outliers_influence import variance_inflation_factor
-
     # Separate numeric vs categorical
     numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
     categorical_cols = df.select_dtypes(exclude=[np.number]).columns.tolist()
@@ -88,11 +137,25 @@ def compute_vif(df: pd.DataFrame) -> pd.DataFrame:
     # Drop any rows with NaN (VIF can't handle NaN)
     df_numeric = df_numeric.dropna()
 
+    if df_numeric.shape[1] == 0:
+        return pd.DataFrame(columns=["variable", "VIF", "interpretation"])
+
+    if df_numeric.shape[1] == 1:
+        return pd.DataFrame(
+            {
+                "variable": df_numeric.columns,
+                "VIF": [1.0],
+                "interpretation": ["low"],
+            }
+        )
+
     # Compute VIF
+    exog = statsmodels_api().add_constant(df_numeric, has_constant="add")
     vif_data = pd.DataFrame()
     vif_data["variable"] = df_numeric.columns
+    variance_inflation_factor = statsmodels_outliers().variance_inflation_factor
     vif_data["VIF"] = [
-        variance_inflation_factor(df_numeric.values, i)
+        variance_inflation_factor(exog.values, i + 1)
         for i in range(df_numeric.shape[1])
     ]
     vif_data["interpretation"] = vif_data["VIF"].apply(

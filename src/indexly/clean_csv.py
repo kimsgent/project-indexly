@@ -237,7 +237,11 @@ def clean_csv_data(df, file_name, method="mean", save_data=False):
 # ----------------------------------
 
 
-def clear_cleaned_data(file_path: str = None, remove_all: bool = False):
+def clear_cleaned_data(
+    file_path: str = None,
+    remove_all: bool = False,
+    prune_artifacts: bool = False,
+):
     """
     Remove entries from the cleaned_data table.
 
@@ -256,9 +260,19 @@ def clear_cleaned_data(file_path: str = None, remove_all: bool = False):
     if remove_all:
         cur.execute("DELETE FROM cleaned_data")
         deleted_rows = cur.rowcount
+        pruned_artifacts = 0
+        if prune_artifacts:
+            from indexly.datasets.registry import prune_unreferenced_artifacts
+
+            pruned_artifacts = prune_unreferenced_artifacts(conn)
         conn.commit()
         conn.close()
         print(f"🧹 Cleared all cleaned data entries ({deleted_rows} records removed).")
+        if prune_artifacts:
+            print(
+                "🧽 Pruned unreferenced analytical artifacts "
+                f"({pruned_artifacts} parquet file{'s' if pruned_artifacts != 1 else ''} removed)."
+            )
         return
 
     if not file_path:
@@ -296,6 +310,12 @@ def clear_cleaned_data(file_path: str = None, remove_all: bool = False):
     )
     deleted_rows = cur.rowcount
 
+    pruned_artifacts = 0
+    if prune_artifacts:
+        from indexly.datasets.registry import prune_unreferenced_artifacts
+
+        pruned_artifacts = prune_unreferenced_artifacts(conn)
+
     conn.commit()
     conn.close()
 
@@ -305,3 +325,9 @@ def clear_cleaned_data(file_path: str = None, remove_all: bool = False):
         )
     else:
         print(f"❌ No cleaned data entry found for: {file_name}")
+
+    if prune_artifacts:
+        print(
+            "🧽 Pruned unreferenced analytical artifacts "
+            f"({pruned_artifacts} parquet file{'s' if pruned_artifacts != 1 else ''} removed)."
+        )

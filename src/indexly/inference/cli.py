@@ -12,19 +12,141 @@ from .posthoc import run_tukey
 from .regression import run_ols
 from .formatter import format_result, display_inference_result
 from .mixed_effects import run_mixed_effects
-from .merge_engine import merge_dataframes
-from .exporter import export_report
+from .dataset_router import route_inference_datasets
 from .models import InferenceResult
 from .confidence_intervals import (
     ci_mean,
     ci_mean_difference_independent,
     ci_proportion,
 )
-from indexly.visualization.boxplot_engine import run_boxplot
 from rich.table import Table
 from rich.console import Console
 
 console = Console()
+
+_AGG_DEPRECATION_TEXT = (
+    "⚠️ --agg is deprecated and will be removed in the next release. "
+    "Use --merge-agg for join duplicate-key handling and --boxplot-agg for "
+    "boxplot aggregation."
+)
+
+
+def _run_boxplot_if_available(args, routed_df=None):
+    try:
+        from indexly.visualization.boxplot_engine import run_boxplot
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(
+            "Boxplot rendering requires optional visualization dependencies. "
+            "Install with: pip install indexly[visualization]."
+        ) from exc
+    return run_boxplot(args, routed_df=routed_df)
+
+
+def _export_report_if_available(result, fmt: str):
+    try:
+        from .exporter import export_report
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(
+            "Inference report export requires optional dependencies. "
+            "Install with: pip install indexly[pdf_export]."
+        ) from exc
+    return export_report(result, fmt)
+
+
+def _normalize_use_cleaned_flags(args) -> None:
+    """
+    Canonicalize cleaned/raw flags early for a single source of truth.
+
+    Usage audit note (v2 contract):
+    - --use-cleaned: analyze-file/analyze-csv saved-data loading + infer-csv selection
+    - --use-clean: legacy boxplot alias only
+    """
+    use_raw = bool(getattr(args, "use_raw", False))
+    use_cleaned_requested = bool(getattr(args, "use_cleaned", False))
+    use_clean_alias = bool(getattr(args, "use_clean", False))
+
+    if use_clean_alias:
+        console.print(
+            "[yellow]⚠️ --use-clean is deprecated. "
+            "Use --use-cleaned instead.[/yellow]"
+        )
+
+    if use_raw and (use_cleaned_requested or use_clean_alias):
+        raise ValueError("Cannot use both --use-raw and --use-cleaned.")
+
+    use_cleaned = bool(use_cleaned_requested or use_clean_alias or not use_raw)
+    setattr(args, "use_cleaned", use_cleaned)
+    setattr(args, "use_clean", False)
+
+
+def _normalize_aggregation_flags(args) -> None:
+    merge_agg = getattr(args, "merge_agg", None) or "none"
+    boxplot_agg = getattr(args, "boxplot_agg", None) or "mean"
+    deprecated_agg = getattr(args, "agg", None)
+    merge_agg_explicit = merge_agg != "none"
+    boxplot_agg_explicit = boxplot_agg != "mean"
+
+    if not deprecated_agg:
+        setattr(args, "merge_agg", merge_agg)
+        setattr(args, "boxplot_agg", boxplot_agg)
+        return
+
+    console.print(f"[yellow]{_AGG_DEPRECATION_TEXT}[/yellow]")
+
+    join_context = bool(getattr(args, "merge_on", None))
+    boxplot_only_context = bool(getattr(args, "boxplot", False) and not args.test)
+
+    if join_context:
+        if merge_agg_explicit:
+            console.print(
+                "[dim]Ignoring deprecated --agg because --merge-agg is set.[/dim]"
+            )
+        elif deprecated_agg not in {"none", "mean", "sum"}:
+            raise ValueError(
+                "Deprecated --agg value is invalid in join context. "
+                "Use --merge-agg with one of: none, mean, sum."
+            )
+        else:
+            merge_agg = deprecated_agg
+            console.print(
+                f"[dim]Mapped deprecated --agg={deprecated_agg} "
+                f"to --merge-agg={deprecated_agg}.[/dim]"
+            )
+    elif boxplot_only_context:
+        if boxplot_agg_explicit:
+            console.print(
+                "[dim]Ignoring deprecated --agg because --boxplot-agg is set.[/dim]"
+            )
+        elif deprecated_agg == "none":
+            raise ValueError(
+                "Deprecated --agg=none is invalid for boxplot aggregation. "
+                "Use --boxplot-agg with one of: mean, sum, count, median, min, max."
+            )
+        else:
+            boxplot_agg = deprecated_agg
+            console.print(
+                f"[dim]Mapped deprecated --agg={deprecated_agg} "
+                f"to --boxplot-agg={deprecated_agg}.[/dim]"
+            )
+    else:
+        if merge_agg_explicit:
+            console.print(
+                "[dim]Ignoring deprecated --agg because --merge-agg is set.[/dim]"
+            )
+        elif deprecated_agg not in {"none", "mean", "sum"}:
+            raise ValueError(
+                "Deprecated --agg value is invalid for inference joins. "
+                "Use --merge-agg with one of: none, mean, sum."
+            )
+        else:
+            merge_agg = deprecated_agg
+            console.print(
+                f"[dim]Mapped deprecated --agg={deprecated_agg} "
+                f"to --merge-agg={deprecated_agg}.[/dim]"
+            )
+
+    setattr(args, "merge_agg", merge_agg)
+    setattr(args, "boxplot_agg", boxplot_agg)
 
 
 def run_inference(
@@ -83,25 +205,36 @@ def run_inference_engine(
     No side effects.
     """
 
+    if not 0 < alpha < 1:
+        raise ValueError("alpha must be between 0 and 1.")
+
     # -----------------------------
     # Correlations
     # -----------------------------
     if test == "correlation":
-        if len(x) != 1:
+        if not x or len(x) != 1:
             raise ValueError(
                 "Correlation test requires exactly one --x variable and one --y variable."
             )
         if y is None:
             raise ValueError("Correlation test requires --y to be specified.")
-        return pearson_corr(df, x[0], y)
+        return pearson_corr(df, x[0], y, alpha=alpha)
 
     elif test == "corr-spearman":
+        if not x or len(x) != 1 or y is None:
+            raise ValueError(
+                "Spearman correlation requires exactly one --x and one --y."
+            )
         return spearman_corr(df, x[0], y)
 
     elif test == "corr-lag":
+        if not x or len(x) != 1 or y is None:
+            raise ValueError("Lag correlation requires exactly one --x and one --y.")
         return lag_corr(df, x[0], y, lag=lag)
 
     elif test == "corr-matrix":
+        if not x or len(x) < 2:
+            raise ValueError("Correlation matrix requires at least two --x variables.")
         corr_matrix, p_matrix = correlation_matrix(
             df,
             x,
@@ -140,6 +273,8 @@ def run_inference_engine(
         )
 
     elif test == "paired-ttest":
+        if not x or len(x) != 2:
+            raise ValueError("Paired t-test requires exactly two --x columns.")
         return run_paired_ttest(
             df,
             x[0],
@@ -167,7 +302,7 @@ def run_inference_engine(
             y,
             group,
             auto_route=auto_route,
-            correction=None,  # explicitly disable external correction
+            correction=correction,
         )
 
     elif test == "anova-posthoc":
@@ -175,7 +310,7 @@ def run_inference_engine(
             df,
             y,
             group,
-            correction=None,  # Tukey already controls FWER
+            correction=correction,
         )
 
     # -----------------------------
@@ -192,7 +327,7 @@ def run_inference_engine(
         )
 
     elif test == "mixed":
-        return run_mixed_effects(df, y, group)
+        return run_mixed_effects(df, y, group, x_cols=x)
 
     # -----------------------------
     # CI: Single Mean
@@ -277,24 +412,50 @@ def handle_infer_csv(args):
             "--test for statistical inference or --boxplot for visualization."
         )
 
-    # -----------------------------
-    # Version validation
-    # -----------------------------
-    if args.use_raw and args.use_cleaned:
-
-        raise ValueError("Cannot use both --use-raw and --use-cleaned.")
-
-    use_cleaned = True
-    if args.use_raw:
-        use_cleaned = False
+    _normalize_use_cleaned_flags(args)
+    _normalize_aggregation_flags(args)
 
     # -----------------------------
-    # Load datasets
+    # Resolve and route datasets
     # -----------------------------
     try:
-        dfs = [load_dataframe(file_name=f, use_cleaned=use_cleaned) for f in args.files]
+        routed = route_inference_datasets(args)
+        df = routed.df
     except ValueError as e:
         print(f"\n❌ {e}\n")
+        return
+
+    # -----------------------------
+    # Boxplot precedence: run visualization and exit.
+    # -----------------------------
+    if getattr(args, "boxplot", False):
+        try:
+            _run_boxplot_if_available(
+                SimpleNamespace(
+                    input_files=args.files,
+                    x_col=getattr(args, "x_col", None),
+                    y_col=getattr(args, "y_col", None),
+                    merge_on=args.merge_on,
+                    merge_how=getattr(args, "merge_how", "inner"),
+                    merge_agg=getattr(args, "merge_agg", "none"),
+                    boxplot_agg=getattr(args, "boxplot_agg", "mean"),
+                    use_raw=args.use_raw,
+                    use_cleaned=args.use_cleaned,
+                    normalize=getattr(args, "normalize", None),
+                    mode=getattr(args, "mode", "static"),
+                    show_mean=True,
+                ),
+                routed_df=df,
+            )
+        except RuntimeError as e:
+            print(f"\n[Inference Error] {e}\n")
+            return
+
+        if args.test:
+            console.print(
+                "[cyan]`--boxplot` bypassed `--test`; run a second infer-csv "
+                "command for statistical inference.[/cyan]"
+            )
         return
 
     # -----------------------------
@@ -303,10 +464,18 @@ def handle_infer_csv(args):
     if args.test:
 
         # Tests requiring only y
-        if args.test in ["ci-mean", "ci-proportion", "ci-diff"]:
+        if args.test in ["ci-mean", "ci-proportion"]:
             if not args.y:
                 console.print(
                     f"[red]Error:[/] --y is required for [bold]{args.test}[/bold].",
+                    style="bold red",
+                )
+                return
+
+        elif args.test == "ci-diff":
+            if not args.y or not args.group:
+                console.print(
+                    "[red]Error:[/] --test ci-diff requires --y and --group.",
                     style="bold red",
                 )
                 return
@@ -327,8 +496,39 @@ def handle_infer_csv(args):
                 )
                 return
 
-        # Group comparison tests (kruskal, anova etc.)
-        elif args.test in ["kruskal", "anova"]:
+        elif args.test == "paired-ttest":
+            if not args.x or len(args.x) != 2:
+                console.print(
+                    "[red]Error:[/] --test paired-ttest requires exactly two --x columns.",
+                    style="bold red",
+                )
+                return
+
+        elif args.test in ["corr-spearman", "corr-lag"]:
+            if not args.x or len(args.x) != 1 or not args.y:
+                console.print(
+                    f"[red]Error:[/] --test {args.test} requires exactly one --x and --y.",
+                    style="bold red",
+                )
+                return
+
+        elif args.test == "corr-matrix":
+            if not args.x or len(args.x) < 2:
+                console.print(
+                    "[red]Error:[/] --test corr-matrix requires at least two --x columns.",
+                    style="bold red",
+                )
+                return
+
+        # Group comparison tests
+        elif args.test in [
+            "ttest",
+            "bayes-ttest",
+            "mannwhitney",
+            "kruskal",
+            "anova",
+            "anova-posthoc",
+        ]:
             if not args.y or not args.group:
                 console.print(
                     f"[red]Error:[/] --test {args.test} requires --y and --group.",
@@ -336,28 +536,19 @@ def handle_infer_csv(args):
                 )
                 return
 
-    # -----------------------------
-    # Merge if multiple
-    # -----------------------------
-    if len(dfs) > 1:
-        if not args.merge_on:
-            raise ValueError("--merge-on is required when multiple files are provided.")
-
-        df, merge_meta = merge_dataframes(
-            dfs=dfs,
-            merge_on=args.merge_on,
-            how="inner",
-            agg=args.agg,
-        )
-
-        print(f"[INFO] Merge complete.")
-        print(f"       Original rows: {merge_meta['original_row_counts']}")
-        print(f"       Merged rows:   {merge_meta['merged_row_count']}")
-        print(f"       Aggregation mode: {merge_meta['aggregation_mode']}")
-        print(f"       Duplicate keys:   {merge_meta['duplicate_keys_detected']}")
-
-    else:
-        df = dfs[0]
+        elif args.test in ["ols", "mixed"]:
+            if not args.y or not args.x:
+                console.print(
+                    f"[red]Error:[/] --test {args.test} requires --y and --x.",
+                    style="bold red",
+                )
+                return
+            if args.test == "mixed" and not args.group:
+                console.print(
+                    "[red]Error:[/] --test mixed requires --group.",
+                    style="bold red",
+                )
+                return
 
     # -----------------------------
     # Column validation
@@ -396,28 +587,6 @@ def handle_infer_csv(args):
         working_df = working_df.dropna()
 
     # -----------------------------
-    # Optional visualization (boxplot)
-    # -----------------------------
-    if getattr(args, "boxplot", False):
-
-        run_boxplot(
-            SimpleNamespace(
-                input_files=args.files,
-                x_col=getattr(args, "x_col", None),
-                y_col=getattr(args, "y_col", None),
-                merge_on=args.merge_on,
-                merge_how=getattr(args, "merge_how", "inner"),
-                merge_agg=args.agg,
-                agg=args.agg,
-                use_raw=args.use_raw,
-                use_cleaned=args.use_cleaned,
-                normalize=getattr(args, "normalize", None),
-                mode=getattr(args, "mode", "static"),
-                show_mean=True,
-            )
-        )
-
-    # -----------------------------
     # Dispatch to inference engine
     # -----------------------------
     if args.test:
@@ -433,12 +602,15 @@ def handle_infer_csv(args):
                 auto_route=args.auto_route,
                 bootstrap=args.bootstrap,
                 correction=args.correction,
+                alpha=getattr(args, "alpha", 0.05),
             )
 
             if args.export:
-                export_report(results, args.export)
+                _export_report_if_available(results, args.export)
             else:
                 display_inference_result(results)
 
         except ValueError as e:
+            print(f"\n[Inference Error] {e}\n")
+        except RuntimeError as e:
             print(f"\n[Inference Error] {e}\n")

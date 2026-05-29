@@ -1,13 +1,20 @@
 {
   "project": "FTS5 File Search Tool",
   "latest": {
-    "version": "2.1.2",
-    "date": "2026-05-23",
-    "link": "/en/releases/v2.1.2/",
-    "summary": "fix(csv): harden CSV analysis semantics, delimiter detection, date parsing, and pipeline metadata propagation | fix(json): harden JSON, NDJSON, Socrata-style JSON, gzip loading, and mixed identifier preservation",
+    "version": "2.1.3",
+    "date": "2026-05-29",
+    "link": "/en/releases/v2.1.3/",
+    "summary": "feat(data): add analytical dataset routing with optional DuckDB backend support | feat(inference): add columnar inference freshness checks and backend-aware infer-csv workflows",
     "prerelease": false
   },
   "recent": [
+    {
+      "version": "2.1.2",
+      "date": "2026-05-23",
+      "link": "/en/releases/v2.1.2/",
+      "summary": "fix(csv): harden CSV analysis semantics, delimiter detection, date parsing, and pipeline metadata propagation | fix(json): harden JSON, NDJSON, Socrata-style JSON, gzip loading, and mixed identifier preservation",
+      "prerelease": false
+    },
     {
       "version": "2.1.1",
       "date": "2026-05-16",
@@ -34,18 +41,18 @@
       "date": "2026-04-05",
       "link": "/en/releases/v2.0.1/",
       "summary": "fix(workflow): update publish pipeline to create a PR for Homebrew formula updates instead of pushing directly to main | fix(workflow): add pull-requests write permission for the publish workflow token",
-      "prerelease": false
-    },
-    {
-      "version": "2.0.0",
-      "date": "2026-04-05",
-      "link": "/en/releases/v2.0.0/",
-      "summary": "feat(release): enforce release retention and archive old release pages | feat(ux): improve show-help UX and documentation entry experience",
       "prerelease": false
     }
   ],
   "archive": [
     {
+      "version": "2.1.2",
+      "date": "2026-05-23",
+      "link": "/en/releases/v2.1.2/",
+      "summary": "fix(csv): harden CSV analysis semantics, delimiter detection, date parsing, and pipeline metadata propagation | fix(json): harden JSON, NDJSON, Socrata-style JSON, gzip loading, and mixed identifier preservation",
+      "prerelease": false
+    },
+    {
       "version": "2.1.1",
       "date": "2026-05-16",
       "link": "/en/releases/v2.1.1/",
@@ -72,17 +79,10 @@
       "link": "/en/releases/v2.0.1/",
       "summary": "fix(workflow): update publish pipeline to create a PR for Homebrew formula updates instead of pushing directly to main | fix(workflow): add pull-requests write permission for the publish workflow token",
       "prerelease": false
-    },
-    {
-      "version": "2.0.0",
-      "date": "2026-04-05",
-      "link": "/en/releases/v2.0.0/",
-      "summary": "feat(release): enforce release retention and archive old release pages | feat(ux): improve show-help UX and documentation entry experience",
-      "prerelease": false
     }
   ],
   "archived": {
-    "count": 32,
+    "count": 33,
     "link": "/en/releases/Archive/"
   },
   "retention": {

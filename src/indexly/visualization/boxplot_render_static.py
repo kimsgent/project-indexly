@@ -1,9 +1,9 @@
 # indexly/visualization/boxplot_render_static.py
 
 from typing import Optional
-import matplotlib.pyplot as plt
-import seaborn as sns
+import logging
 import pandas as pd
+from ._deps import matplotlib_pyplot, seaborn_module
 
 
 def render_static_boxplot(
@@ -54,6 +54,8 @@ def render_static_boxplot(
     if df.empty:
         raise ValueError("Cannot render boxplot: DataFrame is empty.")
 
+    sns = seaborn_module()
+    plt = matplotlib_pyplot()
     sns.set_theme(style="whitegrid")
 
     plt.figure(figsize=figsize)
@@ -74,7 +76,13 @@ def render_static_boxplot(
         linewidth=1.2,
     )
 
-    ax = sns.boxplot(**boxplot_kwargs)
+    category_logger = logging.getLogger("matplotlib.category")
+    previous_level = category_logger.level
+    category_logger.setLevel(logging.WARNING)
+    try:
+        ax = sns.boxplot(**boxplot_kwargs)
+    finally:
+        category_logger.setLevel(previous_level)
 
     # Axis scaling
     if y_min is not None or y_max is not None:

@@ -108,3 +108,115 @@ def test_run_csv_pipeline_attaches_csv_metadata(tmp_path):
     assert hasattr(df, "_df_stats")
     assert df.attrs["_summary_records"]
     assert "date" in df.attrs["_derived_map"]
+
+
+def test_run_csv_pipeline_boxplot_uses_loaded_dataframe(tmp_path, monkeypatch):
+    csv_file = tmp_path / "sleepday.csv"
+    csv_file.write_text(
+        "ID,TotalMinutesAsleep,TotalTimeInBed\n"
+        "1,400,450\n"
+        "1,420,470\n"
+        "2,300,330\n",
+        encoding="utf-8",
+    )
+
+    from indexly.visualization import boxplot_engine
+
+    captured = {}
+
+    def fail_load_dataframe(*args, **kwargs):
+        raise AssertionError("boxplot should use the loaded CSV DataFrame")
+
+    def fake_render_static_boxplot(**kwargs):
+        captured["df"] = kwargs["df"].copy()
+
+    monkeypatch.setattr(boxplot_engine, "load_dataframe", fail_load_dataframe)
+    monkeypatch.setattr(
+        boxplot_engine, "render_static_boxplot", fake_render_static_boxplot
+    )
+
+    run_csv_pipeline(
+        Path(csv_file),
+        _csv_args(
+            auto_clean=False,
+            boxplot=True,
+            input_files=["sleepday.csv"],
+            x_col="TotalMinutesAsleep",
+            y_col=["TotalTimeInBed"],
+            use_raw=False,
+            use_cleaned=False,
+            use_clean=False,
+            merge_on=None,
+            merge_how="inner",
+            merge_agg=None,
+            boxplot_agg=None,
+            agg="mean",
+            mode="static",
+            show_mean=False,
+            norm=None,
+            outliers="show",
+        ),
+    )
+
+    assert captured["df"]["variable"].tolist() == [
+        "TotalTimeInBed",
+        "TotalTimeInBed",
+        "TotalTimeInBed",
+    ]
+    assert sorted(captured["df"]["value"].tolist()) == [330, 450, 470]
+
+
+def test_run_csv_pipeline_boxplot_use_raw_matches_disk_data(tmp_path, monkeypatch):
+    csv_file = tmp_path / "sleepday.csv"
+    csv_file.write_text(
+        "ID,TotalMinutesAsleep,TotalTimeInBed\n"
+        "1,400,450\n"
+        "1,400,470\n"
+        "2,300,330\n",
+        encoding="utf-8",
+    )
+
+    from indexly.visualization import boxplot_engine
+
+    rendered = {}
+
+    def fake_render_static_boxplot(**kwargs):
+        rendered[getattr(fake_render_static_boxplot, "key")] = kwargs["df"].copy()
+
+    monkeypatch.setattr(
+        boxplot_engine,
+        "load_dataframe",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("boxplot should use the loaded CSV DataFrame")
+        ),
+    )
+    monkeypatch.setattr(
+        boxplot_engine, "render_static_boxplot", fake_render_static_boxplot
+    )
+
+    base_args = dict(
+        auto_clean=False,
+        boxplot=True,
+        input_files=["sleepday.csv"],
+        x_col="TotalMinutesAsleep",
+        y_col=["TotalTimeInBed"],
+        use_cleaned=False,
+        use_clean=False,
+        merge_on=None,
+        merge_how="inner",
+        merge_agg=None,
+        boxplot_agg=None,
+        agg="mean",
+        mode="static",
+        show_mean=False,
+        norm=None,
+        outliers="show",
+    )
+
+    fake_render_static_boxplot.key = "disk"
+    run_csv_pipeline(Path(csv_file), _csv_args(**base_args, use_raw=False))
+    fake_render_static_boxplot.key = "raw"
+    run_csv_pipeline(Path(csv_file), _csv_args(**base_args, use_raw=True))
+
+    pd.testing.assert_frame_equal(rendered["raw"], rendered["disk"])
+    assert rendered["raw"]["value"].tolist() == [330.0, 460.0]

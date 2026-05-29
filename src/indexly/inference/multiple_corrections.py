@@ -1,4 +1,5 @@
 import numpy as np
+from ._deps import statsmodels_multitest
 
 
 def bonferroni(p_values):
@@ -47,20 +48,7 @@ def holm(p_values):
     - Less conservative than standard Bonferroni.
     - Sequentially adjusts sorted p-values.
     """
-    # Convert to NumPy array
-    p_values = np.array(p_values)
-
-    # Sort indices by ascending p-value
-    order = np.argsort(p_values)
-
-    # Prepare container for adjusted values
-    adjusted = np.empty(len(p_values))
-
-    # Sequential adjustment (step-down procedure)
-    for i, idx in enumerate(order):
-        adjusted[idx] = min((len(p_values) - i) * p_values[idx], 1.0)
-
-    return adjusted
+    return statsmodels_multitest().multipletests(p_values, method="holm")[1]
 
 
 def benjamini_hochberg(p_values):
@@ -83,23 +71,7 @@ def benjamini_hochberg(p_values):
     - Less conservative than FWER methods.
     - Uses step-up procedure.
     """
-    # Convert input to NumPy array
-    p_values = np.array(p_values)
-
-    n = len(p_values)
-
-    # Sort p-values and retain original indices
-    order = np.argsort(p_values)
-
-    # Placeholder for ranked adjustments
-    ranked = np.empty(n)
-
-    # Compute adjusted p-values: p * n / rank
-    for i, idx in enumerate(order):
-        ranked[idx] = p_values[idx] * n / (i + 1)
-
-    # Enforce monotonicity (step-up cumulative minimum)
-    return np.minimum.accumulate(ranked[::-1])[::-1]
+    return statsmodels_multitest().multipletests(p_values, method="fdr_bh")[1]
 
 
 # 🔥 NEW: Unified correction interface

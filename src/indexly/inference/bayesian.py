@@ -1,7 +1,36 @@
 import numpy as np
-from scipy import stats
-from scipy.special import gamma
 from .models import InferenceResult
+from ._deps import scipy_integrate, scipy_stats
+
+
+def _jzs_bf10_independent_t(t_stat: float, dfree: int, n_eff: float, r: float) -> float:
+    """
+    JZS Bayes factor BF10 for a two-sample t-test.
+
+    Uses the Rouder et al. Cauchy-prior formulation integrated over g.
+    The returned value is evidence for the alternative over the null.
+    """
+
+    t_abs = abs(float(t_stat))
+    null_likelihood = (1 + (t_abs**2 / dfree)) ** (-(dfree + 1) / 2)
+
+    def integrand(g):
+        scale = 1 + n_eff * g * r**2
+        prior_g = (2 * np.pi) ** -0.5 * g ** -1.5 * np.exp(-1 / (2 * g))
+        alt_likelihood = scale**-0.5 * (
+            1 + (t_abs**2 / (dfree * scale))
+        ) ** (-(dfree + 1) / 2)
+        return alt_likelihood * prior_g
+
+    marginal_alt, _ = scipy_integrate().quad(
+        integrand,
+        0,
+        np.inf,
+        epsabs=1e-10,
+        epsrel=1e-8,
+        limit=200,
+    )
+    return float(marginal_alt / null_likelihood)
 
 
 def run_bayesian_ttest(df, y, group, r=0.707, alpha=0.05):
@@ -38,7 +67,7 @@ def run_bayesian_ttest(df, y, group, r=0.707, alpha=0.05):
         )
 
     # Classical t-stat
-    t_stat, _ = stats.ttest_ind(g1, g2, equal_var=True)
+    t_stat, _ = scipy_stats().ttest_ind(g1, g2, equal_var=True)
     n1, n2 = len(g1), len(g2)
     dfree = n1 + n2 - 2
 
@@ -48,12 +77,9 @@ def run_bayesian_ttest(df, y, group, r=0.707, alpha=0.05):
     )
     d = (np.mean(g1) - np.mean(g2)) / pooled_sd
 
-    # JZS Bayes Factor
+    # JZS Bayes Factor (BF10: alternative over null)
     n_eff = (n1 * n2) / (n1 + n2)
-    numerator = (1 + n_eff * r**2) ** (-0.5)
-    denominator = (1 + (t_stat**2 / dfree)) ** ((dfree + 1) / 2)
-    bf01 = numerator * denominator
-    bf10 = 1 / bf01
+    bf10 = _jzs_bf10_independent_t(t_stat, dfree, n_eff, r)
 
     # Approx credible interval for effect size
     se_d = np.sqrt((n1 + n2) / (n1 * n2) + (d**2 / (2 * dfree)))
@@ -67,6 +93,8 @@ def run_bayesian_ttest(df, y, group, r=0.707, alpha=0.05):
         effect_size=float(d),
         ci_low=float(ci_low),
         ci_high=float(ci_high),
+        paradigm="bayesian",
+        evidence=float(bf10),
         additional_table={
             "bf10": float(bf10),
             "group_1": groups[0],
@@ -77,5 +105,6 @@ def run_bayesian_ttest(df, y, group, r=0.707, alpha=0.05):
         metadata={
             "prior_scale": r,
             "df": int(dfree),
+            "effect_size_ci_method": "large-sample approximation",
         },
     )

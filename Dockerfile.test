@@ -1,0 +1,32 @@
+ARG PYTHON_VERSION=3.13
+FROM python:${PYTHON_VERSION}-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1 \
+    MPLBACKEND=Agg
+
+WORKDIR /workspace
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        bash \
+        build-essential \
+        git \
+        sqlite3 \
+        tesseract-ocr \
+        libimage-exiftool-perl \
+        zstd \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements-ci.txt pyproject.toml pytest.ini README.md README_PYPI.md LICENSE.txt ./
+COPY src ./src
+COPY tests ./tests
+
+RUN python -m pip install --upgrade pip \
+    && python -m pip install -r requirements-ci.txt \
+    && python -m pip install -e .
+
+CMD ["python", "-m", "pytest", "-q", "--maxfail=3", "--disable-warnings"]

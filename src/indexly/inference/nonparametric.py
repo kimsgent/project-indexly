@@ -1,6 +1,6 @@
-from scipy.stats import mannwhitneyu
 from .models import InferenceResult
 from .effect_size import rank_biserial_u
+from ._deps import scipy_stats
 
 
 def run_mannwhitney(df, value_col, group_col):
@@ -36,7 +36,7 @@ def run_mannwhitney(df, value_col, group_col):
     g2 = df[df[group_col] == groups[1]][value_col]
 
     # Perform two-sided Mann–Whitney U test
-    stat, p = mannwhitneyu(g1, g2, alternative="two-sided")
+    stat, p = scipy_stats().mannwhitneyu(g1, g2, alternative="two-sided")
 
     # Compute rank-biserial correlation as effect size
     r_rb = rank_biserial_u(stat, len(g1), len(g2))
@@ -78,7 +78,6 @@ def run_kruskal(df, value_col, group_col):
         and optional diagnostic warnings.
     """
     import warnings
-    from scipy.stats import kruskal
 
     # Identify unique groups
     groups = df[group_col].unique()
@@ -96,7 +95,7 @@ def run_kruskal(df, value_col, group_col):
             )
 
     # Perform Kruskal–Wallis test across all groups
-    stat, p = kruskal(*samples)
+    stat, p = scipy_stats().kruskal(*samples)
 
     # Compute epsilon-squared (ε²) as effect size estimate
     # ε² = (H - k + 1) / (n - k)

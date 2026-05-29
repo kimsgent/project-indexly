@@ -3,6 +3,22 @@
 from typing import Dict, List, Optional
 import pandas as pd
 
+
+def _coerce_numeric_like_x(df: pd.DataFrame, x_col: Optional[str]) -> pd.DataFrame:
+    if not x_col or x_col not in df.columns:
+        return df
+
+    original = df[x_col]
+    converted = pd.to_numeric(original, errors="coerce")
+    non_null = original.notna()
+
+    if non_null.any() and converted[non_null].notna().all():
+        df = df.copy()
+        df[x_col] = converted
+
+    return df
+
+
 # ---------------------------------------------------------
 # Group Aggregation
 # ---------------------------------------------------------
@@ -38,7 +54,7 @@ def apply_group_aggregation(
         grouped.columns = [str(col) for col in grouped.columns]
 
     grouped = grouped.reset_index()
-    return grouped
+    return _coerce_numeric_like_x(grouped, x_col)
 
 
 # ---------------------------------------------------------
@@ -75,7 +91,7 @@ def reshape_to_long(
     long_df["dataset"] = dataset_name
     long_df["value"] = pd.to_numeric(long_df["value"], errors="coerce")
     long_df = long_df.dropna(subset=["value"])
-    return long_df
+    return _coerce_numeric_like_x(long_df, x_col)
 
 
 # ---------------------------------------------------------
@@ -108,4 +124,4 @@ def combine_datasets_long(
 
     combined = pd.concat(frames, ignore_index=True)
     combined = combined.dropna(subset=["value"])
-    return combined
+    return _coerce_numeric_like_x(combined, x_col)

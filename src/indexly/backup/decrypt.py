@@ -2,14 +2,15 @@
 # src/indexly/backup/decrypt.py
 # ------------------------------
 
+import base64
+import os
 from pathlib import Path
-from cryptography.fernet import Fernet
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-from cryptography.hazmat.primitives import hashes
-import base64, os
+
+from .crypto_deps import load_crypto_primitives
 
 
 def _derive_key(password: str, salt: bytes) -> bytes:
+    hashes, PBKDF2HMAC, _ = load_crypto_primitives()
     kdf = PBKDF2HMAC(
         algorithm=hashes.SHA256(),
         length=32,
@@ -24,6 +25,7 @@ def is_encrypted(path: Path) -> bool:
 
 
 def decrypt_archive(path: Path, password: str, out_dir: Path) -> Path:
+    _, _, Fernet = load_crypto_primitives()
     raw = path.read_bytes()
     salt, payload = raw[:16], raw[16:]
     key = _derive_key(password, salt)

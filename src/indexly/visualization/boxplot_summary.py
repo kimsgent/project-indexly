@@ -1,13 +1,10 @@
 # indexly/visualization/boxplot_summary.py
 
 from typing import List, Dict, Optional
-import matplotlib.pyplot as plt
-import plotly.graph_objects as go
-
-
 import numpy as np
 import pandas as pd
 from .boxplot_utils import get_outlier_mask
+from ._deps import matplotlib_pyplot, plotly_graph_objects
 
 
 
@@ -94,6 +91,7 @@ def render_static_summary(ax, summaries: List[Dict], show_mean: bool = True):
     ax.set_ylabel("Value")
     ax.set_title("Boxplot (summary mode)")
 
+    plt = matplotlib_pyplot()
     plt.tight_layout()
     plt.show()
 
@@ -124,6 +122,7 @@ def render_interactive_summary(
     if not summaries:
         raise ValueError("No summaries to render.")
 
+    go = plotly_graph_objects()
     fig = go.Figure()
 
     for s in summaries:

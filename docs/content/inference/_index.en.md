@@ -110,8 +110,11 @@ Interpretation:
 * Fisher Z-transform for Pearson CIs
 * T-distribution for mean CIs
 * Explicit alpha tracking
+* Corrected Holm and Benjamini-Hochberg p-values preserve original comparison order
+* Welch ANOVA route for unequal variances when group normality is acceptable
+* HC3 robust covariance route for regression diagnostics when auto-route is enabled
 * No side effects in dispatcher
-* Reproducible metadata included
+* Structured metadata included
 
 ---
 
@@ -123,4 +126,3 @@ Continue to **[How It Works](how-it-works.md)** to understand:
 * Required arguments
 * Example CLI commands
 * Advanced options
-

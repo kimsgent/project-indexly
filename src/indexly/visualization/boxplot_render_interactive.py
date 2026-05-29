@@ -2,8 +2,7 @@
 
 from typing import Optional
 import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
+from ._deps import plotly_express
 
 
 def render_interactive_boxplot(
@@ -52,7 +51,7 @@ def render_interactive_boxplot(
         if col in df.columns:
             hover_data[col] = True
 
-    fig = px.box(
+    fig = plotly_express().box(
         df,
         x=x_col,
         y=y_col,
