@@ -155,3 +155,59 @@ def test_analyze_json_command_uses_orchestrator_json_path(monkeypatch, tmp_path)
     assert result is not None
     assert detect_calls == ["called"]
     assert len(save_calls) == 1
+
+
+def test_analyze_csv_use_cleaned_loads_saved_data_before_filesystem(
+    monkeypatch, tmp_path
+):
+    orchestrator = _import_orchestrator(monkeypatch, tmp_path)
+    missing_file = tmp_path / "steps.csv"
+    saved_df = pd.DataFrame({"step_count": [1000, 2000]})
+
+    monkeypatch.setattr(orchestrator, "detect_file_type", lambda _: "csv")
+    monkeypatch.setattr(
+        orchestrator,
+        "run_csv_pipeline",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("--use-cleaned should not load the CSV from disk")
+        ),
+    )
+    monkeypatch.setattr(
+        orchestrator,
+        "validate_file_content",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("--use-cleaned should not validate a missing CSV path")
+        ),
+    )
+    monkeypatch.setattr(
+        orchestrator,
+        "load_cleaned_data",
+        lambda path: (
+            True,
+            {
+                "file_type": "csv",
+                "df": saved_df,
+                "data_json": {
+                    "sample_data": [{"step_count": 999}],
+                    "summary_statistics": {"step_count": {"mean": 1500}},
+                },
+                "metadata_json": {},
+            },
+        ),
+    )
+
+    args = _base_args(file_path=missing_file, no_persist=False)
+    args.command = "analyze-csv"
+    args.subcommand = "analyze-csv"
+    args.use_cleaned = True
+    args.show_summary = True
+
+    result = orchestrator.analyze_file(args)
+
+    assert result is not None
+    assert result.cleaned is True
+    assert result.persisted is True
+    assert result.df.to_dict(orient="records") == [
+        {"step_count": 1000},
+        {"step_count": 2000},
+    ]

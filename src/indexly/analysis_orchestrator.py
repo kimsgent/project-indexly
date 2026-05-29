@@ -193,21 +193,7 @@ def analyze_file(args) -> Optional[AnalysisResult]:
     df_preview = None
     legacy_mode = False
 
-    # --- Legacy passthrough
-    cmd = getattr(args, "subcommand", "") or getattr(args, "command", "")
-    # Keep CSV on the legacy shortcut because it already prepares tabular
-    # persistence metadata for the generic saver. JSON intentionally falls
-    # through to the orchestrator path below so NDJSON/record-list reroutes
-    # and JSON-aware persistence stay in one place.
-    if cmd == "analyze-csv":
-        df, df_stats, table_output = run_csv_pipeline(file_path, args)
-        file_type = "csv"
-        legacy_mode = True
-
-        # --- Persist legacy data
-        _persist_analysis(df, None, file_path, file_type, table_output, args=args)
-
-    # --- Use saved/cleaned data
+    # --- Use saved/cleaned data before any filesystem-backed loading.
     use_saved = getattr(args, "use_saved", False) or getattr(args, "use_cleaned", False)
     if use_saved:
         try:
@@ -216,9 +202,13 @@ def analyze_file(args) -> Optional[AnalysisResult]:
                 console.print(
                     f"[cyan]♻️ Using previously saved data for {file_path.name}[/cyan]"
                 )
-                data_json = record.get("data_json", {})
-                metadata_json = record.get("metadata_json", {})
-                df = pd.DataFrame(data_json.get("sample_data", []))
+                data_json = record.get("data_json", {}) or {}
+                metadata_json = record.get("metadata_json", {}) or {}
+                saved_df = record.get("df")
+                if isinstance(saved_df, pd.DataFrame) and not saved_df.empty:
+                    df = saved_df
+                else:
+                    df = pd.DataFrame(data_json.get("sample_data", []))
                 df_stats = (
                     pd.DataFrame(data_json.get("summary_statistics", {})).T
                     if data_json.get("summary_statistics")
@@ -255,6 +245,20 @@ def analyze_file(args) -> Optional[AnalysisResult]:
                 )
         except Exception as e:
             console.print(f"[yellow]⚠️ Failed to load saved data: {e}[/yellow]")
+
+    # --- Legacy passthrough
+    cmd = getattr(args, "subcommand", "") or getattr(args, "command", "")
+    # Keep CSV on the legacy shortcut because it already prepares tabular
+    # persistence metadata for the generic saver. JSON intentionally falls
+    # through to the orchestrator path below so NDJSON/record-list reroutes
+    # and JSON-aware persistence stay in one place.
+    if cmd == "analyze-csv":
+        df, df_stats, table_output = run_csv_pipeline(file_path, args)
+        file_type = "csv"
+        legacy_mode = True
+
+        # --- Persist legacy data
+        _persist_analysis(df, None, file_path, file_type, table_output, args=args)
 
     # --- Validate
     if not validate_file_content(file_path, file_type):
@@ -732,7 +736,6 @@ def analyze_file(args) -> Optional[AnalysisResult]:
     # --- Dataset Summary Preview
     if getattr(args, "show_summary", False):
         import shutil
-        from rich.table import Table
 
         console.print("\n📊 [bold cyan]Dataset Summary Preview[/bold cyan]")
 
