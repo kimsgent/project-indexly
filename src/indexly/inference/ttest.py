@@ -1,5 +1,4 @@
 import numpy as np
-from scipy.stats import ttest_ind
 from .models import InferenceResult
 from .effect_size import cohens_d_independent
 from .confidence_intervals import ci_mean_difference_independent
@@ -8,6 +7,7 @@ from .power import power_ttest
 from .nonparametric import run_mannwhitney
 from .advanced_decision import decide_ttest_route
 from .bootstrap import bootstrap
+from ._deps import scipy_stats
 
 
 def run_ttest(
@@ -49,11 +49,13 @@ def run_ttest(
             return result
 
         elif route == "welch":
-            stat, p = ttest_ind(g1, g2, equal_var=False)
+            stat, p = scipy_stats().ttest_ind(g1, g2, equal_var=False)
         else:
-            stat, p = ttest_ind(g1, g2, equal_var=True)
+            stat, p = scipy_stats().ttest_ind(g1, g2, equal_var=True)
     else:
-        stat, p = ttest_ind(g1, g2, equal_var=homogeneity["equal_variance"])
+        stat, p = scipy_stats().ttest_ind(
+            g1, g2, equal_var=homogeneity["equal_variance"]
+        )
         selected_route = "ttest" if homogeneity["equal_variance"] else "welch"
 
     d = cohens_d_independent(g1, g2)

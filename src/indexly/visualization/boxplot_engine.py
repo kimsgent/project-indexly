@@ -1,7 +1,6 @@
 # indexly/visualization/boxplot_engine.py
 
 from typing import List, Dict, Optional
-import matplotlib.pyplot as plt
 import pandas as pd
 from pathlib import Path
 from indexly.visualization.boxplot_validation import validate_boxplot_args
@@ -22,6 +21,7 @@ from indexly.visualization.boxplot_summary import (
     render_static_summary,
     render_interactive_summary,
 )
+from indexly.visualization._deps import matplotlib_pyplot
 
 MAX_ROWS = 1_000_000
 
@@ -199,7 +199,9 @@ def run_boxplot(args, routed_df: Optional[pd.DataFrame] = None):
             fig.show()
         else:
             ax = render_static_summary(
-                ax=plt.gca(), summaries=summaries, show_mean=args.show_mean
+                ax=matplotlib_pyplot().gca(),
+                summaries=summaries,
+                show_mean=args.show_mean,
             )
     else:
         # Normal rendering (existing code)

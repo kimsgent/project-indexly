@@ -1,6 +1,6 @@
 import numpy as np
-from scipy import integrate, stats
 from .models import InferenceResult
+from ._deps import scipy_integrate, scipy_stats
 
 
 def _jzs_bf10_independent_t(t_stat: float, dfree: int, n_eff: float, r: float) -> float:
@@ -22,7 +22,7 @@ def _jzs_bf10_independent_t(t_stat: float, dfree: int, n_eff: float, r: float) -
         ) ** (-(dfree + 1) / 2)
         return alt_likelihood * prior_g
 
-    marginal_alt, _ = integrate.quad(
+    marginal_alt, _ = scipy_integrate().quad(
         integrand,
         0,
         np.inf,
@@ -67,7 +67,7 @@ def run_bayesian_ttest(df, y, group, r=0.707, alpha=0.05):
         )
 
     # Classical t-stat
-    t_stat, _ = stats.ttest_ind(g1, g2, equal_var=True)
+    t_stat, _ = scipy_stats().ttest_ind(g1, g2, equal_var=True)
     n1, n2 = len(g1), len(g2)
     dfree = n1 + n2 - 2
 

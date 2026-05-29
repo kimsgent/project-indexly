@@ -1,9 +1,9 @@
-from scipy.stats import ttest_rel
 import numpy as np
 from .models import InferenceResult
 from .effect_size import cohens_d_paired
 from .confidence_intervals import ci_mean_difference_paired
 from .bootstrap import bootstrap
+from ._deps import scipy_stats
 
 
 def run_paired_ttest(df, col1: str, col2: str, use_bootstrap: bool = False):
@@ -14,7 +14,7 @@ def run_paired_ttest(df, col1: str, col2: str, use_bootstrap: bool = False):
     group1 = df[col1]
     group2 = df[col2]
 
-    stat, p = ttest_rel(group1, group2)
+    stat, p = scipy_stats().ttest_rel(group1, group2)
 
     d = cohens_d_paired(group1, group2)
     if use_bootstrap:

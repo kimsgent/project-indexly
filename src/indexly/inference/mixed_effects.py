@@ -1,5 +1,5 @@
-import statsmodels.formula.api as smf
 from .models import InferenceResult
+from ._deps import statsmodels_formula_api
 
 
 def run_mixed_effects(
@@ -14,7 +14,7 @@ def run_mixed_effects(
             raise ValueError("Mixed effects requires --y, --x, and --group.")
         formula = f"{y_col} ~ " + " + ".join(x_cols)
 
-    model = smf.mixedlm(formula, df, groups=df[group_col])
+    model = statsmodels_formula_api().mixedlm(formula, df, groups=df[group_col])
     result = model.fit()
 
     return InferenceResult(

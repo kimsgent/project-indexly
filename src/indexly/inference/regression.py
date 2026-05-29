@@ -1,4 +1,3 @@
-import statsmodels.formula.api as smf
 import pandas as pd
 import numpy as np
 from .models import InferenceResult
@@ -12,6 +11,7 @@ from .assumptions import (
 )
 from .power import power_ols
 from .advanced_decision import decide_regression_route
+from ._deps import statsmodels_formula_api
 
 
 def _coefficient_ci_table(model, alpha=0.05):
@@ -123,6 +123,7 @@ def run_ols(
     # ------------------------
     # Fit OLS
     # ------------------------
+    smf = statsmodels_formula_api()
     try:
         model = smf.ols(formula, data=df_work).fit()
     except Exception as e:

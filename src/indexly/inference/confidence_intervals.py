@@ -25,7 +25,7 @@ All functions return (ci_low, ci_high) unless otherwise noted.
 """
 
 import numpy as np
-from scipy.stats import t, norm
+from ._deps import scipy_stats
 
 
 # ---------------------------------------------------------------------
@@ -42,7 +42,7 @@ def ci_mean(sample, alpha=0.05):
     mean = np.mean(sample)
     se = np.std(sample, ddof=1) / np.sqrt(n)
 
-    t_crit = t.ppf(1 - alpha / 2, df=n - 1)
+    t_crit = scipy_stats().t.ppf(1 - alpha / 2, df=n - 1)
 
     return mean - t_crit * se, mean + t_crit * se
 
@@ -70,7 +70,7 @@ def ci_mean_difference_independent(group1, group2, alpha=0.05):
         ((var2 / n2) ** 2) / (n2 - 1)
     )
 
-    t_crit = t.ppf(1 - alpha / 2, df)
+    t_crit = scipy_stats().t.ppf(1 - alpha / 2, df)
 
     return diff - t_crit * se, diff + t_crit * se
 
@@ -89,7 +89,7 @@ def ci_mean_difference_paired(before, after, alpha=0.05):
     mean_diff = np.mean(diff)
     se = np.std(diff, ddof=1) / np.sqrt(n)
 
-    t_crit = t.ppf(1 - alpha / 2, df=n - 1)
+    t_crit = scipy_stats().t.ppf(1 - alpha / 2, df=n - 1)
 
     return mean_diff - t_crit * se, mean_diff + t_crit * se
 
@@ -103,7 +103,7 @@ def ci_proportion(successes, n, alpha=0.05):
     Wald confidence interval for a proportion.
     """
     p_hat = successes / n
-    z = norm.ppf(1 - alpha / 2)
+    z = scipy_stats().norm.ppf(1 - alpha / 2)
 
     se = np.sqrt(p_hat * (1 - p_hat) / n)
 

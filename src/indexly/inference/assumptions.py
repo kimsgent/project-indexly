@@ -1,11 +1,12 @@
 import numpy as np
 import pandas as pd
-import statsmodels.api as sm
-from scipy.stats import normaltest, shapiro, levene
-from statsmodels.stats.diagnostic import het_breuschpagan
-from statsmodels.stats.stattools import durbin_watson
-from statsmodels.regression.linear_model import RegressionResults
-from statsmodels.stats.outliers_influence import variance_inflation_factor
+from ._deps import (
+    scipy_stats,
+    statsmodels_api,
+    statsmodels_diagnostic,
+    statsmodels_outliers,
+    statsmodels_stattools,
+)
 
 
 def detect_outliers_iqr(series):
@@ -29,6 +30,7 @@ def detect_outliers_iqr(series):
 def test_normality(series):
     series = pd.Series(series).dropna()
     n = len(series)
+    stats = scipy_stats()
 
     if n < 3:
         return {
@@ -41,11 +43,11 @@ def test_normality(series):
         }
 
     if n <= 5000:
-        stat, p = shapiro(series)
+        stat, p = stats.shapiro(series)
         test_name = "Shapiro-Wilk"
         warning = None
     elif n >= 8:
-        stat, p = normaltest(series)
+        stat, p = stats.normaltest(series)
         test_name = "D'Agostino K^2"
         warning = "large sample: normality tests can flag trivial deviations"
     else:
@@ -64,7 +66,7 @@ def test_normality(series):
 
 
 def test_homogeneity(group1, group2):
-    stat, p = levene(group1, group2)
+    stat, p = scipy_stats().levene(group1, group2)
     return {
         "test": "Levene",
         "statistic": stat,
@@ -84,7 +86,7 @@ def test_homogeneity_groups(samples):
             "warning": "homogeneity requires at least 2 observations per group",
         }
 
-    stat, p = levene(*clean_samples, center="median")
+    stat, p = scipy_stats().levene(*clean_samples, center="median")
     return {
         "test": "Levene",
         "statistic": stat,
@@ -94,7 +96,7 @@ def test_homogeneity_groups(samples):
     }
 
 def test_independence(model):
-    dw = durbin_watson(model.resid)
+    dw = statsmodels_stattools().durbin_watson(model.resid)
 
     return {
         "test": "Durbin-Watson",
@@ -106,8 +108,10 @@ def test_normality_residuals(residuals):
     return test_normality(residuals)
 
 
-def test_homoscedasticity(model: RegressionResults, df):
-    stat, pval, _, _ = het_breuschpagan(model.resid, model.model.exog)
+def test_homoscedasticity(model, df):
+    stat, pval, _, _ = statsmodels_diagnostic().het_breuschpagan(
+        model.resid, model.model.exog
+    )
     return {"test": "Breusch-Pagan", "statistic": stat, "p_value": pval, "homoscedastic": pval > 0.05}
 
 
@@ -117,8 +121,6 @@ def compute_vif(df: pd.DataFrame) -> pd.DataFrame:
     Preserves numeric columns, one-hot encodes categoricals,
     converts everything to float, and drops NaNs for VIF calculation.
     """
-    from statsmodels.stats.outliers_influence import variance_inflation_factor
-
     # Separate numeric vs categorical
     numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
     categorical_cols = df.select_dtypes(exclude=[np.number]).columns.tolist()
@@ -148,9 +150,10 @@ def compute_vif(df: pd.DataFrame) -> pd.DataFrame:
         )
 
     # Compute VIF
-    exog = sm.add_constant(df_numeric, has_constant="add")
+    exog = statsmodels_api().add_constant(df_numeric, has_constant="add")
     vif_data = pd.DataFrame()
     vif_data["variable"] = df_numeric.columns
+    variance_inflation_factor = statsmodels_outliers().variance_inflation_factor
     vif_data["VIF"] = [
         variance_inflation_factor(exog.values, i + 1)
         for i in range(df_numeric.shape[1])

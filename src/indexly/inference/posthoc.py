@@ -1,7 +1,7 @@
 import pandas as pd
-from statsmodels.stats.multicomp import pairwise_tukeyhsd
 from .models import InferenceResult
 from .multiple_corrections import apply_correction
+from ._deps import statsmodels_multicomp
 
 
 def run_tukey(
@@ -15,7 +15,9 @@ def run_tukey(
     Returns structured InferenceResult instead of plain text.
     """
 
-    tukey = pairwise_tukeyhsd(endog=df[value_col], groups=df[group_col], alpha=0.05)
+    tukey = statsmodels_multicomp().pairwise_tukeyhsd(
+        endog=df[value_col], groups=df[group_col], alpha=0.05
+    )
 
     # Convert summary table to structured dataframe
     summary_data = tukey.summary().data

@@ -1,9 +1,7 @@
-import statsmodels.api as sm
-from statsmodels.formula.api import ols
-from statsmodels.stats.oneway import anova_oneway
 from .models import InferenceResult
 from .effect_size import eta_squared
 from .power import eta_squared_to_cohen_f, power_anova
+from ._deps import statsmodels_api, statsmodels_formula_api, statsmodels_oneway
 from .assumptions import (
     test_homogeneity_groups,
     test_normality,
@@ -89,7 +87,9 @@ def run_anova(
         return result
 
     if auto_route and route == "welch_anova":
-        welch = anova_oneway(samples, use_var="unequal", welch_correction=True)
+        welch = statsmodels_oneway().anova_oneway(
+            samples, use_var="unequal", welch_correction=True
+        )
         return InferenceResult(
             test_name="welch_anova",
             statistic=float(welch.statistic),
@@ -119,10 +119,10 @@ def run_anova(
     formula = f"{value_col} ~ C({group_col})"
 
     # Fit linear model using statsmodels formula API
-    model = ols(formula, data=df).fit()
+    model = statsmodels_formula_api().ols(formula, data=df).fit()
 
     # Generate Type II ANOVA table
-    table = sm.stats.anova_lm(model, typ=2)
+    table = statsmodels_api().stats.anova_lm(model, typ=2)
 
     # Extract F-statistic and p-value from ANOVA table
     stat = table["F"].iloc[0]

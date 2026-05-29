@@ -1,5 +1,5 @@
-from statsmodels.stats.power import TTestIndPower, FTestAnovaPower, FTestPowerF2
 import numpy as np
+from ._deps import statsmodels_power
 
 
 def power_ols(f2, k, n, alpha=0.05):
@@ -37,7 +37,7 @@ def power_ols(f2, k, n, alpha=0.05):
     if df_denom <= 0:
         return np.nan
 
-    analysis = FTestPowerF2()
+    analysis = statsmodels_power().FTestPowerF2()
     return analysis.power(
         effect_size=f2,
         df_num=k,
@@ -67,7 +67,7 @@ def power_ttest(effect_size, n1, n2, alpha=0.05):
         Estimated statistical power.
     """
     # Initialize statsmodels power analysis object
-    analysis = TTestIndPower()
+    analysis = statsmodels_power().TTestIndPower()
 
     # ratio = n2 / n1 for unequal group sizes
     power = analysis.power(
@@ -101,7 +101,7 @@ def power_anova(effect_size, k_groups, n_total, alpha=0.05):
         Estimated statistical power for the ANOVA F-test.
     """
     # Initialize ANOVA power analysis object
-    analysis = FTestAnovaPower()
+    analysis = statsmodels_power().FTestAnovaPower()
 
     power = analysis.power(
         effect_size=effect_size,

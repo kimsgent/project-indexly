@@ -2,9 +2,8 @@
 
 from typing import Optional
 import logging
-import matplotlib.pyplot as plt
-import seaborn as sns
 import pandas as pd
+from ._deps import matplotlib_pyplot, seaborn_module
 
 
 def render_static_boxplot(
@@ -55,6 +54,8 @@ def render_static_boxplot(
     if df.empty:
         raise ValueError("Cannot render boxplot: DataFrame is empty.")
 
+    sns = seaborn_module()
+    plt = matplotlib_pyplot()
     sns.set_theme(style="whitegrid")
 
     plt.figure(figsize=figsize)

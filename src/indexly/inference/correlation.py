@@ -1,16 +1,17 @@
 import pandas as pd
 import numpy as np
-from scipy.stats import pearsonr, spearmanr, norm
 from .models import InferenceResult
 from itertools import combinations
 from .multiple_corrections import apply_correction
+from ._deps import scipy_stats
 
 
 def pearson_corr(df, x: str, y: str, alpha: float = 0.05) -> InferenceResult:
     """
     Pearson correlation with proper CI using Fisher Z-transform.
     """
-    stat, p = pearsonr(df[x], df[y])
+    stats = scipy_stats()
+    stat, p = stats.pearsonr(df[x], df[y])
     n = len(df)
 
     if n < 4:  # Fisher Z requires at least 4 points
@@ -19,7 +20,7 @@ def pearson_corr(df, x: str, y: str, alpha: float = 0.05) -> InferenceResult:
         # Fisher Z-transform
         z = np.arctanh(stat)
         se = 1 / np.sqrt(n - 3)
-        z_crit = norm.ppf(1 - alpha / 2)
+        z_crit = stats.norm.ppf(1 - alpha / 2)
         z_ci = z + np.array([-1, 1]) * z_crit * se
         ci_low, ci_high = np.tanh(z_ci)
 
@@ -34,7 +35,7 @@ def pearson_corr(df, x: str, y: str, alpha: float = 0.05) -> InferenceResult:
 
 
 def spearman_corr(df: pd.DataFrame, x: str, y: str) -> InferenceResult:
-    stat, p = spearmanr(df[x], df[y])
+    stat, p = scipy_stats().spearmanr(df[x], df[y])
     n = len(df)
     return InferenceResult(
         test_name="spearman_correlation",
@@ -48,7 +49,7 @@ def lag_corr(df: pd.DataFrame, x: str, y: str, lag: int = 1) -> InferenceResult:
     df_lag = df.copy()
     df_lag[y] = df_lag[y].shift(lag)
     df_lag = df_lag.dropna()
-    stat, p = pearsonr(df_lag[x], df_lag[y])
+    stat, p = scipy_stats().pearsonr(df_lag[x], df_lag[y])
     return InferenceResult(
         test_name="lag_correlation",
         statistic=stat,
@@ -78,7 +79,7 @@ def correlation_matrix(
     # Compute correlations + collect p-values
     for i, j in pairs:
         col1, col2 = columns[i], columns[j]
-        r, p = pearsonr(df[col1], df[col2])
+        r, p = scipy_stats().pearsonr(df[col1], df[col2])
 
         corr_matrix.iloc[i, j] = corr_matrix.iloc[j, i] = r
         p_matrix.iloc[i, j] = p_matrix.iloc[j, i] = p

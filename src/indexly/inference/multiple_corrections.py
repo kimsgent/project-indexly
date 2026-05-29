@@ -1,5 +1,5 @@
 import numpy as np
-from statsmodels.stats.multitest import multipletests
+from ._deps import statsmodels_multitest
 
 
 def bonferroni(p_values):
@@ -48,7 +48,7 @@ def holm(p_values):
     - Less conservative than standard Bonferroni.
     - Sequentially adjusts sorted p-values.
     """
-    return multipletests(p_values, method="holm")[1]
+    return statsmodels_multitest().multipletests(p_values, method="holm")[1]
 
 
 def benjamini_hochberg(p_values):
@@ -71,7 +71,7 @@ def benjamini_hochberg(p_values):
     - Less conservative than FWER methods.
     - Uses step-up procedure.
     """
-    return multipletests(p_values, method="fdr_bh")[1]
+    return statsmodels_multitest().multipletests(p_values, method="fdr_bh")[1]
 
 
 # 🔥 NEW: Unified correction interface
