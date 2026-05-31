@@ -211,3 +211,83 @@ def test_analyze_csv_use_cleaned_loads_saved_data_before_filesystem(
         {"step_count": 1000},
         {"step_count": 2000},
     ]
+
+
+def test_analyze_file_search_cache_returns_analysis_result(monkeypatch, tmp_path):
+    orchestrator = _import_orchestrator(monkeypatch, tmp_path)
+    file_path = tmp_path / "search_cache.json"
+    file_path.write_text("{}", encoding="utf-8")
+
+    normalized_df = pd.DataFrame(
+        {"query": ["cpu"], "derived_date": ["2026-05-31"], "count": [3]}
+    )
+
+    monkeypatch.setattr(orchestrator, "detect_file_type", lambda _: "json")
+    monkeypatch.setattr(orchestrator, "validate_file_content", lambda *_: True)
+    monkeypatch.setattr(
+        orchestrator,
+        "detect_and_load",
+        lambda *_: {
+            "file_type": "json",
+            "df": None,
+            "raw": {"cpu": {"timestamp": "2026-05-31T00:00:00Z", "results": []}},
+            "metadata": {"json_mode": "search_cache"},
+        },
+    )
+    monkeypatch.setattr(
+        orchestrator,
+        "normalize_search_cache_json",
+        lambda *_: normalized_df,
+    )
+    monkeypatch.setattr(orchestrator, "_persist_analysis", lambda *_, **__: True)
+
+    args = _base_args(file_path=file_path, no_persist=False)
+    result = orchestrator.analyze_file(args)
+
+    assert isinstance(result, orchestrator.AnalysisResult)
+    assert result.file_path == str(file_path.resolve())
+    assert result.file_type == "json"
+    assert result.df.equals(normalized_df)
+    assert result.cleaned is True
+    assert result.persisted is True
+    assert result.metadata.get("json_mode") == "search_cache"
+
+
+def test_analyze_file_sqlite_uses_single_detect_and_load_call(monkeypatch, tmp_path):
+    orchestrator = _import_orchestrator(monkeypatch, tmp_path)
+    file_path = tmp_path / "sample.sqlite"
+    file_path.write_text("", encoding="utf-8")
+
+    loader_df = pd.DataFrame({"id": [1, 2]})
+    loader_result = {
+        "file_type": "sqlite",
+        "df": loader_df,
+        "dfs": {"items": loader_df},
+        "raw": {"tables": ["items"], "schemas": {}, "counts": {"items": 2}},
+        "metadata": {"validated": True},
+    }
+    detect_calls: list[str] = []
+
+    def _fake_detect_and_load(*_args, **_kwargs):
+        detect_calls.append("called")
+        return loader_result
+
+    monkeypatch.setattr(orchestrator, "detect_file_type", lambda _: "sqlite")
+    monkeypatch.setattr(orchestrator, "validate_file_content", lambda *_: True)
+    monkeypatch.setattr(orchestrator, "detect_and_load", _fake_detect_and_load)
+    monkeypatch.setattr(
+        orchestrator,
+        "run_db_pipeline",
+        lambda *_args, **_kwargs: (
+            loader_df,
+            pd.DataFrame({"rows": [2]}),
+            {"pretty_text": "SQLite loaded"},
+        ),
+    )
+    monkeypatch.setattr(orchestrator, "_persist_analysis", lambda *_, **__: False)
+
+    args = _base_args(file_path=file_path, no_persist=True)
+    result = orchestrator.analyze_file(args)
+
+    assert result is not None
+    assert detect_calls == ["called"]
