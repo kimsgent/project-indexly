@@ -42,6 +42,7 @@ def _is_pandas_dataframe(value: Any) -> bool:
         return False
     return isinstance(value, pd.DataFrame)
 
+
 try:
     import yaml  # type: ignore
 except Exception:
@@ -341,9 +342,7 @@ def _parse_json_array_for_key(path: Path, key: str) -> list[Any]:
             if pos >= len(buffer):
                 chunk = fh.read(65536)
                 if not chunk:
-                    raise ValueError(
-                        f"Unterminated '{key}' array in Socrata payload."
-                    )
+                    raise ValueError(f"Unterminated '{key}' array in Socrata payload.")
                 buffer += chunk
                 continue
 
@@ -374,18 +373,19 @@ def _parse_json_array_for_key(path: Path, key: str) -> list[Any]:
                             f"Invalid '{key}' array JSON: {exc.msg}"
                         ) from exc
                     if not isinstance(parsed, list):
-                        raise ValueError(
-                            f"Invalid '{key}' value: expected JSON array."
-                        )
+                        raise ValueError(f"Invalid '{key}' value: expected JSON array.")
                     return parsed
     finally:
         fh.close()
 
 
-def _parse_socrata_data_rows(path: Path, rows_limit: int, chunk_size: int) -> list[Any]:
+def _parse_socrata_data_rows(
+    path: Path, rows_limit: int, chunk_size: int
+) -> tuple[list[Any], int]:
     fh, buffer = _locate_array_after_key(path, "data", chunk_size=chunk_size)
     decoder = json.JSONDecoder()
     rows: list[Any] = []
+    rows_total = 0
     eof = False
 
     def _fill_buffer() -> bool:
@@ -400,7 +400,7 @@ def _parse_socrata_data_rows(path: Path, rows_limit: int, chunk_size: int) -> li
         return True
 
     try:
-        while len(rows) < rows_limit:
+        while True:
             while True:
                 stripped = buffer.lstrip()
                 if stripped != buffer:
@@ -434,10 +434,12 @@ def _parse_socrata_data_rows(path: Path, rows_limit: int, chunk_size: int) -> li
                     f"Invalid Socrata data row type: expected list, got {type(value).__name__}."
                 )
 
-            rows.append(value)
+            rows_total += 1
+            if len(rows) < rows_limit:
+                rows.append(value)
             buffer = buffer[end_idx:]
 
-        return rows
+        return rows, rows_total
     finally:
         fh.close()
 
@@ -478,19 +480,21 @@ def load_json_or_ndjson(
     head = text_head
 
     def _cheap_socrata_hint(s: str) -> bool:
-        # look for the common top-level keys in Socrata dumps
-        return '"columns"' in s and '"data"' in s or '"meta"' in s and '"view"' in s
+        # Only route to the Socrata loader when the keys this loader consumes
+        # are present. Generic JSON often contains unrelated "meta"/"view" keys.
+        return '"columns"' in s and '"data"' in s
 
     socrata_hint = _cheap_socrata_hint(head)
 
     # helper: extract 'columns' array and first N items of 'data' without full json.load()
     def _extract_socrata_columns_and_rows(p: Path, rows_limit: int, cols_limit: int):
         columns = _parse_json_array_for_key(p, "columns")
-        sampled_rows = _parse_socrata_data_rows(p, rows_limit=rows_limit, chunk_size=65536)
-        rows_count_estimate = None
+        sampled_rows, rows_total = _parse_socrata_data_rows(
+            p, rows_limit=max(rows_limit, 0), chunk_size=65536
+        )
         if len(columns) > cols_limit:
             columns = columns[:cols_limit]
-        return columns, sampled_rows, rows_count_estimate
+        return columns, sampled_rows, rows_total
 
     # If we detected an NDJSON-ish head (many lines of JSON objects), parse as ndjson quickly
     def _cheap_ndjson_detect(s: str) -> bool:
@@ -559,9 +563,9 @@ def load_json_or_ndjson(
             "rows_total": rows_total_est,
             "rows_sampled": len(sampled_rows),
             "cols_total": len(columns),
-            "sampled": True,
+            "sampled": rows_total_est > len(sampled_rows),
             "validated": True,
-            "validation_scope": "sampled_rows",
+            "validation_scope": "full_data_array",
         }
         console.print(
             f"[cyan]📘 Detected Socrata JSON — returning sampled {len(sampled_rows)} rows (out of unknown/large total).[/cyan]"

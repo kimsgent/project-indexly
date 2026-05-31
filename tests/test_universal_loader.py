@@ -4,11 +4,39 @@ import builtins
 import importlib
 import sys
 from pathlib import Path
-from types import SimpleNamespace
 
 import pandas as pd
 from indexly.universal_loader import detect_and_load
 from tests.helpers import assert_passthrough
+
+
+def _patch_file_size(monkeypatch, target_path: Path, size: int):
+    real_stat = Path.stat
+
+    class _StatProxy:
+        def __init__(self, stat_result):
+            self._stat_result = stat_result
+            self.st_size = size
+
+        def __getattr__(self, name):
+            return getattr(self._stat_result, name)
+
+        def __getitem__(self, index):
+            return self._stat_result[index]
+
+        def __iter__(self):
+            return iter(self._stat_result)
+
+        def __len__(self):
+            return len(self._stat_result)
+
+    def _fake_stat(self, *args, **kwargs):
+        stat_result = real_stat(self, *args, **kwargs)
+        if str(self) == str(target_path):
+            return _StatProxy(stat_result)
+        return stat_result
+
+    monkeypatch.setattr(Path, "stat", _fake_stat)
 
 
 def test_yaml_loading(tmp_path):
@@ -163,6 +191,18 @@ def test_json_gz_loader_supports_standard_json(tmp_path):
     assert result["metadata"]["json_structure"]["is_record_list"] is True
 
 
+def test_generic_json_with_meta_view_does_not_false_route_to_socrata(tmp_path):
+    p = tmp_path / "meta_view.json"
+    payload = {"meta": {"source": "x"}, "view": {"name": "dashboard"}, "value": 42}
+    p.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = detect_and_load(p)
+
+    assert result["metadata"]["validated"] is True
+    assert result["raw"] == payload
+    assert result["metadata"]["json_structure"]["json_mode"] == "generic_json"
+
+
 def test_large_socrata_streaming_respects_chunk_size(monkeypatch, tmp_path):
     p = tmp_path / "socrata_large.json"
     payload = {
@@ -171,14 +211,7 @@ def test_large_socrata_streaming_respects_chunk_size(monkeypatch, tmp_path):
     }
     p.write_text(json.dumps(payload), encoding="utf-8")
 
-    real_stat = Path.stat
-
-    def _fake_stat(self):
-        if str(self) == str(p):
-            return SimpleNamespace(st_size=40 * 1024 * 1024)
-        return real_stat(self)
-
-    monkeypatch.setattr(Path, "stat", _fake_stat)
+    _patch_file_size(monkeypatch, p, 40 * 1024 * 1024)
 
     class Args:
         chunk_size = 5
@@ -187,6 +220,8 @@ def test_large_socrata_streaming_respects_chunk_size(monkeypatch, tmp_path):
     assert result["metadata"]["validated"] is True
     assert result["metadata"]["json_structure"]["json_mode"] == "socrata"
     assert result["metadata"]["json_structure"]["rows_sampled"] == 5
+    assert result["metadata"]["json_structure"]["rows_total"] == 100
+    assert result["metadata"]["json_structure"]["validation_scope"] == "full_data_array"
     assert len(result["raw"]["data"]) == 5
 
 
@@ -197,17 +232,29 @@ def test_large_socrata_streaming_fails_on_row_parse_error(monkeypatch, tmp_path)
         encoding="utf-8",
     )
 
-    real_stat = Path.stat
-
-    def _fake_stat(self):
-        if str(self) == str(p):
-            return SimpleNamespace(st_size=40 * 1024 * 1024)
-        return real_stat(self)
-
-    monkeypatch.setattr(Path, "stat", _fake_stat)
+    _patch_file_size(monkeypatch, p, 40 * 1024 * 1024)
 
     class Args:
         chunk_size = 5
+
+    result = detect_and_load(p, Args())
+    assert result["metadata"]["validated"] is False
+    assert result["metadata"]["error_code"] == "json_load_failed"
+    assert "Invalid Socrata data row" in result["metadata"]["error"]
+
+
+def test_large_socrata_streaming_validates_rows_after_sample_limit(
+    monkeypatch, tmp_path
+):
+    p = tmp_path / "socrata_bad_after_sample.json"
+    p.write_text(
+        '{"columns":[{"fieldName":"id"}],"data":[[1],[2],oops,[4]]}',
+        encoding="utf-8",
+    )
+    _patch_file_size(monkeypatch, p, 40 * 1024 * 1024)
+
+    class Args:
+        chunk_size = 2
 
     result = detect_and_load(p, Args())
     assert result["metadata"]["validated"] is False
@@ -221,7 +268,9 @@ def test_universal_loader_module_import_does_not_eagerly_import_pandas(monkeypat
 
     def _guarded_import(name, globals=None, locals=None, fromlist=(), level=0):
         if name == "pandas" or name.startswith("pandas."):
-            raise AssertionError("universal_loader imported pandas at module import time")
+            raise AssertionError(
+                "universal_loader imported pandas at module import time"
+            )
         return real_import(name, globals, locals, fromlist, level)
 
     monkeypatch.setattr(builtins, "__import__", _guarded_import)
