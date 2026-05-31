@@ -1,5 +1,11 @@
 import json
 import gzip
+import builtins
+import importlib
+import sys
+from pathlib import Path
+from types import SimpleNamespace
+
 import pandas as pd
 from indexly.universal_loader import detect_and_load
 from tests.helpers import assert_passthrough
@@ -123,7 +129,26 @@ def test_ndjson_loader_rejects_malformed_lines(tmp_path):
     p = tmp_path / "bad.json"
     p.write_text('{"id": 1}\nnot json\n{"id": 2}\n', encoding="utf-8")
 
-    assert detect_and_load(p) is None
+    result = detect_and_load(p)
+    assert result["metadata"]["validated"] is False
+    assert result["metadata"]["error_code"] == "json_load_failed"
+    assert "Invalid NDJSON" in result["metadata"]["error"]
+
+
+def test_ndjson_loader_rejects_invalid_trailing_lines_after_sampling(tmp_path):
+    p = tmp_path / "bad_trailing.ndjson"
+    p.write_text(
+        '{"id": 1}\n{"id": 2}\n{"id": 3}\nnot json\n',
+        encoding="utf-8",
+    )
+
+    class Args:
+        chunk_size = 2
+
+    result = detect_and_load(p, Args())
+    assert result["metadata"]["validated"] is False
+    assert result["metadata"]["error_code"] == "json_load_failed"
+    assert "Invalid NDJSON" in result["metadata"]["error"]
 
 
 def test_json_gz_loader_supports_standard_json(tmp_path):
@@ -136,3 +161,81 @@ def test_json_gz_loader_supports_standard_json(tmp_path):
     assert result["file_type"] == "json"
     assert result["raw"] == [{"id": 1}, {"id": 2}]
     assert result["metadata"]["json_structure"]["is_record_list"] is True
+
+
+def test_large_socrata_streaming_respects_chunk_size(monkeypatch, tmp_path):
+    p = tmp_path / "socrata_large.json"
+    payload = {
+        "columns": [{"fieldName": "id"}, {"fieldName": "value"}],
+        "data": [[idx, idx * 10] for idx in range(100)],
+    }
+    p.write_text(json.dumps(payload), encoding="utf-8")
+
+    real_stat = Path.stat
+
+    def _fake_stat(self):
+        if str(self) == str(p):
+            return SimpleNamespace(st_size=40 * 1024 * 1024)
+        return real_stat(self)
+
+    monkeypatch.setattr(Path, "stat", _fake_stat)
+
+    class Args:
+        chunk_size = 5
+
+    result = detect_and_load(p, Args())
+    assert result["metadata"]["validated"] is True
+    assert result["metadata"]["json_structure"]["json_mode"] == "socrata"
+    assert result["metadata"]["json_structure"]["rows_sampled"] == 5
+    assert len(result["raw"]["data"]) == 5
+
+
+def test_large_socrata_streaming_fails_on_row_parse_error(monkeypatch, tmp_path):
+    p = tmp_path / "socrata_bad.json"
+    p.write_text(
+        '{"columns":[{"fieldName":"id"}],"data":[[1],[2],oops,[4]]}',
+        encoding="utf-8",
+    )
+
+    real_stat = Path.stat
+
+    def _fake_stat(self):
+        if str(self) == str(p):
+            return SimpleNamespace(st_size=40 * 1024 * 1024)
+        return real_stat(self)
+
+    monkeypatch.setattr(Path, "stat", _fake_stat)
+
+    class Args:
+        chunk_size = 5
+
+    result = detect_and_load(p, Args())
+    assert result["metadata"]["validated"] is False
+    assert result["metadata"]["error_code"] == "json_load_failed"
+    assert "Invalid Socrata data row" in result["metadata"]["error"]
+
+
+def test_universal_loader_module_import_does_not_eagerly_import_pandas(monkeypatch):
+    sys.modules.pop("indexly.universal_loader", None)
+    real_import = builtins.__import__
+
+    def _guarded_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "pandas" or name.startswith("pandas."):
+            raise AssertionError("universal_loader imported pandas at module import time")
+        return real_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", _guarded_import)
+    module = importlib.import_module("indexly.universal_loader")
+    assert hasattr(module, "detect_and_load")
+
+
+def test_detect_and_load_reports_unsupported_compressed_sqlite(tmp_path):
+    p = tmp_path / "sample.sqlite.gz"
+    with gzip.open(p, "wb") as fh:
+        fh.write(b"sqlite-data")
+
+    result = detect_and_load(p)
+    assert result["file_type"] == "sqlite"
+    assert result["metadata"]["validated"] is False
+    assert result["metadata"]["error_code"] == "unsupported_compressed_binary"
+    assert "Decompress" in result["metadata"]["error"]

@@ -260,6 +260,15 @@ def analyze_file(args) -> Optional[AnalysisResult]:
         # --- Persist legacy data
         _persist_analysis(df, None, file_path, file_type, table_output, args=args)
 
+    if file_type == "unsupported_compressed_binary":
+        load_result = detect_and_load(str(file_path), args)
+        metadata = load_result.get("metadata", {}) if isinstance(load_result, dict) else {}
+        error = metadata.get("error") if isinstance(metadata, dict) else None
+        console.print(
+            f"[red]❌ {error or 'Compressed binary file is not supported.'}[/red]"
+        )
+        return None
+
     # --- Validate
     if not validate_file_content(file_path, file_type):
         console.print("[red]❌ File validation failed — analysis aborted.[/red]")
@@ -272,13 +281,17 @@ def analyze_file(args) -> Optional[AnalysisResult]:
         try:
             # Use the detector+loader that returns raw + metadata/json_mode
             load_result = detect_and_load(str(file_path), args)
-            if not load_result:
+            if not isinstance(load_result, dict):
                 console.print(f"[red]❌ JSON loader failed for {file_path.name}[/red]")
                 return None
 
             loader_df = load_result.get("df")
             loader_raw = load_result.get("raw")
             metadata = load_result.get("metadata", {}) or {}
+            loader_error = metadata.get("error")
+            if loader_error:
+                console.print(f"[red]❌ JSON loader failed: {loader_error}[/red]")
+                return None
             show_treeview = getattr(args, "treeview", False)
 
             if metadata.get("analysis_profile") == "autodoctor":
@@ -346,7 +359,7 @@ def analyze_file(args) -> Optional[AnalysisResult]:
                         _print_search_summary(df, console)
 
                     # Persist with unified saver (unchanged)
-                    _persist_analysis(
+                    persisted = _persist_analysis(
                         df,
                         None,
                         file_path,
@@ -354,7 +367,18 @@ def analyze_file(args) -> Optional[AnalysisResult]:
                         table_output=table_output,
                         args=args,
                     )
-                    return df
+                    result_metadata = dict(metadata)
+                    if table_output:
+                        result_metadata["table_output"] = table_output
+                    return AnalysisResult(
+                        file_path=str(file_path),
+                        file_type="json",
+                        df=df,
+                        summary=df_stats,
+                        metadata=result_metadata,
+                        cleaned=isinstance(df, pd.DataFrame) and not df.empty,
+                        persisted=persisted or getattr(df, "_persisted", False),
+                    )
 
                 except Exception as e:
                     console.print(
@@ -496,7 +520,7 @@ def analyze_file(args) -> Optional[AnalysisResult]:
     elif not legacy_mode:
         try:
             load_result = detect_and_load(str(file_path), args)
-            if not load_result:
+            if not isinstance(load_result, dict):
                 console.print(
                     f"[red]❌ Universal loader failed for {file_path.name}[/red]"
                 )
@@ -505,8 +529,13 @@ def analyze_file(args) -> Optional[AnalysisResult]:
             file_type = load_result.get("file_type", file_type)
             raw = load_result.get("raw")
             metadata = load_result.get("metadata", {})
+            loader_error = metadata.get("error") if isinstance(metadata, dict) else None
+            if loader_error:
+                console.print(f"[red]❌ Loader failed: {loader_error}[/red]")
+                return None
             df_preview = load_result.get("df_preview") if file_type == "xml" else None
             df = load_result.get("df") if file_type != "xml" else None
+            dfs = load_result.get("dfs", {}) if file_type in {"sqlite", "db"} else {}
 
             if metadata.get("analysis_profile") == "autodoctor" and file_type in {
                 "sqlite",
@@ -550,12 +579,6 @@ def analyze_file(args) -> Optional[AnalysisResult]:
                 df, df_stats, table_output = run_csv_pipeline(file_path, args, df=df)
             # --- Other pipelines unchanged
             elif file_type in {"sqlite", "db"}:
-                # Receive everything from universal loader
-                load_result = detect_and_load(file_path, args)
-                raw = load_result.get("raw")  # dict: tables, schemas, counts
-                dfs = load_result.get("dfs", {})  # dict[str, DataFrame]
-                df = load_result.get("df")  # default df (first table) or None
-
                 # Run DB pipeline (Indexly or generic)
                 result = run_db_pipeline(file_path, args, raw=raw, df=df)
 
