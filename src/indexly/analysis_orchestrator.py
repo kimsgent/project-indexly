@@ -24,12 +24,14 @@ from .excel_pipeline import run_excel_pipeline
 from .visualize_json import (
     json_build_tree,
 )
-from .csv_analyzer import export_results
+from .csv_analyzer import export_results, _json_safe
 from .analyze_utils import (
     load_cleaned_data,
     validate_file_content,
     save_analysis_result,
 )
+from .config import get_analysis_db_file
+from .persist import save_json
 from indexly.json_cache_normalizer import (
     normalize_search_cache_json,
     _print_search_summary,
@@ -43,6 +45,39 @@ from indexly.universal_loader import (
 )
 
 console = Console()
+
+
+def _json_safe_dataframe_with_index(df: pd.DataFrame) -> list[dict]:
+    return _json_safe(df.reset_index().to_dict(orient="records"))
+
+
+def _write_yaml_analysis_artifact(
+    *,
+    file_path: Path,
+    df: pd.DataFrame,
+    df_stats: pd.DataFrame | None,
+    table_output: dict | None,
+    raw_yaml: Any,
+) -> str:
+    artifact_payload = {
+        "schema": "indexly.yaml.analysis.v1",
+        "file_name": file_path.name,
+        "file_type": "yaml",
+        "source_path": str(file_path.resolve()),
+        "row_count": len(df),
+        "col_count": len(df.columns),
+        "summary_statistics": (
+            _json_safe_dataframe_with_index(df_stats)
+            if isinstance(df_stats, pd.DataFrame)
+            else _json_safe(df_stats or {})
+        ),
+        "table_output": _json_safe(table_output or {}),
+        "raw_yaml": _json_safe(raw_yaml),
+    }
+    analysis_dir = Path(get_analysis_db_file()).expanduser().parent / "analysis"
+    source_digest = sha256(file_path) or str(abs(hash(str(file_path.resolve()))))
+    artifact_key = f"{file_path.stem}-{source_digest[:16]}.yaml"
+    return str(save_json(artifact_payload, artifact_key, dest_dir=str(analysis_dir)))
 
 
 def _sort_json_date_columns(df: pd.DataFrame, args) -> pd.DataFrame:
@@ -121,6 +156,7 @@ def _persist_analysis(
             or (df.attrs.get("_derived_map") if df is not None else None)
         )
         raw_df = getattr(df, "_raw_df", None) if df is not None else None
+        raw_yaml = df.attrs.get("_raw_yaml") if df is not None else None
 
         # Serialize summary safely
         summary_source = df_stats if df_stats is not None else (table_output or {})
@@ -130,18 +166,32 @@ def _persist_analysis(
             metadata["derived_map"] = derived_map
         if summary_records:
             metadata["cleaning_summary"] = summary_records
+        if file_type in {"yaml", "yml"} and isinstance(table_output, dict):
+            metadata["yaml_table_output"] = _json_safe(table_output)
+            if df is not None:
+                try:
+                    metadata["analysis_artifact_path"] = _write_yaml_analysis_artifact(
+                        file_path=file_path,
+                        df=df,
+                        df_stats=df_stats,
+                        table_output=table_output,
+                        raw_yaml=raw_yaml,
+                    )
+                    metadata["analysis_artifact_schema"] = "indexly.yaml.analysis.v1"
+                except Exception as exc:
+                    metadata["analysis_artifact_error"] = str(exc)
 
         if isinstance(summary_safe, pd.DataFrame):
-            summary_df = summary_safe
+            summary_payload = summary_safe
         elif isinstance(summary_safe, dict):
-            summary_df = pd.DataFrame(summary_safe)
+            summary_payload = summary_safe
         else:
-            summary_df = None
+            summary_payload = None
 
-        save_analysis_result(
+        saved = save_analysis_result(
             file_path=str(file_path),
             file_type=file_type,
-            summary=summary_df,
+            summary=summary_payload,
             sample_data=data_to_save.head(10) if df is not None else None,
             metadata=metadata,
             row_count=len(data_to_save),
@@ -150,6 +200,8 @@ def _persist_analysis(
             cleaned_df=data_to_save if isinstance(data_to_save, pd.DataFrame) else None,
             keep_artifact_history=getattr(args, "keep_artifact_history", False),
         )
+        if not saved:
+            return False
 
         # CSV observers depend on persisted cleaned_data state.
         if file_type == "csv":

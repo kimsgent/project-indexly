@@ -188,7 +188,7 @@ def save_analysis_result(
     raw_df: pd.DataFrame | None = None,
     cleaned_df: pd.DataFrame | None = None,
     keep_artifact_history: bool = False,
-) -> None:
+) -> bool:
     """
     Robust unified persistence:
     • Handles DataFrame summaries
@@ -212,7 +212,7 @@ def save_analysis_result(
         file_name = os.path.basename(file_path)
         console.print("[yellow]⚙️ Persistence disabled (--no-persist).[/yellow]")
         console.print(f"[dim]Skipped saving for {file_name} ({file_type})[/dim]")
-        return
+        return False
 
     try:
         conn = _get_db_connection()
@@ -332,9 +332,11 @@ def save_analysis_result(
             f"[green]✔ Saved unified analysis result for {file_name} ({file_type})[/green]"
         )
         console.print(f"[dim]↳ Source: {source_path}[/dim]")
+        return True
 
     except Exception as e:
         console.print(f"[red]Failed to save analysis result for {file_path}: {e}[/red]")
+        return False
 
 
 def load_cleaned_data(file_path: str = None, limit: int = 5):
