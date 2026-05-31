@@ -78,6 +78,7 @@ Indexly provides analysis and summarization for these structured formats:
 - Efficient Parquet previews
 - XML structure analysis and tree rendering
 - Safe YAML loading into JSON-like structures
+- YAML persistence through `analyze-file` writes to `cleaned_data` and stores YAML-specific metadata/artifact references when persistence is enabled
 
 ## Choose The Right Command
 
@@ -120,6 +121,8 @@ It:
 Use this when you want one command for mixed datasets.
 
 For SQLite files, this route is intentionally a quick preview path. It loads bounded table previews for generic database inspection. Use `analyze-db` when you need relationship discovery, table profiling controls, diagrams, or exportable database summaries.
+
+For YAML and YML files, persistence is handled by the same orchestrator path used by other structured formats. By default, `analyze-file` writes the cleaned preview and summary to `~/.indexly/indexly.db` (`cleaned_data`), includes a JSON-safe `yaml_table_output` block in metadata, and records an auxiliary analysis artifact path with schema `indexly.yaml.analysis.v1`. Use `--no-persist` to skip both the analysis database write and YAML artifact creation for that run.
 
 ### `indexly analyze-json <file>`
 

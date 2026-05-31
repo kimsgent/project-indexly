@@ -5,7 +5,7 @@ icon: "mdi:play-circle"
 weight: 20
 type: docs
 date: 2026-04-01
-lastmod: 2026-05-20
+lastmod: 2026-05-31
 summary: "Learn the day-to-day Indexly workflow: install, index, search, tag, analyze, compare, and back up with practical command examples."
 description: "Practical Indexly usage guide for Windows, macOS, and Linux. Covers indexing, search, regex, tagging, analysis, organizing, backup/restore, and common troubleshooting."
 keywords: [
@@ -291,6 +291,7 @@ Analyze other formats with one command:
 
 ```bash
 indexly analyze-file data.json --show-summary
+indexly analyze-file config.yaml --show-summary
 indexly analyze-json events.ndjson --show-summary
 indexly analyze-json events.json --chunk-size 10000 --show-summary
 indexly analyze-file dataset.xlsx --sheet-name Sheet1 --show-summary
@@ -298,6 +299,8 @@ indexly analyze-file metrics.parquet --show-summary
 ```
 
 Use `analyze-json` for large JSON or NDJSON files when you need `--chunk-size`. Use `analyze-file` when you want one generic dispatcher for mixed structured files.
+
+For YAML/YML through `analyze-file`, persistence is on by default and writes analysis data to `~/.indexly/indexly.db` (with YAML-specific metadata/artifact references). Add `--no-persist` for a no-write run.
 
 Analyze SQLite directly when you want schema-aware inspection:
 
