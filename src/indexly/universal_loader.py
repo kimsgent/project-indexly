@@ -633,8 +633,6 @@ def load_json_or_ndjson(
     }
     return parsed, meta
 
-    return None, None
-
 
 def _load_yaml(path: Path) -> Tuple[Any, Optional["pd.DataFrame"]]:
     if yaml is None:
@@ -1110,7 +1108,7 @@ def detect_and_load(file_path: str | Path, args=None) -> Dict[str, Any]:
                 "df_preview": None,
                 "raw": raw,
                 "metadata": metadata,
-                "json_mode": "search_cache",  # 🔥 ADD THIS LINE
+                "json_mode": "search_cache",
                 "loader_spec": "loader:search_cache_detector",
             }
 

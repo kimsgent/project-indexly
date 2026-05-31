@@ -278,6 +278,28 @@ def test_universal_loader_module_import_does_not_eagerly_import_pandas(monkeypat
     assert hasattr(module, "detect_and_load")
 
 
+def test_detect_and_load_json_csv_paths_do_not_require_pandas(monkeypatch, tmp_path):
+    module = importlib.import_module("indexly.universal_loader")
+
+    def _raise_no_pandas():
+        raise RuntimeError("pandas unavailable")
+
+    monkeypatch.setattr(module, "_load_pandas", _raise_no_pandas)
+
+    csv_path = tmp_path / "sample.csv"
+    csv_path.write_text("a,b\n1,2\n", encoding="utf-8")
+    csv_result = module.detect_and_load(csv_path)
+    assert csv_result["file_type"] == "csv"
+    assert csv_result["metadata"]["validated"] is True
+
+    json_path = tmp_path / "sample.json"
+    json_path.write_text('[{"id": 1}, {"id": 2}]', encoding="utf-8")
+    json_result = module.detect_and_load(json_path)
+    assert json_result["file_type"] == "json"
+    assert json_result["metadata"]["validated"] is True
+    assert json_result["metadata"]["json_structure"]["json_mode"] == "generic_json"
+
+
 def test_detect_and_load_reports_unsupported_compressed_sqlite(tmp_path):
     p = tmp_path / "sample.sqlite.gz"
     with gzip.open(p, "wb") as fh:

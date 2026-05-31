@@ -7,7 +7,7 @@ type: docs
 slug: "data-analysis-pipeline"
 weight: 110
 date: "2026-04-22"
-lastmod: "2026-05-20"
+lastmod: "2026-05-31"
 draft: false
 toc: true
 canonicalURL: "/en/documentation/data-analysis-pipeline/"
@@ -42,7 +42,7 @@ params:
 - Operators analyzing AutoDoctor report JSON, telemetry JSON, or SQLite output with Indexly
 
 {{% alert title="What changed recently" color="info" %}}
-Current staging builds include stricter JSON and NDJSON handling: bounded JSON detection, chunk-limited NDJSON materialization, malformed-line rejection, safer mixed identifier handling, Socrata-style table mapping, and clearer sampling metadata. CSV analysis persists cleaned and raw data through a single orchestrator write path, and AutoDoctor report JSON, telemetry JSON, and SQLite databases have dedicated analysis paths. See [Analyze JSON And NDJSON Files](analyze-json-files.md) for the JSON-specific workflow.
+Current staging builds include stricter JSON and NDJSON handling: bounded JSON detection, chunk-limited NDJSON materialization with full-stream validation, malformed-line rejection, safer mixed identifier handling, Socrata-style table mapping, and clearer sampling metadata. CSV analysis persists cleaned and raw data through a single orchestrator write path, and AutoDoctor report JSON, telemetry JSON, and SQLite databases have dedicated analysis paths. See [Analyze JSON And NDJSON Files](analyze-json-files.md) for the JSON-specific workflow.
 {{% /alert %}}
 
 ## Supported Formats
