@@ -185,6 +185,10 @@ def run_yaml_pipeline(
             "markdown": markdown_summary,
         }
 
+        df.attrs["_df_stats"] = df_stats
+        df.attrs["_raw_yaml"] = raw
+        df.attrs["_yaml_metadata"] = metadata
+
         return df, df_stats, table_output
 
     except Exception as e:
@@ -195,4 +199,3 @@ def run_yaml_pipeline(
             "vertical_summary": pd.DataFrame(),
             "markdown": "",
         }
-
