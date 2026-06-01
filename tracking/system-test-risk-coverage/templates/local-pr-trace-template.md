@@ -30,8 +30,8 @@ PR-LOCAL-IDX-STRC-YYYY-MM-DD-<area-or-change>
 
 - Any side effects?
 - Affects performance, CI, or brew?
-- Linked risk database entries: [Risk / Defect Seed Register](risk-coverage-by-defects-and-tests.md#risk--defect-seed-register)
-- Linked coverage trace: [Test Coverage Trace](risk-coverage-by-defects-and-tests.md#test-coverage-trace)
+- Linked risk database entries: copy from [Risk / Defect Seed Register Template](risk-defect-seed-register-template.md)
+- Linked coverage trace: [Test Coverage Trace](../test-cases/2026-06-01-test-case-system-test-risk-coverage/risk-coverage-by-defects-and-tests.md#test-coverage-trace)
 
 ## System Test Traceability
 
@@ -40,7 +40,7 @@ PR-LOCAL-IDX-STRC-YYYY-MM-DD-<area-or-change>
 | Local PR Trace ID | `PR-LOCAL-IDX-STRC-YYYY-MM-DD-<area-or-change>` |
 | System Worksheet | `system-test-case-summary-worksheet-YYYY-MM-DD-<area-or-change>.md` |
 | System Worksheet JSON | `system-test-case-summary-worksheet-YYYY-MM-DD-<area-or-change>.json` |
-| Source Baseline | [System Test Case Summary](system-test-case-summary.md) |
+| Source Baseline | [System Test Case Summary](../test-cases/2026-06-01-test-case-system-test-risk-coverage/system-test-case-summary.md) |
 | Affected Area IDs |  |
 | Linked Risk IDs |  |
 | Linked Defect IDs |  |
@@ -52,7 +52,7 @@ PR-LOCAL-IDX-STRC-YYYY-MM-DD-<area-or-change>
 - How was this tested?
 - Local worksheet updated?
 - JSON worksheet updated?
-- Regression tests run or selected from [Test Coverage Trace](risk-coverage-by-defects-and-tests.md#test-coverage-trace)?
+- Regression tests run or selected from [Test Coverage Trace](../test-cases/2026-06-01-test-case-system-test-risk-coverage/risk-coverage-by-defects-and-tests.md#test-coverage-trace)?
 
 ## Checklist
 
@@ -68,4 +68,3 @@ PR-LOCAL-IDX-STRC-YYYY-MM-DD-<area-or-change>
 ## Notes
 
 - Additional context if needed
-

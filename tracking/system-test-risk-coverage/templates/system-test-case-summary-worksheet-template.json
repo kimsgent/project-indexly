@@ -3,9 +3,9 @@
   "worksheet_id": "STCSW-YYYY-MM-DD-area-or-change",
   "created_date": "YYYY-MM-DD",
   "local_pr_trace_id": "PR-LOCAL-IDX-STRC-YYYY-MM-DD-area-or-change",
-  "source_baseline": "system-test-case-summary.md",
-  "risk_database": "risk-coverage-by-defects-and-tests.md#risk--defect-seed-register",
-  "coverage_trace": "risk-coverage-by-defects-and-tests.md#test-coverage-trace",
+  "source_baseline": "../test-cases/2026-06-01-test-case-system-test-risk-coverage/system-test-case-summary.md",
+  "risk_database": "risk-defect-seed-register-YYYY-MM-DD-area-or-change.md",
+  "coverage_trace": "../test-cases/2026-06-01-test-case-system-test-risk-coverage/risk-coverage-by-defects-and-tests.md#test-coverage-trace",
   "related_local_pr_trace": "local-pr-trace-YYYY-MM-DD-area-or-change.md",
   "branch": "codex/<task>",
   "tester": "",
@@ -68,4 +68,3 @@
     }
   ]
 }
-

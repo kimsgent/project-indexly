@@ -2,7 +2,7 @@
 
 Local worksheet. Created on 2026-06-01 from branch `codex/system-test-risk-coverage`.
 
-This document turns the current Indexly codebase into testable system areas. It is intentionally local and private; the parent `tracking/` folder is ignored by Git.
+This document turns the current Indexly codebase into testable system areas. It is local tracking material, but it is currently committed so the work can move between development machines. The `tracking/` folder can be ignored later when these worksheets no longer need to be shared through Git.
 
 ## Field Definitions
 
@@ -141,4 +141,3 @@ This document turns the current Indexly codebase into testable system areas. It 
 | `tests/test_image_metadata.py` | 1 | IDX-02 |
 | `tests/test_ocr.py` | 1 | IDX-02 |
 | `tests/test_yaml_persistence.py` | 1 | IDX-04 |
-

@@ -22,9 +22,9 @@ system-test-case-summary-worksheet-2026-06-01-release-smoke.md
 |---|---|
 | Worksheet ID | `STCSW-YYYY-MM-DD-<area-or-change>` |
 | Local PR Trace ID | `PR-LOCAL-IDX-STRC-YYYY-MM-DD-<area-or-change>` |
-| Source Baseline | [System Test Case Summary](system-test-case-summary.md) |
-| Risk Database | [Risk / Defect Seed Register](risk-coverage-by-defects-and-tests.md#risk--defect-seed-register) |
-| Coverage Trace | [Test Coverage Trace](risk-coverage-by-defects-and-tests.md#test-coverage-trace) |
+| Source Baseline | [System Test Case Summary](../test-cases/2026-06-01-test-case-system-test-risk-coverage/system-test-case-summary.md) |
+| Risk Database | Copy from [Risk / Defect Seed Register Template](risk-defect-seed-register-template.md) |
+| Coverage Trace | [Test Coverage Trace](../test-cases/2026-06-01-test-case-system-test-risk-coverage/risk-coverage-by-defects-and-tests.md#test-coverage-trace) |
 | Related Local PR Trace | `local-pr-trace-YYYY-MM-DD-<area-or-change>.md` |
 | Branch | `codex/<task>` |
 | Tester |  |
@@ -37,7 +37,7 @@ system-test-case-summary-worksheet-2026-06-01-release-smoke.md
 
 ## System Test Case Summary Worksheet
 
-Use the stable case IDs from [System Test Case Summary > System Test Case Summary Worksheet](system-test-case-summary.md#system-test-case-summary-worksheet). Add rows only for tests touched by this run or investigation.
+Use the stable case IDs from [System Test Case Summary > System Test Case Summary Worksheet](../test-cases/2026-06-01-test-case-system-test-risk-coverage/system-test-case-summary.md#system-test-case-summary-worksheet). Add rows only for tests touched by this run or investigation.
 
 | Test ID | Test Suite/Case | Status | System Config | Defect/Risk ID | Defect RPN | Run By | Plan Date | Actual Date | Plan Effort | Actual Effort | Test Duration | Comment |
 |---|---|---|---|---|---:|---|---|---|---:|---:|---:|---|
@@ -72,4 +72,3 @@ Use confirmed defect IDs only after a failure is observed. Risk-only rows should
 | Action ID | Linked Test ID | Linked Defect/Risk ID | Action | Owner | Due Date | Status |
 |---|---|---|---|---|---|---|
 | ACT-001 |  |  |  |  |  | Open |
-
