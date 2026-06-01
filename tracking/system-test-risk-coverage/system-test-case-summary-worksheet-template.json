@@ -1,0 +1,71 @@
+{
+  "schema": "indexly.tracking.system_test_case_summary_worksheet.v1",
+  "worksheet_id": "STCSW-YYYY-MM-DD-area-or-change",
+  "created_date": "YYYY-MM-DD",
+  "local_pr_trace_id": "PR-LOCAL-IDX-STRC-YYYY-MM-DD-area-or-change",
+  "source_baseline": "system-test-case-summary.md",
+  "risk_database": "risk-coverage-by-defects-and-tests.md#risk--defect-seed-register",
+  "coverage_trace": "risk-coverage-by-defects-and-tests.md#test-coverage-trace",
+  "related_local_pr_trace": "local-pr-trace-YYYY-MM-DD-area-or-change.md",
+  "branch": "codex/<task>",
+  "tester": "",
+  "indexly_version": "",
+  "environment_configs": [],
+  "scope": "",
+  "out_of_scope": "",
+  "cases": [
+    {
+      "test_id": "",
+      "test_suite_case": "",
+      "status": "Planned",
+      "system_config": "",
+      "defect_risk_ids": [],
+      "defect_rpn": null,
+      "run_by": "",
+      "plan_date": "",
+      "actual_date": "",
+      "plan_effort_hours": null,
+      "actual_effort_hours": null,
+      "test_duration_hours": null,
+      "comment": ""
+    }
+  ],
+  "defects_identified": [
+    {
+      "defect_id": "",
+      "area_id": "",
+      "risk_id": "",
+      "exposing_test_id": "",
+      "status": "Open",
+      "rpn": null,
+      "summary": "",
+      "reproduction_evidence": "",
+      "regression_tests_to_run": []
+    }
+  ],
+  "metrics_snapshot": {
+    "planned_cases": 0,
+    "executed_cases": 0,
+    "passed_cases": 0,
+    "warn_cases": 0,
+    "failed_cases": 0,
+    "skipped_cases": 0,
+    "confirmed_defects": 0,
+    "highest_risk_rpn": null,
+    "planned_effort_hours": null,
+    "actual_effort_hours": null,
+    "test_duration_hours": null
+  },
+  "follow_up_actions": [
+    {
+      "action_id": "ACT-001",
+      "linked_test_id": "",
+      "linked_defect_risk_id": "",
+      "action": "",
+      "owner": "",
+      "due_date": "",
+      "status": "Open"
+    }
+  ]
+}
+

@@ -73,9 +73,6 @@ docs/package-lock.json
 # Codex local workspace state
 .codex
 
-# Private local audit and tracking worksheets
-tracking/
-
 # Local pytest scratch directories
 .pytest-tmp/
 .pytest-basetemp-*/
