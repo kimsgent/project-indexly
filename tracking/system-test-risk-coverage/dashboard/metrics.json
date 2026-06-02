@@ -1,37 +1,57 @@
 {
   "schema": "indexly.tracking.quality_dashboard_metrics.v1",
   "generated_at": "2026-06-02",
-  "generated_from": [],
+  "generated_from": [
+    "../test-cases/2026-06-02-test-case-timeseries-visualization/system-test-case-summary-worksheet-2026-06-02-timeseries-visualization.json"
+  ],
   "notes": [
-    "Seed metrics file. No dated worksheet JSON artifacts were present under tracking/system-test-risk-coverage/test-cases when this dashboard concept was created.",
-    "Update this file from worksheet JSON artifacts copied from templates/system-test-case-summary-worksheet-template.json."
+    "Updated with the first dated time-series visualization audit worksheet.",
+    "Future updates should roll up additional worksheet JSON artifacts copied from templates/system-test-case-summary-worksheet-template.json."
   ],
   "summary": {
-    "total_confirmed_defects": 0,
-    "mitigated_confirmed_defects": 0,
+    "total_confirmed_defects": 3,
+    "mitigated_confirmed_defects": 3,
     "open_confirmed_defects": 0,
-    "mitigation_rate_percent": null,
+    "mitigation_rate_percent": 100,
     "high_risk_open_defects": 0,
-    "repeated_risk_count": 0,
-    "planned_cases": 0,
-    "executed_cases": 0,
-    "pass_count": 0,
+    "repeated_risk_count": 1,
+    "planned_cases": 4,
+    "executed_cases": 4,
+    "pass_count": 4,
     "warn_count": 0,
     "fail_count": 0,
     "skip_count": 0,
     "collected_count": 0,
-    "test_execution_rate_percent": null,
-    "mean_time_to_mitigate_days": null
+    "test_execution_rate_percent": 100,
+    "mean_time_to_mitigate_days": 0
   },
-  "performance_over_time": [],
-  "test_execution_over_time": [],
+  "performance_over_time": [
+    {
+      "date": "2026-06-02",
+      "total_confirmed_defects": 3,
+      "mitigated_confirmed_defects": 3,
+      "mitigation_rate_percent": 100
+    }
+  ],
+  "test_execution_over_time": [
+    {
+      "date": "2026-06-02",
+      "planned_cases": 4,
+      "executed_cases": 4,
+      "pass_count": 4,
+      "warn_count": 0,
+      "fail_count": 0,
+      "skip_count": 0,
+      "test_execution_rate_percent": 100
+    }
+  ],
   "defects_by_area_id": {
     "IDX-01": 0,
     "IDX-02": 0,
     "IDX-03": 0,
     "IDX-04": 0,
     "IDX-05": 0,
-    "IDX-06": 0,
+    "IDX-06": 3,
     "IDX-07": 0,
     "IDX-08": 0,
     "IDX-09": 0,
@@ -73,7 +93,7 @@
     "IDX-03": null,
     "IDX-04": null,
     "IDX-05": null,
-    "IDX-06": null,
+    "IDX-06": 4.33,
     "IDX-07": null,
     "IDX-08": null,
     "IDX-09": null,
@@ -87,7 +107,7 @@
     "IDX-03": null,
     "IDX-04": null,
     "IDX-05": null,
-    "IDX-06": null,
+    "IDX-06": 4,
     "IDX-07": null,
     "IDX-08": null,
     "IDX-09": null,
@@ -95,9 +115,18 @@
     "IDX-11": null,
     "IDX-12": null
   },
-  "defects_by_risk_id": {},
-  "repeated_risks": [],
+  "defects_by_risk_id": {
+    "IDX-RISK-011": 3
+  },
+  "repeated_risks": [
+    {
+      "risk_id": "IDX-RISK-011",
+      "area_id": "IDX-06",
+      "count": 3,
+      "lowest_rpn": 4,
+      "latest_detected_date": "2026-06-02"
+    }
+  ],
   "regression_chains": [],
   "high_risk_open_defects": []
 }
-

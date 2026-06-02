@@ -15,31 +15,14 @@ Design notes:
 """
 
 from __future__ import annotations
-from typing import List, Optional, Tuple, Dict, Any
+from typing import List, Optional
 from rich.console import Console
 import pandas as pd
 import numpy as np
-import os
-import datetime
+from indexly.optional_deps import require_extra_dependency
 
 
 console = Console()
-
-# Reuse the ensure_optional_packages from your existing visualize_csv module.
-try:
-    # NOTE: ensure_optional_packages is defined in visualize_csv.py, per your note.
-    from indexly.visualize_csv import ensure_optional_packages
-except Exception:
-    # If import fails, define a local stub that will try to import plotly/matplotlib when needed.
-    def ensure_optional_packages(packages: List[str]):
-        # best-effort: just try to import and raise a friendly error later
-        for pkg in packages:
-            try:
-                __import__(pkg)
-            except Exception:
-                console.print(
-                    f"[yellow]⚠️ Optional package '{pkg}' not installed. Attempting fallback.[/yellow]"
-                )
 
 
 # Internal helpers (we use timeseries_utils for core transformations)
@@ -47,14 +30,12 @@ try:
     from indexly.timeseries_utils import (
         detect_timeseries_columns,
         prepare_timeseries,
-        infer_date_column,
     )
 except Exception:
     # local fallback if the package import structure is different
     from .timeseries_utils import (
         detect_timeseries_columns,
         prepare_timeseries,
-        infer_date_column,
     )
 
 
@@ -67,9 +48,9 @@ def _plot_timeseries_plotly(
     """
     Plot using Plotly (interactive) with auto dual-axis when scales differ.
     """
-    ensure_optional_packages(["plotly", "pandas", "numpy"])
-    import plotly.graph_objects as go
-    import numpy as np
+    go = require_extra_dependency(
+        "plotly.graph_objects", "plotly", "visualization"
+    )
 
     fig = go.Figure()
 
@@ -142,10 +123,12 @@ def _plot_timeseries_matplotlib(
     """
     Plot static time series with optional dual y-axes for wide-scale data.
     """
-    ensure_optional_packages(["matplotlib", "pandas", "numpy"])
-    import matplotlib.pyplot as plt
-    import numpy as np
-    import matplotlib.dates as mdates
+    plt = require_extra_dependency(
+        "matplotlib.pyplot", "matplotlib", "visualization"
+    )
+    mdates = require_extra_dependency(
+        "matplotlib.dates", "matplotlib", "visualization"
+    )
 
     plt.figure(figsize=(10, 6))
     ax1 = plt.gca()
@@ -251,33 +234,35 @@ def visualize_timeseries_plot(
         console.print("[yellow]⚠️ Empty DataFrame provided. Nothing to plot.[/yellow]")
         return
 
+    plot_df = df.copy()
+
     # 1) detect x_col if not provided
     if x_col is None:
-        for col in df.columns:
-            if "date" in col.lower():
-                x_col = col
-                console.print(f"[green]📅 Auto-using '{x_col}' as time column[/green]")
-                break
-        x_col = infer_date_column(df)
+        x_col, detected_y_cols = detect_timeseries_columns(plot_df)
         if x_col is None:
             console.print("[red]❌ Could not infer a datetime column. Provide --x <column>[/red]")
             return
         console.print(f"[green]📅 Detected time column:[/green] {x_col}")
+    else:
+        if x_col not in plot_df.columns:
+            console.print(f"[red]❌ x_col '{x_col}' not found in DataFrame[/red]")
+            return
+        _, detected_y_cols = detect_timeseries_columns(plot_df, hint=x_col)
 
     # 1a) force datetime parsing
-    df[x_col] = pd.to_datetime(df[x_col], errors="coerce")
-    if df[x_col].isna().all():
+    plot_df[x_col] = pd.to_datetime(plot_df[x_col], errors="coerce")
+    if plot_df[x_col].isna().all():
         console.print(f"[red]❌ x_col '{x_col}' could not be parsed as datetime[/red]")
         return
 
     # 1b) detect numeric y_cols if not provided
     if y_cols is None:
-        y_cols = df.select_dtypes(include=np.number).columns.tolist()
+        y_cols = detected_y_cols
         if not y_cols:
             console.print("[yellow]⚠️ No numeric columns found for plotting[/yellow]")
             return
     else:
-        y_cols = [c for c in y_cols if c in df.columns]
+        y_cols = [c for c in y_cols if c in plot_df.columns]
         if not y_cols:
             console.print("[yellow]⚠️ None of the specified y columns exist in DataFrame[/yellow]")
             return
@@ -285,7 +270,7 @@ def visualize_timeseries_plot(
     # 2) prepare timeseries data (resample/rolling + indexing)
     try:
         prepared_df, meta = prepare_timeseries(
-            df,
+            plot_df,
             date_col=x_col,
             value_cols=y_cols,
             freq=freq,
