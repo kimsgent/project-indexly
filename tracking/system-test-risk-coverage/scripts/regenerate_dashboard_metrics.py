@@ -90,13 +90,31 @@ def average(values: list[int]) -> float | None:
 def normalize_status(value: Any) -> str:
     if value in (None, ""):
         return "Unknown"
-    return str(value).strip().title()
+    normalized = re.sub(r"\s+", " ", re.sub(r"[_-]+", " ", str(value).strip())).lower()
+    status_map = {
+        "open": "Open",
+        "in progress": "In Progress",
+        "mitigated": "Mitigated",
+        "closed": "Closed",
+        "pass": "Pass",
+        "warn": "Warn",
+        "fail": "Fail",
+        "skip": "Skip",
+        "collected": "Collected",
+        "unknown": "Unknown",
+    }
+    return status_map.get(normalized, normalized.title())
 
 
 def normalize_type(value: Any) -> str:
     if value in (None, ""):
         return "Unknown"
-    return str(value).strip().title()
+    normalized = re.sub(r"\s+", " ", re.sub(r"[_-]+", " ", str(value).strip())).lower()
+    type_map = {
+        "defect": "Defect",
+        "regression": "Regression",
+    }
+    return type_map.get(normalized, normalized.title())
 
 
 def empty_area_counts() -> dict[str, int]:
@@ -164,6 +182,26 @@ def validate_worksheet(path: Path, data: dict[str, Any]) -> None:
     if not isinstance(data["metrics_snapshot"], dict):
         raise TrackingMetricsError(f"{path}: metrics_snapshot must be an object.")
 
+    for index, case in enumerate(data["cases"]):
+        if not isinstance(case, dict):
+            raise TrackingMetricsError(f"{path}: every case entry must be an object.")
+        as_date(case.get("plan_date"), field=f"cases[{index}].plan_date", path=path)
+        as_date(case.get("actual_date"), field=f"cases[{index}].actual_date", path=path)
+
+    for index, defect in enumerate(data["defects_identified"]):
+        if not isinstance(defect, dict):
+            raise TrackingMetricsError(f"{path}: every defect entry must be an object.")
+        as_date(
+            defect.get("detected_date"),
+            field=f"defects_identified[{index}].detected_date",
+            path=path,
+        )
+        as_date(
+            defect.get("mitigated_date"),
+            field=f"defects_identified[{index}].mitigated_date",
+            path=path,
+        )
+
 
 def relative_to_root(path: Path, root: Path) -> str:
     return path.resolve().relative_to(root.resolve()).as_posix()
@@ -182,19 +220,34 @@ def rpn_value(record: dict[str, Any], *keys: str) -> int | None:
         value = record.get(key)
         if isinstance(value, int):
             return value
-        if isinstance(value, str) and value.isdigit():
-            return int(value)
+        if isinstance(value, str):
+            stripped = value.strip()
+            if stripped.isdigit():
+                return int(stripped)
     return None
 
 
 def risk_ids_for(defect: dict[str, Any]) -> list[str]:
+    deduped: list[str] = []
+    seen: set[str] = set()
+
+    def add_candidate(candidate: Any) -> None:
+        normalized = str(candidate).strip()
+        if not normalized or normalized in seen:
+            return
+        seen.add(normalized)
+        deduped.append(normalized)
+
     risk_ids = defect.get("related_risk_ids")
     if isinstance(risk_ids, list):
-        normalized = [str(risk_id) for risk_id in risk_ids if risk_id]
-        if normalized:
-            return normalized
+        for risk_id in risk_ids:
+            add_candidate(risk_id)
+        if deduped:
+            return deduped
     risk_id = defect.get("risk_id")
-    return [str(risk_id)] if risk_id else []
+    if risk_id:
+        add_candidate(risk_id)
+    return deduped
 
 
 def build_metrics(root: Path) -> dict[str, Any]:
@@ -206,12 +259,8 @@ def build_metrics(root: Path) -> dict[str, Any]:
     for path, worksheet in worksheets:
         worksheet_date = str(worksheet["created_date"])
         for case in worksheet["cases"]:
-            if not isinstance(case, dict):
-                raise TrackingMetricsError(f"{path}: every case entry must be an object.")
             cases.append({**case, "_worksheet_date": worksheet_date})
         for defect in worksheet["defects_identified"]:
-            if not isinstance(defect, dict):
-                raise TrackingMetricsError(f"{path}: every defect entry must be an object.")
             defects.append({**defect, "_worksheet_date": worksheet_date})
 
     confirmed_defects = [
@@ -379,9 +428,13 @@ def build_metrics(root: Path) -> dict[str, Any]:
     if mean_time is not None and float(mean_time).is_integer():
         mean_time = int(mean_time)
 
+    generated_at = max((str(worksheet["created_date"]) for _, worksheet in worksheets), default=None)
+    if generated_at is None:
+        generated_at = date.today().isoformat()
+
     metrics: dict[str, Any] = {
         "schema": "indexly.tracking.quality_dashboard_metrics.v1",
-        "generated_at": date.today().isoformat(),
+        "generated_at": generated_at,
         "generated_from": generated_from,
         "notes": [
             "Generated from dated worksheet JSON artifacts under test-cases/.",
@@ -480,7 +533,7 @@ def build_performance_series(defects: list[dict[str, Any]]) -> list[dict[str, An
                 and normalize_status(defect.get("mitigation_status") or defect.get("status"))
                 in MITIGATED_STATUSES
             )
-            and (rpn_value(defect, "rpn") or 99) <= 5
+            and ((defect_rpn := rpn_value(defect, "rpn")) is not None and 1 <= defect_rpn <= 5)
         )
         series.append(
             {
