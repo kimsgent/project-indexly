@@ -13,6 +13,15 @@
   "environment_configs": [],
   "scope": "",
   "out_of_scope": "",
+  "packaging_release_ci_smoke": {
+    "editable_install_validated": false,
+    "pip_install_editable_command": "python -m pip install -e .",
+    "package_import_smoke": "",
+    "homebrew_formula_metadata_verified": false,
+    "readme_examples_smoked": false,
+    "ci_workflow_smoke_or_local_equivalent": "",
+    "notes": ""
+  },
   "cases": [
     {
       "test_id": "",

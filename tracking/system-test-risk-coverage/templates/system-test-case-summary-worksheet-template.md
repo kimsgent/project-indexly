@@ -1,6 +1,6 @@
 # System Test Case Summary Worksheet Template
 
-Copy this file for each test run, defect investigation, or PR-linked validation cycle. Do not overwrite completed worksheets.
+Copy this file for each test run, defect investigation, or PR-linked validation cycle. Do not overwrite completed worksheets, and do not write run-specific outcomes into the baseline seed documents.
 
 Recommended filename:
 
@@ -34,6 +34,19 @@ system-test-case-summary-worksheet-2026-06-01-release-smoke.md
 | Environment Config | `A`, `B`, `C`, or combined values |
 | Scope |  |
 | Out of Scope |  |
+
+## Packaging / Release / CI Smoke Checklist
+
+Use this checklist when the worksheet touches `IDX-12` or when a change could affect install, release, docs, or CI-adjacent behavior. Link failed items to `IDX-RISK-012` or a confirmed `IDX-12-DEF-*` entry.
+
+| Smoke Item | Expected Evidence | Status | Notes |
+|---|---|---|---|
+| Editable install validation | `python -m pip install -e .` completes in `.venv-codex`. | Planned |  |
+| Package import smoke | `python -c "import indexly; print(indexly.__version__)"` reports the expected local version. | Planned |  |
+| PyPI/install packaging metadata | `pyproject.toml`, package data, dependencies, and optional extras are consistent with the tested behavior. | Planned |  |
+| Homebrew Formula metadata verification | Formula version, URL/checksum notes, dependencies, and CLI entry point expectations match the release intent. | Planned |  |
+| README command example smoke | README examples touched by the change run locally or are marked as documentation-only with reason. | Planned |  |
+| CI workflow smoke or local equivalent | Relevant workflow path is not changed, or a local equivalent command/check is recorded. | Planned |  |
 
 ## System Test Case Summary Worksheet
 

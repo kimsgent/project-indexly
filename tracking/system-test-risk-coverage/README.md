@@ -21,8 +21,9 @@ It is intentionally based on the current Indexly worksheet set:
 | `README.md` | Main operating guide for the tracking system. |
 | `templates/` | Reusable worksheet, local trace, and risk-register templates. |
 | `test-cases/YYYY-MM-DD-test-case-<area-or-change>/` | Completed or in-progress dated tracking sets copied from templates. |
-| `test-cases/2026-06-01-test-case-system-test-risk-coverage/` | Current seed tracking set for the system-test risk coverage audit. |
+| `test-cases/2026-06-01-test-case-system-test-risk-coverage/` | Baseline seed tracking set for the system-test risk coverage audit. Do not use it for run-specific outcomes. |
 | `dashboard/` | Static local quality dashboard concept generated from worksheet JSON artifacts. |
+| `scripts/regenerate_dashboard_metrics.py` | Manual/check script that rebuilds `dashboard/metrics.json` from dated worksheet JSON artifacts. |
 
 ## Prefixes and IDs
 
@@ -70,7 +71,7 @@ So `IDX-RISK-001` is a valid tracking ID, but it remains a risk placeholder unti
 
 ## Dynamic Files and Naming
 
-Templates should not be overwritten during normal defect tracking. Copy them into a dated test-case folder, then update only the copied files for that run:
+Templates and baseline seed documents should not be overwritten during normal defect tracking. Copy templates into a dated test-case folder, then update only the copied files for that run:
 
 | Document | Role | Update Pattern |
 |---|---|---|
@@ -117,6 +118,8 @@ PR-LOCAL-IDX-STRC-2026-06-01-cli-version
 
 The markdown worksheet is for human review. The JSON worksheet should mirror the same case rows and defect rows so totals, RPN movement, repeated defect areas, and trend data can be analyzed over time.
 
+Sanity check before updating dashboard metrics: every run-specific JSON worksheet must live under `test-cases/YYYY-MM-DD-test-case-<area-or-change>/`. The regeneration script rejects worksheet JSON found outside that dated folder pattern.
+
 ## Dashboard Workflow
 
 The local dashboard lives in [dashboard/](dashboard/) and is intentionally file-based. It reads summarized data from `dashboard/metrics.json`, which is derived from dated worksheet JSON files copied from [the JSON worksheet template](templates/system-test-case-summary-worksheet-template.json).
@@ -131,7 +134,34 @@ The dashboard answers Indexly-only quality questions:
 | Which risk patterns repeat? | `related_risk_ids`, `risk_id`, `rpn`, `detected_date` | Repeated risk count and defects by risk ID. |
 | Is test execution improving? | `cases[].status`, `metrics_snapshot` | Planned versus executed cases, pass/warn/fail/skip trend. |
 
-When a dated worksheet JSON file is completed, copy its rollup values into `dashboard/metrics.json` or regenerate the metrics file with a future local script. Do not edit historical worksheet JSON files just to improve dashboard totals; create a new dated worksheet when the facts change.
+When a dated worksheet JSON file is completed, regenerate the dashboard metrics from the repository root:
+
+```powershell
+.\.venv-codex\Scripts\python.exe tracking\system-test-risk-coverage\scripts\regenerate_dashboard_metrics.py
+```
+
+The same script is platform-neutral and can also be run with `python tracking/system-test-risk-coverage/scripts/regenerate_dashboard_metrics.py` on macOS or Linux once a suitable Python environment is active.
+
+Use check mode before committing dashboard changes:
+
+```powershell
+.\.venv-codex\Scripts\python.exe tracking\system-test-risk-coverage\scripts\regenerate_dashboard_metrics.py --check
+```
+
+The script reads every `system-test-case-summary-worksheet-*.json` file under dated `test-cases/*/` folders, validates the worksheet contract, and rebuilds `dashboard/metrics.json` deterministically. Do not edit historical worksheet JSON files just to improve dashboard totals; create a new dated worksheet when the facts change.
+
+## Packaging, Release, and CI Smoke Tracking
+
+Packaging and release-adjacent behavior is tracked under `IDX-12`. Use `IDX-RISK-012` for risk-only evidence and `IDX-12-DEF-*` only after a concrete failure is observed. Run-specific worksheets should fill the packaging/release/CI smoke checklist when a change touches install behavior, metadata, documentation examples, release files, or CI-equivalent validation.
+
+Track these Indexly-specific surfaces explicitly:
+
+| Surface | Tracking ID | Expected Evidence |
+|---|---|---|
+| PyPI/install packaging | `IDX-RISK-012` or `IDX-12-DEF-*` | Editable install, package import smoke, metadata/dependency review. |
+| Homebrew Formula | `IDX-RISK-012` or `IDX-12-DEF-*` | Formula version/dependency/entry point verification when release metadata changes. |
+| README example correctness | `IDX-RISK-012` or `IDX-12-DEF-*` | Smoke the changed command examples or record why they are documentation-only. |
+| CI smoke validation | `IDX-RISK-012` or `IDX-12-DEF-*` | Run the relevant local equivalent or record unchanged workflow scope. |
 
 ## Naming Conventions
 

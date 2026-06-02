@@ -29,4 +29,15 @@ Recommended containing folder:
 | IDX-RISK-009   | IDX-08                      | Observers/logging lose audit events or reuse stale metadata.                                                              |   7 | Observer runner, config, health event, CSV observer, logger stress tests.                                | Observe run/audit over changed files and CSV snapshots; verify event order and log fallback.                 |
 | IDX-RISK-010   | IDX-10                      | Compare misclassifies file/folder differences or ignores wrong files.                                                     |  12 | Compare module tests.                                                                                    | Folder compare with explicit ignore file, project ignore, JSON output, large text guardrail.                 |
 | IDX-RISK-011   | IDX-06                      | Visualization output uses wrong columns or transformed values, especially after routing cleaned/raw data.                 |  14 | Boxplot preprocessor/render and infer-boxplot integration tests.                                         | Chart smoke for CSV/inference output: ASCII, static, interactive, raw vs cleaned.                            |
-| IDX-RISK-012   | IDX-12                      | Packaging, Formula, requirements, docs, or CI metadata drift from source version and supported dependencies.              |   4 | Limited direct test evidence. Editable install was refreshed from`2.1.2` to `2.1.4a0` during this audit. | Release smoke: build metadata, editable install, command import, README examples, Formula dependency review. |
+| IDX-RISK-012   | IDX-12                      | Packaging, docs, release, and CI-adjacent surfaces drift from source version, supported dependencies, or documented commands. |   4 | Limited direct test evidence. Editable install, package import, Formula metadata, README examples, and CI-equivalent smoke must be recorded per run. | Release smoke: build metadata, editable install, package import, README examples, Formula dependency review, CI workflow smoke or local equivalent. |
+
+## Packaging / Release / CI Smoke Risk Detail
+
+Use this detail table whenever `IDX-RISK-012` is copied into a dated register. Create `IDX-12-DEF-*` only after an observed failure.
+
+| Parent Risk ID | Surface | Specific Breakage to Watch | Expected Smoke Evidence |
+|---|---|---|---|
+| IDX-RISK-012 | PyPI/install packaging | `pyproject.toml`, package data, dependencies, optional extras, or entry points drift from source behavior. | Editable install and package import smoke in `.venv-codex`. |
+| IDX-RISK-012 | Homebrew Formula | Formula version, dependency metadata, URL/checksum notes, or CLI entry point expectations drift from release intent. | Formula metadata review when release files change. |
+| IDX-RISK-012 | README example correctness | README command examples no longer match current CLI behavior. | Smoke changed examples locally or record a documentation-only rationale. |
+| IDX-RISK-012 | CI smoke validation | CI workflow expectations do not match the local commands needed to catch release/install regressions. | Relevant CI smoke or documented local equivalent. |

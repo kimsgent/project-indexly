@@ -2,11 +2,11 @@
   "schema": "indexly.tracking.quality_dashboard_metrics.v1",
   "generated_at": "2026-06-02",
   "generated_from": [
-    "../test-cases/2026-06-02-test-case-timeseries-visualization/system-test-case-summary-worksheet-2026-06-02-timeseries-visualization.json"
+    "test-cases/2026-06-02-test-case-timeseries-visualization/system-test-case-summary-worksheet-2026-06-02-timeseries-visualization.json"
   ],
   "notes": [
-    "Updated with the first dated time-series visualization audit worksheet.",
-    "Future updates should roll up additional worksheet JSON artifacts copied from templates/system-test-case-summary-worksheet-template.json."
+    "Generated from dated worksheet JSON artifacts under test-cases/.",
+    "Do not edit baseline seed documents for run-specific outcomes; create a new dated run folder from templates instead."
   ],
   "summary": {
     "total_confirmed_defects": 3,
@@ -30,7 +30,9 @@
       "date": "2026-06-02",
       "total_confirmed_defects": 3,
       "mitigated_confirmed_defects": 3,
-      "mitigation_rate_percent": 100
+      "open_confirmed_defects": 0,
+      "mitigation_rate_percent": 100,
+      "high_risk_open_defects": 0
     }
   ],
   "test_execution_over_time": [
@@ -42,6 +44,7 @@
       "warn_count": 0,
       "fail_count": 0,
       "skip_count": 0,
+      "collected_count": 0,
       "test_execution_rate_percent": 100
     }
   ],
@@ -122,6 +125,9 @@
     {
       "risk_id": "IDX-RISK-011",
       "area_id": "IDX-06",
+      "area_ids": [
+        "IDX-06"
+      ],
       "count": 3,
       "lowest_rpn": 4,
       "latest_detected_date": "2026-06-02"

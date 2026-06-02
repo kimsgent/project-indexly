@@ -45,7 +45,7 @@ This document turns the current Indexly codebase into testable system areas. It 
 | IDX-09 | Backup and restore | `backup/*` | `backup`, `restore`, auto-backup, encrypted backups, verification | 20 backup critical tests cover restore chains, validation, path traversal, encryption hints, registry rules. |
 | IDX-10 | Compare | `compare/*` | `compare` files/folders, JSON, ignore rules, thresholds | 16 compare tests cover ignore handling, path resolution, JSON output, large file behavior. |
 | IDX-11 | Database health, migrations, diagnostics | `doctor.py`, `db_update.py`, `migration_manager.py`, `debug.py`, `debug_tbl.py`, `db_schema_utils.py`, `db_inspector.py` | `doctor`, `update-db`, `migrate`, `debug` | Doctor, DB pipeline, debug table, migration safety tests. |
-| IDX-12 | Packaging, docs, release surfaces | `pyproject.toml`, `requirements*.txt`, `README*.md`, `Formula/*`, `.github/*`, `docs/*` | Build/install, package metadata, PR template, release checks | Limited direct automated tests; should be covered by packaging smoke and CI. |
+| IDX-12 | Packaging, docs, release, CI-adjacent surfaces | `pyproject.toml`, `requirements*.txt`, `README*.md`, `Formula/*`, `.github/*`, `docs/*` | PyPI/install packaging, editable install, package import smoke, Homebrew Formula metadata, README examples, CI smoke/local equivalent | Limited direct automated tests; must be covered by dated packaging/release/CI smoke evidence before release. |
 
 ## Interdependency Notes
 
@@ -58,7 +58,7 @@ This document turns the current Indexly codebase into testable system areas. It 
 | Optional dependencies -> loaders, OCR, visualization, backup | Feature packs are lazily imported and must fail with actionable guidance. | Medium-high. Missing packages should not break core commands. |
 | Doctor/update-db/migrate -> runtime DB | Repair paths touch schema and FTS internals. | High. Must default to read-only or explicit opt-in for risky operations. |
 | Logs/observers -> health/audit evidence | Observers and log-clean support auditability and downstream troubleshooting. | Medium. Lost or malformed events reduce traceability. |
-| Packaging/docs/Formula -> install behavior | Version, requirements, and brew formula must align with source. | High for releases. Recent Formula regression history makes this a default risk area. |
+| Packaging/docs/Formula/CI -> install behavior | Version, requirements, README examples, Formula metadata, and CI smoke expectations must align with source. | High for releases. Recent Formula regression history makes this a default risk area. |
 
 ## System Test Case Summary Worksheet
 
@@ -94,6 +94,11 @@ This document turns the current Indexly codebase into testable system areas. It 
 | 10.000 | Compare | Planned | A | IDX-RISK-010 | 12 | CFG | 2026-06-01 |  | 3 |  |  | Files/folders, ignore-file, JSON output, threshold, large text guardrails. |
 | 11.000 | Doctor, migrations, database repair | Planned | A | IDX-RISK-007 | 3 | CFG | 2026-06-01 |  | 5 |  |  | Read-only diagnostics by default, explicit fix flags, FTS rebuild opt-in, profile DB. |
 | 12.000 | Packaging, docs, release, CI-adjacent surfaces | Planned | B | IDX-RISK-012 | 4 | CFG | 2026-06-01 |  | 5 |  |  | Verify `pyproject.toml`, requirements, README, Formula, PR template, and CI expectations before release. |
+| 12.001 | Editable install and package import smoke | Planned | B | IDX-RISK-012 | 4 | CFG | 2026-06-01 |  | 1 |  |  | Run `python -m pip install -e .` in `.venv-codex` and smoke `import indexly` with expected local version. |
+| 12.002 | PyPI/install packaging metadata review | Planned | B | IDX-RISK-012 | 4 | CFG | 2026-06-01 |  | 1 |  |  | Verify `pyproject.toml`, package data, dependencies, optional extras, and console entry point expectations. |
+| 12.003 | Homebrew Formula metadata verification | Planned | B | IDX-RISK-012 | 4 | CFG | 2026-06-01 |  | 1 |  |  | Review Formula version, URL/checksum notes, dependencies, and CLI entry point assumptions when release metadata changes. |
+| 12.004 | README command example smoke | Planned | B | IDX-RISK-012 | 4 | CFG | 2026-06-01 |  | 1 |  |  | Run changed README examples locally or record why the example is documentation-only. |
+| 12.005 | CI workflow smoke or local equivalent | Planned | B | IDX-RISK-012 | 4 | CFG | 2026-06-01 |  | 1 |  |  | Record unchanged workflow scope or run the closest local command that validates the release/install path. |
 | 99.000 | Existing pytest regression inventory | Collected | A | IDX-RISK-002 | 2 | CFG | 2026-06-01 | 2026-06-01 | 1 | 0.25 | 0.23 | `pytest --collect-only -q` collected 256 tests in 13.71s. Tests were inventoried, not executed. |
 
 ## Existing Regression Inventory by Test File
