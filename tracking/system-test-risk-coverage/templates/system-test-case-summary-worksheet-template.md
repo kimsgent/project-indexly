@@ -47,9 +47,25 @@ Use the stable case IDs from [System Test Case Summary > System Test Case Summar
 
 Use confirmed defect IDs only after a failure is observed. Risk-only rows should remain in the worksheet table above with `IDX-RISK-*`.
 
-| Defect ID | Area ID | Risk ID | Exposing Test ID | Status | RPN | Summary | Reproduction / Evidence | Regression Tests to Run |
-|---|---|---|---|---|---:|---|---|---|
-|  |  |  |  | Open |  |  |  |  |
+| Defect ID | Area ID | Risk ID | Type | Mitigation Status | RPN | Detected Date | Mitigated Date | Regression Of | Root Cause | Related Test IDs | Summary |
+|---|---|---|---|---|---:|---|---|---|---|---|---|
+|  |  |  | Unknown | Open |  |  |  |  |  |  |  |
+
+## Defect Lifecycle Field Guide
+
+These fields mirror `defects_identified` in [the JSON worksheet template](system-test-case-summary-worksheet-template.json). They feed the local dashboard under `../dashboard/`.
+
+| Field | Allowed / Expected Values | Indexly Use |
+|---|---|---|
+| `defect_type` | `Defect`, `Regression`, `Risk`, `Follow-up`, `Unknown` | Separates confirmed defects from regression chains and follow-up work. |
+| `detected_date` | `YYYY-MM-DD` | Date the defect was first identified. |
+| `mitigated_date` | `YYYY-MM-DD` or blank | Date the defect was fixed, closed, resolved, or otherwise mitigated. |
+| `mitigation_status` | `Open`, `In Progress`, `Mitigated`, `Closed`, `Deferred`, `Not Planned` | Drives mitigation rate and open-defect counts. |
+| `regression_of` | Existing defect ID or blank | Links chains such as `IDX-05-DEF-001 -> IDX-05-DEF-002`. |
+| `introduced_by_change` | Commit, local trace ID, or short description | Records the change suspected to have introduced the defect. |
+| `root_cause_category` | `cli-routing`, `index-search-sync`, `analysis-persistence`, `dataset-routing`, `inference-correctness`, `visualization-routing`, `filesystem-safety`, `backup-restore`, `doctor-migration`, `packaging-release`, `optional-dependencies` | Groups recurring Indexly-specific causes. |
+| `related_test_ids` | List of system test IDs | Connects defects to system tests such as `5.001`. |
+| `related_risk_ids` | List of `IDX-RISK-*` IDs | Connects defects to repeated risk patterns. |
 
 ## Metrics Snapshot
 
@@ -62,10 +78,16 @@ Use confirmed defect IDs only after a failure is observed. Risk-only rows should
 | Failed cases |  |  |
 | Skipped cases |  |  |
 | Confirmed defects |  |  |
+| Mitigated confirmed defects |  | Count with mitigation status `Mitigated` or `Closed`. |
+| Open confirmed defects |  | Count with mitigation status `Open` or `In Progress`. |
+| Mitigation rate percent |  | Mitigated confirmed defects divided by total confirmed defects. |
+| High-risk open defects |  | Open confirmed defects with RPN 1-5. |
 | Highest-risk RPN found |  | Lower number is worse. |
 | Planned effort hours |  |  |
 | Actual effort hours |  |  |
 | Test duration hours |  |  |
+| Test execution rate percent |  | Executed cases divided by planned cases. |
+| Mean time to mitigate days |  | Use only when detected and mitigated dates are available. |
 
 ## Follow-up Actions
 

@@ -22,6 +22,7 @@ It is intentionally based on the current Indexly worksheet set:
 | `templates/` | Reusable worksheet, local trace, and risk-register templates. |
 | `test-cases/YYYY-MM-DD-test-case-<area-or-change>/` | Completed or in-progress dated tracking sets copied from templates. |
 | `test-cases/2026-06-01-test-case-system-test-risk-coverage/` | Current seed tracking set for the system-test risk coverage audit. |
+| `dashboard/` | Static local quality dashboard concept generated from worksheet JSON artifacts. |
 
 ## Prefixes and IDs
 
@@ -115,6 +116,22 @@ PR-LOCAL-IDX-STRC-2026-06-01-cli-version
 ```
 
 The markdown worksheet is for human review. The JSON worksheet should mirror the same case rows and defect rows so totals, RPN movement, repeated defect areas, and trend data can be analyzed over time.
+
+## Dashboard Workflow
+
+The local dashboard lives in [dashboard/](dashboard/) and is intentionally file-based. It reads summarized data from `dashboard/metrics.json`, which is derived from dated worksheet JSON files copied from [the JSON worksheet template](templates/system-test-case-summary-worksheet-template.json).
+
+The dashboard answers Indexly-only quality questions:
+
+| Question | Source Fields | Dashboard Metric |
+|---|---|---|
+| How is Indexly performing over time? | `defects_identified[].mitigation_status`, `detected_date`, `mitigated_date` | Mitigation rate percent over time. |
+| Where are defects concentrated? | `area_id`, `rpn`, `mitigation_status` | Defects by `IDX-01` through `IDX-12`, open high-risk defects, average RPN. |
+| Are regressions emerging? | `defect_type`, `regression_of`, `area_id` | Regression chains and regressions by area. |
+| Which risk patterns repeat? | `related_risk_ids`, `risk_id`, `rpn`, `detected_date` | Repeated risk count and defects by risk ID. |
+| Is test execution improving? | `cases[].status`, `metrics_snapshot` | Planned versus executed cases, pass/warn/fail/skip trend. |
+
+When a dated worksheet JSON file is completed, copy its rollup values into `dashboard/metrics.json` or regenerate the metrics file with a future local script. Do not edit historical worksheet JSON files just to improve dashboard totals; create a new dated worksheet when the facts change.
 
 ## Naming Conventions
 
@@ -256,8 +273,8 @@ Use this routine when you find a real Indexly defect.
    - `Defect/Risk ID` to include both IDs, for example `IDX-RISK-001; IDX-01-DEF-001`
    - `Defect RPN` using the risk scale from [Risk Priority Scale](test-cases/2026-06-01-test-case-system-test-risk-coverage/risk-coverage-by-defects-and-tests.md#risk-priority-scale)
    - `Actual Date`, `Actual Effort`, and `Test Duration`
-   - `Comment` with a short reproducible observation
    - the JSON mirror with the same `test_id`, `defect_risk_ids`, status, RPN, and timing fields
+   - lifecycle fields under `defects_identified`, especially `defect_type`, `detected_date`, `mitigation_status`, `regression_of`, `root_cause_category`, `related_test_ids`, and `related_risk_ids`
 
 6. Update the local PR trace.
 

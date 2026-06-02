@@ -1,5 +1,5 @@
 {
-  "schema": "indexly.tracking.system_test_case_summary_worksheet.v1",
+  "schema": "indexly.tracking.system_test_case_summary_worksheet.v2",
   "worksheet_id": "STCSW-YYYY-MM-DD-area-or-change",
   "created_date": "YYYY-MM-DD",
   "local_pr_trace_id": "PR-LOCAL-IDX-STRC-YYYY-MM-DD-area-or-change",
@@ -35,6 +35,15 @@
       "defect_id": "",
       "area_id": "",
       "risk_id": "",
+      "defect_type": "Unknown",
+      "detected_date": "",
+      "mitigated_date": "",
+      "mitigation_status": "Open",
+      "regression_of": "",
+      "introduced_by_change": "",
+      "root_cause_category": "",
+      "related_test_ids": [],
+      "related_risk_ids": [],
       "exposing_test_id": "",
       "status": "Open",
       "rpn": null,
@@ -51,10 +60,16 @@
     "failed_cases": 0,
     "skipped_cases": 0,
     "confirmed_defects": 0,
+    "mitigated_confirmed_defects": 0,
+    "open_confirmed_defects": 0,
+    "mitigation_rate_percent": null,
+    "high_risk_open_defects": 0,
     "highest_risk_rpn": null,
     "planned_effort_hours": null,
     "actual_effort_hours": null,
-    "test_duration_hours": null
+    "test_duration_hours": null,
+    "test_execution_rate_percent": null,
+    "mean_time_to_mitigate_days": null
   },
   "follow_up_actions": [
     {
