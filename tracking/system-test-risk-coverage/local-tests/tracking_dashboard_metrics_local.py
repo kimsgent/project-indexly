@@ -6,7 +6,7 @@ import pytest
 
 
 SCRIPT_PATH = (
-    Path(__file__).resolve().parents[1]
+    Path(__file__).resolve().parents[3]
     / "tracking"
     / "system-test-risk-coverage"
     / "scripts"

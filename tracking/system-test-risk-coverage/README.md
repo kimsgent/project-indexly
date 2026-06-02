@@ -22,6 +22,7 @@ It is intentionally based on the current Indexly worksheet set:
 | `templates/` | Reusable worksheet, local trace, and risk-register templates. |
 | `test-cases/YYYY-MM-DD-test-case-<area-or-change>/` | Completed or in-progress dated tracking sets copied from templates. |
 | `test-cases/2026-06-01-test-case-system-test-risk-coverage/` | Baseline seed tracking set for the system-test risk coverage audit. Do not use it for run-specific outcomes. |
+| `local-tests/` | Tracking-local regression tests for the metrics pipeline and worksheet contracts. Kept outside `tests/` so default CI pytest runs do not auto-collect them. |
 | `dashboard/` | Static local quality dashboard concept generated from worksheet JSON artifacts. |
 | `scripts/regenerate_dashboard_metrics.py` | Manual/check script that rebuilds `dashboard/metrics.json` from dated worksheet JSON artifacts. |
 
@@ -149,6 +150,22 @@ Use check mode before committing dashboard changes:
 ```
 
 The script reads every `system-test-case-summary-worksheet-*.json` file under dated `test-cases/*/` folders, validates the worksheet contract, and rebuilds `dashboard/metrics.json` deterministically. Do not edit historical worksheet JSON files just to improve dashboard totals; create a new dated worksheet when the facts change.
+
+### Local Tracking Regression Tests
+
+Tracking-specific regression tests for the dashboard metrics pipeline live under `tracking/system-test-risk-coverage/local-tests/`.
+
+They intentionally use non-default pytest filename patterns so they are not collected by the repository's default GitHub CI pytest runs.
+
+Run them explicitly when changing tracking scripts or worksheet contracts:
+
+```powershell
+.\.venv-codex\Scripts\python.exe -m pytest tracking\system-test-risk-coverage\local-tests\tracking_dashboard_metrics_local.py
+```
+
+```bash
+.venv-codex/bin/python -m pytest tracking/system-test-risk-coverage/local-tests/tracking_dashboard_metrics_local.py
+```
 
 ## Packaging, Release, and CI Smoke Tracking
 
