@@ -3,6 +3,8 @@
 ## Overview
 This guide sets up a manual-trigger automation in Codex (VS Code sidebar) to run tracking analysis on Windows.
 
+This automation is Windows-only. It assumes PowerShell, VS Code tasks, and the repository-local `.venv-codex\Scripts\python.exe`.
+
 ---
 
 ## ✅ Setup Status: COMPLETE
@@ -47,7 +49,7 @@ Run the Indexly tracking analysis for a known bug:
 - Mode: known_bug
 - Fault Description: App crashes on startup when indexing large CSV files with mixed data types. Expected: graceful error handling, Actual: fatal exception
 
-Use: .\.venv-codex\Scripts\python.exe tracking/system-test-risk-coverage/trigger.py --mode known_bug --fault-description "App crashes on startup when indexing large CSV files with mixed data types"
+Use: .\.venv-codex\Scripts\python.exe tracking/system-test-risk-coverage/codex-automation/scripts/trigger.py --mode known_bug --fault-description "App crashes on startup when indexing large CSV files with mixed data types"
 ```
 
 #### General Analysis
@@ -56,7 +58,7 @@ Run the Indexly tracking analysis for general module review:
 - Mode: general_analysis
 - Analysis Focus: CSV parsing module error handling paths
 
-Use: .\.venv-codex\Scripts\python.exe tracking/system-test-risk-coverage/trigger.py --mode general_analysis --analysis-focus "CSV parsing module error handling"
+Use: .\.venv-codex\Scripts\python.exe tracking/system-test-risk-coverage/codex-automation/scripts/trigger.py --mode general_analysis --analysis-focus "CSV parsing module error handling"
 ```
 
 ---
@@ -152,13 +154,13 @@ If you need to run this outside Codex, use the Python script directly in termina
 
 ```powershell
 cd D:\project-indexly
-.\.venv-codex\Scripts\python.exe tracking/system-test-risk-coverage/trigger.py --mode known_bug --fault-description "Test crash on startup"
+.\.venv-codex\Scripts\python.exe tracking/system-test-risk-coverage/codex-automation/scripts/trigger.py --mode known_bug --fault-description "Test crash on startup"
 ```
 
 Or use the PowerShell helper:
 
 ```powershell
-. tracking/system-test-risk-coverage/trigger-automation.ps1
+. tracking/system-test-risk-coverage/codex-automation/scripts/trigger-automation.ps1
 Run-TrackingAnalysis  # Interactive prompt
 ```
 
@@ -167,9 +169,9 @@ Run-TrackingAnalysis  # Interactive prompt
 ## Files Created
 
 - **`.vscode/tasks.json`** – Updated with two new tracking tasks
-- **`tracking/system-test-risk-coverage/trigger.py`** – Main automation script
-- **`trigger-automation.ps1`** – PowerShell helper (for terminal use)
-- **`CODEX_SETUP.md`** – This file
-- **`QUICKSTART.md`** – Quick reference
+- **`tracking/system-test-risk-coverage/codex-automation/scripts/trigger.py`** – Main automation script
+- **`tracking/system-test-risk-coverage/codex-automation/scripts/trigger-automation.ps1`** – PowerShell helper (for terminal use)
+- **`tracking/system-test-risk-coverage/codex-automation/docs/CODEX_SETUP.md`** – This file
+- **`tracking/system-test-risk-coverage/codex-automation/docs/QUICKSTART.md`** – Quick reference
 
 

@@ -14,6 +14,10 @@ from datetime import datetime
 from pathlib import Path
 
 TRACKING_KEYS = ("mode", "fault_description", "analysis_focus")
+SCRIPT_DIR = Path(__file__).resolve().parent
+AUTOMATION_ROOT = SCRIPT_DIR.parent
+TRACKING_ROOT = AUTOMATION_ROOT.parent
+REPO_ROOT = TRACKING_ROOT.parent.parent
 
 
 def parse_input_payload(payload_str):
@@ -106,7 +110,7 @@ def get_today_run_folder(base_path, focus_name):
 
 def initialize_run_artifacts(run_folder, params):
     """Initialize run artifacts from templates."""
-    templates_path = Path(__file__).parent / 'templates'
+    templates_path = TRACKING_ROOT / 'templates'
 
     worksheets = [
         'system-test-case-summary-worksheet-template.md',
@@ -155,7 +159,7 @@ def write_analysis_prompt(run_folder, params):
 
 def regenerate_dashboard(venv_path):
     """Regenerate dashboard metrics."""
-    script_path = Path(__file__).parent / 'scripts' / 'regenerate_dashboard_metrics.py'
+    script_path = TRACKING_ROOT / 'scripts' / 'regenerate_dashboard_metrics.py'
     if not script_path.exists():
         print(f"WARNING: Dashboard script not found at {script_path}")
         return True
@@ -167,7 +171,7 @@ def regenerate_dashboard(venv_path):
 
     result = subprocess.run(
         [str(python_exe), str(script_path)],
-        cwd=str(Path(__file__).parent),
+        cwd=str(TRACKING_ROOT),
         capture_output=True,
         text=True
     )
@@ -202,7 +206,7 @@ def main():
     else:
         focus_name = f"analysis_{params.get('analysis_focus', 'general')}"
 
-    base_path = Path(__file__).parent / 'local-tests'
+    base_path = TRACKING_ROOT / 'local-tests'
     run_folder = get_today_run_folder(base_path, focus_name)
 
     print(f"Run folder: {run_folder}")
@@ -213,7 +217,7 @@ def main():
     prompt_file = write_analysis_prompt(run_folder, params)
     print(f"Codex analysis prompt: {prompt_file}")
 
-    default_venv_path = Path(__file__).parent.parent.parent / '.venv-codex'
+    default_venv_path = REPO_ROOT / '.venv-codex'
     venv_path = Path(args.venv_path) if args.venv_path else default_venv_path
     if not regenerate_dashboard(venv_path):
         print("WARNING: Proceeding despite dashboard regeneration issues")

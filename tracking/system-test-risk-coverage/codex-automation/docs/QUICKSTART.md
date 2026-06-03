@@ -3,6 +3,8 @@
 ## ✅ Setup Complete!
 Tasks have been added to your Codex sidebar.
 
+This setup is for the Windows development environment only. It assumes PowerShell, `.venv-codex\Scripts\python.exe`, and VS Code task paths using Windows separators.
+
 ---
 
 ## 🎯 How to Trigger
@@ -25,14 +27,14 @@ Tasks have been added to your Codex sidebar.
 ### Option C: Via PowerShell
 ```powershell
 # Interactive prompt
-. tracking/system-test-risk-coverage/trigger-automation.ps1
+. tracking/system-test-risk-coverage/codex-automation/scripts/trigger-automation.ps1
 Run-TrackingAnalysis
 
 # Or direct
 Run-TrackingAnalysis -Mode known_bug -FaultDescription "Your description"
 
 # Preferred direct Python form
-.\.venv-codex\Scripts\python.exe tracking/system-test-risk-coverage/trigger.py --mode known_bug --fault-description "Your description"
+.\.venv-codex\Scripts\python.exe tracking/system-test-risk-coverage/codex-automation/scripts/trigger.py --mode known_bug --fault-description "Your description"
 ```
 
 ---

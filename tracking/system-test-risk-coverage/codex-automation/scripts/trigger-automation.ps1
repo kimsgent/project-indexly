@@ -1,5 +1,5 @@
 # Codex Automation Trigger Helper for PowerShell
-# Usage: . ./trigger-automation.ps1
+# Usage: . tracking/system-test-risk-coverage/codex-automation/scripts/trigger-automation.ps1
 # Then: Run-TrackingAnalysis
 
 function Run-TrackingAnalysis {
@@ -85,9 +85,9 @@ function Run-TrackingAnalysis {
         }
 
         if ($Mode -eq "known_bug") {
-            & $pythonExe "tracking/system-test-risk-coverage/trigger.py" --mode known_bug --fault-description $FaultDescription
+            & $pythonExe "tracking/system-test-risk-coverage/codex-automation/scripts/trigger.py" --mode known_bug --fault-description $FaultDescription
         } else {
-            & $pythonExe "tracking/system-test-risk-coverage/trigger.py" --mode general_analysis --analysis-focus $AnalysisFocus
+            & $pythonExe "tracking/system-test-risk-coverage/codex-automation/scripts/trigger.py" --mode general_analysis --analysis-focus $AnalysisFocus
         }
         
         Write-Host "`n✅ Automation completed!" -ForegroundColor Green

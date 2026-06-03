@@ -27,7 +27,7 @@
       "type": "shell",
       "command": "${workspaceFolder}\\.venv-codex\\Scripts\\python.exe",
       "args": [
-        "tracking/system-test-risk-coverage/trigger.py",
+        "tracking/system-test-risk-coverage/codex-automation/scripts/trigger.py",
         "--mode",
         "known_bug",
         "--fault-description",
@@ -47,7 +47,7 @@
       "type": "shell",
       "command": "${workspaceFolder}\\.venv-codex\\Scripts\\python.exe",
       "args": [
-        "tracking/system-test-risk-coverage/trigger.py",
+        "tracking/system-test-risk-coverage/codex-automation/scripts/trigger.py",
         "--mode",
         "general_analysis",
         "--analysis-focus",
