@@ -18,6 +18,8 @@ This setup is for the Windows development environment only. It assumes PowerShel
 4. Enter the prompted fault description or analysis focus
 5. Review the generated `codex_analysis_prompt.md` in the run folder
 
+The task creates a draft tracking scaffold only. The generated worksheet files are not analysis results until Codex or a human completes them according to `tracking/system-test-risk-coverage/README.md`.
+
 ### Option B: Via "Do anything" Chat (Full Control)
 1. Open **Codex** sidebar
 2. Click the **"Do anything"** input box at the bottom
@@ -59,8 +61,16 @@ analysis_focus=CSV parsing module null value handling
 - Output shows `Run folder: ...`
 - `run_summary.json` created
 - `codex_analysis_prompt.md` created for Codex follow-up analysis
-- Worksheet files in dated folder
+- Draft worksheet files in dated folder
 - Dashboard metrics regenerated
+
+## 🔁 Analysis Handoff
+After the task runs:
+
+1. Open or reference `codex_analysis_prompt.md`.
+2. Ask Codex to follow `tracking/system-test-risk-coverage/README.md`.
+3. Treat `system-test-case-summary-worksheet.md` and `.json` as draft scaffolding.
+4. Complete the worksheet only after code inspection, risk assessment, remediation or validation planning, test evidence, and residual risks are recorded.
 
 ## 📂 Output Location
 ```

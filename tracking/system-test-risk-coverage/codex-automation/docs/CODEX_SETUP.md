@@ -27,6 +27,8 @@ Use VS Code tasks for deterministic setup work: collect the fault/focus input, c
 
 Use Codex chat for the reasoning step: paste or reference the generated `codex_analysis_prompt.md` and ask Codex to update the worksheet, inspect code, and propose fixes. A VS Code task can prompt for input and run commands, but it does not automatically start an agentic Codex analysis session with those parameters.
 
+Generated worksheet files are draft scaffolding only. They must be completed according to `tracking/system-test-risk-coverage/README.md` after code inspection, risk assessment, remediation or validation planning, test evidence, and residual risks are recorded.
+
 ### Method 1️⃣: Click Tasks in Sidebar
 
 1. Open **Codex** sidebar
@@ -101,23 +103,33 @@ The automation will:
 
 1. ✅ **Validate inputs** (mode, required params)
 2. ✅ **Create/append to dated run folder** in `tracking/system-test-risk-coverage/local-tests/`
-3. ✅ **Initialize artifacts** from templates:
+3. ✅ **Initialize draft artifacts** from templates:
    - `system-test-case-summary-worksheet.md`
    - `system-test-case-summary-worksheet.json`
 4. ✅ **Create `codex_analysis_prompt.md`** from the supplied fault/focus
 5. ✅ **Regenerate dashboard metrics** via `regenerate_dashboard_metrics.py`
 6. ✅ **Return summary** with file locations and next steps
 
+This execution does not complete analysis or remediation. It creates the case file and handoff prompt.
+
 ### Output Files Created
 
 ```
 tracking/system-test-risk-coverage/local-tests/
 └── YYYYMMDD_<focus_name>/
-    ├── run_summary.json                        (execution summary)
+    ├── run_summary.json                        (execution summary; analysis_completed=false)
     ├── codex_analysis_prompt.md                (Codex follow-up prompt)
-    ├── system-test-case-summary-worksheet.md   (analysis worksheet)
-    └── system-test-case-summary-worksheet.json (analysis data)
+    ├── system-test-case-summary-worksheet.md   (draft analysis worksheet)
+    └── system-test-case-summary-worksheet.json (draft structured worksheet)
 ```
+
+### Artifact Lifecycle
+
+1. VS Code task creates the run scaffold.
+2. Human or Codex reads `codex_analysis_prompt.md`.
+3. Human or Codex reads and follows `tracking/system-test-risk-coverage/README.md`.
+4. Human or Codex performs analysis, remediation planning, and validation.
+5. Worksheet Markdown and JSON are updated from draft scaffold to evidence-backed result.
 
 ---
 
