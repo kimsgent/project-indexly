@@ -1,0 +1,81 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "📦 Install editable",
+      "type": "shell",
+      "command": "pip install -e ."
+    },
+    {
+      "label": "🔨 Hatch build",
+      "type": "shell",
+      "command": "hatch build",
+      "group": "build"
+    },
+    {
+      "label": "📜 Export requirements.txt",
+      "type": "shell",
+      "command": "hatch dep show requirements > requirements.txt"
+    },
+    {
+      "label": "📜 Export requirements-dev.txt",
+      "type": "shell",
+      "command": "hatch dep show requirements --env dev > requirements-dev.txt"
+    },
+    {
+      "label": "🔍 Tracking: Known Bug Analysis",
+      "type": "shell",
+      "command": "${workspaceFolder}\\.venv-codex\\Scripts\\python.exe",
+      "args": [
+        "tracking/system-test-risk-coverage/codex-automation/scripts/trigger.py",
+        "--mode",
+        "known_bug",
+        "--fault-description",
+        "${input:trackingFaultDescription}"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "🔍 Tracking: General Analysis",
+      "type": "shell",
+      "command": "${workspaceFolder}\\.venv-codex\\Scripts\\python.exe",
+      "args": [
+        "tracking/system-test-risk-coverage/codex-automation/scripts/trigger.py",
+        "--mode",
+        "general_analysis",
+        "--analysis-focus",
+        "${input:trackingAnalysisFocus}"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      },
+      "problemMatcher": []
+    }
+
+  ],
+  "inputs": [
+    {
+      "id": "trackingFaultDescription",
+      "type": "promptString",
+      "description": "Known bug fault description (symptom, expected vs actual, scope/repro context)",
+      "default": "TypeError when parsing CSV with null values; expected graceful handling, got unhandled exception"
+    },
+    {
+      "id": "trackingAnalysisFocus",
+      "type": "promptString",
+      "description": "General analysis focus (module, workflow, or design area)",
+      "default": "CSV parsing module null handling and validation edge cases"
+    }
+  ]
+}
