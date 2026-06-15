@@ -86,7 +86,8 @@ tmp-doctor-*/
 .DS_Store
 .idea/
 # Local machine-specific VS Code settings should stay out of Git history.
-.vscode/
+.vscode/**
+!.vscode/tasks.json
 *.swp
 *.code-workspace
 search_cache.json
