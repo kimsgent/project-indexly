@@ -85,10 +85,14 @@ tmp-doctor-*/
 # ----------------
 .DS_Store
 .idea/
+# Local machine-specific VS Code settings should stay out of Git history.
 .vscode/
 *.swp
 *.code-workspace
 search_cache.json
+
+# Local-only tracking artifacts for the system-test risk coverage workflow.
+tracking/system-test-risk-coverage/
 
 # ----------------
 # Indexly runtime
