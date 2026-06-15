@@ -35,7 +35,7 @@ from .filetype_utils import (
     SUPPORTED_EXTENSIONS,
     get_missing_documents_dependencies,
 )
-from .db_utils import connect_db, get_tags_for_file
+from .db_utils import connect_db, get_tags_for_file, bump_search_index_generation
 from .search_core import search_fts5, search_regex, sort_search_results
 from .extract_utils import update_file_metadata
 from .rename_utils import (
@@ -335,6 +335,10 @@ async def scan_and_index_files(
             logging.warning(f"Failed to flush logs: {e}")
 
     # Cache hygiene
+    changed_count = sum(1 for _path, changed in flattened if changed)
+    if changed_count:
+        generation = bump_search_index_generation()
+        print(f"🔁 Search cache generation updated to {generation}.")
     clean_cache_duplicates()
 
     summary_entry = {
@@ -342,6 +346,7 @@ async def scan_and_index_files(
         "timestamp": datetime.now().isoformat(timespec="seconds"),
         "root": str(root_dir),
         "count": len(flattened),
+        "changed_count": changed_count,
         "duration_seconds": (datetime.now() - start_time).total_seconds(),
     }
     _default_logger.log(summary_entry)

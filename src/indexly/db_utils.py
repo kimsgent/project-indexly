@@ -105,9 +105,60 @@ def connect_db(db_path: str | None = None):
             metadata TEXT
         );
         """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS indexly_state (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );
+        """)
 
     conn.commit()
     return conn
+
+
+def get_search_index_generation(db_path: str | None = None) -> int:
+    """Return the durable generation number for FTS search cache keys."""
+    conn = connect_db(db_path)
+    try:
+        row = conn.execute(
+            "SELECT value FROM indexly_state WHERE key = ?",
+            ("search_index_generation",),
+        ).fetchone()
+        if not row:
+            return 0
+        try:
+            return int(row["value"])
+        except (TypeError, ValueError):
+            return 0
+    finally:
+        conn.close()
+
+
+def bump_search_index_generation(db_path: str | None = None) -> int:
+    """Increment the FTS search generation after indexed content changes."""
+    conn = connect_db(db_path)
+    try:
+        row = conn.execute(
+            "SELECT value FROM indexly_state WHERE key = ?",
+            ("search_index_generation",),
+        ).fetchone()
+        try:
+            current = int(row["value"]) if row else 0
+        except (TypeError, ValueError):
+            current = 0
+        next_generation = current + 1
+        conn.execute(
+            """
+            INSERT INTO indexly_state (key, value)
+            VALUES (?, ?)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value
+            """,
+            ("search_index_generation", str(next_generation)),
+        )
+        conn.commit()
+        return next_generation
+    finally:
+        conn.close()
 
 
 def _sync_path_in_db(old_path: str, new_path: str, db_path: str | None = None):

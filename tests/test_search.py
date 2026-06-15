@@ -3,7 +3,9 @@ import pytest
 import sqlite3
 from pathlib import Path
 from indexly import search_core, config
+from indexly.cache_utils import load_cache, save_cache
 from indexly.cli_utils import build_parser
+from indexly.db_utils import bump_search_index_generation, get_search_index_generation
 
 def seed_test_data(db_path: str):
     """Create schema + insert one test record into a fresh DB."""
@@ -215,6 +217,67 @@ def test_no_cache_skips_fts_cache_write(tmp_path, monkeypatch):
     )
 
     assert len(results) == 2
+
+
+def test_fts_cache_key_uses_index_generation_after_reindex(tmp_path, monkeypatch):
+    test_db_path = tmp_path / "test_index.db"
+    cache_path = tmp_path / "search_cache.json"
+    indexed_path = search_core.normalize_path(str(tmp_path / "cached.txt"))
+    save_cache({}, str(cache_path))
+
+    monkeypatch.setattr(search_core, "load_cache", lambda: load_cache(str(cache_path)))
+    monkeypatch.setattr(
+        search_core, "save_cache", lambda cache: save_cache(cache, str(cache_path))
+    )
+
+    conn = search_core.connect_db(str(test_db_path))
+    conn.execute(
+        """
+        INSERT INTO file_index (path, content, clean_content, modified, hash)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (indexed_path, "alpha old", "alpha old", "2026-06-15T10:00:00", "old-hash"),
+    )
+    conn.commit()
+    conn.close()
+
+    first = search_core.search_fts5(
+        term="alpha",
+        query=None,
+        db_path=str(test_db_path),
+    )
+    assert first[0]["snippet"] == "alpha old"
+    assert get_search_index_generation(str(test_db_path)) == 0
+
+    conn = search_core.connect_db(str(test_db_path))
+    conn.execute("DELETE FROM file_index WHERE path = ?", (indexed_path,))
+    conn.execute(
+        """
+        INSERT INTO file_index (path, content, clean_content, modified, hash)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (
+            indexed_path,
+            "alpha fresh",
+            "alpha fresh",
+            "2026-06-15T11:00:00",
+            "fresh-hash",
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    assert bump_search_index_generation(str(test_db_path)) == 1
+    second = search_core.search_fts5(
+        term="alpha",
+        query=None,
+        db_path=str(test_db_path),
+    )
+
+    assert second[0]["snippet"] == "alpha fresh"
+    cache = load_cache(str(cache_path))
+    assert len(cache) == 2
+    assert sorted(entry["index_generation"] for entry in cache.values()) == [0, 1]
 
 
 def test_search_cli_defaults_to_runtime_db_unless_db_is_explicit():
