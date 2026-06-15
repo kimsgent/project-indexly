@@ -13,7 +13,7 @@ heroButtons:
 features:
   - icon: "search"
     title: "Blazing-Fast Search"
-    description: "Instantly find files by name, tag, or content — even offline."
+    description: "Instantly find files by name, tag, or content, with cached searches that refresh after re-indexing."
   - icon: "tags"
     title: "Flexible Tagging"
     description: "Organize your data with smart, customizable tags."
