@@ -115,18 +115,19 @@ Regex is best for audits and exact syntax. For broad discovery, use FTS first an
 
 ## Cache Behavior
 
-Search parameters are fingerprinted and stored in the search cache. When cached data is stale, Indexly can refresh changed entries instead of discarding everything.
+Search parameters are fingerprinted and stored in the search cache. Full-text search cache keys also include the current `search_index_generation` from `fts_index.db`, so a changed index run uses a new cache key instead of returning results from an older index generation.
+
+When `indexly index` changes indexed content or prunes stale rows under the indexed root, Indexly increments that generation. This keeps repeated searches fast while making a normal follow-up search refresh from the database after indexing changes. Regex cache hits can still refresh stale cached entries when the underlying files changed.
 
 Useful flags:
 
 ```bash
 indexly search "policy" --no-cache
-indexly search "policy" --no-refresh-write
 indexly search "policy" --save-profile policy_docs
 indexly search "policy" --profile policy_docs
 ```
 
-`--no-cache` skips cache reads and writes. `--no-refresh-write` avoids writing refreshed cache data back to disk.
+`--no-cache` skips cache reads and writes for both `indexly search` and `indexly regex`. There is no separate refresh-write flag; use `--no-cache` when validating fresh behavior without touching `search_cache.json`.
 
 ## Performance Guidance
 

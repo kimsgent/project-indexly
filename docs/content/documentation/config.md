@@ -115,10 +115,9 @@ Indexly can reuse cached results when the indexed files have not changed.
 ```bash
 indexly search "policy"
 indexly search "policy" --no-cache
-indexly search "policy" --no-refresh-write
 ```
 
-Use `--no-cache` when validating fresh behavior. Use `--no-refresh-write` when you want to read without updating the cache file.
+Use `--no-cache` when validating fresh behavior without reading from or writing to `search_cache.json`. Full-text search cache keys include the current search index generation, so normal searches refresh automatically after an indexing run changes or prunes indexed rows.
 
 ## Tags
 

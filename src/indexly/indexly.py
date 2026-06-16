@@ -83,6 +83,56 @@ db_lock = asyncio.Lock()
 console = Console()
 
 
+SEARCH_INDEX_TABLES = ("file_index", "file_tags", "file_metadata")
+
+
+def _delete_search_index_paths(conn, paths):
+    """Delete indexed path rows from search-owned tables in small batches."""
+    paths = [normalize_path(path) for path in paths if path]
+    if not paths:
+        return 0
+
+    for start in range(0, len(paths), 500):
+        chunk = paths[start : start + 500]
+        placeholders = ",".join("?" for _ in chunk)
+        for table in SEARCH_INDEX_TABLES:
+            conn.execute(f"DELETE FROM {table} WHERE path IN ({placeholders})", chunk)
+
+    conn.commit()
+    return len(paths)
+
+
+def _prune_missing_index_rows(root_path: Path, current_paths) -> int:
+    """
+    Remove indexed rows under root_path that no longer appear in the current
+    supported, non-ignored scan set.
+    """
+    root_norm = normalize_path(str(root_path))
+    root_prefix = root_norm.rstrip("/") + "/%"
+    current = {normalize_path(path) for path in current_paths}
+
+    conn = connect_db()
+    try:
+        rows = conn.execute(
+            """
+            SELECT path
+            FROM file_index
+            WHERE path = ? OR path LIKE ?
+            """,
+            (root_norm, root_prefix),
+        ).fetchall()
+        existing = {normalize_path(row["path"]) for row in rows}
+        stale_paths = sorted(existing - current)
+        if not stale_paths:
+            return 0
+        removed_count = _delete_search_index_paths(conn, stale_paths)
+    finally:
+        conn.close()
+
+    print(f"🧹 Removed {removed_count} stale search index row(s).")
+    return removed_count
+
+
 # -------------------------
 # async_index_file()
 # -------------------------
@@ -293,8 +343,31 @@ async def scan_and_index_files(
         and not ignore.should_ignore(Path(folder) / f, root_path)
     ]
 
+    start_time = datetime.now()
+
     if not file_paths:
         print("⚠️ No supported files found.")
+        removed_count = _prune_missing_index_rows(root_path, file_paths)
+        if removed_count:
+            generation = bump_search_index_generation()
+            print(f"🔁 Search cache generation updated to {generation}.")
+        clean_cache_duplicates()
+
+        summary_entry = {
+            "event": "INDEX_SUMMARY",
+            "timestamp": datetime.now().isoformat(timespec="seconds"),
+            "root": str(root_dir),
+            "count": 0,
+            "changed_count": 0,
+            "removed_count": removed_count,
+            "duration_seconds": (datetime.now() - start_time).total_seconds(),
+        }
+        _default_logger.log(summary_entry)
+        if hasattr(_default_logger, "flush"):
+            try:
+                _default_logger.flush(timeout=1.5)
+            except Exception as e:
+                logging.warning(f"Failed to flush summary log: {e}")
         return []
 
     missing_doc_packages = get_missing_documents_dependencies(file_paths)
@@ -305,7 +378,7 @@ async def scan_and_index_files(
             + ". Install once and retry with: pip install indexly[documents]"
         )
 
-    start_time = datetime.now()
+    removed_count = _prune_missing_index_rows(root_path, file_paths)
 
     # Index files
     tasks = [
@@ -336,7 +409,7 @@ async def scan_and_index_files(
 
     # Cache hygiene
     changed_count = sum(1 for _path, changed in flattened if changed)
-    if changed_count:
+    if changed_count or removed_count:
         generation = bump_search_index_generation()
         print(f"🔁 Search cache generation updated to {generation}.")
     clean_cache_duplicates()
@@ -347,6 +420,7 @@ async def scan_and_index_files(
         "root": str(root_dir),
         "count": len(flattened),
         "changed_count": changed_count,
+        "removed_count": removed_count,
         "duration_seconds": (datetime.now() - start_time).total_seconds(),
     }
     _default_logger.log(summary_entry)

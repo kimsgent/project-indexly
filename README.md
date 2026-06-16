@@ -105,13 +105,14 @@ Indexly stores FTS search results in `search_cache.json` under the runtime data
 directory. The FTS database is stored beside it as `fts_index.db`. The database
 also keeps an `indexly_state` entry named `search_index_generation`.
 
-When `indexly index` changes indexed content, Indexly increments that generation
-value and includes it in new FTS search cache keys. This means a normal follow-up
-`indexly search` uses cached results only for the current index generation; after
-changed indexing, the same query searches the database again and writes a fresh
-cache entry. Use `--no-cache` when you want to bypass both reading and writing
-the search cache for a single search, or `indexly doctor --clear-cache` when you
-want to remove cached search results entirely.
+When `indexly index` changes indexed content or prunes stale rows under the
+indexed root, Indexly increments that generation value and includes it in new FTS
+search cache keys. This means a normal follow-up `indexly search` uses cached
+results only for the current index generation; after changed indexing, the same
+query searches the database again and writes a fresh cache entry. Use
+`--no-cache` when you want to bypass both reading and writing the search cache
+for a single search, or `indexly doctor --clear-cache` when you want to remove
+cached search results entirely.
 
 ## Common Commands
 
