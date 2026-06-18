@@ -92,8 +92,8 @@ tmp-doctor-*/
 *.code-workspace
 search_cache.json
 
-# Local-only tracking artifacts for the system-test risk coverage workflow.
-tracking/system-test-risk-coverage/
+# Local-only tracking artifacts now live in the private indexly-codmem repo.
+tracking/
 
 # ----------------
 # Indexly runtime
