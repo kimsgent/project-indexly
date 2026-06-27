@@ -1,13 +1,20 @@
 {
   "project": "FTS5 File Search Tool",
   "latest": {
-    "version": "2.1.3",
-    "date": "2026-05-29",
-    "link": "/en/releases/v2.1.3/",
-    "summary": "feat(data): add analytical dataset routing with optional DuckDB backend support | feat(inference): add columnar inference freshness checks and backend-aware infer-csv workflows",
+    "version": "2.1.4",
+    "date": "2026-06-27",
+    "link": "/en/releases/v2.1.4/",
+    "summary": "fix(loader): harden universal loader contracts and lazy-load regression coverage | fix(json): validate Socrata streaming contracts and preserve loader behavior for structured JSON routes",
     "prerelease": false
   },
   "recent": [
+    {
+      "version": "2.1.3",
+      "date": "2026-05-29",
+      "link": "/en/releases/v2.1.3/",
+      "summary": "feat(data): add analytical dataset routing with optional DuckDB backend support | feat(inference): add columnar inference freshness checks and backend-aware infer-csv workflows",
+      "prerelease": false
+    },
     {
       "version": "2.1.2",
       "date": "2026-05-23",
@@ -34,18 +41,18 @@
       "date": "2026-04-18",
       "link": "/en/releases/v2.0.2/",
       "summary": "fix(search): prevent duplicated locale prefix in Pagefind links | fix(csv): persist cleaned and raw data through a single write path",
-      "prerelease": false
-    },
-    {
-      "version": "2.0.1",
-      "date": "2026-04-05",
-      "link": "/en/releases/v2.0.1/",
-      "summary": "fix(workflow): update publish pipeline to create a PR for Homebrew formula updates instead of pushing directly to main | fix(workflow): add pull-requests write permission for the publish workflow token",
       "prerelease": false
     }
   ],
   "archive": [
     {
+      "version": "2.1.3",
+      "date": "2026-05-29",
+      "link": "/en/releases/v2.1.3/",
+      "summary": "feat(data): add analytical dataset routing with optional DuckDB backend support | feat(inference): add columnar inference freshness checks and backend-aware infer-csv workflows",
+      "prerelease": false
+    },
+    {
       "version": "2.1.2",
       "date": "2026-05-23",
       "link": "/en/releases/v2.1.2/",
@@ -72,17 +79,10 @@
       "link": "/en/releases/v2.0.2/",
       "summary": "fix(search): prevent duplicated locale prefix in Pagefind links | fix(csv): persist cleaned and raw data through a single write path",
       "prerelease": false
-    },
-    {
-      "version": "2.0.1",
-      "date": "2026-04-05",
-      "link": "/en/releases/v2.0.1/",
-      "summary": "fix(workflow): update publish pipeline to create a PR for Homebrew formula updates instead of pushing directly to main | fix(workflow): add pull-requests write permission for the publish workflow token",
-      "prerelease": false
     }
   ],
   "archived": {
-    "count": 33,
+    "count": 34,
     "link": "/en/releases/Archive/"
   },
   "retention": {
