@@ -7,7 +7,7 @@ type: docs
 slug: "data-analysis-pipeline"
 weight: 110
 date: "2026-04-22"
-lastmod: "2026-05-20"
+lastmod: "2026-05-31"
 draft: false
 toc: true
 canonicalURL: "/en/documentation/data-analysis-pipeline/"
@@ -42,7 +42,7 @@ params:
 - Operators analyzing AutoDoctor report JSON, telemetry JSON, or SQLite output with Indexly
 
 {{% alert title="What changed recently" color="info" %}}
-Current staging builds include stricter JSON and NDJSON handling: bounded JSON detection, chunk-limited NDJSON materialization, malformed-line rejection, safer mixed identifier handling, Socrata-style table mapping, and clearer sampling metadata. CSV analysis persists cleaned and raw data through a single orchestrator write path, and AutoDoctor report JSON, telemetry JSON, and SQLite databases have dedicated analysis paths. See [Analyze JSON And NDJSON Files](analyze-json-files.md) for the JSON-specific workflow.
+Current staging builds include stricter JSON and NDJSON handling: bounded JSON detection, chunk-limited NDJSON materialization with full-stream validation, malformed-line rejection, safer mixed identifier handling, Socrata-style table mapping, and clearer sampling metadata. CSV analysis persists cleaned and raw data through a single orchestrator write path, and AutoDoctor report JSON, telemetry JSON, and SQLite databases have dedicated analysis paths. See [Analyze JSON And NDJSON Files](analyze-json-files.md) for the JSON-specific workflow.
 {{% /alert %}}
 
 ## Supported Formats
@@ -78,6 +78,7 @@ Indexly provides analysis and summarization for these structured formats:
 - Efficient Parquet previews
 - XML structure analysis and tree rendering
 - Safe YAML loading into JSON-like structures
+- YAML persistence through `analyze-file` writes to `cleaned_data` and stores YAML-specific metadata/artifact references when persistence is enabled
 
 ## Choose The Right Command
 
@@ -120,6 +121,8 @@ It:
 Use this when you want one command for mixed datasets.
 
 For SQLite files, this route is intentionally a quick preview path. It loads bounded table previews for generic database inspection. Use `analyze-db` when you need relationship discovery, table profiling controls, diagrams, or exportable database summaries.
+
+For YAML and YML files, persistence is handled by the same orchestrator path used by other structured formats. By default, `analyze-file` writes the cleaned preview and summary to `~/.indexly/indexly.db` (`cleaned_data`), includes a JSON-safe `yaml_table_output` block in metadata, and records an auxiliary analysis artifact path with schema `indexly.yaml.analysis.v1`. Use `--no-persist` to skip both the analysis database write and YAML artifact creation for that run.
 
 ### `indexly analyze-json <file>`
 

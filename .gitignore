@@ -85,10 +85,15 @@ tmp-doctor-*/
 # ----------------
 .DS_Store
 .idea/
-.vscode/
+# Local machine-specific VS Code settings should stay out of Git history.
+.vscode/**
+!.vscode/tasks.json
 *.swp
 *.code-workspace
 search_cache.json
+
+# Local-only tracking artifacts now live in the private indexly-codmem repo.
+tracking/
 
 # ----------------
 # Indexly runtime

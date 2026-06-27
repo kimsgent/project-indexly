@@ -20,7 +20,7 @@ import sqlite3
 from datetime import datetime
 from .ripple import Ripple
 from .utils import build_snippet
-from .db_utils import connect_db, get_tags_for_file
+from .db_utils import connect_db, get_search_index_generation, get_tags_for_file
 from .cache_utils import (
     load_cache,
     save_cache,
@@ -383,6 +383,7 @@ def search_fts5(
 
     # --- Load or skip cache ---
     cache = load_cache() if not no_cache else {}
+    index_generation = get_search_index_generation(db_path)
     args_dict = {
         "term": term,
         "query": query,
@@ -400,6 +401,7 @@ def search_fts5(
         "image_created": image_created,
         "format": format,
         "sort_by": normalize_search_sort(sort_by),
+        "index_generation": index_generation,
     }
 
     key = calculate_query_hash(term, args_dict)
@@ -557,7 +559,11 @@ def search_fts5(
 
     # --- Cache results ---
     if not no_cache:
-        cache[key] = {"timestamp": time.time(), "results": serializable_results}
+        cache[key] = {
+            "timestamp": time.time(),
+            "index_generation": index_generation,
+            "results": serializable_results,
+        }
         save_cache(cache)
         console.print("[green]💾 Cached results successfully.[/green]")
 

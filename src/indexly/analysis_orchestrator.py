@@ -24,12 +24,14 @@ from .excel_pipeline import run_excel_pipeline
 from .visualize_json import (
     json_build_tree,
 )
-from .csv_analyzer import export_results
+from .csv_analyzer import export_results, _json_safe
 from .analyze_utils import (
     load_cleaned_data,
     validate_file_content,
     save_analysis_result,
 )
+from .config import get_analysis_db_file
+from .persist import save_json
 from indexly.json_cache_normalizer import (
     normalize_search_cache_json,
     _print_search_summary,
@@ -43,6 +45,39 @@ from indexly.universal_loader import (
 )
 
 console = Console()
+
+
+def _json_safe_dataframe_with_index(df: pd.DataFrame) -> list[dict]:
+    return _json_safe(df.reset_index().to_dict(orient="records"))
+
+
+def _write_yaml_analysis_artifact(
+    *,
+    file_path: Path,
+    df: pd.DataFrame,
+    df_stats: pd.DataFrame | None,
+    table_output: dict | None,
+    raw_yaml: Any,
+) -> str:
+    artifact_payload = {
+        "schema": "indexly.yaml.analysis.v1",
+        "file_name": file_path.name,
+        "file_type": "yaml",
+        "source_path": str(file_path.resolve()),
+        "row_count": len(df),
+        "col_count": len(df.columns),
+        "summary_statistics": (
+            _json_safe_dataframe_with_index(df_stats)
+            if isinstance(df_stats, pd.DataFrame)
+            else _json_safe(df_stats or {})
+        ),
+        "table_output": _json_safe(table_output or {}),
+        "raw_yaml": _json_safe(raw_yaml),
+    }
+    analysis_dir = Path(get_analysis_db_file()).expanduser().parent / "analysis"
+    source_digest = sha256(file_path) or str(abs(hash(str(file_path.resolve()))))
+    artifact_key = f"{file_path.stem}-{source_digest[:16]}.yaml"
+    return str(save_json(artifact_payload, artifact_key, dest_dir=str(analysis_dir)))
 
 
 def _sort_json_date_columns(df: pd.DataFrame, args) -> pd.DataFrame:
@@ -121,6 +156,7 @@ def _persist_analysis(
             or (df.attrs.get("_derived_map") if df is not None else None)
         )
         raw_df = getattr(df, "_raw_df", None) if df is not None else None
+        raw_yaml = df.attrs.get("_raw_yaml") if df is not None else None
 
         # Serialize summary safely
         summary_source = df_stats if df_stats is not None else (table_output or {})
@@ -130,18 +166,32 @@ def _persist_analysis(
             metadata["derived_map"] = derived_map
         if summary_records:
             metadata["cleaning_summary"] = summary_records
+        if file_type in {"yaml", "yml"} and isinstance(table_output, dict):
+            metadata["yaml_table_output"] = _json_safe(table_output)
+            if df is not None:
+                try:
+                    metadata["analysis_artifact_path"] = _write_yaml_analysis_artifact(
+                        file_path=file_path,
+                        df=df,
+                        df_stats=df_stats,
+                        table_output=table_output,
+                        raw_yaml=raw_yaml,
+                    )
+                    metadata["analysis_artifact_schema"] = "indexly.yaml.analysis.v1"
+                except Exception as exc:
+                    metadata["analysis_artifact_error"] = str(exc)
 
         if isinstance(summary_safe, pd.DataFrame):
-            summary_df = summary_safe
+            summary_payload = summary_safe
         elif isinstance(summary_safe, dict):
-            summary_df = pd.DataFrame(summary_safe)
+            summary_payload = summary_safe
         else:
-            summary_df = None
+            summary_payload = None
 
-        save_analysis_result(
+        saved = save_analysis_result(
             file_path=str(file_path),
             file_type=file_type,
-            summary=summary_df,
+            summary=summary_payload,
             sample_data=data_to_save.head(10) if df is not None else None,
             metadata=metadata,
             row_count=len(data_to_save),
@@ -150,6 +200,8 @@ def _persist_analysis(
             cleaned_df=data_to_save if isinstance(data_to_save, pd.DataFrame) else None,
             keep_artifact_history=getattr(args, "keep_artifact_history", False),
         )
+        if not saved:
+            return False
 
         # CSV observers depend on persisted cleaned_data state.
         if file_type == "csv":
@@ -260,6 +312,15 @@ def analyze_file(args) -> Optional[AnalysisResult]:
         # --- Persist legacy data
         _persist_analysis(df, None, file_path, file_type, table_output, args=args)
 
+    if file_type == "unsupported_compressed_binary":
+        load_result = detect_and_load(str(file_path), args)
+        metadata = load_result.get("metadata", {}) if isinstance(load_result, dict) else {}
+        error = metadata.get("error") if isinstance(metadata, dict) else None
+        console.print(
+            f"[red]❌ {error or 'Compressed binary file is not supported.'}[/red]"
+        )
+        return None
+
     # --- Validate
     if not validate_file_content(file_path, file_type):
         console.print("[red]❌ File validation failed — analysis aborted.[/red]")
@@ -272,13 +333,17 @@ def analyze_file(args) -> Optional[AnalysisResult]:
         try:
             # Use the detector+loader that returns raw + metadata/json_mode
             load_result = detect_and_load(str(file_path), args)
-            if not load_result:
+            if not isinstance(load_result, dict):
                 console.print(f"[red]❌ JSON loader failed for {file_path.name}[/red]")
                 return None
 
             loader_df = load_result.get("df")
             loader_raw = load_result.get("raw")
             metadata = load_result.get("metadata", {}) or {}
+            loader_error = metadata.get("error")
+            if loader_error:
+                console.print(f"[red]❌ JSON loader failed: {loader_error}[/red]")
+                return None
             show_treeview = getattr(args, "treeview", False)
 
             if metadata.get("analysis_profile") == "autodoctor":
@@ -346,7 +411,7 @@ def analyze_file(args) -> Optional[AnalysisResult]:
                         _print_search_summary(df, console)
 
                     # Persist with unified saver (unchanged)
-                    _persist_analysis(
+                    persisted = _persist_analysis(
                         df,
                         None,
                         file_path,
@@ -354,7 +419,18 @@ def analyze_file(args) -> Optional[AnalysisResult]:
                         table_output=table_output,
                         args=args,
                     )
-                    return df
+                    result_metadata = dict(metadata)
+                    if table_output:
+                        result_metadata["table_output"] = table_output
+                    return AnalysisResult(
+                        file_path=str(file_path),
+                        file_type="json",
+                        df=df,
+                        summary=df_stats,
+                        metadata=result_metadata,
+                        cleaned=isinstance(df, pd.DataFrame) and not df.empty,
+                        persisted=persisted or getattr(df, "_persisted", False),
+                    )
 
                 except Exception as e:
                     console.print(
@@ -496,7 +572,7 @@ def analyze_file(args) -> Optional[AnalysisResult]:
     elif not legacy_mode:
         try:
             load_result = detect_and_load(str(file_path), args)
-            if not load_result:
+            if not isinstance(load_result, dict):
                 console.print(
                     f"[red]❌ Universal loader failed for {file_path.name}[/red]"
                 )
@@ -505,8 +581,13 @@ def analyze_file(args) -> Optional[AnalysisResult]:
             file_type = load_result.get("file_type", file_type)
             raw = load_result.get("raw")
             metadata = load_result.get("metadata", {})
+            loader_error = metadata.get("error") if isinstance(metadata, dict) else None
+            if loader_error:
+                console.print(f"[red]❌ Loader failed: {loader_error}[/red]")
+                return None
             df_preview = load_result.get("df_preview") if file_type == "xml" else None
             df = load_result.get("df") if file_type != "xml" else None
+            dfs = load_result.get("dfs", {}) if file_type in {"sqlite", "db"} else {}
 
             if metadata.get("analysis_profile") == "autodoctor" and file_type in {
                 "sqlite",
@@ -550,12 +631,6 @@ def analyze_file(args) -> Optional[AnalysisResult]:
                 df, df_stats, table_output = run_csv_pipeline(file_path, args, df=df)
             # --- Other pipelines unchanged
             elif file_type in {"sqlite", "db"}:
-                # Receive everything from universal loader
-                load_result = detect_and_load(file_path, args)
-                raw = load_result.get("raw")  # dict: tables, schemas, counts
-                dfs = load_result.get("dfs", {})  # dict[str, DataFrame]
-                df = load_result.get("df")  # default df (first table) or None
-
                 # Run DB pipeline (Indexly or generic)
                 result = run_db_pipeline(file_path, args, raw=raw, df=df)
 

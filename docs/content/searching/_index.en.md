@@ -113,7 +113,7 @@ Increase or reduce the snippet window with `--context`:
 indexly search "quarterly report" --context 80
 ```
 
-By default, Indexly can reuse cached search results when they are still valid. Bypass cache reads and writes for a fresh query:
+By default, Indexly can reuse cached search results when they are still valid. Full-text search cache keys include the current search index generation, so changed indexing runs refresh future searches from the database automatically. Bypass cache reads and writes for a fresh query:
 
 ```bash
 indexly search "policy" --no-cache
@@ -131,6 +131,8 @@ Profiles store the search parameters and make repeated workflows easier to repro
 ## Search Index Maintenance
 
 Use `clear-search` when stale paths or tagged batches should be removed from the local FTS5 search index without deleting source files.
+
+Re-running `indexly index` on a folder updates changed files and prunes indexed rows under that folder when files are no longer supported or are excluded by the active ignore rules. Use `clear-search` for explicit cleanup of moved folders, tagged batches, or broader manual maintenance.
 
 Preview stale results under a moved folder:
 

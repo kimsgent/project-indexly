@@ -1,0 +1,26 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "📦 Install editable",
+      "type": "shell",
+      "command": "pip install -e ."
+    },
+    {
+      "label": "🔨 Hatch build",
+      "type": "shell",
+      "command": "hatch build",
+      "group": "build"
+    },
+    {
+      "label": "📜 Export requirements.txt",
+      "type": "shell",
+      "command": "hatch dep show requirements > requirements.txt"
+    },
+    {
+      "label": "📜 Export requirements-dev.txt",
+      "type": "shell",
+      "command": "hatch dep show requirements --env dev > requirements-dev.txt"
+    }
+  ]
+}

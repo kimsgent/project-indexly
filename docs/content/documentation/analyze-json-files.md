@@ -7,7 +7,7 @@ type: docs
 slug: "analyze-json-files"
 weight: 19
 date: "2026-05-20"
-lastmod: "2026-05-20"
+lastmod: "2026-05-31"
 draft: false
 toc: true
 aliases:
@@ -93,7 +93,7 @@ indexly analyze-json .\events.json --chunk-size 10000 --show-summary
 
 Use this when the file has one JSON object per line.
 
-If a malformed line is encountered inside the sampled range, Indexly stops the load and reports the invalid line instead of analyzing a partial record set as if it were complete.
+If a malformed line is encountered anywhere in the non-empty NDJSON stream, Indexly stops the load and reports the invalid line instead of analyzing a partial record set as if it were complete.
 
 ### 3. Analyze compressed JSON
 
@@ -158,7 +158,7 @@ Indexly detects record-list JSON from content, not only from the file extension.
 
 ### A malformed NDJSON file no longer produces partial output
 
-That is intentional. Fix or remove the malformed line before analysis so summary statistics are based on a known record set.
+That is intentional. Indexly validates the full non-empty NDJSON stream even when `--chunk-size` limits how many rows are materialized for analysis. Fix or remove the malformed line before analysis so summary statistics are based on a known record set.
 
 ### A numeric-looking code stayed textual
 

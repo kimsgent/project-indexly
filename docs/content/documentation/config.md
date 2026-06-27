@@ -28,7 +28,7 @@ categories:
 weight: 30
 type: docs
 date: 2025-10-12
-lastmod: 2026-05-21
+lastmod: 2026-05-31
 draft: false
 toc: true
 ---
@@ -67,7 +67,9 @@ On PowerShell, use `$env:INDEXLY_HOME = "D:\indexly-state"` for the current sess
 
 ## Analysis Database
 
-Analysis commands persist cleaned or summarized data in `~/.indexly/indexly.db` unless persistence is disabled for the command. This database contains the `cleaned_data` table used by CSV, JSON, AutoDoctor-aware, and related analysis workflows.
+Analysis commands persist cleaned or summarized data in `~/.indexly/indexly.db` unless persistence is disabled for the command. This database contains the `cleaned_data` table used by CSV, JSON, YAML, AutoDoctor-aware, and related analysis workflows.
+
+When YAML or YML analysis runs through `indexly analyze-file`, metadata also carries a JSON-safe YAML table summary (`yaml_table_output`). Nested YAML analyses additionally write an artifact JSON under `~/.indexly/analysis/`, and the persisted record stores that location in `metadata_json.analysis_artifact_path` with schema tag `indexly.yaml.analysis.v1`.
 
 Keep this separate from `fts_index.db` when troubleshooting:
 
@@ -113,10 +115,9 @@ Indexly can reuse cached results when the indexed files have not changed.
 ```bash
 indexly search "policy"
 indexly search "policy" --no-cache
-indexly search "policy" --no-refresh-write
 ```
 
-Use `--no-cache` when validating fresh behavior. Use `--no-refresh-write` when you want to read without updating the cache file.
+Use `--no-cache` when validating fresh behavior without reading from or writing to `search_cache.json`. Full-text search cache keys include the current search index generation, so normal searches refresh automatically after an indexing run changes or prunes indexed rows.
 
 ## Tags
 

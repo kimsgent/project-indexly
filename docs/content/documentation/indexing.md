@@ -67,7 +67,9 @@ indexly index ./archives --mtw-extended
 
 ## Keeping Your Index Updated
 
-Once your initial index is set up, consider using the watch feature to keep everything current. This way, any created, modified, or deleted file is automatically handled without manual intervention.
+Re-run `indexly index` on a folder when files are added, changed, removed, or newly excluded by ignore rules. During that run, Indexly updates changed files and prunes search-index rows under the indexed root that no longer appear in the current supported, non-ignored file set. When indexing changes or prunes rows, the search cache generation is bumped so the next matching search reads fresh data from `fts_index.db`.
+
+Once your initial index is set up, consider using the watch feature to keep everything current. This way, created, modified, or deleted files can be handled without manual re-indexing.
 
 ```bash
 indexly watch ./docs

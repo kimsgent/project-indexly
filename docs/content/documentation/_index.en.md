@@ -16,7 +16,7 @@ weight: 1
 type: docs
 toc: true
 date: "2026-04-22"
-lastmod: "2026-05-29"
+lastmod: "2026-06-27"
 draft: false
 categories:
   - Overview
@@ -47,6 +47,8 @@ This documentation works best when you enter through the path that matches your 
 <div class="p-3 rounded" style="background:#ffffff; color:#1f2937;">
   <h4 class="mb-2" style="color:#0f172a;">What changed recently</h4>
   <ul class="mb-3">
+    <li>`v2.1.4` hardens universal loader contracts, Socrata JSON streaming validation, and nested YAML analysis artifact persistence.</li>
+    <li>Time-series visualization and FTS search-cache generation now include tighter contract checks for safer repeated analysis runs.</li>
     <li>`v2.1.3` adds analytical dataset routing with optional DuckDB support and hardens infer-csv backend workflows.</li>
     <li>Boxplot routing now prefers catalog artifacts and keeps backend-specific rendering behavior stable across static and interactive paths.</li>
     <li>Inference and backup optional dependencies now lazy-load more safely, reducing startup and test fragility when extras are missing.</li>

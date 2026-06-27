@@ -15,17 +15,33 @@ import gzip
 import json
 import sqlite3
 import re
-import os
-import pandas as pd
 import traceback
 from rich.console import Console
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple, Callable, List
-from datetime import datetime
+from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Callable, List
 from indexly.time_utils import utc_now_iso_z
 from indexly.autodoctor_detect import detect_autodoctor_db, detect_autodoctor_json
+from indexly.optional_deps import require_extra_dependency
 
 console = Console()
+
+if TYPE_CHECKING:  # pragma: no cover
+    import pandas as pd
+
+
+def _load_pandas():
+    return require_extra_dependency("pandas", "pandas", "analysis")
+
+
+def _is_pandas_dataframe(value: Any) -> bool:
+    if value is None:
+        return False
+    try:
+        pd = _load_pandas()
+    except Exception:
+        return False
+    return isinstance(value, pd.DataFrame)
+
 
 try:
     import yaml  # type: ignore
@@ -60,9 +76,61 @@ def _progress(total: int, desc: str, unit: str):
     return _tqdm(total=total, desc=desc, unit=unit)
 
 
+UNSUPPORTED_COMPRESSED_BINARY_SUFFIXES: dict[str, str] = {
+    ".sqlite.gz": "sqlite",
+    ".db.gz": "sqlite",
+    ".xlsx.gz": "excel",
+    ".xls.gz": "excel",
+    ".parquet.gz": "parquet",
+}
+
+
 # ---------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------
+def _matches_file_suffix(path: Path, suffix: str) -> bool:
+    return path.name.lower().endswith(suffix)
+
+
+def _detect_unsupported_compressed_binary(path: Path) -> Optional[str]:
+    name = path.name.lower()
+    for suffix, logical_type in UNSUPPORTED_COMPRESSED_BINARY_SUFFIXES.items():
+        if name.endswith(suffix):
+            return logical_type
+    return None
+
+
+def _failure_result(
+    *,
+    path: Path,
+    file_type: str,
+    loader_spec: Optional[str],
+    error: str,
+    error_code: str = "load_failed",
+    metadata_extra: Optional[dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    metadata = {
+        "source_path": str(path),
+        "validated": False,
+        "loader_used": loader_spec,
+        "rows": 0,
+        "cols": 0,
+        "loaded_at": utc_now_iso_z(),
+        "error": error,
+        "error_code": error_code,
+    }
+    if metadata_extra:
+        metadata.update(metadata_extra)
+    return {
+        "file_type": file_type,
+        "df": None,
+        "df_preview": None,
+        "raw": None,
+        "metadata": metadata,
+        "loader_spec": loader_spec,
+    }
+
+
 def _open_text_maybe_gz(path: str | Path):
     path_str = str(path)
     if path_str.endswith(".gz"):
@@ -150,21 +218,17 @@ def _parse_ndjson_records_from_path(
     """
     Parse NDJSON records strictly. Invalid lines fail the load instead of being
     silently omitted. When max_rows is set, only the first max_rows records are
-    materialized and metadata marks the result as sampled.
+    materialized, but the full non-empty stream is still validated.
     """
     records: list[dict] = []
-    sampled = False
-    line_count = 0
+    rows_total = 0
 
     with _open_json_text_maybe_gz(path) as fh:
         for line_number, line in enumerate(fh, start=1):
             stripped = line.strip()
             if not stripped:
                 continue
-            line_count += 1
-            if max_rows is not None and len(records) >= max_rows:
-                sampled = True
-                break
+            rows_total += 1
             try:
                 obj = json.loads(stripped)
             except json.JSONDecodeError as exc:
@@ -175,16 +239,24 @@ def _parse_ndjson_records_from_path(
                 raise ValueError(
                     f"Invalid NDJSON at line {line_number}: expected object record"
                 )
-            records.append(obj)
+            if max_rows is None or len(records) < max_rows:
+                records.append(obj)
+
+    rows_sampled = len(records)
+    sampled = max_rows is not None and rows_total > rows_sampled
 
     return records, {
-        "rows_sampled": len(records),
-        "rows_seen": line_count,
+        "rows_total": rows_total,
+        "rows_seen": rows_total,
+        "rows_sampled": rows_sampled,
         "sampled": sampled,
+        "validated": True,
+        "validation_scope": "full_stream",
     }
 
 
-def _normalize_raw_to_df(raw: Any) -> Optional[pd.DataFrame]:
+def _normalize_raw_to_df(raw: Any) -> Optional["pd.DataFrame"]:
+    pd = _load_pandas()
     try:
         if isinstance(raw, list):
             return pd.json_normalize(raw)
@@ -208,10 +280,174 @@ def _sanitize_xml(text: str) -> str:
     return text.strip()
 
 
+def _locate_array_after_key(
+    path: Path, key: str, chunk_size: int = 65536
+) -> tuple[Any, str]:
+    """
+    Return an open stream and buffer positioned immediately after '[' for key.
+    The caller is responsible for closing the returned stream.
+    """
+    fh = _open_json_text_maybe_gz(path)
+    marker = f'"{key}"'
+    buffer = ""
+    try:
+        while True:
+            chunk = fh.read(chunk_size)
+            if not chunk:
+                raise ValueError(f"Missing '{key}' array in Socrata payload.")
+            buffer += chunk
+            search_from = 0
+            while True:
+                idx = buffer.find(marker, search_from)
+                if idx == -1:
+                    break
+                pos = idx + len(marker)
+                while pos < len(buffer) and buffer[pos].isspace():
+                    pos += 1
+                if pos >= len(buffer):
+                    break
+                if buffer[pos] != ":":
+                    search_from = idx + 1
+                    continue
+                pos += 1
+                while pos < len(buffer) and buffer[pos].isspace():
+                    pos += 1
+                if pos >= len(buffer):
+                    break
+                if buffer[pos] != "[":
+                    search_from = idx + 1
+                    continue
+                return fh, buffer[pos + 1 :]
+
+            if len(buffer) > (len(marker) + 1024):
+                buffer = buffer[-(len(marker) + 1024) :]
+    except Exception:
+        fh.close()
+        raise
+
+
+def _parse_json_array_for_key(path: Path, key: str) -> list[Any]:
+    """
+    Parse a JSON array value for a top-level key without loading the full file.
+    Intended for smaller arrays such as Socrata "columns".
+    """
+    fh, buffer = _locate_array_after_key(path, key)
+    depth = 1
+    in_string = False
+    escaped = False
+    collected: list[str] = ["["]
+    pos = 0
+    try:
+        while True:
+            if pos >= len(buffer):
+                chunk = fh.read(65536)
+                if not chunk:
+                    raise ValueError(f"Unterminated '{key}' array in Socrata payload.")
+                buffer += chunk
+                continue
+
+            ch = buffer[pos]
+            pos += 1
+            collected.append(ch)
+
+            if in_string:
+                if escaped:
+                    escaped = False
+                elif ch == "\\":
+                    escaped = True
+                elif ch == '"':
+                    in_string = False
+                continue
+
+            if ch == '"':
+                in_string = True
+            elif ch == "[":
+                depth += 1
+            elif ch == "]":
+                depth -= 1
+                if depth == 0:
+                    try:
+                        parsed = json.loads("".join(collected))
+                    except json.JSONDecodeError as exc:
+                        raise ValueError(
+                            f"Invalid '{key}' array JSON: {exc.msg}"
+                        ) from exc
+                    if not isinstance(parsed, list):
+                        raise ValueError(f"Invalid '{key}' value: expected JSON array.")
+                    return parsed
+    finally:
+        fh.close()
+
+
+def _parse_socrata_data_rows(
+    path: Path, rows_limit: int, chunk_size: int
+) -> tuple[list[Any], int]:
+    fh, buffer = _locate_array_after_key(path, "data", chunk_size=chunk_size)
+    decoder = json.JSONDecoder()
+    rows: list[Any] = []
+    rows_total = 0
+    eof = False
+
+    def _fill_buffer() -> bool:
+        nonlocal buffer, eof
+        if eof:
+            return False
+        chunk = fh.read(chunk_size)
+        if not chunk:
+            eof = True
+            return False
+        buffer += chunk
+        return True
+
+    try:
+        while True:
+            while True:
+                stripped = buffer.lstrip()
+                if stripped != buffer:
+                    buffer = stripped
+                if buffer:
+                    break
+                if not _fill_buffer():
+                    raise ValueError("Unexpected EOF while scanning Socrata data rows.")
+
+            if buffer[0] == "]":
+                break
+            if buffer[0] == ",":
+                buffer = buffer[1:]
+                continue
+
+            while True:
+                try:
+                    value, end_idx = decoder.raw_decode(buffer)
+                    break
+                except json.JSONDecodeError as exc:
+                    if _fill_buffer():
+                        continue
+                    snippet = buffer[:160].replace("\n", " ")
+                    raise ValueError(
+                        "Invalid Socrata data row near "
+                        f"'{snippet}': {exc.msg} (line {exc.lineno}, column {exc.colno})"
+                    ) from exc
+
+            if not isinstance(value, list):
+                raise ValueError(
+                    f"Invalid Socrata data row type: expected list, got {type(value).__name__}."
+                )
+
+            rows_total += 1
+            if len(rows) < rows_limit:
+                rows.append(value)
+            buffer = buffer[end_idx:]
+
+        return rows, rows_total
+    finally:
+        fh.close()
+
+
 # ---------------------------------------------------------------------
 # Loaders (each loader returns (raw, df) where df may be None)
 # ---------------------------------------------------------------------
-def _load_csv(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
+def _load_csv(path: Path) -> Tuple[Any, Optional["pd.DataFrame"]]:
     """
     CSV passthrough — actual processing handled by CSV analysis pipeline.
     """
@@ -244,155 +480,21 @@ def load_json_or_ndjson(
     head = text_head
 
     def _cheap_socrata_hint(s: str) -> bool:
-        # look for the common top-level keys in Socrata dumps
-        return '"columns"' in s and '"data"' in s or '"meta"' in s and '"view"' in s
+        # Only route to the Socrata loader when the keys this loader consumes
+        # are present. Generic JSON often contains unrelated "meta"/"view" keys.
+        return '"columns"' in s and '"data"' in s
 
     socrata_hint = _cheap_socrata_hint(head)
 
     # helper: extract 'columns' array and first N items of 'data' without full json.load()
     def _extract_socrata_columns_and_rows(p: Path, rows_limit: int, cols_limit: int):
-        columns = None
-        sampled_rows = []
-        rows_count_estimate = None
-
-        text = None
-        # We'll stream-read the file as text to locate the arrays. This avoids json.loads on full file.
-        with _open_json_text_maybe_gz(p) as fh:
-            # Read in chunks; keep a sliding buffer to find "columns" and "data"
-            buffer = ""
-            found_columns = False
-            found_data = False
-
-            # we will record positions so we can parse bracketed arrays reliably
-            while True:
-                chunk = fh.read(65536)
-                if not chunk:
-                    break
-                buffer += chunk
-
-                # locate columns if present and not yet parsed
-                if not found_columns:
-                    idx = buffer.find('"columns"')
-                    if idx != -1:
-                        # find the '[' after "columns"
-                        idx_br = buffer.find("[", idx)
-                        if idx_br != -1:
-                            # collect the full bracket-balanced columns JSON
-                            start = idx_br
-                            depth = 0
-                            end = None
-                            for i, ch in enumerate(buffer[start:], start):
-                                if ch == "[":
-                                    depth += 1
-                                elif ch == "]":
-                                    depth -= 1
-                                    if depth == 0:
-                                        end = i + 1
-                                        break
-                            # if end found inside buffer -> parse columns
-                            if end is not None:
-                                snippet = buffer[start:end]
-                                try:
-                                    columns = json.loads(snippet)
-                                    found_columns = True
-                                    # trim buffer to avoid memory growth
-                                    buffer = buffer[end:]
-                                except Exception:
-                                    # columns snippet incomplete; continue reading
-                                    pass
-
-                # locate data array start
-                if not found_data:
-                    idx = buffer.find('"data"')
-                    if idx != -1:
-                        idx_br = buffer.find("[", idx)
-                        if idx_br != -1:
-                            # we have the start of data array; now iterate elements using bracket counting
-                            pos = idx_br
-                            # move pos to first char after '['
-                            pos += 1
-                            depth = 0
-                            elem_buf = ""
-                            i = pos
-                            total_read = buffer[pos:]
-
-                            # create an iterator that yields characters from current buffer and file stream on demand
-                            def char_stream(initial, fh_stream):
-                                for ch in initial:
-                                    yield ch
-                                while True:
-                                    nch = fh_stream.read(65536)
-                                    if not nch:
-                                        break
-                                    for ch2 in nch:
-                                        yield ch2
-
-                            cs = char_stream(buffer[pos:], fh)
-                            current = ""
-                            element_depth = 0
-                            in_elem = False
-                            for ch in cs:
-                                current += ch
-                                # Elements in data are arrays (like [ "row-...", "val1", ... ]). Track nested brackets.
-                                if ch == "[":
-                                    element_depth += 1
-                                    in_elem = True
-                                elif ch == "]":
-                                    element_depth -= 1
-                                # When element_depth returns to 0 and we were in an element, that's end of an element
-                                if in_elem and element_depth == 0:
-                                    # current holds the element text (including trailing commas/newlines possibly)
-                                    # trim trailing commas/spaces/newlines
-                                    elem_text = current.strip()
-                                    # remove trailing comma if present
-                                    if elem_text.endswith(","):
-                                        elem_text = elem_text[:-1]
-                                    # parse element if non-empty
-                                    if elem_text:
-                                        try:
-                                            el = json.loads(elem_text)
-                                            sampled_rows.append(el)
-                                        except Exception:
-                                            # skip unparsable element
-                                            pass
-                                    current = ""
-                                    in_elem = False
-                                    # stop if we reached limit
-                                    if len(sampled_rows) >= rows_limit:
-                                        found_data = True
-                                        break
-                            # mark found_data if we got rows or reached end of array
-                            found_data = True if sampled_rows else found_data
-
-                # if both found, break
-                if found_columns and found_data:
-                    break
-            # Attempt to estimate rows_total if possible by scanning later slightly (non-exhaustive)
-            try:
-                fh.seek(0, os.SEEK_END)
-                size = fh.tell()
-                # rough heuristic: if columns and sampled rows found and file size small -> attempt full parse for exact count
-                if size <= 20 * 1024 * 1024:  # 20 MB
-                    # try safe full parse
-                    try:
-                        with _open_json_text_maybe_gz(path) as full_fh:
-                            full = json.load(full_fh)
-                        if (
-                            isinstance(full, dict)
-                            and "data" in full
-                            and isinstance(full["data"], list)
-                        ):
-                            rows_count_estimate = len(full["data"])
-                    except Exception:
-                        pass
-            except Exception:
-                pass
-
-        # Apply max_cols trim
-        if isinstance(columns, list) and len(columns) > cols_limit:
+        columns = _parse_json_array_for_key(p, "columns")
+        sampled_rows, rows_total = _parse_socrata_data_rows(
+            p, rows_limit=max(rows_limit, 0), chunk_size=65536
+        )
+        if len(columns) > cols_limit:
             columns = columns[:cols_limit]
-
-        return columns, sampled_rows, rows_count_estimate
+        return columns, sampled_rows, rows_total
 
     # If we detected an NDJSON-ish head (many lines of JSON objects), parse as ndjson quickly
     def _cheap_ndjson_detect(s: str) -> bool:
@@ -400,11 +502,7 @@ def load_json_or_ndjson(
 
     # --- Branching logic ---
     if path.suffix.lower() == ".ndjson" or _cheap_ndjson_detect(head):
-        try:
-            objs, ndjson_meta = _parse_ndjson_records_from_path(path, max_rows=max_rows)
-        except ValueError as exc:
-            console.print(f"[red]❌ {exc}[/red]")
-            return None, None
+        objs, ndjson_meta = _parse_ndjson_records_from_path(path, max_rows=max_rows)
         if objs:
             meta = {
                 "type": "ndjson",
@@ -453,39 +551,29 @@ def load_json_or_ndjson(
         columns, sampled_rows, rows_total_est = _extract_socrata_columns_and_rows(
             path, max_rows, max_cols
         )
-
-        if columns is None:
-            # extraction failed — fall back to standard full parse attempt (may fail)
-            try:
-                with _open_json_text_maybe_gz(path) as fh:
-                    parsed = json.load(fh)
-                # continue to usual classification below
-                parsed_obj = parsed
-            except Exception:
-                return None, None
-        else:
-            # build minimal sampled raw dict (columns + sampled data)
-            sampled_raw = {
-                "columns": columns,
-                "data": sampled_rows,
-            }
-            meta = {
-                "type": "json",
-                "json_mode": "socrata",
-                "is_list": True,
-                "is_dict": False,
-                "rows_total": rows_total_est,
-                "rows_sampled": len(sampled_rows),
-                "cols_total": len(columns),
-                "sampled": True,
-            }
-            console.print(
-                f"[cyan]📘 Detected Socrata JSON — returning sampled {len(sampled_rows)} rows (out of unknown/large total).[/cyan]"
-            )
-            console.print(
-                "[yellow]⚠️ Large file: analysis will run on sample to avoid memory issues. Use --force-full to override (if implemented).[/yellow]"
-            )
-            return sampled_raw, meta
+        sampled_raw = {
+            "columns": columns,
+            "data": sampled_rows,
+        }
+        meta = {
+            "type": "json",
+            "json_mode": "socrata",
+            "is_list": True,
+            "is_dict": False,
+            "rows_total": rows_total_est,
+            "rows_sampled": len(sampled_rows),
+            "cols_total": len(columns),
+            "sampled": rows_total_est > len(sampled_rows),
+            "validated": True,
+            "validation_scope": "full_data_array",
+        }
+        console.print(
+            f"[cyan]📘 Detected Socrata JSON — returning sampled {len(sampled_rows)} rows (out of unknown/large total).[/cyan]"
+        )
+        console.print(
+            "[yellow]⚠️ Large file: analysis will run on sample to avoid memory issues. Use --force-full to override (if implemented).[/yellow]"
+        )
+        return sampled_raw, meta
 
     # --- Not Socrata hint or extraction failed: try regular full parse / classify ---
     # Try to fully parse (this is the previous behavior)
@@ -494,11 +582,7 @@ def load_json_or_ndjson(
             parsed = json.load(fh)
     except json.JSONDecodeError:
         # try NDJSON fallback
-        try:
-            objs, ndjson_meta = _parse_ndjson_records_from_path(path, max_rows=max_rows)
-        except ValueError as exc:
-            console.print(f"[red]❌ {exc}[/red]")
-            return None, None
+        objs, ndjson_meta = _parse_ndjson_records_from_path(path, max_rows=max_rows)
         if objs:
             meta = {
                 "type": "ndjson",
@@ -549,10 +633,8 @@ def load_json_or_ndjson(
     }
     return parsed, meta
 
-    return None, None
 
-
-def _load_yaml(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
+def _load_yaml(path: Path) -> Tuple[Any, Optional["pd.DataFrame"]]:
     if yaml is None:
         raise ImportError("PyYAML is not installed. Run: pip install pyyaml")
     try:
@@ -566,7 +648,8 @@ def _load_yaml(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
         return None, None
 
 
-def _load_xml(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
+def _load_xml(path: Path) -> Tuple[Any, Optional["pd.DataFrame"]]:
+    pd = _load_pandas()
     if xmltodict is None:
         raise ImportError("xmltodict is not installed. Run: pip install xmltodict")
     try:
@@ -609,6 +692,7 @@ def _load_excel(path: Path, sheet_name: Optional[List[str]] = None):
     Returns (raw_sheets_dict, df_preview)
     """
     try:
+        pd = _load_pandas()
         # handle 'all' special case
         if (
             sheet_name
@@ -639,7 +723,7 @@ def _load_excel(path: Path, sheet_name: Optional[List[str]] = None):
         return None, None
 
 
-def _load_parquet(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
+def _load_parquet(path: Path) -> Tuple[Any, Optional["pd.DataFrame"]]:
     """
     Robust parquet loader returning (raw_metadata_dict, dataframe).
     - Uses pyarrow if available to extract schema and file-level metadata (row groups, compression, created_by).
@@ -658,7 +742,8 @@ def _load_parquet(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
         "format_version": None,
         "extra": {},
     }
-    df: Optional[pd.DataFrame] = None
+    pd = _load_pandas()
+    df: Optional["pd.DataFrame"] = None
 
     try:
         # Try to use pyarrow for rich metadata
@@ -756,14 +841,15 @@ def _load_parquet(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
     return raw, df
 
 
-def _load_sqlite(path: Path) -> tuple[dict, dict[str, pd.DataFrame]]:
+def _load_sqlite(path: Path) -> tuple[dict, dict[str, "pd.DataFrame"]]:
     """
     Load an SQLite database and return:
     - raw: dict with tables, schemas (as dicts), counts
     - dfs: dict of DataFrames for each table (sampled, limited to 10_000 rows)
     """
     raw: dict = {"tables": [], "schemas": {}, "counts": {}}
-    dfs: dict[str, pd.DataFrame] = {}
+    pd = _load_pandas()
+    dfs: dict[str, "pd.DataFrame"] = {}
 
     try:
         conn = sqlite3.connect(str(path))
@@ -824,7 +910,7 @@ def _load_sqlite(path: Path) -> tuple[dict, dict[str, pd.DataFrame]]:
 # ---------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------
-LOADER_REGISTRY: Dict[str, Callable[[Path], Tuple[Any, Optional[pd.DataFrame]]]] = {
+LOADER_REGISTRY: Dict[str, Callable[[Path], Tuple[Any, Optional["pd.DataFrame"]]]] = {
     "csv": _load_csv,
     "json": load_json_or_ndjson,
     "ndjson": load_json_or_ndjson,
@@ -847,16 +933,13 @@ def detect_file_type(path: Path) -> str:
     name = path.name.lower()
     ext = path.suffix.lower()
 
+    if _detect_unsupported_compressed_binary(path):
+        return "unsupported_compressed_binary"
+
     if name.endswith(".csv.gz") or name.endswith(".tsv.gz"):
         return "csv"
     if name.endswith(".json.gz"):
         return "json"
-    if name.endswith(".sqlite.gz") or name.endswith(".db.gz"):
-        return "sqlite"
-    if name.endswith(".xlsx.gz") or name.endswith(".xls.gz"):
-        return "excel"
-    if name.endswith(".parquet.gz"):
-        return "parquet"
     if name.endswith(".yaml.gz") or name.endswith(".yml.gz"):
         return "yaml"
     if name.endswith(".xml.gz"):
@@ -906,14 +989,33 @@ import time
 
 
 def detect_and_load(file_path: str | Path, args=None) -> Dict[str, Any]:
-
     args = args or {}
     path = Path(file_path)
     if not path.exists():
         raise FileNotFoundError(f"File not found: {file_path}")
 
     file_type = detect_file_type(path)
-    sheet_name = getattr(args, "sheet_name", None)
+    unsupported_logical_type = _detect_unsupported_compressed_binary(path)
+    if file_type == "unsupported_compressed_binary" and unsupported_logical_type:
+        suffix = next(
+            (
+                s
+                for s in UNSUPPORTED_COMPRESSED_BINARY_SUFFIXES
+                if _matches_file_suffix(path, s)
+            ),
+            ".gz",
+        )
+        return _failure_result(
+            path=path,
+            file_type=unsupported_logical_type,
+            loader_spec=None,
+            error=(
+                f"Compressed binary extension '{suffix}' is not supported. "
+                f"Decompress the file before loading as {unsupported_logical_type}."
+            ),
+            error_code="unsupported_compressed_binary",
+            metadata_extra={"compressed_extension": suffix},
+        )
 
     # --- CSV passthrough ---
     if file_type == "csv":
@@ -944,12 +1046,28 @@ def detect_and_load(file_path: str | Path, args=None) -> Dict[str, Any]:
             max_rows = int(chunk_size) if chunk_size else 10000
         except (TypeError, ValueError):
             max_rows = 10000
-        raw, struct_meta = (
-            loader_fn(path, max_rows=max_rows) if loader_fn else (None, None)
-        )
+
+        try:
+            raw, struct_meta = (
+                loader_fn(path, max_rows=max_rows) if loader_fn else (None, None)
+            )
+        except Exception as exc:
+            return _failure_result(
+                path=path,
+                file_type="json",
+                loader_spec=f"loader:{loader_fn.__name__}" if loader_fn else None,
+                error=str(exc),
+                error_code="json_load_failed",
+            )
 
         if raw is None:
-            return None
+            return _failure_result(
+                path=path,
+                file_type="json",
+                loader_spec=f"loader:{loader_fn.__name__}" if loader_fn else None,
+                error="JSON loader produced no data.",
+                error_code="json_load_failed",
+            )
 
         # ---------------------------------------------
         # 1) Detect if the JSON is an Indexly search cache
@@ -990,7 +1108,7 @@ def detect_and_load(file_path: str | Path, args=None) -> Dict[str, Any]:
                 "df_preview": None,
                 "raw": raw,
                 "metadata": metadata,
-                "json_mode": "search_cache",  # 🔥 ADD THIS LINE
+                "json_mode": "search_cache",
                 "loader_spec": "loader:search_cache_detector",
             }
 
@@ -1027,9 +1145,19 @@ def detect_and_load(file_path: str | Path, args=None) -> Dict[str, Any]:
         }
     elif file_type in {"sqlite", "db"}:
         loader_fn = LOADER_REGISTRY.get(file_type)
+        loader_spec = f"loader:{loader_fn.__name__}" if loader_fn else None
         if loader_fn:
             # Correct unpack: _load_sqlite returns raw dict + dfs dict
-            raw, dfs = loader_fn(path)
+            try:
+                raw, dfs = loader_fn(path)
+            except Exception as exc:
+                return _failure_result(
+                    path=path,
+                    file_type=file_type,
+                    loader_spec=loader_spec,
+                    error=f"SQLite loader failed: {exc}",
+                    error_code="sqlite_load_failed",
+                )
             if dfs is None:
                 dfs = {}
 
@@ -1044,7 +1172,7 @@ def detect_and_load(file_path: str | Path, args=None) -> Dict[str, Any]:
         metadata = {
             "source_path": str(path),
             "validated": bool(dfs),
-            "loader_used": f"loader:{loader_fn.__name__}" if loader_fn else None,
+            "loader_used": loader_spec,
             "rows": sum(tdf.shape[0] for tdf in dfs.values()) if dfs else 0,
             "cols": max(tdf.shape[1] for tdf in dfs.values()) if dfs else 0,
             "loaded_at": utc_now_iso_z(),
@@ -1061,13 +1189,22 @@ def detect_and_load(file_path: str | Path, args=None) -> Dict[str, Any]:
             "dfs": dfs,
             "raw": raw,
             "metadata": metadata,
-            "loader_spec": f"loader:{loader_fn.__name__}" if loader_fn else None,
+            "loader_spec": loader_spec,
         }
 
     # ============================================================
     # --- Other loaders (XML, Excel, YAML, etc.)
     # ============================================================
     loader_fn = LOADER_REGISTRY.get(file_type)
+    if not loader_fn:
+        return _failure_result(
+            path=path,
+            file_type=file_type,
+            loader_spec=None,
+            error=f"No loader registered for file type '{file_type}'.",
+            error_code="unsupported_file_type",
+        )
+
     raw = df = df_preview = None
     loader_spec = None
     metadata = {
@@ -1079,40 +1216,36 @@ def detect_and_load(file_path: str | Path, args=None) -> Dict[str, Any]:
         "loaded_at": None,
     }
 
-    if loader_fn:
-        loader_spec = f"loader:{loader_fn.__name__}"
-        try:
-            desc = f"Loading {file_type.upper()} via loader"
-            with _progress(total=1, desc=desc, unit="file") as pbar:
-                if file_type in {"excel", "xls", "xlsx"}:
-                    try:
-                        excel_file = pd.ExcelFile(path, engine="openpyxl")
-                        sheet_list = excel_file.sheet_names
-                        raw = {"available_sheets": sheet_list}
-                        df = df_preview = None
-                        console.print(
-                            f"[green]Detected Excel sheets:[/green] {', '.join(sheet_list)}"
-                        )
-                    except Exception as e:
-                        console.print(
-                            f"[red]❌ Failed to inspect Excel file: {e}[/red]"
-                        )
-                        raw = {"available_sheets": []}
-                        df = df_preview = None
+    loader_spec = f"loader:{loader_fn.__name__}"
+    try:
+        desc = f"Loading {file_type.upper()} via loader"
+        with _progress(total=1, desc=desc, unit="file") as pbar:
+            if file_type in {"excel", "xls", "xlsx"}:
+                pd = _load_pandas()
+                excel_file = pd.ExcelFile(path, engine="openpyxl")
+                sheet_list = excel_file.sheet_names
+                raw = {"available_sheets": sheet_list}
+                df = df_preview = None
+                console.print(
+                    f"[green]Detected Excel sheets:[/green] {', '.join(sheet_list)}"
+                )
+            else:
+                raw, loaded_df = loader_fn(path)
+                if file_type == "xml":
+                    df_preview = loaded_df
                 else:
-                    raw, loaded_df = loader_fn(path)
-                    if file_type == "xml":
-                        df_preview = loaded_df
-                    else:
-                        df = loaded_df
-                time.sleep(0.05)
-                pbar.update(1)
-            metadata["loader_used"] = loader_spec
-        except Exception as e:
-            console.print(f"[yellow]⚠️ Loader for '{file_type}' failed: {e}[/yellow]")
-    else:
-        console.print(
-            f"[yellow]⚠️ No loader registered for file type: {file_type}[/yellow]"
+                    df = loaded_df
+            time.sleep(0.05)
+            pbar.update(1)
+        metadata["loader_used"] = loader_spec
+    except Exception as exc:
+        console.print(f"[yellow]⚠️ Loader for '{file_type}' failed: {exc}[/yellow]")
+        return _failure_result(
+            path=path,
+            file_type=file_type,
+            loader_spec=loader_spec,
+            error=str(exc),
+            error_code="load_failed",
         )
 
     # Metadata calc
@@ -1120,7 +1253,7 @@ def detect_and_load(file_path: str | Path, args=None) -> Dict[str, Any]:
         target_df = df_preview if file_type == "xml" else df
         metadata["rows"] = (
             int(target_df.shape[0])
-            if isinstance(target_df, pd.DataFrame)
+            if _is_pandas_dataframe(target_df)
             else (
                 len(raw)
                 if isinstance(raw, list)
@@ -1128,7 +1261,7 @@ def detect_and_load(file_path: str | Path, args=None) -> Dict[str, Any]:
             )
         )
         metadata["cols"] = (
-            int(target_df.shape[1]) if isinstance(target_df, pd.DataFrame) else 0
+            int(target_df.shape[1]) if _is_pandas_dataframe(target_df) else 0
         )
         metadata["validated"] = bool(
             target_df is not None and not getattr(target_df, "empty", True)
@@ -1151,7 +1284,7 @@ def detect_and_load(file_path: str | Path, args=None) -> Dict[str, Any]:
 # ---------------------------------------------------------------------
 # Backward adapters
 # ---------------------------------------------------------------------
-def load_yaml(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
+def load_yaml(path: Path) -> Tuple[Any, Optional["pd.DataFrame"]]:
     return _load_yaml(path)
 
 
@@ -1168,20 +1301,20 @@ def load_xml(path: Path) -> dict:
     }
 
 
-def load_excel(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
+def load_excel(path: Path) -> Tuple[Any, Optional["pd.DataFrame"]]:
     return _load_excel(path)
 
 
-def load_parquet(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
+def load_parquet(path: Path) -> Tuple[Any, Optional["pd.DataFrame"]]:
     """
     Public alias for the orchestrator loader registry.
     """
     return _load_parquet(path)
 
 
-def load_sqlite(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
+def load_sqlite(path: Path) -> Tuple[Any, Optional["pd.DataFrame"]]:
     return _load_sqlite(path)
 
 
-def load_csv(path: Path) -> Tuple[Any, Optional[pd.DataFrame]]:
+def load_csv(path: Path) -> Tuple[Any, Optional["pd.DataFrame"]]:
     return _load_csv(path)

@@ -98,7 +98,12 @@ def detect_timeseries_columns(df: pd.DataFrame, hint: Optional[str] = None
     date_col = infer_date_column(df, hint=hint)
     numeric_cols = df.select_dtypes(include=["number"]).columns.tolist()
     # Exclude columns that are obviously time-derived (e.g., *_year) if they are ints but not values
-    numeric_cols = [c for c in numeric_cols if not c.lower().endswith(("_year", "_month", "_day", "_hour", "_timestamp"))]
+    numeric_cols = [
+        c
+        for c in numeric_cols
+        if c != date_col
+        and not c.lower().endswith(("_year", "_month", "_day", "_hour", "_timestamp"))
+    ]
     return date_col, numeric_cols
 
 

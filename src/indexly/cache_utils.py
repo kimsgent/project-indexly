@@ -44,6 +44,7 @@ def calculate_query_hash(term: str, args: dict) -> str:
         "format": args.get("format"),
         "subject": args.get("subject"),
         "sort_by": args.get("sort_by"),
+        "index_generation": args.get("index_generation"),
     }
     key_data = f"{CACHE_VERSION}-{term}-{json.dumps(relevant_args, sort_keys=True)}"
     return hashlib.sha256(key_data.encode("utf-8")).hexdigest()
@@ -129,10 +130,13 @@ def clean_cache_duplicates():
                 deduped.append(entry)
                 seen.add(norm_path)
 
-        normalized[key] = {
+        normalized_entry = {
             "timestamp": time.time(),
             "results": deduped
         }
+        if isinstance(entry_group, dict) and "index_generation" in entry_group:
+            normalized_entry["index_generation"] = entry_group["index_generation"]
+        normalized[key] = normalized_entry
 
     save_cache(normalized)
     print("✅ Cache cleaned of duplicates.")

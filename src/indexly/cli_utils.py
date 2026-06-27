@@ -56,12 +56,6 @@ def add_common_arguments(parser):
         help="Skip reading/writing cached search results",
     )
 
-    parser.add_argument(
-        "--no-refresh-write",
-        action="store_true",
-        help="Do not write refreshed cache back to disk",
-    )
-
     parser.add_argument("--export-format", choices=["txt", "md", "pdf", "json"])
     parser.add_argument("--pdf-lib", choices=["fpdf", "reportlab"], default="fpdf")
     parser.add_argument("--output")
