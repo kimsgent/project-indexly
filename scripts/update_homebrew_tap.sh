@@ -102,10 +102,23 @@ VERSION_TAG="v${VERSION}"
 printf 'Version: %s\n' "${VERSION_TAG}"
 
 step "Checking release formula"
-if grep -Fq "${VERSION_TAG}" "${SOURCE_FORMULA}"; then
-  printf 'Formula references %s\n' "${VERSION_TAG}"
+FORMULA_SOURCE_URL="$(
+  awk '
+    /^[[:space:]]+url[[:space:]]+"/ {
+      line = $0
+      sub(/^[[:space:]]+url[[:space:]]+"/, "", line)
+      sub(/".*$/, "", line)
+      print line
+      exit
+    }
+  ' "${SOURCE_FORMULA}"
+)"
+[[ -n "${FORMULA_SOURCE_URL}" ]] || fail "Formula source URL not found: ${SOURCE_FORMULA}"
+
+if [[ "${FORMULA_SOURCE_URL}" == *"${VERSION_TAG}"* || "${FORMULA_SOURCE_URL}" == *"${VERSION}"* ]]; then
+  printf 'Formula source URL references %s (tap tag %s)\n' "${VERSION}" "${VERSION_TAG}"
 else
-  fail "Formula does not reference ${VERSION_TAG}: ${SOURCE_FORMULA}"
+  fail "Formula source URL does not reference ${VERSION} or ${VERSION_TAG}: ${SOURCE_FORMULA}"
 fi
 
 step "Syncing formula into tap repository"
