@@ -28,6 +28,7 @@ from collections import OrderedDict
 from difflib import SequenceMatcher
 from bs4 import BeautifulSoup
 from .optional_deps import require_extra_dependency
+from .excel_warning_utils import suppress_openpyxl_feature_warnings
 
 
 # ---------------------------------------------------------------------
@@ -561,7 +562,8 @@ def _extract_odt(path):
 
 def _extract_xlsx(path):
     openpyxl = require_extra_dependency("openpyxl", "openpyxl", "documents")
-    wb = openpyxl.load_workbook(path, data_only=True)
+    with suppress_openpyxl_feature_warnings():
+        wb = openpyxl.load_workbook(path, data_only=True)
     text = []
     for sheet in wb.worksheets:
         for row in sheet.iter_rows(values_only=True):

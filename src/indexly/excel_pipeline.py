@@ -7,6 +7,7 @@ from io import StringIO
 
 from .datetime_utils import normalize_datetime_columns
 from .cleaning.auto_clean import auto_clean_csv
+from .excel_warning_utils import suppress_openpyxl_feature_warnings
 from .time_utils import utc_now_iso_z
 
 
@@ -81,7 +82,8 @@ def run_excel_pipeline(
     # -------------------------
     if df is None and file_path:
         try:
-            sheets = pd.read_excel(file_path, sheet_name=None, engine="openpyxl")
+            with suppress_openpyxl_feature_warnings():
+                sheets = pd.read_excel(file_path, sheet_name=None, engine="openpyxl")
             all_sheet_names = list(sheets.keys())
 
             console.print(f"[green]Detected sheets:[/green] {', '.join(all_sheet_names)}")
@@ -221,5 +223,4 @@ def run_excel_pipeline(
 
     setattr(df, "_persist_ready", True)
     return df, df_stats, table_output
-
 
