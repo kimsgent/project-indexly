@@ -1,10 +1,10 @@
 # Feature Audit: Incremental Indexing with Log-Based Filtering
 
-**Date**: 2025-07-02  
-**Auditor Role**: Professional Programmer & Codebase Analyst  
-**Project**: project-indexly  
-**Scope**: Indexing feature extensibility analysis  
-**Branch**: staging  
+**Date**: 2025-07-02
+**Auditor Role**: Professional Programmer & Codebase Analyst
+**Project**: project-indexly
+**Scope**: Indexing feature extensibility analysis
+**Branch**: staging
 
 ---
 
@@ -58,7 +58,7 @@ Write to: %APPDATA%\indexly\log\YYYY\MM\YYYY-MM-DD_HH_index_events.ndjson
 **Current behavior**: ALL files are processed on every index run.
 
 - **Worst case**: 2000 files in path
-- **Operation per file**: 
+- **Operation per file**:
   - Extract text (I/O + parsing)
   - Calculate hash (CPU)
   - DB query (lock + SQL)
@@ -67,6 +67,7 @@ Write to: %APPDATA%\indexly\log\YYYY\MM\YYYY-MM-DD_HH_index_events.ndjson
 - **Result**: 40-60 seconds for re-indexing 2000 files with 0 changes
 
 **Why this happens**:
+
 - `async_index_file()` does not check `content_changed` to skip work
 - It always processes, always updates, always logs
 - No fast-path for "file hasn't changed since last index"
@@ -78,6 +79,7 @@ Write to: %APPDATA%\indexly\log\YYYY\MM\YYYY-MM-DD_HH_index_events.ndjson
 **Example PATH**: `C:\Users\User\AppData\Roaming\indexly\log\2025\07\2025-07-02_14_index_events.ndjson`
 
 **Each FILE_INDEXED entry** (NDJSON line):
+
 ```json
 {
   "timestamp": "2025-07-02 14:35:22",
@@ -93,6 +95,7 @@ Write to: %APPDATA%\indexly\log\YYYY\MM\YYYY-MM-DD_HH_index_events.ndjson
 ```
 
 **Summary entry** (at end of log):
+
 ```json
 {
   "event": "INDEX_SUMMARY",
@@ -108,6 +111,7 @@ Write to: %APPDATA%\indexly\log\YYYY\MM\YYYY-MM-DD_HH_index_events.ndjson
 ### 1.4 Available Infrastructure
 
 #### A) Log Reading Utilities (Already in codebase)
+
 - **Location**: `src/indexly/universal_loader.py:215`
 - **Function**: `_parse_ndjson_records_from_path(path: str | Path)`
 - **Features**:
@@ -117,6 +121,7 @@ Write to: %APPDATA%\indexly\log\YYYY\MM\YYYY-MM-DD_HH_index_events.ndjson
 - **Status**: Production-ready, used by JSON analysis pipelines
 
 #### B) Log Processing Infrastructure
+
 - **Location**: `src/indexly/log_utils.py:849`
 - **Function**: `cli_log_clean()` & `process_logs()`
 - **Features**:
@@ -126,6 +131,7 @@ Write to: %APPDATA%\indexly\log\YYYY\MM\YYYY-MM-DD_HH_index_events.ndjson
 - **Status**: Production-ready, existing `log-clean` command uses it
 
 #### C) Content Change Detection (Already in DB)
+
 - **Query**: `SELECT hash FROM file_index WHERE path = ?`
 - **Logic**: Compare calculated hash vs stored hash → `content_changed` boolean
 - **Availability**: Results are already in logs (`content_changed` field)
@@ -182,9 +188,11 @@ index_parser.add_argument(
 ### 2.3 Behavior Specification
 
 #### -r (only-changes) Flag
+
 **Semantics**: Process only files where `content_changed == true` OR files not in any log
 
 **Algorithm**:
+
 1. Load the most recent log file from `BASE_DIR/log/YYYY/MM/`
 2. Build a set: `already_indexed_unchanged = {path | content_changed=false}`
 3. Before processing each file:
@@ -193,14 +201,17 @@ index_parser.add_argument(
 4. Fallback: If no log found → process all files (safe mode)
 
 **Example result**:
+
 - Input: 2000 files, 5 changed since last index
 - Output: Process 5 files + any new files not in log
 - Speedup: ~90% faster for stable directories
 
 #### -m [month] Flag
+
 **Semantics**: Process only files indexed/modified in specified month
 
 **Algorithm**:
+
 1. User provides month in format "MM" (01-12)
 2. Find all log files in `BASE_DIR/log/YYYY/MM/` (all years if month matches)
 3. Load all matching logs, extract entries with matching month in `entry["month"]` field
@@ -209,33 +220,40 @@ index_parser.add_argument(
 6. Fallback: If no matching month logs → process all files
 
 **Example**:
+
 ```bash
 indexly index /archive -m 03  # Only March files
 ```
 
 #### -m [month] -r Combined
+
 **Semantics**: Files changed + in specified month
 
 **Algorithm**: Intersection of both filters
+
 1. Load month-filtered logs (from -m logic)
 2. Apply change filter from those logs (from -r logic)
 3. Process only files satisfying both conditions
 
 **Example**:
+
 ```bash
 indexly index /archive -m 03 -r  # Only changed March files
 ```
 
 #### -l [log-file] Flag
+
 **Semantics**: Use custom log file instead of auto-detection
 
 **Algorithm**:
+
 1. Validate that specified file exists
 2. Load that specific log file
 3. Ignore -r and -m flags (or warn user)
 4. Apply "unchanged" filter based on custom log
 
 **Example**:
+
 ```bash
 indexly index /data -l "/custom/logs/index_backup_2025_Q2.ndjson"
 ```
@@ -256,6 +274,7 @@ content_changed = not (row and row["hash"] == file_hash)
 ```
 
 **Assessment**: ✅ **Works as-is**
+
 - Hash comparison is already available
 - Logs already capture `content_changed` boolean
 - No changes needed to this logic
@@ -265,6 +284,7 @@ content_changed = not (row and row["hash"] == file_hash)
 **Requirement**: Find latest log or logs for specific month
 
 **Approach**:
+
 1. Scan `BASE_DIR/log/` directory structure
    - Files are organized: `log/YYYY/MM/YYYY-MM-DD_HH_index_events.ndjson`
 2. For `-r`: Get latest file in most recent `YYYY/MM/`
@@ -272,6 +292,7 @@ content_changed = not (row and row["hash"] == file_hash)
 4. Sort files by modification date, use most recent
 
 **Assessment**: ✅ **Straightforward**
+
 - Directory structure is well-defined
 - No special parsing needed (dates are in filenames)
 - Standard `os.walk()` + `glob` patterns suffice
@@ -279,24 +300,26 @@ content_changed = not (row and row["hash"] == file_hash)
 ### 3.3 Building the "Skip Set" (Already Indexed Unchanged)
 
 **Approach**:
+
 ```python
 def build_skip_set_from_logs(log_paths: list[str], root_path: str) -> set[str]:
     """Build set of paths that are unchanged and shouldn't be re-indexed."""
     skip_set = set()
-    
+
     for log_path in log_paths:
         records, _ = _parse_ndjson_records_from_path(log_path)  # Reuse existing function
-        
+
         for record in records:
             if record.get("event") == "FILE_INDEXED":
                 if record.get("content_changed") is False:  # Explicit False check
                     normalized = normalize_path(record["path"])
                     skip_set.add(normalized)
-    
+
     return skip_set
 ```
 
 **Assessment**: ✅ **Minimal new code**
+
 - Reuses existing `_parse_ndjson_records_from_path()`
 - Single-pass through logs
 - O(n) complexity where n = number of log entries
@@ -306,6 +329,7 @@ def build_skip_set_from_logs(log_paths: list[str], root_path: str) -> set[str]:
 **Location to modify**: `src/indexly/indexly.py`, function `scan_and_index_files()`, line 306
 
 **Current flow**:
+
 ```python
 file_paths = [
     str(Path(folder) / f)
@@ -317,6 +341,7 @@ file_paths = [
 ```
 
 **Modified flow** (pseudocode):
+
 ```python
 # 1) Collect all files (same as before)
 file_paths = [... same collection logic ...]
@@ -331,6 +356,7 @@ tasks = [async_index_file(path, ...) for path in file_paths]
 ```
 
 **Assessment**: ✅ **Minimal changes to existing flow**
+
 - New filtering happens after existing `ignore` rules
 - No changes to `async_index_file()` function
 - No DB schema changes
@@ -345,6 +371,7 @@ tasks = [async_index_file(path, ...) for path in file_paths]
 **Estimated effort**: 3-4 hours
 
 **What to implement**:
+
 1. Add `-r/--only-changes` argument to `index_parser`
 2. Create `LogReader` utility class:
    - Find latest log in `BASE_DIR/log/`
@@ -355,11 +382,13 @@ tasks = [async_index_file(path, ...) for path in file_paths]
 5. Update CLI help text
 
 **Files to modify**:
+
 - `src/indexly/cli_utils.py` (1 argument definition)
 - `src/indexly/indexly.py` (scan_and_index_files function)
 - New: `src/indexly/incremental_indexing.py` (LogReader class)
 
 **Testing**:
+
 ```python
 def test_only_changes_skips_unchanged_files():
     """Verify -r flag skips files with content_changed=false"""
@@ -379,6 +408,7 @@ def test_only_changes_processes_new_files():
 **Estimated effort**: 3-4 hours
 
 **What to implement**:
+
 1. Add `-m/--month` argument with validation (MM format, 01-12)
 2. Add `-l/--log-file` argument with path validation
 3. Extend `LogReader` to support:
@@ -388,10 +418,12 @@ def test_only_changes_processes_new_files():
 5. Update CLI help text
 
 **Files to modify**:
+
 - `src/indexly/cli_utils.py` (2 argument definitions)
 - `src/indexly/incremental_indexing.py` (LogReader enhancements)
 
 **Testing**:
+
 ```python
 def test_month_filter_includes_only_matching_files():
     """Only files from specified month are indexed"""
@@ -427,20 +459,20 @@ from .universal_loader import _parse_ndjson_records_from_path
 
 class LogReader:
     """Read and filter index logs for incremental indexing."""
-    
+
     def __init__(self, log_dir: Path = NDJSON_LOG_DIR):
         self.log_dir = Path(log_dir)
-    
+
     def find_latest_log(self) -> Optional[Path]:
         """Find most recently modified log file."""
         ...
-    
+
     def find_logs_for_month(self, month: str) -> list[Path]:
         """Find all logs matching specified month (MM format)."""
         ...
-    
+
     def build_skip_set(
-        self, 
+        self,
         log_paths: list[Path],
         root_path: Optional[str] = None
     ) -> Set[str]:
@@ -459,13 +491,13 @@ def get_incremental_filter_set(
 ) -> Set[str]:
     """
     High-level function to build skip set based on user flags.
-    
+
     Args:
         only_changes: Use -r flag behavior
         month: Use -m MM flag behavior
         log_file: Use -l PATH flag behavior
         root_path: For log filtering
-    
+
     Returns:
         Set of normalized paths to skip (unchanged files)
     """
@@ -548,6 +580,7 @@ def get_incremental_filter_set(
 **YES, with enthusiastic recommendation.**
 
 **Reasons**:
+
 1. **Addresses real pain point**: 40-60 seconds per re-index on large directories
 2. **Low risk**: No schema changes, purely read-side filtering
 3. **High value**: Typical re-index speed improvements of 80-95% for stable directories
@@ -579,6 +612,6 @@ Your proposed feature is **fully feasible and recommended for implementation**. 
 
 ---
 
-**Audit completed**: 2025-07-02  
-**Auditor**: Professional Code Analyst  
+**Audit completed**: 2025-07-02
+**Auditor**: Professional Code Analyst
 **Confidence level**: HIGH (95%)

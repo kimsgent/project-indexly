@@ -1,7 +1,7 @@
 # Implementation Prompt: Incremental Indexing Feature
 
-**Date**: 2025-07-02  
-**Status**: READY FOR IMPLEMENTATION  
+**Date**: 2025-07-02
+**Status**: READY FOR IMPLEMENTATION
 **Reference**: See [FEATURE_AUDIT_INCREMENTAL_INDEXING.md](FEATURE_AUDIT_INCREMENTAL_INDEXING.md) for complete architectural analysis and feasibility study.
 
 ---
@@ -10,8 +10,8 @@
 
 Implement incremental indexing with log-based filtering to dramatically improve re-indexing performance for large, stable directories. Current performance: 45 seconds for 2000 files with 5 changes. Target: <5 seconds (90% improvement).
 
-**Backward compatible**: Default behavior unchanged. New flags are optional.  
-**No breaking changes**: No database schema modifications required.  
+**Backward compatible**: Default behavior unchanged. New flags are optional.
+**No breaking changes**: No database schema modifications required.
 **Fully feasible**: Audit confirms all infrastructure is in place.
 
 ---
@@ -19,6 +19,7 @@ Implement incremental indexing with log-based filtering to dramatically improve 
 ## Phase 1: MVP Implementation (-r Flag Only)
 
 ### Objectives
+
 - ✅ Reduce re-indexing time for unchanged files
 - ✅ Validate log-reading strategy
 - ✅ Establish foundation for Phase 2
@@ -27,6 +28,7 @@ Implement incremental indexing with log-based filtering to dramatically improve 
 ### Scope
 
 Implement the `-r/--only-changes` flag for the `indexly index` command that:
+
 1. Loads the most recent index log
 2. Skips files marked as unchanged (`content_changed=false`)
 3. Processes all new files and changed files
@@ -35,9 +37,11 @@ Implement the `-r/--only-changes` flag for the `indexly index` command that:
 ### Deliverables
 
 #### 1. CLI Argument
+
 **File**: `src/indexly/cli_utils.py` (line 348 in `build_parser()`)
 
 Add argument to `index_parser`:
+
 ```python
 index_parser.add_argument(
     "-r", "--only-changes",
@@ -47,43 +51,45 @@ index_parser.add_argument(
 ```
 
 #### 2. LogReader Utility Module
+
 **File**: NEW `src/indexly/incremental_indexing.py` (~150-200 lines)
 
 Implement:
+
 ```python
 class LogReader:
     """Read and filter index logs for incremental indexing."""
-    
+
     def __init__(self, log_dir: Path = NDJSON_LOG_DIR):
         self.log_dir = Path(log_dir)
-    
+
     def find_latest_log(self) -> Optional[Path]:
         """
         Find most recently modified log file.
-        
+
         Returns:
             Path to latest log, or None if no logs found
-        
+
         Notes:
             - Scans BASE_DIR/log/ recursively for .ndjson files
             - Returns most recent by modification time
         """
-        
+
     def build_skip_set_from_log(
-        self, 
+        self,
         log_path: Path,
         root_path: Optional[str] = None
     ) -> Set[str]:
         """
         Build set of normalized paths that haven't changed.
-        
+
         Args:
             log_path: Path to NDJSON log file
             root_path: Optional root for path filtering
-        
+
         Returns:
             Set of normalized paths where content_changed == false
-        
+
         Implementation notes:
             - Use existing _parse_ndjson_records_from_path() from universal_loader.py
             - Filter for records where event == "FILE_INDEXED" AND content_changed == false
@@ -93,9 +99,11 @@ class LogReader:
 ```
 
 #### 3. Integration with scan_and_index_files()
+
 **File**: `src/indexly/indexly.py` (line 306-370 in `scan_and_index_files()`)
 
 Modify existing function to apply filtering:
+
 ```python
 # After existing file collection and ignore rules
 # Before creating async tasks
@@ -103,11 +111,11 @@ Modify existing function to apply filtering:
 if getattr(args, 'only_changes', False):
     reader = LogReader()
     latest_log = reader.find_latest_log()
-    
+
     if latest_log:
         skip_set = reader.build_skip_set_from_log(latest_log, root_path=root_dir)
         file_paths = [p for p in file_paths if normalize_path(p) not in skip_set]
-        
+
         if file_paths:
             print(f"📊 Filtered to {len(file_paths)} changed/new files (via -r flag)")
         else:
@@ -120,47 +128,52 @@ tasks = [async_index_file(path, ...) for path in file_paths]
 ```
 
 #### 4. Unit Tests
+
 **File**: `tests/test_incremental_indexing.py` (NEW, ~200 lines)
 
 Minimum test coverage:
+
 ```python
 def test_log_reader_finds_latest_log(tmp_path):
     """LogReader correctly identifies most recent log file"""
-    
+
 def test_log_reader_builds_skip_set(tmp_path):
     """LogReader correctly extracts unchanged file paths"""
-    
+
 def test_skip_set_ignores_changed_files(tmp_path):
     """Files with content_changed=true are NOT in skip set"""
-    
+
 def test_skip_set_includes_unchanged_files(tmp_path):
     """Files with content_changed=false ARE in skip set"""
-    
+
 def test_only_changes_flag_no_log_fallback(tmp_path, monkeypatch):
     """Fallback to full index when no logs found"""
-    
+
 def test_only_changes_integration_skips_files(tmp_path, monkeypatch):
     """Full integration: -r flag skips unchanged files during indexing"""
-    
+
 def test_backward_compatibility_no_flag(tmp_path, monkeypatch):
     """Without -r flag, behavior is identical to current"""
 ```
 
 #### 5. Documentation Updates
+
 - Update CLI help: `indexly index --help` should show new `-r` flag
 - Add example to [docs/content/documentation/usage.md](docs/content/documentation/usage.md):
+
   ```markdown
   ## Incremental Indexing (Fast Re-indexing)
-  
+
   For large directories that change infrequently, use the `-r` flag to only
   re-index files that have changed since the last run:
-  
+
   ```bash
   indexly index /large/directory -r
   ```
-  
+
   This can reduce re-indexing time by 80-95% for stable directories.
   Falls back to full indexing if logs are not found.
+
   ```
 
 ### Validation Checklist (Phase 1)
@@ -184,6 +197,7 @@ def test_backward_compatibility_no_flag(tmp_path, monkeypatch):
 ## Phase 2: Extended Features (-m and -l Flags)
 
 ### Objectives (After Phase 1 Complete)
+
 - ✅ Support month-based filtering
 - ✅ Support custom log file selection
 - ✅ Maintain performance gains from Phase 1
@@ -194,16 +208,19 @@ def test_backward_compatibility_no_flag(tmp_path, monkeypatch):
 Extend LogReader and CLI to support:
 
 #### -m [month] Flag
+
 ```bash
 indexly index /archive -m 07  # Only index files from July (all years)
 ```
 
 #### -l [log-file] Flag
+
 ```bash
 indexly index /data -l "/custom/logs/index_Q2_2025.ndjson"  # Use custom log
 ```
 
 #### Combined Usage
+
 ```bash
 indexly index /archive -m 03 -r  # Only changed March files
 ```
@@ -211,6 +228,7 @@ indexly index /archive -m 03 -r  # Only changed March files
 ### Deliverables (Phase 2)
 
 #### 1. CLI Arguments
+
 **File**: `src/indexly/cli_utils.py`
 
 ```python
@@ -230,20 +248,22 @@ index_parser.add_argument(
 ```
 
 #### 2. LogReader Extensions
+
 **File**: `src/indexly/incremental_indexing.py`
 
 Add methods:
+
 ```python
 def find_logs_for_month(self, month: str) -> List[Path]:
     """
     Find all logs where entry["month"] matches specified month.
-    
+
     Args:
         month: Month in MM format (01-12)
-    
+
     Returns:
         List of log paths with matching month entries
-    
+
     Notes:
         - Scans all BASE_DIR/log/YYYY/MM/ directories
         - Returns all matching files across all years
@@ -255,9 +275,11 @@ def validate_custom_log_file(self, file_path: str) -> bool:
 ```
 
 #### 3. Integration Logic
+
 **File**: `src/indexly/indexly.py`
 
 Modify filter logic to handle all three flags:
+
 ```python
 # Determine which logs to use
 if getattr(args, 'log_file', None):
@@ -281,30 +303,32 @@ if log_paths:
     skip_set = set()
     for log_path in log_paths:
         skip_set.update(reader.build_skip_set_from_log(log_path, root_dir))
-    
+
     file_paths = [p for p in file_paths if normalize_path(p) not in skip_set]
 ```
 
 #### 4. Additional Tests
+
 **File**: `tests/test_incremental_indexing.py`
 
 Add:
+
 ```python
 def test_month_filter_includes_only_matching_files():
     """Only files indexed in specified month are included"""
-    
+
 def test_month_filter_cross_year():
     """Month filter works across multiple years (e.g., all Julys)"""
-    
+
 def test_custom_log_file_validation():
     """Invalid log file path raises appropriate error"""
-    
+
 def test_custom_log_file_overrides_defaults():
     """Custom log file is used instead of auto-detected"""
-    
+
 def test_month_and_changes_combined():
     """Both -m and -r flags work together correctly"""
-    
+
 def test_month_no_matching_files():
     """Graceful handling when no logs found for month"""
 ```
@@ -379,6 +403,7 @@ Do NOT reinvent these - reuse existing:
 Before marking implementation complete:
 
 ### Phase 1 Completion
+
 - [ ] Branch: `feature/incremental-indexing`
 - [ ] Commits are atomic and well-documented
 - [ ] All tests passing locally: `pytest tests/test_incremental_indexing.py`
@@ -389,6 +414,7 @@ Before marking implementation complete:
 - [ ] Ready for merge to staging
 
 ### Phase 2 Completion (Optional, after Phase 1 approved)
+
 - [ ] Same checklist repeated
 - [ ] Additional tests for -m and -l flags
 - [ ] Cross-team documentation review
@@ -399,23 +425,27 @@ Before marking implementation complete:
 ## Success Criteria
 
 ### Functional
+
 - ✅ `-r` flag works correctly (Phase 1)
 - ✅ Falls back to full index when logs missing
 - ✅ Default behavior (no flags) unchanged
 - ✅ `-m` and `-l` flags work (Phase 2)
 
 ### Performance
+
 - ✅ 2000 files with 5 changes: <5 seconds (target 90% improvement)
 - ✅ No regression for default behavior (no flags)
 - ✅ Log parsing overhead <100ms
 
 ### Quality
+
 - ✅ All tests passing (new + existing)
 - ✅ Code review approved
 - ✅ No breaking changes
 - ✅ Backward compatible
 
 ### Documentation
+
 - ✅ CLI help text updated
 - ✅ Usage guide examples added
 - ✅ Code comments adequate
@@ -429,6 +459,7 @@ For complete architectural context, design decisions, and feasibility analysis, 
 **[FEATURE_AUDIT_INCREMENTAL_INDEXING.md](FEATURE_AUDIT_INCREMENTAL_INDEXING.md)**
 
 This audit contains:
+
 - Part 1: Current Architecture Analysis (flow diagrams, log structure)
 - Part 2: Feature Specification (all command variants)
 - Part 3: Technical Feasibility Analysis (confirms all is feasible)
@@ -439,8 +470,8 @@ This audit contains:
 
 ---
 
-**Implementation Status**: READY TO BEGIN  
-**Confidence Level**: HIGH (95%)  
-**Estimated Total Effort**: 6-8 hours (Phase 1 + Phase 2)  
+**Implementation Status**: READY TO BEGIN
+**Confidence Level**: HIGH (95%)
+**Estimated Total Effort**: 6-8 hours (Phase 1 + Phase 2)
 
 Begin with Phase 1. Phase 2 can wait for Phase 1 approval and integration.
