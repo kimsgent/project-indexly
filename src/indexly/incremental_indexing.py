@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import os
+import json
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
@@ -24,6 +25,15 @@ from .universal_loader import _parse_ndjson_records_from_path
 
 logger = logging.getLogger(__name__)
 
+STAT_FINGERPRINT_VERSION = 1
+STAT_FINGERPRINT_KEYS = (
+    "stat_fingerprint_version",
+    "stat_mtime_ns",
+    "stat_size",
+    "stat_inode",
+    "stat_device",
+)
+
 
 @dataclass(frozen=True)
 class IncrementalFilterResult:
@@ -32,6 +42,38 @@ class IncrementalFilterResult:
     files_to_index: list[str]
     skipped_files: list[str]
     stat_error_files: list[str]
+
+
+@dataclass(frozen=True)
+class IndexedFileState:
+    """Stored freshness state for an indexed file."""
+
+    modified: str | None
+    stat_fingerprint: dict | None
+
+
+def build_stat_fingerprint(path: str | Path) -> dict:
+    """Build a portable stat fingerprint for fast incremental freshness checks."""
+    stat_result = Path(path).stat()
+    return {
+        "stat_fingerprint_version": STAT_FINGERPRINT_VERSION,
+        "stat_mtime_ns": stat_result.st_mtime_ns,
+        "stat_size": stat_result.st_size,
+        "stat_inode": getattr(stat_result, "st_ino", None),
+        "stat_device": getattr(stat_result, "st_dev", None),
+    }
+
+
+def extract_stat_fingerprint(metadata: dict | None) -> dict | None:
+    """Extract a complete stat fingerprint from persisted metadata JSON."""
+    if not metadata:
+        return None
+    fingerprint = {key: metadata.get(key) for key in STAT_FINGERPRINT_KEYS}
+    if any(value is None for value in fingerprint.values()):
+        return None
+    if fingerprint["stat_fingerprint_version"] != STAT_FINGERPRINT_VERSION:
+        return None
+    return fingerprint
 
 
 def validate_month(month: str) -> str:
@@ -184,12 +226,22 @@ def _normalized_unique(paths: Iterable[str]) -> list[str]:
     return normalized
 
 
-def _load_indexed_modified(
+def _parse_metadata_json(raw_metadata: str | None) -> dict:
+    if not raw_metadata:
+        return {}
+    try:
+        parsed = json.loads(raw_metadata)
+    except (TypeError, ValueError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _load_indexed_state(
     paths: Iterable[str],
     db_path: str | None = None,
     create_db: bool = True,
-) -> dict[str, str | None]:
-    indexed: dict[str, str | None] = {}
+) -> dict[str, IndexedFileState]:
+    indexed: dict[str, IndexedFileState] = {}
     normalized_paths = _normalized_unique(paths)
     if not normalized_paths:
         return indexed
@@ -209,17 +261,40 @@ def _load_indexed_modified(
             placeholders = ",".join("?" for _ in chunk)
             try:
                 rows = conn.execute(
-                    f"SELECT path, modified FROM file_index WHERE path IN ({placeholders})",
+                    f"""
+                    SELECT fi.path, fi.modified, fm.metadata
+                    FROM file_index fi
+                    LEFT JOIN file_metadata fm ON fm.path = fi.path
+                    WHERE fi.path IN ({placeholders})
+                    """,
                     chunk,
                 ).fetchall()
             except sqlite3.OperationalError:
-                if create_db:
-                    raise
-                return indexed
+                try:
+                    rows = conn.execute(
+                        f"""
+                        SELECT path, modified
+                        FROM file_index
+                        WHERE path IN ({placeholders})
+                        """,
+                        chunk,
+                    ).fetchall()
+                except sqlite3.OperationalError:
+                    if create_db:
+                        raise
+                    return indexed
             for row in rows:
                 norm = normalize_path(row["path"])
                 if norm:
-                    indexed[norm] = row["modified"]
+                    metadata = (
+                        _parse_metadata_json(row["metadata"])
+                        if "metadata" in row.keys()
+                        else {}
+                    )
+                    indexed[norm] = IndexedFileState(
+                        modified=row["modified"],
+                        stat_fingerprint=extract_stat_fingerprint(metadata),
+                    )
     finally:
         conn.close()
 
@@ -240,7 +315,7 @@ def filter_incremental_candidates(
     match.
     """
     paths = list(file_paths)
-    indexed_modified = _load_indexed_modified(
+    indexed_state = _load_indexed_state(
         paths,
         db_path=db_path,
         create_db=create_db,
@@ -258,14 +333,26 @@ def filter_incremental_candidates(
             continue
 
         try:
+            current_fingerprint = build_stat_fingerprint(path)
             current_modified = _current_modified(path)
         except OSError:
             files_to_index.append(path)
             stat_error_files.append(path)
             continue
 
-        stored_modified = indexed_modified.get(norm)
-        if stored_modified and stored_modified == current_modified:
+        stored_state = indexed_state.get(norm)
+        if (
+            stored_state
+            and stored_state.stat_fingerprint
+            and stored_state.stat_fingerprint == current_fingerprint
+        ):
+            skipped_files.append(path)
+        elif (
+            stored_state
+            and not stored_state.stat_fingerprint
+            and stored_state.modified
+            and stored_state.modified == current_modified
+        ):
             skipped_files.append(path)
         else:
             files_to_index.append(path)

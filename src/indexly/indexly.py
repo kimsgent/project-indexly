@@ -67,6 +67,7 @@ from .db_update import check_schema, apply_migrations
 from .log_utils import _unified_log_entry, _default_logger, shutdown_logger
 from .incremental_indexing import (
     LogReader,
+    build_stat_fingerprint,
     filter_incremental_candidates,
     validate_month,
 )
@@ -254,9 +255,9 @@ async def async_index_file(
                     """,
                     (full_path, content, clean_content, last_modified, file_hash),
                 )
-                update_file_metadata(
-                    full_path, {"content_changed": content_changed}, conn=conn
-                )
+                mtw_metadata = {"content_changed": content_changed}
+                mtw_metadata.update(build_stat_fingerprint(full_path))
+                update_file_metadata(full_path, mtw_metadata, conn=conn)
                 conn.commit()
                 conn.close()
 
@@ -343,6 +344,7 @@ async def async_index_file(
                     full_metadata[k] = v
 
             full_metadata["content_changed"] = content_changed
+            full_metadata.update(build_stat_fingerprint(full_path))
             update_file_metadata(full_path, full_metadata, conn=conn)
 
             conn.commit()

@@ -117,9 +117,10 @@ indexly index /path/to/folder --only-changes
 ```
 
 The `-r` mode skips files that are already indexed and whose current filesystem
-modified time matches the index. New files, edited files, and files that cannot
-be checked quickly are processed normally. Deleted or newly ignored files are
-still pruned from the search index during the run.
+stat fingerprint matches the index. New files, edited files, legacy rows without
+fingerprints, and files that cannot be checked quickly are processed safely.
+Deleted or newly ignored files are still pruned from the search index during the
+run.
 
 Scope indexing from previous logs:
 

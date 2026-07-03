@@ -12,6 +12,7 @@ from indexly.cli_utils import build_parser
 from indexly.db_utils import connect_db, get_search_index_generation
 from indexly.incremental_indexing import (
     LogReader,
+    build_stat_fingerprint,
     filter_incremental_candidates,
 )
 from indexly.path_utils import normalize_path
@@ -43,7 +44,13 @@ def set_file_mtime(path: Path, timestamp: int) -> str:
     return datetime.fromtimestamp(timestamp).isoformat()
 
 
-def seed_index_row(db_path: Path, path: Path, modified: str, content: str = "alpha"):
+def seed_index_row(
+    db_path: Path,
+    path: Path,
+    modified: str,
+    content: str = "alpha",
+    metadata: dict | None = None,
+):
     normalized = normalize_path(str(path))
     conn = connect_db(str(db_path))
     conn.execute(
@@ -53,6 +60,14 @@ def seed_index_row(db_path: Path, path: Path, modified: str, content: str = "alp
         """,
         (normalized, content, content, modified, f"hash-{content}"),
     )
+    if metadata is not None:
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO file_metadata(path, metadata)
+            VALUES (?, ?)
+            """,
+            (normalized, json.dumps(metadata)),
+        )
     conn.commit()
     conn.close()
     return normalized
@@ -173,6 +188,86 @@ def test_incremental_filter_skips_exact_mtime_match(tmp_path):
 
     assert result.files_to_index == []
     assert result.skipped_files == [str(file_path)]
+
+
+def test_incremental_filter_skips_exact_stat_fingerprint_match(tmp_path):
+    db_path = tmp_path / "index.db"
+    file_path = tmp_path / "same.txt"
+    file_path.write_text("alpha", encoding="utf-8")
+    modified = set_file_mtime(file_path, 1_700_000_000)
+    seed_index_row(
+        db_path,
+        file_path,
+        modified,
+        metadata=build_stat_fingerprint(file_path),
+    )
+
+    result = filter_incremental_candidates([str(file_path)], db_path=str(db_path))
+
+    assert result.files_to_index == []
+    assert result.skipped_files == [str(file_path)]
+
+
+def test_incremental_filter_processes_same_mtime_different_size(tmp_path):
+    db_path = tmp_path / "index.db"
+    file_path = tmp_path / "changed-size.txt"
+    file_path.write_text("alpha", encoding="utf-8")
+    modified = set_file_mtime(file_path, 1_700_000_000)
+    seed_index_row(
+        db_path,
+        file_path,
+        modified,
+        content="alpha",
+        metadata=build_stat_fingerprint(file_path),
+    )
+
+    file_path.write_text("alpha plus more", encoding="utf-8")
+    set_file_mtime(file_path, 1_700_000_000)
+
+    result = filter_incremental_candidates([str(file_path)], db_path=str(db_path))
+
+    assert result.files_to_index == [str(file_path)]
+    assert result.skipped_files == []
+
+
+def test_incremental_filter_missing_fingerprint_falls_back_to_mtime(tmp_path):
+    db_path = tmp_path / "index.db"
+    file_path = tmp_path / "legacy.txt"
+    file_path.write_text("alpha", encoding="utf-8")
+    modified = set_file_mtime(file_path, 1_700_000_000)
+    seed_index_row(db_path, file_path, modified, metadata={})
+
+    result = filter_incremental_candidates([str(file_path)], db_path=str(db_path))
+
+    assert result.files_to_index == []
+    assert result.skipped_files == [str(file_path)]
+
+
+def test_incremental_filter_stat_error_indexes_file(tmp_path, monkeypatch):
+    db_path = tmp_path / "index.db"
+    file_path = tmp_path / "stat-error.txt"
+    file_path.write_text("alpha", encoding="utf-8")
+    modified = set_file_mtime(file_path, 1_700_000_000)
+    seed_index_row(
+        db_path,
+        file_path,
+        modified,
+        metadata=build_stat_fingerprint(file_path),
+    )
+    real_stat = Path.stat
+
+    def fake_stat(self, *args, **kwargs):
+        if self == file_path:
+            raise OSError("simulated stat failure")
+        return real_stat(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", fake_stat)
+
+    result = filter_incremental_candidates([str(file_path)], db_path=str(db_path))
+
+    assert result.files_to_index == [str(file_path)]
+    assert result.skipped_files == []
+    assert result.stat_error_files == [str(file_path)]
 
 
 def test_incremental_filter_processes_file_changed_after_unchanged_log(tmp_path):
@@ -305,6 +400,30 @@ def test_without_only_changes_keeps_existing_indexing_behavior(tmp_path, monkeyp
 
     assert calls == [str(file_path)]
     assert indexed == [normalize_path(str(file_path))]
+
+
+def test_indexing_persists_stat_fingerprint_metadata(tmp_path, monkeypatch):
+    db_path, _logger = isolate_index_runtime(monkeypatch, tmp_path)
+    root = tmp_path / "docs"
+    root.mkdir()
+    file_path = root / "fingerprint.txt"
+    file_path.write_text("alpha", encoding="utf-8")
+
+    asyncio.run(indexly_app.scan_and_index_files(str(root)))
+
+    conn = connect_db(str(db_path))
+    try:
+        row = conn.execute(
+            "SELECT metadata FROM file_metadata WHERE path = ?",
+            (normalize_path(str(file_path)),),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    metadata = json.loads(row["metadata"])
+    expected = build_stat_fingerprint(file_path)
+    for key, value in expected.items():
+        assert metadata[key] == value
 
 
 def test_custom_log_file_scopes_indexing(tmp_path, monkeypatch):

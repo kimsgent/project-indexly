@@ -579,7 +579,7 @@ performance visibility without changing the indexing schema.
    - `--log-file`
    - `--plan`
 
-### Next Possible Implementation: Persistent Stat Fingerprints
+### Phase 4 Recommendation: Persistent Stat Fingerprints
 
 After Phase 3, the next performance and robustness improvement should be a
 persistent stat fingerprint for each indexed file. Current `-r` uses
@@ -611,3 +611,23 @@ Recommended design:
    - stat errors index the file instead of skipping it
 6. Keep no schema migration mandatory unless a future design proves a dedicated
    table is materially cleaner.
+
+### 2026-07-03 Phase 4 Implementation Notes
+
+Implemented the passive stat fingerprint path without a schema migration:
+
+1. Real indexing writes persist `stat_fingerprint_version`, `stat_mtime_ns`,
+   `stat_size`, `stat_inode`, and `stat_device` into `file_metadata.metadata`.
+2. `-r` prefers an exact stat fingerprint match when metadata is present.
+3. Legacy rows with no fingerprint fall back to the existing `file_index.modified`
+   timestamp comparison.
+4. Files that cannot be statted by the fast path are indexed rather than skipped.
+5. The fingerprint is populated passively whenever a file is re-indexed; no
+   forced rebuild is required for existing indexes.
+
+Deferred follow-up:
+
+- Consider `indexly index /path --refresh-stat-cache` if users need to populate
+  fingerprints for old indexes without re-extracting file contents. This should
+  be designed carefully because it would update metadata without refreshing FTS
+  content.
