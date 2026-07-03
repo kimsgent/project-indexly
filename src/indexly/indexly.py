@@ -65,7 +65,11 @@ from .config import DB_FILE
 from .path_utils import normalize_path
 from .db_update import check_schema, apply_migrations
 from .log_utils import _unified_log_entry, _default_logger, shutdown_logger
-from .incremental_indexing import filter_incremental_candidates
+from .incremental_indexing import (
+    LogReader,
+    filter_incremental_candidates,
+    validate_month,
+)
 from indexly.pipeline.rename_plan import RenameEntry
 
 # Force UTF-8 output encoding (Recommended for Python 3.7+)
@@ -311,6 +315,9 @@ async def scan_and_index_files(
     ignore_path: str | None = None,
     preset: str = "standard",
     only_changes: bool = False,
+    month: str | None = None,
+    log_file: str | None = None,
+    incremental_log_dir: str | Path | None = None,
 ):
     from .cache_utils import clean_cache_duplicates
     from indexly.ignore import IgnoreRules
@@ -371,6 +378,49 @@ async def scan_and_index_files(
             except Exception as e:
                 logging.warning(f"Failed to flush summary log: {e}")
         return []
+
+    if month or log_file:
+        reader = LogReader(incremental_log_dir)
+        month_filter = validate_month(month) if month else None
+
+        if log_file:
+            if not reader.validate_custom_log_file(log_file):
+                raise ValueError(
+                    f"Log file does not exist or is not readable: {log_file}"
+                )
+            log_paths = [Path(log_file)]
+            path_scope = reader.build_path_set_from_logs(
+                log_paths,
+                root_path=root_dir,
+                month=month_filter,
+                strict=True,
+            )
+            source_label = f"log file {log_file}"
+        else:
+            log_paths = reader.find_logs_for_month(month_filter)
+            if not log_paths:
+                print(
+                    f"⚠️ No index logs found for month {month_filter}; "
+                    "processing all files."
+                )
+                path_scope = None
+            else:
+                path_scope = reader.build_path_set_from_logs(
+                    log_paths,
+                    root_path=root_dir,
+                    month=month_filter,
+                )
+                source_label = f"{len(log_paths)} month log(s)"
+
+        if path_scope is not None:
+            scoped_paths = [
+                path for path in file_paths if normalize_path(path) in path_scope
+            ]
+            print(
+                f"📅 Scoped indexing to {len(scoped_paths)} of "
+                f"{len(file_paths)} file(s) from {source_label}."
+            )
+            file_paths = scoped_paths
 
     if only_changes:
         incremental_result = filter_incremental_candidates(file_paths)
@@ -565,6 +615,8 @@ def handle_index(args):
                 disable_ocr=args.no_ocr,
                 ignore_path=getattr(args, "ignore", None),
                 only_changes=getattr(args, "only_changes", False),
+                month=getattr(args, "month", None),
+                log_file=getattr(args, "log_file", None),
             )
 
         indexed_files = asyncio.run(_run())

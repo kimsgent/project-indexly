@@ -517,3 +517,22 @@ for diagnostics, but logs must not be the only freshness source for Phase 1.
 - An all-up-to-date `-r` run should skip async indexing work and avoid bumping
   `search_index_generation`.
 - Default indexing without `-r` must behave exactly as before.
+
+### Updated Phase 2 Recommendation
+
+Implement `-m/--month` and `-l/--log-file` as **scope selectors**, not freshness
+signals:
+
+1. `--month MM` discovers NDJSON logs containing `FILE_INDEXED` entries whose
+   `month` field equals `MM`, then limits indexing to currently scanned files
+   that appear in those matching log records.
+2. `--log-file PATH` uses that specific NDJSON file as the scope source and
+   fails clearly if the file does not exist, is unreadable, or cannot be parsed.
+3. If `--log-file` and `--month` are combined, the custom log remains the source
+   and `--month` filters records within that log.
+4. If `--month` finds no matching logs, fall back to the full current scan with
+   a warning, matching the original forgiving auto-discovery behavior.
+5. If `-r` is also provided, apply the safe mtime/DB incremental filter after
+   the log/month scope has been applied.
+6. Always keep stale-row pruning based on the full supported, non-ignored current
+   scan set, never the scoped or `-r`-filtered task list.

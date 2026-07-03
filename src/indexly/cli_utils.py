@@ -349,6 +349,20 @@ def build_parser():
         action="store_true",
         help="Only index files that are new or changed since the last index run",
     )
+    index_parser.add_argument(
+        "-m",
+        "--month",
+        type=str,
+        metavar="MM",
+        help="Limit indexing to files found in logs with this FILE_INDEXED month",
+    )
+    index_parser.add_argument(
+        "-l",
+        "--log-file",
+        type=str,
+        metavar="PATH",
+        help="Limit indexing to files listed in a specific NDJSON index log",
+    )
 
     ocr_group = index_parser.add_mutually_exclusive_group()
     ocr_group.add_argument(

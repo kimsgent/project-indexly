@@ -121,6 +121,20 @@ modified time matches the index. New files, edited files, and files that cannot
 be checked quickly are processed normally. Deleted or newly ignored files are
 still pruned from the search index during the run.
 
+Scope indexing from previous logs:
+
+```bash
+indexly index /path/to/folder --month 07
+indexly index /path/to/folder --log-file /path/to/index_events.ndjson
+indexly index /path/to/folder --month 07 -r
+```
+
+`--month` limits work to current files found in index logs with a matching
+`FILE_INDEXED` month. `--log-file` uses one specific NDJSON log as the scope
+source. When combined with `-r`, Indexly first applies the log scope, then
+indexes only files in that scope whose current modified time differs from the
+index.
+
 OCR control for PDFs:
 
 ```bash
