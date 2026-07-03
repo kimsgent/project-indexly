@@ -363,6 +363,11 @@ def build_parser():
         metavar="PATH",
         help="Limit indexing to files listed in a specific NDJSON index log",
     )
+    index_parser.add_argument(
+        "--plan",
+        action="store_true",
+        help="Preview scan, scope, skip, and prune counts without changing the index",
+    )
 
     ocr_group = index_parser.add_mutually_exclusive_group()
     ocr_group.add_argument(

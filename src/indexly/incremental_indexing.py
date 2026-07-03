@@ -10,11 +10,13 @@ from __future__ import annotations
 
 import logging
 import os
+import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Iterable, Sequence
 
+from . import config
 from .db_utils import connect_db
 from .log_utils import NDJSON_LOG_DIR
 from .path_utils import normalize_path
@@ -185,21 +187,35 @@ def _normalized_unique(paths: Iterable[str]) -> list[str]:
 def _load_indexed_modified(
     paths: Iterable[str],
     db_path: str | None = None,
+    create_db: bool = True,
 ) -> dict[str, str | None]:
     indexed: dict[str, str | None] = {}
     normalized_paths = _normalized_unique(paths)
     if not normalized_paths:
         return indexed
 
-    conn = connect_db(db_path)
+    if create_db:
+        conn = connect_db(db_path)
+    else:
+        path = db_path or config.DB_FILE
+        if path != ":memory:" and not Path(path).exists():
+            return indexed
+        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        conn.row_factory = sqlite3.Row
+
     try:
         for start in range(0, len(normalized_paths), 500):
             chunk = normalized_paths[start : start + 500]
             placeholders = ",".join("?" for _ in chunk)
-            rows = conn.execute(
-                f"SELECT path, modified FROM file_index WHERE path IN ({placeholders})",
-                chunk,
-            ).fetchall()
+            try:
+                rows = conn.execute(
+                    f"SELECT path, modified FROM file_index WHERE path IN ({placeholders})",
+                    chunk,
+                ).fetchall()
+            except sqlite3.OperationalError:
+                if create_db:
+                    raise
+                return indexed
             for row in rows:
                 norm = normalize_path(row["path"])
                 if norm:
@@ -213,6 +229,7 @@ def _load_indexed_modified(
 def filter_incremental_candidates(
     file_paths: Iterable[str],
     db_path: str | None = None,
+    create_db: bool = True,
 ) -> IncrementalFilterResult:
     """
     Select only files that need indexing based on current mtime vs DB state.
@@ -223,7 +240,11 @@ def filter_incremental_candidates(
     match.
     """
     paths = list(file_paths)
-    indexed_modified = _load_indexed_modified(paths, db_path=db_path)
+    indexed_modified = _load_indexed_modified(
+        paths,
+        db_path=db_path,
+        create_db=create_db,
+    )
 
     files_to_index = []
     skipped_files = []

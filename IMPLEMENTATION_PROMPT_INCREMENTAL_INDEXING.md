@@ -536,3 +536,78 @@ signals:
    the log/month scope has been applied.
 6. Always keep stale-row pruning based on the full supported, non-ignored current
    scan set, never the scoped or `-r`-filtered task list.
+
+---
+
+## 2026-07-03 Phase 3 Recommendation: Observability and Plan Mode
+
+Phase 3 is an implementation recommendation added after Phases 1 and 2 proved
+useful in real indexing workflows. It was not part of the original prompt, but
+it is the next low-risk extension because it improves trust, debuggability, and
+performance visibility without changing the indexing schema.
+
+### Phase 3 Scope
+
+1. Add richer `INDEX_SUMMARY` fields for incremental and scoped runs:
+   - `mode`: `full`, `only_changes`, `month`, `log_file`, or combined labels.
+   - `scanned_count`: supported, non-ignored files discovered in the current scan.
+   - `scoped_count`: files remaining after `--month` / `--log-file` scope filters.
+   - `skipped_unchanged_count`: files skipped by `-r`.
+   - `indexed_count`: files actually sent to indexing tasks.
+   - `changed_count`: files whose indexed content changed.
+   - `removed_count`: stale search-index rows pruned.
+   - `stat_error_count`: files indexed because the fast stat check could not read
+     them.
+2. Add `--plan` for `indexly index`:
+   - Shows the same scan/scope/skip/prune metrics without indexing files.
+   - Does not spawn `async_index_file()`.
+   - Does not prune stale rows.
+   - Does not write index log entries or summaries.
+   - Still validates user inputs such as invalid `--month` or `--log-file`.
+3. Add focused tests:
+   - Plan mode reports index candidates and stale prune candidates without DB/log
+     writes.
+   - Plan mode honors `-r`, `--month`, and `--log-file` composition.
+   - Summary entries include the new metrics during real runs.
+   - A performance-style regression verifies `-r` avoids extraction/index calls
+     for many unchanged files. Avoid brittle wall-clock assertions.
+4. Update user documentation with a practical mode guide:
+   - normal full index
+   - `-r` fast re-index
+   - `--month`
+   - `--month -r`
+   - `--log-file`
+   - `--plan`
+
+### Next Possible Implementation: Persistent Stat Fingerprints
+
+After Phase 3, the next performance and robustness improvement should be a
+persistent stat fingerprint for each indexed file. Current `-r` uses
+`file_index.modified`, which is fast and works well, but it relies on timestamp
+precision and can miss unusual cases such as copied files that preserve mtimes,
+filesystems with coarse timestamp resolution, or tools that rewrite content
+while restoring the old modified time.
+
+Recommended design:
+
+1. Add a small metadata payload, preferably in `file_metadata.metadata`, rather
+   than changing the FTS schema:
+   - `stat_mtime_ns`: `Path.stat().st_mtime_ns`
+   - `stat_size`: `Path.stat().st_size`
+   - `stat_inode`: `st_ino` where available
+   - `stat_device`: `st_dev` where available
+   - `stat_fingerprint_version`: integer, starting at `1`
+2. During indexing, persist the stat fingerprint alongside existing metadata.
+3. During `-r`, skip only when the stored fingerprint matches the current
+   fingerprint. Fall back to the existing mtime behavior when no fingerprint is
+   present so older indexes remain compatible.
+4. Add an opt-in repair command or passive migration path:
+   - passive: fingerprint appears naturally as files are re-indexed
+   - optional future command: `indexly index /path --refresh-stat-cache`
+5. Add regressions:
+   - same mtime but different size is processed
+   - same mtime and same size remains skipped
+   - missing fingerprint falls back to current mtime logic
+   - stat errors index the file instead of skipping it
+6. Keep no schema migration mandatory unless a future design proves a dedicated
+   table is materially cleaner.

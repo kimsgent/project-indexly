@@ -127,6 +127,7 @@ Scope indexing from previous logs:
 indexly index /path/to/folder --month 07
 indexly index /path/to/folder --log-file /path/to/index_events.ndjson
 indexly index /path/to/folder --month 07 -r
+indexly index /path/to/folder -r --plan
 ```
 
 `--month` limits work to current files found in index logs with a matching
@@ -134,6 +135,20 @@ indexly index /path/to/folder --month 07 -r
 source. When combined with `-r`, Indexly first applies the log scope, then
 indexes only files in that scope whose current modified time differs from the
 index.
+
+Use `--plan` to preview the scan, scope, skip, and prune counts without indexing
+files, pruning stale rows, or writing index logs.
+
+Choose the indexing mode by workflow:
+
+| Workflow | Command |
+|---|---|
+| Full refresh | `indexly index /path/to/folder` |
+| Fast re-index of a stable folder | `indexly index /path/to/folder -r` |
+| Revisit files from a logged month | `indexly index /path/to/folder --month 07` |
+| Fast re-index within a logged month | `indexly index /path/to/folder --month 07 -r` |
+| Revisit files from one log file | `indexly index /path/to/folder --log-file /path/to/index_events.ndjson` |
+| Preview any indexing run | `indexly index /path/to/folder -r --plan` |
 
 OCR control for PDFs:
 

@@ -219,11 +219,12 @@ def test_month_and_log_file_flags_parse_from_cli():
     parser = build_parser()
 
     args = parser.parse_args(
-        ["index", "docs", "--month", "07", "--log-file", "index.ndjson"]
+        ["index", "docs", "--month", "07", "--log-file", "index.ndjson", "--plan"]
     )
 
     assert args.month == "07"
     assert args.log_file == "index.ndjson"
+    assert args.plan is True
 
 
 def test_only_changes_skips_all_up_to_date_without_async_work(tmp_path, monkeypatch):
@@ -247,6 +248,41 @@ def test_only_changes_skips_all_up_to_date_without_async_work(tmp_path, monkeypa
     assert indexed == []
     assert get_search_index_generation(str(db_path)) == 0
     assert logger.entries[-1]["count"] == 0
+    assert logger.entries[-1]["mode"] == "only_changes"
+    assert logger.entries[-1]["scanned_count"] == 1
+    assert logger.entries[-1]["scoped_count"] == 1
+    assert logger.entries[-1]["skipped_unchanged_count"] == 1
+    assert logger.entries[-1]["indexed_count"] == 0
+    assert logger.entries[-1]["stat_error_count"] == 0
+
+
+def test_only_changes_skips_many_unchanged_files_without_async_work(
+    tmp_path, monkeypatch
+):
+    db_path, logger = isolate_index_runtime(monkeypatch, tmp_path)
+    root = tmp_path / "docs"
+    root.mkdir()
+    files = []
+    for index in range(30):
+        file_path = root / f"same-{index}.txt"
+        file_path.write_text(f"alpha {index}", encoding="utf-8")
+        modified = set_file_mtime(file_path, 1_700_000_000 + index)
+        seed_index_row(db_path, file_path, modified, content=f"alpha {index}")
+        files.append(file_path)
+
+    async def fail_if_called(*args, **kwargs):
+        pytest.fail("unchanged files should not reach async_index_file")
+
+    monkeypatch.setattr(indexly_app, "async_index_file", fail_if_called)
+
+    indexed = asyncio.run(
+        indexly_app.scan_and_index_files(str(root), only_changes=True)
+    )
+
+    assert indexed == []
+    assert logger.entries[-1]["scanned_count"] == len(files)
+    assert logger.entries[-1]["skipped_unchanged_count"] == len(files)
+    assert logger.entries[-1]["indexed_count"] == 0
 
 
 def test_without_only_changes_keeps_existing_indexing_behavior(tmp_path, monkeypatch):
@@ -315,6 +351,64 @@ def test_custom_log_file_invalid_path_raises(tmp_path, monkeypatch):
         )
 
 
+def test_index_plan_reports_without_indexing_pruning_or_logging(
+    tmp_path, monkeypatch, capsys
+):
+    db_path, logger = isolate_index_runtime(monkeypatch, tmp_path)
+    root = tmp_path / "docs"
+    root.mkdir()
+    current = root / "current.txt"
+    stale = root / "stale.txt"
+    current.write_text("alpha", encoding="utf-8")
+    modified = set_file_mtime(current, 1_700_000_000)
+    seed_index_row(db_path, current, modified, content="alpha")
+    seed_index_row(db_path, stale, "2026-01-01T00:00:00", content="stale")
+
+    async def fail_if_called(*args, **kwargs):
+        pytest.fail("plan mode should not index files")
+
+    monkeypatch.setattr(indexly_app, "async_index_file", fail_if_called)
+
+    indexed = asyncio.run(
+        indexly_app.scan_and_index_files(str(root), only_changes=True, plan=True)
+    )
+
+    conn = connect_db(str(db_path))
+    try:
+        stale_count = conn.execute(
+            "SELECT COUNT(*) FROM file_index WHERE path = ?",
+            (normalize_path(str(stale)),),
+        ).fetchone()[0]
+    finally:
+        conn.close()
+
+    output = capsys.readouterr().out
+    assert indexed == []
+    assert stale_count == 1
+    assert logger.entries == []
+    assert "Index plan" in output
+    assert "Skipped unchanged: 1" in output
+    assert "Files that would be indexed: 0" in output
+    assert "Stale rows that would be pruned: 1" in output
+
+
+def test_index_plan_does_not_create_missing_database(tmp_path, monkeypatch):
+    db_path = tmp_path / "missing" / "fts_index.db"
+    logger = DummyLogger()
+    root = tmp_path / "docs"
+    root.mkdir()
+    (root / "file.txt").write_text("alpha", encoding="utf-8")
+    monkeypatch.setattr(config, "DB_FILE", str(db_path))
+    monkeypatch.setattr(indexly_app, "DB_FILE", str(db_path))
+    monkeypatch.setattr(indexly_app, "_default_logger", logger)
+
+    indexed = asyncio.run(indexly_app.scan_and_index_files(str(root), plan=True))
+
+    assert indexed == []
+    assert not db_path.exists()
+    assert logger.entries == []
+
+
 def test_month_filter_no_logs_falls_back_to_full_scan(tmp_path, monkeypatch):
     isolate_index_runtime(monkeypatch, tmp_path)
     root = tmp_path / "docs"
@@ -340,6 +434,57 @@ def test_month_filter_no_logs_falls_back_to_full_scan(tmp_path, monkeypatch):
     )
 
     assert sorted(calls) == sorted([str(first), str(second)])
+
+
+def test_plan_honors_month_scope_and_only_changes(tmp_path, monkeypatch, capsys):
+    db_path, logger = isolate_index_runtime(monkeypatch, tmp_path)
+    root = tmp_path / "docs"
+    root.mkdir()
+    same = root / "same.txt"
+    changed = root / "changed.txt"
+    outside = root / "outside.txt"
+    same.write_text("same", encoding="utf-8")
+    changed.write_text("changed old", encoding="utf-8")
+    outside.write_text("outside", encoding="utf-8")
+    same_modified = set_file_mtime(same, 1_700_000_000)
+    changed_modified = set_file_mtime(changed, 1_700_000_100)
+    set_file_mtime(outside, 1_700_000_200)
+    seed_index_row(db_path, same, same_modified, content="same")
+    seed_index_row(db_path, changed, changed_modified, content="changed old")
+    changed.write_text("changed fresh", encoding="utf-8")
+    set_file_mtime(changed, 1_700_000_600)
+    log_path = tmp_path / "logs" / "2026" / "07" / "july.ndjson"
+    write_ndjson_log(
+        log_path,
+        [
+            {"event": "FILE_INDEXED", "path": str(same), "month": "07"},
+            {"event": "FILE_INDEXED", "path": str(changed), "month": "07"},
+            {"event": "FILE_INDEXED", "path": str(outside), "month": "08"},
+        ],
+    )
+
+    async def fail_if_called(*args, **kwargs):
+        pytest.fail("plan mode should not index files")
+
+    monkeypatch.setattr(indexly_app, "async_index_file", fail_if_called)
+
+    asyncio.run(
+        indexly_app.scan_and_index_files(
+            str(root),
+            month="07",
+            only_changes=True,
+            plan=True,
+            incremental_log_dir=str(tmp_path / "logs"),
+        )
+    )
+
+    output = capsys.readouterr().out
+    assert logger.entries == []
+    assert "Mode: month+only_changes" in output
+    assert "Scanned files: 3" in output
+    assert "Scoped files: 2" in output
+    assert "Skipped unchanged: 1" in output
+    assert "Files that would be indexed: 1" in output
 
 
 def test_month_and_only_changes_combined(tmp_path, monkeypatch):
