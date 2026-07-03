@@ -343,6 +343,12 @@ def build_parser():
         type=str,
         help="Path to .indexlyignore file (overrides default root .indexlyignore)",
     )
+    index_parser.add_argument(
+        "-r",
+        "--only-changes",
+        action="store_true",
+        help="Only index files that are new or changed since the last index run",
+    )
 
     ocr_group = index_parser.add_mutually_exclusive_group()
     ocr_group.add_argument(

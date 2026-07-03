@@ -109,6 +109,18 @@ Use a custom ignore file:
 indexly index /path/to/folder --ignore /path/to/.indexlyignore
 ```
 
+Fast re-indexing for stable folders:
+
+```bash
+indexly index /path/to/folder -r
+indexly index /path/to/folder --only-changes
+```
+
+The `-r` mode skips files that are already indexed and whose current filesystem
+modified time matches the index. New files, edited files, and files that cannot
+be checked quickly are processed normally. Deleted or newly ignored files are
+still pruned from the search index during the run.
+
 OCR control for PDFs:
 
 ```bash

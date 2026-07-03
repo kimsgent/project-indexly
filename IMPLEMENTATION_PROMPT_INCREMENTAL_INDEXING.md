@@ -475,3 +475,45 @@ This audit contains:
 **Estimated Total Effort**: 6-8 hours (Phase 1 + Phase 2)
 
 Begin with Phase 1. Phase 2 can wait for Phase 1 approval and integration.
+
+---
+
+## 2026-07-03 Implementation Addendum: Correctness-First Phase 1
+
+The original Phase 1 pseudocode proposed skipping files purely when the latest
+index log says `content_changed=false`. Do **not** implement that literally.
+A past `content_changed=false` record only proves the file was unchanged during
+that previous run. If a user edits the file after the log is written, a log-only
+skip set would incorrectly skip the changed file and leave the search index
+stale.
+
+### Updated Phase 1 Recommendation
+
+Implement `-r/--only-changes` as a safe incremental re-index mode using current
+filesystem state and existing database state as the source of truth:
+
+1. Collect supported, non-ignored files exactly as today.
+2. Preserve the full collected file list for stale-row pruning.
+3. For `-r`, query `file_index` for existing `path` and `modified` values.
+4. Compare each current file's `mtime` with the stored `file_index.modified`.
+5. Process files that are new, missing DB metadata, unreadable during the quick
+   check, or whose `mtime` changed.
+6. Skip only files whose current normalized path exists in `file_index` and whose
+   current `mtime` matches the stored `modified` value.
+7. Keep the existing content-hash comparison inside `async_index_file()` as the
+   final content-change authority for files that are processed.
+8. Bump `search_index_generation` only when processed files actually change
+   content or stale rows are pruned, matching the existing cache contract.
+
+Logs may still be parsed by a `LogReader` utility for future Phase 2 work and
+for diagnostics, but logs must not be the only freshness source for Phase 1.
+
+### Required Extra Regressions
+
+- A file previously logged as unchanged but edited after the log must still be
+  processed by `-r`.
+- `-r` must not pass the filtered list into stale-row pruning; ignored or deleted
+  files should still be pruned based on the full current scan set.
+- An all-up-to-date `-r` run should skip async indexing work and avoid bumping
+  `search_index_generation`.
+- Default indexing without `-r` must behave exactly as before.

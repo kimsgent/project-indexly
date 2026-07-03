@@ -65,8 +65,8 @@ from .config import DB_FILE
 from .path_utils import normalize_path
 from .db_update import check_schema, apply_migrations
 from .log_utils import _unified_log_entry, _default_logger, shutdown_logger
+from .incremental_indexing import filter_incremental_candidates
 from indexly.pipeline.rename_plan import RenameEntry
-
 
 # Force UTF-8 output encoding (Recommended for Python 3.7+)
 sys.stdout.reconfigure(encoding="utf-8")
@@ -310,6 +310,7 @@ async def scan_and_index_files(
     disable_ocr=False,
     ignore_path: str | None = None,
     preset: str = "standard",
+    only_changes: bool = False,
 ):
     from .cache_utils import clean_cache_duplicates
     from indexly.ignore import IgnoreRules
@@ -342,12 +343,13 @@ async def scan_and_index_files(
         if Path(folder, f).suffix.lower() in SUPPORTED_EXTENSIONS
         and not ignore.should_ignore(Path(folder) / f, root_path)
     ]
+    current_file_paths = list(file_paths)
 
     start_time = datetime.now()
 
-    if not file_paths:
+    if not current_file_paths:
         print("⚠️ No supported files found.")
-        removed_count = _prune_missing_index_rows(root_path, file_paths)
+        removed_count = _prune_missing_index_rows(root_path, current_file_paths)
         if removed_count:
             generation = bump_search_index_generation()
             print(f"🔁 Search cache generation updated to {generation}.")
@@ -370,7 +372,23 @@ async def scan_and_index_files(
                 logging.warning(f"Failed to flush summary log: {e}")
         return []
 
-    missing_doc_packages = get_missing_documents_dependencies(file_paths)
+    if only_changes:
+        incremental_result = filter_incremental_candidates(file_paths)
+        file_paths = incremental_result.files_to_index
+        skipped_count = len(incremental_result.skipped_files)
+        if skipped_count:
+            print(f"📊 Skipped {skipped_count} unchanged file(s) via -r.")
+        if incremental_result.stat_error_files:
+            print(
+                "⚠️ Fast change check could not read "
+                f"{len(incremental_result.stat_error_files)} file(s); indexing them."
+            )
+        if not file_paths:
+            print("✅ All indexed files are up to date via -r.")
+
+    missing_doc_packages = (
+        get_missing_documents_dependencies(file_paths) if file_paths else []
+    )
     if missing_doc_packages:
         raise ValueError(
             "Missing optional document dependencies for detected files: "
@@ -378,7 +396,30 @@ async def scan_and_index_files(
             + ". Install once and retry with: pip install indexly[documents]"
         )
 
-    removed_count = _prune_missing_index_rows(root_path, file_paths)
+    removed_count = _prune_missing_index_rows(root_path, current_file_paths)
+
+    if not file_paths:
+        if removed_count:
+            generation = bump_search_index_generation()
+            print(f"🔁 Search cache generation updated to {generation}.")
+        clean_cache_duplicates()
+
+        summary_entry = {
+            "event": "INDEX_SUMMARY",
+            "timestamp": datetime.now().isoformat(timespec="seconds"),
+            "root": str(root_dir),
+            "count": 0,
+            "changed_count": 0,
+            "removed_count": removed_count,
+            "duration_seconds": (datetime.now() - start_time).total_seconds(),
+        }
+        _default_logger.log(summary_entry)
+        if hasattr(_default_logger, "flush"):
+            try:
+                _default_logger.flush(timeout=1.5)
+            except Exception as e:
+                logging.warning(f"Failed to flush summary log: {e}")
+        return []
 
     # Index files
     tasks = [
@@ -523,6 +564,7 @@ def handle_index(args):
                 force_ocr=args.ocr,
                 disable_ocr=args.no_ocr,
                 ignore_path=getattr(args, "ignore", None),
+                only_changes=getattr(args, "only_changes", False),
             )
 
         indexed_files = asyncio.run(_run())
