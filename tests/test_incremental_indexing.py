@@ -15,6 +15,7 @@ from indexly.incremental_indexing import (
     build_stat_fingerprint,
     filter_incremental_candidates,
 )
+from indexly.log_utils import _unified_log_entry
 from indexly.path_utils import normalize_path
 
 
@@ -175,6 +176,33 @@ def test_log_reader_builds_path_set_with_month_filter(tmp_path):
     )
 
     assert path_set == {normalize_path(str(july))}
+
+
+def test_log_reader_maps_windows_log_paths_to_current_root(tmp_path):
+    root = tmp_path / "docs"
+    root.mkdir()
+    selected = root / "nested" / "selected.txt"
+    selected.parent.mkdir()
+    selected.write_text("alpha", encoding="utf-8")
+    log_path = tmp_path / "index.ndjson"
+    write_ndjson_log(
+        log_path,
+        [
+            {
+                "event": "FILE_INDEXED",
+                "path": r"C:\Users\indexly\docs\nested\selected.txt",
+                "month": "07",
+            }
+        ],
+    )
+
+    path_set = LogReader(tmp_path).build_path_set_from_log(
+        log_path,
+        root_path=str(root),
+        month="07",
+    )
+
+    assert path_set == {normalize_path(str(selected))}
 
 
 def test_incremental_filter_skips_exact_mtime_match(tmp_path):
@@ -451,6 +479,73 @@ def test_custom_log_file_scopes_indexing(tmp_path, monkeypatch):
         indexly_app.scan_and_index_files(str(root), log_file=str(log_path))
     )
 
+    assert calls == [str(selected)]
+    assert indexed == [normalize_path(str(selected))]
+
+
+def test_custom_log_file_scopes_windows_paths_on_posix(tmp_path, monkeypatch):
+    isolate_index_runtime(monkeypatch, tmp_path)
+    root = tmp_path / "docs"
+    root.mkdir()
+    selected = root / "nested" / "selected.txt"
+    skipped = root / "nested" / "skipped.txt"
+    selected.parent.mkdir()
+    selected.write_text("alpha", encoding="utf-8")
+    skipped.write_text("beta", encoding="utf-8")
+    log_path = tmp_path / "scope.ndjson"
+    write_ndjson_log(
+        log_path,
+        [
+            {
+                "event": "FILE_INDEXED",
+                "path": r"C:\Users\indexly\docs\nested\selected.txt",
+                "month": "07",
+            }
+        ],
+    )
+    calls = []
+
+    async def record_call(path, *args, **kwargs):
+        calls.append(path)
+        return normalize_path(path), True
+
+    monkeypatch.setattr(indexly_app, "async_index_file", record_call)
+
+    indexed = asyncio.run(
+        indexly_app.scan_and_index_files(str(root), log_file=str(log_path))
+    )
+
+    assert calls == [str(selected)]
+    assert indexed == [normalize_path(str(selected))]
+
+
+def test_custom_log_file_scopes_production_logged_path_with_spaces(
+    tmp_path,
+    monkeypatch,
+):
+    isolate_index_runtime(monkeypatch, tmp_path)
+    root = tmp_path / "docs"
+    root.mkdir()
+    selected = root / "Quarterly Report.txt"
+    skipped = root / "Other Report.txt"
+    selected.write_text("alpha", encoding="utf-8")
+    skipped.write_text("beta", encoding="utf-8")
+    log_path = tmp_path / "scope.ndjson"
+    log_entry = _unified_log_entry("FILE_INDEXED", str(selected))
+    write_ndjson_log(log_path, [log_entry])
+    calls = []
+
+    async def record_call(path, *args, **kwargs):
+        calls.append(path)
+        return normalize_path(path), True
+
+    monkeypatch.setattr(indexly_app, "async_index_file", record_call)
+
+    indexed = asyncio.run(
+        indexly_app.scan_and_index_files(str(root), log_file=str(log_path))
+    )
+
+    assert log_entry["path"] == normalize_path(str(selected))
     assert calls == [str(selected)]
     assert indexed == [normalize_path(str(selected))]
 

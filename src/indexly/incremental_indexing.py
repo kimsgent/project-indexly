@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import os
 import json
+import re
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
@@ -33,6 +34,8 @@ STAT_FINGERPRINT_KEYS = (
     "stat_inode",
     "stat_device",
 )
+
+_WINDOWS_DRIVE_RE = re.compile(r"^[A-Za-z]:[\\/]")
 
 
 @dataclass(frozen=True)
@@ -81,6 +84,71 @@ def validate_month(month: str) -> str:
     if not month.isdigit() or len(month) != 2 or not 1 <= int(month) <= 12:
         raise ValueError("month must use MM format from 01 to 12")
     return month
+
+
+def _looks_like_foreign_windows_path(path: str | None) -> bool:
+    """Return True for Windows paths read from logs on non-Windows hosts."""
+    if not path:
+        return False
+    return (
+        "\\" in path
+        or bool(_WINDOWS_DRIVE_RE.match(path))
+        or path.startswith("//")
+        or path.startswith("\\\\")
+    )
+
+
+def _portable_path_parts(path: str | Path | None) -> list[str]:
+    """Split a path string without letting the current OS reinterpret it."""
+    if path is None:
+        return []
+    value = str(path).strip()
+    if not value:
+        return []
+    if value.startswith("\\\\?\\"):
+        value = value[4:]
+    value = value.replace("\\", "/")
+    if value.startswith("//?/"):
+        value = value[4:]
+    return [part for part in value.split("/") if part]
+
+
+def _map_foreign_windows_path_to_root(raw_path: str, root_path: str) -> str | None:
+    """
+    Map a Windows log path onto the current root when only the OS root differs.
+
+    Index logs persist absolute paths. A log created on Windows can therefore
+    refer to ``C:/.../docs/file.txt`` while the same tree is scanned on
+    macOS/Linux as ``/home/.../docs/file.txt``. Exact normalized comparison is
+    still preferred; this helper only provides a scoped root-relative candidate.
+    """
+    if not _looks_like_foreign_windows_path(raw_path):
+        return None
+
+    root_norm = normalize_path(root_path)
+    if not root_norm:
+        return None
+
+    root_parts = _portable_path_parts(root_norm)
+    raw_parts = _portable_path_parts(raw_path)
+    if not root_parts or len(raw_parts) < 2:
+        return None
+
+    max_root_parts = min(len(root_parts), len(raw_parts) - 1)
+    for width in range(max_root_parts, 0, -1):
+        needle = [part.casefold() for part in root_parts[-width:]]
+        for start in range(0, len(raw_parts) - width):
+            candidate = [
+                part.casefold() for part in raw_parts[start : start + width]
+            ]
+            if candidate != needle:
+                continue
+            relative_parts = raw_parts[start + width :]
+            if not relative_parts:
+                continue
+            return f"{root_norm.rstrip('/')}/{'/'.join(relative_parts)}"
+
+    return None
 
 
 class LogReader:
@@ -165,7 +233,8 @@ class LogReader:
                 if unchanged_only and record.get("content_changed") is not False:
                     continue
 
-                normalized = normalize_path(record.get("path"))
+                raw_path = record.get("path")
+                normalized = normalize_path(raw_path)
                 if not normalized:
                     continue
                 if (
@@ -173,6 +242,9 @@ class LogReader:
                     and normalized != root_norm
                     and not normalized.startswith(root_prefix)
                 ):
+                    mapped = _map_foreign_windows_path_to_root(raw_path, root_norm)
+                    if mapped:
+                        paths.add(mapped)
                     continue
                 paths.add(normalized)
 
