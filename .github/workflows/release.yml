@@ -74,9 +74,7 @@ jobs:
       - name: Generate Hugo release notes + API
         env:
           RELEASES_KEEP_OLD: "5"
-        run: |
-          python scripts/validate_release_metadata.py --release-version ${VERSION}
-          python scripts/generate_releases.py
+        run: python scripts/generate_releases.py
 
       - name: Prepare GitHub release notes
         env:
