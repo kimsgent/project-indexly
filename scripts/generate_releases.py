@@ -167,7 +167,6 @@ def main():
         "toc: true",
         "weight: 10",
         "---\n",
-        f"# Release Notes for {project}\n",
         (
             f"_Retention policy: latest release + {MAX_OLD_RELEASES} previous releases "
             "are shown here. Older releases are moved to Archive._\n"

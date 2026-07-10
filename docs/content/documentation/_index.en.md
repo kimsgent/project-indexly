@@ -47,18 +47,10 @@ This documentation works best when you enter through the path that matches your 
 <div class="p-3 rounded" style="background:#ffffff; color:#1f2937;">
   <h4 class="mb-2" style="color:#0f172a;">What changed recently</h4>
   <ul class="mb-3">
-    <li>`v2.1.4` hardens universal loader contracts, Socrata JSON streaming validation, and nested YAML analysis artifact persistence.</li>
-    <li>Time-series visualization and FTS search-cache generation now include tighter contract checks for safer repeated analysis runs.</li>
-    <li>`v2.1.3` adds analytical dataset routing with optional DuckDB support and hardens infer-csv backend workflows.</li>
-    <li>Boxplot routing now prefers catalog artifacts and keeps backend-specific rendering behavior stable across static and interactive paths.</li>
-    <li>Inference and backup optional dependencies now lazy-load more safely, reducing startup and test fragility when extras are missing.</li>
-    <li>`v2.1.2` hardens CSV, JSON, NDJSON, and SQLite analysis semantics, including bounded detection, strict malformed-line handling, chunk-limited record materialization, and safer mixed identifier handling.</li>
-    <li>CSV analysis dependency coverage now includes the table-rendering and statistical packages used by the current pipeline.</li>
-    <li>Indexing now ignores Office lock files before they enter the search pipeline.</li>
-    <li>`v2.1.1` hardens backup verification, dry-run restore, incremental base selection, and restore safety checks.</li>
-    <li>Semantic observers now persist snapshots more reliably and fall back when home paths are unwritable.</li>
-    <li>Compare, organizer, lister, and rename workflows include tighter handling around profiles, caches, counters, and database sync.</li>
-    <li>`v2.1.0` introduced `indexly clear-search` for safe search-index cleanup by path, tag, or full index.</li>
+    <li>`v2.1.4` hardens universal loading, structured-data persistence, time-series visualization, and FTS cache generation.</li>
+    <li>`v2.1.3` adds analytical dataset routing, backend-aware inference, and safer optional dependency loading.</li>
+    <li>`v2.1.2` strengthens CSV, JSON, NDJSON, SQLite, and Office-lock-file handling.</li>
+    <li>`v2.1.1` improves backup and restore safety, observers, comparison, organization, and rename workflows.</li>
   </ul>
   <a href="/en/releases/" class="btn btn-primary btn-sm me-2">View Release Notes</a>
   <a href="/en/documentation/data-analysis-pipeline/" class="btn btn-outline-secondary btn-sm">Open Analysis Guide</a>
