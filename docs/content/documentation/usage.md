@@ -109,6 +109,25 @@ Use a custom ignore file:
 indexly index /path/to/folder --ignore /path/to/.indexlyignore
 ```
 
+Fast re-indexing for stable folders:
+
+```bash
+indexly index /path/to/folder -r
+indexly index /path/to/folder --only-changes
+```
+
+The `-r` mode skips files that are already indexed and whose current filesystem
+stat fingerprint matches the index. New files, edited files, legacy rows without
+fingerprints, and files that cannot be checked quickly are processed safely.
+Deleted or newly ignored files are still pruned from the search index during the
+run.
+
+This is only the beginning of Indexly's incremental indexing workflow. You can
+also scope work from previous index logs, combine that scope with fast change
+detection, and preview the complete plan without modifying the index. See
+[Incremental Indexing: Fast, Safe Refreshes](indexing.md#incremental-indexing-fast-safe-refreshes)
+for the full guide.
+
 OCR control for PDFs:
 
 ```bash

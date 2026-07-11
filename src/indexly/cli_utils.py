@@ -343,6 +343,31 @@ def build_parser():
         type=str,
         help="Path to .indexlyignore file (overrides default root .indexlyignore)",
     )
+    index_parser.add_argument(
+        "-r",
+        "--only-changes",
+        action="store_true",
+        help="Only index files that are new or changed since the last index run",
+    )
+    index_parser.add_argument(
+        "-m",
+        "--month",
+        type=str,
+        metavar="MM",
+        help="Limit indexing to files found in logs with this FILE_INDEXED month",
+    )
+    index_parser.add_argument(
+        "-l",
+        "--log-file",
+        type=str,
+        metavar="PATH",
+        help="Limit indexing to files listed in a specific NDJSON index log",
+    )
+    index_parser.add_argument(
+        "--plan",
+        action="store_true",
+        help="Preview scan, scope, skip, and prune counts without changing the index",
+    )
 
     ocr_group = index_parser.add_mutually_exclusive_group()
     ocr_group.add_argument(

@@ -105,13 +105,9 @@ def _unified_log_entry(
             month = maybe_month
             customer = maybe_customer
 
-    # cleaned filename + cleaned path
+    # Keep the machine path exact for DB/log scoping; sanitize filename only for
+    # display-style consumers that expect space-free names.
     cleaned_filename = filename.replace(" ", "_")
-    cleaned_path = (
-        "/".join(parts[:-1] + [cleaned_filename])
-        if parts
-        else cleaned_filename
-    )
 
     # --- 2) Filename-based fallback
     if year is None or month is None:
@@ -135,7 +131,7 @@ def _unified_log_entry(
     entry = {
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "event": event_type,
-        "path": cleaned_path,
+        "path": cleaned,
         "filename": cleaned_filename,
         "extension": extension,
         "customer": customer,

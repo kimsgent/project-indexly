@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Callable, List
 from indexly.time_utils import utc_now_iso_z
 from indexly.autodoctor_detect import detect_autodoctor_db, detect_autodoctor_json
+from indexly.excel_warning_utils import suppress_openpyxl_feature_warnings
 from indexly.optional_deps import require_extra_dependency
 
 console = Console()
@@ -701,7 +702,8 @@ def _load_excel(path: Path, sheet_name: Optional[List[str]] = None):
         ):
             sheet_name = None  # pandas interprets None as all sheets
 
-        sheets = pd.read_excel(path, sheet_name=sheet_name, engine="openpyxl")
+        with suppress_openpyxl_feature_warnings():
+            sheets = pd.read_excel(path, sheet_name=sheet_name, engine="openpyxl")
 
         if isinstance(sheets, dict):
             raw = {k: df.to_dict(orient="records") for k, df in sheets.items()}
@@ -1222,7 +1224,8 @@ def detect_and_load(file_path: str | Path, args=None) -> Dict[str, Any]:
         with _progress(total=1, desc=desc, unit="file") as pbar:
             if file_type in {"excel", "xls", "xlsx"}:
                 pd = _load_pandas()
-                excel_file = pd.ExcelFile(path, engine="openpyxl")
+                with suppress_openpyxl_feature_warnings():
+                    excel_file = pd.ExcelFile(path, engine="openpyxl")
                 sheet_list = excel_file.sheet_names
                 raw = {"available_sheets": sheet_list}
                 df = df_preview = None
