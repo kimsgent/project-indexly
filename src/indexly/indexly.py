@@ -65,8 +65,13 @@ from .config import DB_FILE
 from .path_utils import normalize_path
 from .db_update import check_schema, apply_migrations
 from .log_utils import _unified_log_entry, _default_logger, shutdown_logger
+from .incremental_indexing import (
+    LogReader,
+    build_stat_fingerprint,
+    filter_incremental_candidates,
+    validate_month,
+)
 from indexly.pipeline.rename_plan import RenameEntry
-
 
 # Force UTF-8 output encoding (Recommended for Python 3.7+)
 sys.stdout.reconfigure(encoding="utf-8")
@@ -102,35 +107,91 @@ def _delete_search_index_paths(conn, paths):
     return len(paths)
 
 
+def _find_missing_index_paths(
+    root_path: Path,
+    current_paths,
+    *,
+    create_db: bool = True,
+) -> list[str]:
+    """Return indexed rows under root_path that are absent from current_paths."""
+    root_norm = normalize_path(str(root_path))
+    root_prefix = root_norm.rstrip("/") + "/%"
+    current = {normalize_path(path) for path in current_paths}
+
+    if create_db:
+        conn = connect_db()
+    else:
+        if DB_FILE != ":memory:" and not Path(DB_FILE).exists():
+            return []
+        conn = sqlite3.connect(f"file:{DB_FILE}?mode=ro", uri=True)
+        conn.row_factory = sqlite3.Row
+
+    try:
+        try:
+            rows = conn.execute(
+                """
+                SELECT path
+                FROM file_index
+                WHERE path = ? OR path LIKE ?
+                """,
+                (root_norm, root_prefix),
+            ).fetchall()
+        except sqlite3.OperationalError:
+            if create_db:
+                raise
+            return []
+        existing = {normalize_path(row["path"]) for row in rows}
+        return sorted(existing - current)
+    finally:
+        conn.close()
+
+
 def _prune_missing_index_rows(root_path: Path, current_paths) -> int:
     """
     Remove indexed rows under root_path that no longer appear in the current
     supported, non-ignored scan set.
     """
-    root_norm = normalize_path(str(root_path))
-    root_prefix = root_norm.rstrip("/") + "/%"
-    current = {normalize_path(path) for path in current_paths}
+    stale_paths = _find_missing_index_paths(root_path, current_paths)
+    if not stale_paths:
+        return 0
 
     conn = connect_db()
     try:
-        rows = conn.execute(
-            """
-            SELECT path
-            FROM file_index
-            WHERE path = ? OR path LIKE ?
-            """,
-            (root_norm, root_prefix),
-        ).fetchall()
-        existing = {normalize_path(row["path"]) for row in rows}
-        stale_paths = sorted(existing - current)
-        if not stale_paths:
-            return 0
         removed_count = _delete_search_index_paths(conn, stale_paths)
     finally:
         conn.close()
 
     print(f"🧹 Removed {removed_count} stale search index row(s).")
     return removed_count
+
+
+def _index_mode_label(
+    *,
+    only_changes: bool = False,
+    month: str | None = None,
+    log_file: str | None = None,
+) -> str:
+    parts = []
+    if log_file:
+        parts.append("log_file")
+    elif month:
+        parts.append("month")
+    if only_changes:
+        parts.append("only_changes")
+    return "+".join(parts) if parts else "full"
+
+
+def _print_index_plan(metrics: dict) -> None:
+    """Print a concise, non-mutating index plan."""
+    print("🧭 Index plan:")
+    print(f"- Mode: {metrics['mode']}")
+    print(f"- Scanned files: {metrics['scanned_count']}")
+    print(f"- Scoped files: {metrics['scoped_count']}")
+    print(f"- Skipped unchanged: {metrics['skipped_unchanged_count']}")
+    print(f"- Files that would be indexed: {metrics['indexed_count']}")
+    print(f"- Stale rows that would be pruned: {metrics['removed_count']}")
+    if metrics.get("stat_error_count"):
+        print(f"- Fast-check stat errors: {metrics['stat_error_count']}")
 
 
 # -------------------------
@@ -194,9 +255,9 @@ async def async_index_file(
                     """,
                     (full_path, content, clean_content, last_modified, file_hash),
                 )
-                update_file_metadata(
-                    full_path, {"content_changed": content_changed}, conn=conn
-                )
+                mtw_metadata = {"content_changed": content_changed}
+                mtw_metadata.update(build_stat_fingerprint(full_path))
+                update_file_metadata(full_path, mtw_metadata, conn=conn)
                 conn.commit()
                 conn.close()
 
@@ -283,6 +344,7 @@ async def async_index_file(
                     full_metadata[k] = v
 
             full_metadata["content_changed"] = content_changed
+            full_metadata.update(build_stat_fingerprint(full_path))
             update_file_metadata(full_path, full_metadata, conn=conn)
 
             conn.commit()
@@ -310,6 +372,11 @@ async def scan_and_index_files(
     disable_ocr=False,
     ignore_path: str | None = None,
     preset: str = "standard",
+    only_changes: bool = False,
+    month: str | None = None,
+    log_file: str | None = None,
+    incremental_log_dir: str | Path | None = None,
+    plan: bool = False,
 ):
     from .cache_utils import clean_cache_duplicates
     from indexly.ignore import IgnoreRules
@@ -318,9 +385,10 @@ async def scan_and_index_files(
     root_dir = normalize_path(root_dir)
     root_path = Path(root_dir).resolve()
 
-    # Ensure DB exists
-    conn = connect_db()
-    conn.close()
+    # Ensure DB exists for real indexing runs. Plan mode stays read-only.
+    if not plan:
+        conn = connect_db()
+        conn.close()
 
     # Load ignore rules
     if ignore_path and Path(ignore_path).exists():
@@ -342,12 +410,41 @@ async def scan_and_index_files(
         if Path(folder, f).suffix.lower() in SUPPORTED_EXTENSIONS
         and not ignore.should_ignore(Path(folder) / f, root_path)
     ]
+    current_file_paths = list(file_paths)
+    mode = _index_mode_label(
+        only_changes=only_changes,
+        month=month,
+        log_file=log_file,
+    )
+    scanned_count = len(current_file_paths)
+    scoped_count = scanned_count
+    skipped_unchanged_count = 0
+    stat_error_count = 0
 
     start_time = datetime.now()
 
-    if not file_paths:
+    if not current_file_paths:
         print("⚠️ No supported files found.")
-        removed_count = _prune_missing_index_rows(root_path, file_paths)
+        if plan:
+            plan_metrics = {
+                "mode": mode,
+                "scanned_count": scanned_count,
+                "scoped_count": scoped_count,
+                "skipped_unchanged_count": skipped_unchanged_count,
+                "indexed_count": 0,
+                "removed_count": len(
+                    _find_missing_index_paths(
+                        root_path,
+                        current_file_paths,
+                        create_db=False,
+                    )
+                ),
+                "stat_error_count": stat_error_count,
+            }
+            _print_index_plan(plan_metrics)
+            return []
+
+        removed_count = _prune_missing_index_rows(root_path, current_file_paths)
         if removed_count:
             generation = bump_search_index_generation()
             print(f"🔁 Search cache generation updated to {generation}.")
@@ -358,8 +455,14 @@ async def scan_and_index_files(
             "timestamp": datetime.now().isoformat(timespec="seconds"),
             "root": str(root_dir),
             "count": 0,
+            "mode": mode,
+            "scanned_count": scanned_count,
+            "scoped_count": scoped_count,
+            "skipped_unchanged_count": skipped_unchanged_count,
+            "indexed_count": 0,
             "changed_count": 0,
             "removed_count": removed_count,
+            "stat_error_count": stat_error_count,
             "duration_seconds": (datetime.now() - start_time).total_seconds(),
         }
         _default_logger.log(summary_entry)
@@ -370,7 +473,91 @@ async def scan_and_index_files(
                 logging.warning(f"Failed to flush summary log: {e}")
         return []
 
-    missing_doc_packages = get_missing_documents_dependencies(file_paths)
+    if month or log_file:
+        reader = LogReader(incremental_log_dir)
+        month_filter = validate_month(month) if month else None
+
+        if log_file:
+            if not reader.validate_custom_log_file(log_file):
+                raise ValueError(
+                    f"Log file does not exist or is not readable: {log_file}"
+                )
+            log_paths = [Path(log_file)]
+            path_scope = reader.build_path_set_from_logs(
+                log_paths,
+                root_path=root_dir,
+                month=month_filter,
+                strict=True,
+            )
+            source_label = f"log file {log_file}"
+        else:
+            log_paths = reader.find_logs_for_month(month_filter)
+            if not log_paths:
+                print(
+                    f"⚠️ No index logs found for month {month_filter}; "
+                    "processing all files."
+                )
+                path_scope = None
+            else:
+                path_scope = reader.build_path_set_from_logs(
+                    log_paths,
+                    root_path=root_dir,
+                    month=month_filter,
+                )
+                source_label = f"{len(log_paths)} month log(s)"
+
+        if path_scope is not None:
+            scoped_paths = [
+                path for path in file_paths if normalize_path(path) in path_scope
+            ]
+            print(
+                f"📅 Scoped indexing to {len(scoped_paths)} of "
+                f"{len(file_paths)} file(s) from {source_label}."
+            )
+            file_paths = scoped_paths
+            scoped_count = len(file_paths)
+
+    if only_changes:
+        incremental_result = filter_incremental_candidates(
+            file_paths,
+            db_path=DB_FILE if plan else None,
+            create_db=not plan,
+        )
+        file_paths = incremental_result.files_to_index
+        skipped_unchanged_count = len(incremental_result.skipped_files)
+        stat_error_count = len(incremental_result.stat_error_files)
+        if skipped_unchanged_count:
+            print(f"📊 Skipped {skipped_unchanged_count} unchanged file(s) via -r.")
+        if incremental_result.stat_error_files:
+            print(
+                "⚠️ Fast change check could not read "
+                f"{len(incremental_result.stat_error_files)} file(s); indexing them."
+            )
+        if not file_paths:
+            print("✅ All indexed files are up to date via -r.")
+
+    if plan:
+        plan_metrics = {
+            "mode": mode,
+            "scanned_count": scanned_count,
+            "scoped_count": scoped_count,
+            "skipped_unchanged_count": skipped_unchanged_count,
+            "indexed_count": len(file_paths),
+            "removed_count": len(
+                _find_missing_index_paths(
+                    root_path,
+                    current_file_paths,
+                    create_db=False,
+                )
+            ),
+            "stat_error_count": stat_error_count,
+        }
+        _print_index_plan(plan_metrics)
+        return []
+
+    missing_doc_packages = (
+        get_missing_documents_dependencies(file_paths) if file_paths else []
+    )
     if missing_doc_packages:
         raise ValueError(
             "Missing optional document dependencies for detected files: "
@@ -378,7 +565,36 @@ async def scan_and_index_files(
             + ". Install once and retry with: pip install indexly[documents]"
         )
 
-    removed_count = _prune_missing_index_rows(root_path, file_paths)
+    removed_count = _prune_missing_index_rows(root_path, current_file_paths)
+
+    if not file_paths:
+        if removed_count:
+            generation = bump_search_index_generation()
+            print(f"🔁 Search cache generation updated to {generation}.")
+        clean_cache_duplicates()
+
+        summary_entry = {
+            "event": "INDEX_SUMMARY",
+            "timestamp": datetime.now().isoformat(timespec="seconds"),
+            "root": str(root_dir),
+            "count": 0,
+            "mode": mode,
+            "scanned_count": scanned_count,
+            "scoped_count": scoped_count,
+            "skipped_unchanged_count": skipped_unchanged_count,
+            "indexed_count": 0,
+            "changed_count": 0,
+            "removed_count": removed_count,
+            "stat_error_count": stat_error_count,
+            "duration_seconds": (datetime.now() - start_time).total_seconds(),
+        }
+        _default_logger.log(summary_entry)
+        if hasattr(_default_logger, "flush"):
+            try:
+                _default_logger.flush(timeout=1.5)
+            except Exception as e:
+                logging.warning(f"Failed to flush summary log: {e}")
+        return []
 
     # Index files
     tasks = [
@@ -419,8 +635,14 @@ async def scan_and_index_files(
         "timestamp": datetime.now().isoformat(timespec="seconds"),
         "root": str(root_dir),
         "count": len(flattened),
+        "mode": mode,
+        "scanned_count": scanned_count,
+        "scoped_count": scoped_count,
+        "skipped_unchanged_count": skipped_unchanged_count,
+        "indexed_count": len(flattened),
         "changed_count": changed_count,
         "removed_count": removed_count,
+        "stat_error_count": stat_error_count,
         "duration_seconds": (datetime.now() - start_time).total_seconds(),
     }
     _default_logger.log(summary_entry)
@@ -523,6 +745,10 @@ def handle_index(args):
                 force_ocr=args.ocr,
                 disable_ocr=args.no_ocr,
                 ignore_path=getattr(args, "ignore", None),
+                only_changes=getattr(args, "only_changes", False),
+                month=getattr(args, "month", None),
+                log_file=getattr(args, "log_file", None),
+                plan=getattr(args, "plan", False),
             )
 
         indexed_files = asyncio.run(_run())

@@ -122,7 +122,10 @@ def validate_file_content(file_path: Path, file_type: str) -> bool:
     # --- Excel (.xlsx, .xls) ---
     if file_type in {"xlsx", "xls"} or file_path.suffix.lower() in {".xlsx", ".xls"}:
         try:
-            df = pd.read_excel(file_path, nrows=5, engine="openpyxl")
+            from .excel_warning_utils import suppress_openpyxl_feature_warnings
+
+            with suppress_openpyxl_feature_warnings():
+                df = pd.read_excel(file_path, nrows=5, engine="openpyxl")
             if df.empty or df.shape[1] < 1:
                 console.print(f"[red]❌ Excel file appears empty or invalid.[/red]")
                 return False
