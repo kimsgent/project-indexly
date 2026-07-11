@@ -2,6 +2,23 @@
   "project": "FTS5 File Search Tool",
   "versions": [
     {
+      "version": "2.1.5",
+      "date": "2026-07-11",
+      "contributors": [
+        "N. K. Franklin-Gent",
+        "OpenAI Codex"
+      ],
+      "changes": [
+        "feat(indexing): add safe incremental indexing with stat fingerprints, log-based scope, and read-only plan previews",
+        "fix(indexing): preserve exact cross-platform paths when index logs define incremental scope",
+        "fix(excel): suppress known benign openpyxl feature warnings while leaving unrelated warnings visible",
+        "docs(indexing): document incremental indexing modes and backfill reviewed release metadata",
+        "fix(release): add advisory validation for release metadata and documentation highlights",
+        "breaking: none"
+      ]
+    },
+
+    {
       "version": "2.1.4",
       "date": "2026-06-27",
       "contributors": [

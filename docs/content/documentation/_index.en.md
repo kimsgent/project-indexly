@@ -16,7 +16,7 @@ weight: 1
 type: docs
 toc: true
 date: "2026-04-22"
-lastmod: "2026-06-27"
+lastmod: "2026-07-11"
 draft: false
 categories:
   - Overview
@@ -47,10 +47,10 @@ This documentation works best when you enter through the path that matches your 
 <div class="p-3 rounded" style="background:#ffffff; color:#1f2937;">
   <h4 class="mb-2" style="color:#0f172a;">What changed recently</h4>
   <ul class="mb-3">
+    <li>`v2.1.5` adds safe incremental indexing, log-based scope, plan previews, and quieter Excel processing.</li>
     <li>`v2.1.4` hardens universal loading, structured-data persistence, time-series visualization, and FTS cache generation.</li>
     <li>`v2.1.3` adds analytical dataset routing, backend-aware inference, and safer optional dependency loading.</li>
     <li>`v2.1.2` strengthens CSV, JSON, NDJSON, SQLite, and Office-lock-file handling.</li>
-    <li>`v2.1.1` improves backup and restore safety, observers, comparison, organization, and rename workflows.</li>
   </ul>
   <a href="/en/releases/" class="btn btn-primary btn-sm me-2">View Release Notes</a>
   <a href="/en/documentation/data-analysis-pipeline/" class="btn btn-outline-secondary btn-sm">Open Analysis Guide</a>
