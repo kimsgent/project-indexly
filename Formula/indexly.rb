@@ -3,8 +3,8 @@ class Indexly < Formula
 
   desc "Local file indexing and search CLI with FTS5 and regex support"
   homepage "https://github.com/kimsgent/project-indexly"
-  url "https://files.pythonhosted.org/packages/0d/be/951e71ca04c8931b0700a352db3af7c79e6a00a52ef919396a724eb36334/indexly-2.1.4.tar.gz"
-  sha256 "b21a147fd551e6a43b5529238ca38382c3513f72a67ab663940443046bd76bdf"
+  url "https://files.pythonhosted.org/packages/6b/08/c90bc4841ef1fce9c2b8b4b0960ecbc1b38a19239b21f993c7280c844e66/indexly-2.1.5.tar.gz"
+  sha256 "bc2901a9a21159ac8be64b084e335b0769632c8e35f97c9d2889db3c65c02571"
   license "MIT"
 
   depends_on "libyaml"
@@ -21,8 +21,8 @@ class Indexly < Formula
   end
 
   resource "charset-normalizer" do
-    url "https://files.pythonhosted.org/packages/e7/a1/67fe25fac3c7642725500a3f6cfe5821ad557c3abb11c9d20d12c7008d3e/charset_normalizer-3.4.7.tar.gz"
-    sha256 "ae89db9e5f98a11a4bf50407d4363e7b09b31e55bc117b4f7d80aab97ba009e5"
+    url "https://files.pythonhosted.org/packages/bd/2a/23f34ec9d04624958e137efdc394888716353190e75f25dd22c7a2c7a8aa/charset_normalizer-3.4.9.tar.gz"
+    sha256 "673611bbd43f0810bec0b0f028ddeaaa501190339cac411f347ac76917c3ae7b"
   end
 
   resource "colorama" do
@@ -81,8 +81,8 @@ class Indexly < Formula
   end
 
   resource "typing-extensions" do
-    url "https://files.pythonhosted.org/packages/72/94/1a15dd82efb362ac84269196e94cf00f187f7ed21c242792a923cdb1c61f/typing_extensions-4.15.0.tar.gz"
-    sha256 "0cea48d173cc12fa28ecabc3b837ea3cf6f38c6d1136f85cbaaf598984861466"
+    url "https://files.pythonhosted.org/packages/f6/cc/6253133b5bb138fc3306cebfbda2c520f545d36b5be2c7255cc528bb45d6/typing_extensions-4.16.0.tar.gz"
+    sha256 "dc983d19a509c94dba722ee6abd33940f7c05a89e243c47e907eb4db6f1a43e5"
   end
 
   resource "urllib3" do
