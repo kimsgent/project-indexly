@@ -1,5 +1,14 @@
 {{ define "main" }}
 
+{{ $excludedSearchSections := slice "contact" "donate" "download" "search" }}
+{{ $searchSections := slice }}
+{{ range .Site.Sections.ByTitle }}
+  {{ $docsPages := where .RegularPagesRecursive "Type" "docs" }}
+  {{ if and .Title (not (in $excludedSearchSections .Section)) (or (eq .Type "docs") (gt (len $docsPages) 0)) }}
+    {{ $searchSections = $searchSections | append . }}
+  {{ end }}
+{{ end }}
+
 <section class="search-page py-5">
   <div class="container">
     <div class="row g-4 g-lg-5 align-items-start">
@@ -11,6 +20,17 @@
             Search across the published guides and jump directly to matching sections.
           </p>
         </header>
+
+        <div id="search-section-filter-control" class="search-page__filter" hidden>
+          <label for="search-section-filter" class="search-page__filter-label">Limit results to</label>
+          <select id="search-section-filter" class="search-page__filter-select" aria-describedby="search-section-filter-help">
+            <option value="">All sections</option>
+            {{ range $searchSections }}
+              <option value="{{ .Title | plainify }}">{{ .Section | humanize }}</option>
+            {{ end }}
+          </select>
+          <p id="search-section-filter-help" class="search-page__filter-help">Optionally narrow results to one documentation area.</p>
+        </div>
 
         <div class="search-wrapper">
           <div id="search-container"></div>
@@ -46,13 +66,23 @@
   window.addEventListener('DOMContentLoaded', () => {
     if (typeof PagefindUI === "undefined") return;
 
-    new PagefindUI({
+    const pagefind = new PagefindUI({
       element: "#search-container",
       showSubResults: true,
       showImages: false,
       resetStyles: false,
       baseUrl: "/"
     });
+
+    const sectionFilterControl = document.querySelector('#search-section-filter-control');
+    const sectionFilter = document.querySelector('#search-section-filter');
+
+    if (sectionFilterControl && sectionFilter) {
+      sectionFilterControl.hidden = false;
+      sectionFilter.addEventListener('change', () => {
+        pagefind.triggerFilters(sectionFilter.value ? { section: sectionFilter.value } : {});
+      });
+    }
   });
 </script>
 

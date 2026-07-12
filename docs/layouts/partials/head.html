@@ -58,6 +58,14 @@
   {{ end }}
 {{ end }}
 
+{{ if eq .Type "docs" }}
+  {{ with .FirstSection }}
+    {{ if and (not $.IsHome) .Title }}
+<meta data-pagefind-filter="section[content]" content="{{ .Title | plainify }}">
+    {{ end }}
+  {{ end }}
+{{ end }}
+
 <!-- Open Graph -->
 <meta property="og:title" content="{{ if .IsHome }}{{ .Site.Title }}{{ else }}{{ .Title }} | {{ .Site.Title }}{{ end }}">
 <meta property="og:description" content="{{ with .Params.description }}{{ . }}{{ else }}{{ .Site.Params.description }}{{ end }}">
