@@ -1,3 +1,10 @@
+{{/*
+Theme-upgrade maintenance: this override preserves Docsy's docs list markup
+while adding Pagefind's data-pagefind-body marker. When upgrading Docsy,
+compare this file with themes/docsy/layouts/docs/list.html, carry forward any
+vendor markup or partial changes, keep the marker on the documentation-content
+wrapper, then run `npm run build` and verify the Pagefind filter and index.
+*/}}
 {{ define "main" }}
 <div class="td-content" data-pagefind-body>
 	<h1>{{ .Title }}</h1>

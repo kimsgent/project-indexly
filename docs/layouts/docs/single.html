@@ -1,3 +1,11 @@
+{{/*
+Theme-upgrade maintenance: this override adds Pagefind's data-pagefind-body
+marker because Docsy's docs base template has no extension point on its content
+<main>. When upgrading Docsy, compare this file with
+themes/docsy/layouts/docs/single.html, retain the marker around only the
+rendered documentation content, then run `npm run build` and confirm that
+Pagefind indexes documentation pages while excluding navigation and footer text.
+*/}}
 {{ define "main" }}
 <div data-pagefind-body>
 {{ .Render "_td-content" }}
