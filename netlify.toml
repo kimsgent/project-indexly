@@ -5,7 +5,7 @@
 [build]
   base = "docs"
   publish = "public"
-  command = "hugo -e production && npx -y pagefind@latest --site public"
+  command = "hugo -e production && npx -y pagefind@1.5.2 --site public"
 
 [context.production.environment]
   HUGO_VERSION = "0.148.1"

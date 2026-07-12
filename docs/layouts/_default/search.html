@@ -1,27 +1,62 @@
 {{ define "main" }}
 
-<section class="search-page py-5" style="min-height: 70vh;">
-  <div class="container text-center">
+{{ $excludedSearchSections := slice "contact" "donate" "download" "search" }}
+{{ $searchSections := slice }}
+{{ range .Site.Sections.ByTitle }}
+  {{ $docsPages := where .RegularPagesRecursive "Type" "docs" }}
+  {{ if and .Title (not (in $excludedSearchSections .Section)) (or (eq .Type "docs") (gt (len $docsPages) 0)) }}
+    {{ $searchSections = $searchSections | append . }}
+  {{ end }}
+{{ end }}
 
-    <div class="mb-4">
-      <img src="{{ "/images/logo.png" | relURL }}" alt="Indexly Logo" style="max-height: 80px;">
+<section class="search-page py-5">
+  <div class="container">
+    <div class="row g-4 g-lg-5 align-items-start">
+      <div class="col-lg-8">
+        <header class="search-page__intro">
+          <p class="search-page__eyebrow">Documentation search</p>
+          <h1>Search Indexly Documentation</h1>
+          <p class="search-page__lede">
+            Search across the published guides and jump directly to matching sections.
+          </p>
+        </header>
+
+        <div id="search-section-filter-control" class="search-page__filter" hidden>
+          <label for="search-section-filter" class="search-page__filter-label">Limit results to</label>
+          <select id="search-section-filter" class="search-page__filter-select" aria-describedby="search-section-filter-help">
+            <option value="">All sections</option>
+            {{ range $searchSections }}
+              <option value="{{ .Title | plainify }}">{{ .Section | humanize }}</option>
+            {{ end }}
+          </select>
+          <p id="search-section-filter-help" class="search-page__filter-help">Optionally narrow results to one documentation area.</p>
+        </div>
+
+        <div class="search-wrapper">
+          <div id="search-container"></div>
+        </div>
+
+        <noscript>
+          <p class="search-page__noscript">
+            Search needs JavaScript. Browse the <a href="{{ "/documentation/" | relLangURL }}">documentation overview</a> instead.
+          </p>
+        </noscript>
+      </div>
+
+      <aside class="col-lg-4" aria-labelledby="common-paths-title">
+        <div class="search-page__paths">
+          <p class="search-page__eyebrow">Start here</p>
+          <h2 id="common-paths-title" class="search-page__paths-title">Common paths</h2>
+          <p class="search-page__paths-copy">Use these guides when you know the task you want to complete.</p>
+          <ul class="search-page__paths-list">
+            <li><a href="{{ "/documentation/" | relLangURL }}">Documentation overview</a></li>
+            <li><a href="{{ "/documentation/indexly-installation/" | relLangURL }}">Install Indexly</a></li>
+            <li><a href="{{ "/documentation/index-files-and-folders/" | relLangURL }}">Index files and folders</a></li>
+            <li><a href="{{ "/searching/" | relLangURL }}">Search files with Indexly</a></li>
+          </ul>
+        </div>
+      </aside>
     </div>
-
-    <h1 class="mb-4">Search Indexly Documentation</h1>
-
-    <div class="search-wrapper mb-5">
-      <div id="search-container"></div>
-    </div>
-
-    <div class="mt-5">
-      <a href="{{ "/documentation/" | relLangURL }}" class="btn btn-primary me-2">
-        Documentation Overview
-      </a>
-      <a href="{{ "/" | relLangURL }}" class="btn btn-outline-secondary">
-        Home
-      </a>
-    </div>
-
   </div>
 </section>
 
@@ -31,13 +66,23 @@
   window.addEventListener('DOMContentLoaded', () => {
     if (typeof PagefindUI === "undefined") return;
 
-    new PagefindUI({
+    const pagefind = new PagefindUI({
       element: "#search-container",
       showSubResults: true,
       showImages: false,
       resetStyles: false,
       baseUrl: "/"
     });
+
+    const sectionFilterControl = document.querySelector('#search-section-filter-control');
+    const sectionFilter = document.querySelector('#search-section-filter');
+
+    if (sectionFilterControl && sectionFilter) {
+      sectionFilterControl.hidden = false;
+      sectionFilter.addEventListener('change', () => {
+        pagefind.triggerFilters(sectionFilter.value ? { section: sectionFilter.value } : {});
+      });
+    }
   });
 </script>
 

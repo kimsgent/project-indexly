@@ -11,6 +11,9 @@ then commit, tag, and optionally push the tap release tag.
 Options:
   --tap-repo PATH  Path to the Homebrew tap repository root.
                    Default: /home/linuxbrew/.linuxbrew/Homebrew/Library/Taps/kimsgent/homebrew-indexly
+  --source-formula PATH
+                   Formula to validate and copy. Default: Formula/indexly.rb
+                   in the Project-Indexly repository.
   --dry-run        Update formula if needed, then skip commit, tag, and push.
   --push           Push the release tag to origin.
   --help           Show this help message.
@@ -47,6 +50,7 @@ PROJECT_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 DEFAULT_TAP_REPO="/home/linuxbrew/.linuxbrew/Homebrew/Library/Taps/kimsgent/homebrew-indexly"
 
 TAP_REPO="${DEFAULT_TAP_REPO}"
+SOURCE_FORMULA="${PROJECT_ROOT}/Formula/indexly.rb"
 DRY_RUN=0
 PUSH=0
 
@@ -55,6 +59,11 @@ while (($#)); do
     --tap-repo)
       (($# >= 2)) || fail "--tap-repo requires a path"
       TAP_REPO="$2"
+      shift 2
+      ;;
+    --source-formula)
+      (($# >= 2)) || fail "--source-formula requires a path"
+      SOURCE_FORMULA="$2"
       shift 2
       ;;
     --dry-run)
@@ -82,8 +91,8 @@ fi
 require_command git
 PYTHON="$(find_python)"
 
-SOURCE_FORMULA="${PROJECT_ROOT}/Formula/indexly.rb"
 [[ -f "${SOURCE_FORMULA}" ]] || fail "Release formula not found: ${SOURCE_FORMULA}"
+SOURCE_FORMULA="$(cd -- "$(dirname -- "${SOURCE_FORMULA}")" && pwd)/$(basename -- "${SOURCE_FORMULA}")"
 
 [[ -d "${TAP_REPO}" ]] || fail "Tap repository does not exist: ${TAP_REPO}"
 TAP_REPO="$(cd -- "${TAP_REPO}" && pwd)"
