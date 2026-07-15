@@ -7,7 +7,7 @@ from indexly.rename_watch.service import RenameWatchService
 
 
 def _config(tmp_path, **job_values):
-    incoming = tmp_path / "incoming"; incoming.mkdir()
+    incoming = tmp_path / "incoming"; incoming.mkdir(exist_ok=True)
     job = {"id": "inbox", "watch_path": "incoming", "destination_subfolder": "processed", "settle_seconds": 0.01, "scan_interval_seconds": 10}
     job.update(job_values)
     path = tmp_path / "rename-watch.json"; path.write_text(json.dumps({"version": 1, "jobs": [job]}), encoding="utf-8")
@@ -48,3 +48,25 @@ def test_initialize_creates_safe_template(tmp_path):
         pass
     else:
         raise AssertionError("must not overwrite existing configuration")
+
+def test_counter_format_is_required_only_when_counter_is_used(tmp_path):
+    path, _ = _config(tmp_path, pattern="{date}-{title}", counter_format="")
+    assert load_settings(str(path)).jobs[0].counter_format == ""
+    path, _ = _config(tmp_path, pattern="{date}-{title}-{counter}", counter_format="03d")
+    assert load_settings(str(path)).jobs[0].counter_format == "03d"
+    path, _ = _config(tmp_path, pattern="{date}-{title}", counter_format="03d")
+    try:
+        load_settings(str(path))
+    except RenameWatchConfigError:
+        pass
+    else:
+        raise AssertionError("counter format without {counter} must be rejected")
+
+
+def test_title_format_controls_rendering(tmp_path):
+    path, incoming = _config(tmp_path, pattern="{title}", title_format="camel-case")
+    source = incoming / "Monthly Report.txt"
+    source.write_text("content", encoding="utf-8")
+    job = load_settings(str(path)).jobs[0]
+    target = PlanMoveLog(job, tmp_path / "state").plan_and_move(source)
+    assert target.name == "monthlyReport.txt"

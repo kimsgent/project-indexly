@@ -27,6 +27,7 @@ It never overwrites an existing file. Create an `inbox` directory beside the JSO
     "pattern": "{date}-{title}-{counter}",
     "date_format": "%Y%m%d",
     "counter_format": "03d",
+    "title_format": "standard",
     "mode": "hybrid",
     "scan_interval_seconds": 60,
     "settle_seconds": 3,
@@ -44,3 +45,22 @@ Hybrid mode reacts to filesystem events and periodically scans for files missed
 while copied or locked. Rename-watch waits for a file to remain unchanged for
 the configured settling period, retries transient filesystem errors, and logs
 only completed moves or final failures under Indexly's normal NDJSON log tree.
+
+## Naming configuration
+
+`pattern` is fully configurable. It accepts these placeholders:
+
+| Placeholder | Meaning | Related setting | Default behavior |
+| --- | --- | --- | --- |
+| `{date}` | File modification date | `date_format` | `%Y%m%d` |
+| `{title}` | Filename without its extension | `title_format` | `standard` |
+| `{counter}` | Per-job, per-date sequence number | `counter_format` | Required when used |
+| `{prefix}` | Reserved empty prefix token | None | Produces no text |
+
+| Setting | Accepted values | Rule |
+| --- | --- | --- |
+| `date_format` | `%Y%m%d`, `%Y-%m-%d`, `%y%m%d`, `%d-%m-%Y`, `%d%m%Y` | Used only when `{date}` is in the pattern. |
+| `counter_format` | Python integer format such as `03d`, or `""` | Provide a non-empty value only when the pattern contains `{counter}`. Omit it or use `""` otherwise. |
+| `title_format` | `standard`, `camel-case` | `standard` preserves the current lowercase kebab-case form (`Monthly Report` → `monthly-report`); `camel-case` produces `monthlyReport`. |
+
+A pattern without `{counter}` is valid, for example `"{date}-{title}"`. Its names are exact: if a destination with the same name already exists, rename-watch does not add a counter automatically and does not overwrite the file. Use `{counter}` when duplicate filenames need automatic numbering.

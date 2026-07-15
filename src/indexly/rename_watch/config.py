@@ -8,14 +8,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List
 
-from indexly.rename_utils import SUPPORTED_DATE_FORMATS
-
 DEFAULT_PATTERN = "{date}-{title}"
 SUPPORTED_DATE_FORMATS = {"%Y%m%d", "%Y-%m-%d", "%y%m%d", "%d-%m-%Y", "%d%m%Y"}
 VALID_MODES = {"event", "interval", "hybrid"}
 _JOB_KEYS = {
     "id", "watch_path", "destination_subfolder", "pattern", "date_format",
-    "counter_format", "mode", "scan_interval_seconds", "settle_seconds", "retry",
+    "counter_format", "title_format", "mode", "scan_interval_seconds", "settle_seconds", "retry",
 }
 _RETRY_KEYS = {"max_attempts", "initial_delay_seconds", "max_delay_seconds"}
 
@@ -39,6 +37,7 @@ class RenameWatchJob:
     pattern: str
     date_format: str
     counter_format: str
+    title_format: str
     mode: str
     scan_interval_seconds: float
     settle_seconds: float
@@ -142,13 +141,22 @@ def _parse_job(raw_value: Any, index: int, config_directory: Path) -> RenameWatc
     date_format = raw.get("date_format", "%Y%m%d")
     if date_format not in SUPPORTED_DATE_FORMATS:
         raise RenameWatchConfigError("{0}.date_format is unsupported".format(context))
-    counter_format = raw.get("counter_format", "d")
+    uses_counter = "{counter}" in pattern
+    counter_format = raw.get("counter_format", "d" if uses_counter else "")
     if not isinstance(counter_format, str):
         raise RenameWatchConfigError("{0}.counter_format must be a string".format(context))
-    try:
-        format(0, counter_format)
-    except (TypeError, ValueError):
-        raise RenameWatchConfigError("{0}.counter_format is not a valid integer format".format(context))
+    if uses_counter and not counter_format:
+        raise RenameWatchConfigError("{0}.counter_format is required when pattern uses {{counter}}".format(context))
+    if not uses_counter and counter_format:
+        raise RenameWatchConfigError("{0}.counter_format must be empty when pattern does not use {{counter}}".format(context))
+    if uses_counter:
+        try:
+            format(0, counter_format)
+        except (TypeError, ValueError):
+            raise RenameWatchConfigError("{0}.counter_format is not a valid integer format".format(context))
+    title_format = raw.get("title_format", "standard")
+    if title_format not in ("standard", "camel-case"):
+        raise RenameWatchConfigError("{0}.title_format must be standard or camel-case".format(context))
     mode = raw.get("mode", "hybrid")
     if mode not in VALID_MODES:
         raise RenameWatchConfigError("{0}.mode must be event, interval, or hybrid".format(context))
@@ -159,6 +167,7 @@ def _parse_job(raw_value: Any, index: int, config_directory: Path) -> RenameWatc
         pattern=pattern,
         date_format=date_format,
         counter_format=counter_format,
+        title_format=title_format,
         mode=mode,
         scan_interval_seconds=_positive_number(raw.get("scan_interval_seconds", 60), context + ".scan_interval_seconds"),
         settle_seconds=_positive_number(raw.get("settle_seconds", 3), context + ".settle_seconds"),
@@ -198,7 +207,7 @@ def initialize_settings(config_path: str) -> Path:
     if path.suffix.lower() != ".json":
         raise RenameWatchConfigError("Configuration path must end in .json: {0}".format(path))
     path.parent.mkdir(parents=True, exist_ok=True)
-    template = {"version": 1, "jobs": [{"id": "inbox", "watch_path": "inbox", "destination_subfolder": "processed", "pattern": "{date}-{title}-{counter}", "date_format": "%Y%m%d", "counter_format": "03d", "mode": "hybrid", "scan_interval_seconds": 60, "settle_seconds": 3, "retry": {"max_attempts": 8, "initial_delay_seconds": 2, "max_delay_seconds": 60}}]}
+    template = {"version": 1, "jobs": [{"id": "inbox", "watch_path": "inbox", "destination_subfolder": "processed", "pattern": "{date}-{title}-{counter}", "date_format": "%Y%m%d", "counter_format": "03d", "title_format": "standard", "mode": "hybrid", "scan_interval_seconds": 60, "settle_seconds": 3, "retry": {"max_attempts": 8, "initial_delay_seconds": 2, "max_delay_seconds": 60}}]}
     with path.open("x", encoding="utf-8") as handle:
         json.dump(template, handle, indent=2)
         handle.write("\n")

@@ -11,11 +11,16 @@ def _slug(value: str) -> str:
     value = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii").lower()
     return re.sub(r"-+", "-", re.sub(r"[^a-z0-9]+", "-", value)).strip("-") or "file"
 
-def render_name(source: Path, pattern: str, date_format: str, counter_format: str, counter: int) -> str:
+def render_name(source: Path, pattern: str, date_format: str, counter_format: str, title_format: str, counter: int) -> str:
     date = datetime.fromtimestamp(source.stat().st_mtime).strftime(date_format)
-    values = {"date": date, "title": _slug(source.stem), "counter": format(counter, counter_format), "prefix": ""}
+    title = _slug(source.stem)
+    if title_format == "camel-case":
+        parts = title.split("-")
+        title = parts[0] + "".join(part.capitalize() for part in parts[1:])
+    values = {"date": date, "title": title, "counter": format(counter, counter_format) if "{counter}" in pattern else "", "prefix": ""}
     name = pattern
-    for key, value in values.items(): name = name.replace("{" + key + "}", value)
+    for key, value in values.items():
+        name = name.replace("{" + key + "}", value)
     return re.sub(r"-+", "-", name).strip("- ") + source.suffix
 
 class CounterState:
@@ -48,8 +53,10 @@ class PlanMoveLog:
             data, counter = self.state.next(date_key)
             self.job.destination_path.mkdir(parents=True, exist_ok=True)
             while True:
-                target = self.job.destination_path / render_name(source, self.job.pattern, self.job.date_format, self.job.counter_format, counter)
+                target = self.job.destination_path / render_name(source, self.job.pattern, self.job.date_format, self.job.counter_format, self.job.title_format, counter)
                 if not target.exists(): break
+                if "{counter}" not in self.job.pattern:
+                    raise FileExistsError("Destination already exists: {0}".format(target))
                 counter += 1
             source.replace(target)
             data[date_key] = counter + 1
