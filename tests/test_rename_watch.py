@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from indexly.rename_watch.config import load_settings
+from indexly.rename_watch.config import RenameWatchConfigError, initialize_settings, load_settings
 from indexly.rename_watch.planner import PlanMoveLog
 from indexly.rename_watch.service import RenameWatchService
 
@@ -36,3 +36,15 @@ def test_once_ignores_empty_folder_without_logging(tmp_path, monkeypatch):
     monkeypatch.setattr("indexly.rename_watch.service.log_move", lambda *args: calls.append(args))
     RenameWatchService([job]).run_once()
     assert calls == []
+
+
+def test_initialize_creates_safe_template(tmp_path):
+    path = initialize_settings(str(tmp_path / "rename-watch.json"))
+    data = json.loads(path.read_text(encoding="utf-8"))
+    assert data["jobs"][0]["watch_path"] == "inbox"
+    try:
+        initialize_settings(str(path))
+    except RenameWatchConfigError:
+        pass
+    else:
+        raise AssertionError("must not overwrite existing configuration")

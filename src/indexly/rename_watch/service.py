@@ -4,7 +4,7 @@ import os, threading, time
 from pathlib import Path
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
-from .config import RenameWatchConfigError, RenameWatchJob, load_settings
+from .config import RenameWatchConfigError, RenameWatchJob, initialize_settings, load_settings
 from .logging import log_failure, log_move
 from .planner import PlanMoveLog
 
@@ -85,11 +85,23 @@ class RenameWatchService:
         self.observers = []
 
 def handle_rename_watch(args):
-    try: settings = load_settings(args.config)
-    except RenameWatchConfigError as error: raise ValueError(str(error))
+    if getattr(args, "init", False):
+        try:
+            path = initialize_settings(args.config)
+        except RenameWatchConfigError as error:
+            raise ValueError(str(error))
+        print("Created rename-watch configuration: {0}".format(path))
+        print("Create the 'inbox' folder beside it, then run rename-watch again.")
+        return
+    try:
+        settings = load_settings(args.config)
+    except RenameWatchConfigError as error:
+        raise ValueError(str(error))
     jobs = settings.jobs
     if getattr(args, "mode", None):
         jobs = [type(job)(**dict(job.__dict__, mode=args.mode)) for job in jobs]
     service = RenameWatchService(jobs)
-    if getattr(args, "once", False): service.run_once()
-    else: service.run_forever()
+    if getattr(args, "once", False):
+        service.run_once()
+    else:
+        service.run_forever()

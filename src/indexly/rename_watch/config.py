@@ -188,3 +188,18 @@ def load_settings(config_path: str) -> RenameWatchSettings:
     if len(ids) != len(set(ids)):
         raise RenameWatchConfigError("configuration.jobs contains duplicate id values")
     return RenameWatchSettings(config_path=path, jobs=jobs)
+
+
+def initialize_settings(config_path: str) -> Path:
+    """Create a safe, editable configuration template without overwriting data."""
+    path = Path(os.path.expandvars(os.path.expanduser(config_path))).resolve()
+    if path.exists():
+        raise RenameWatchConfigError("Configuration file already exists: {0}".format(path))
+    if path.suffix.lower() != ".json":
+        raise RenameWatchConfigError("Configuration path must end in .json: {0}".format(path))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    template = {"version": 1, "jobs": [{"id": "inbox", "watch_path": "inbox", "destination_subfolder": "processed", "pattern": "{date}-{title}-{counter}", "date_format": "%Y%m%d", "counter_format": "03d", "mode": "hybrid", "scan_interval_seconds": 60, "settle_seconds": 3, "retry": {"max_attempts": 8, "initial_delay_seconds": 2, "max_delay_seconds": 60}}]}
+    with path.open("x", encoding="utf-8") as handle:
+        json.dump(template, handle, indent=2)
+        handle.write("\n")
+    return path

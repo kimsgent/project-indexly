@@ -9,7 +9,13 @@ weight: 31
 update the Indexly database, or change the behavior of `rename-file` or
 `watch`.
 
-Create a JSON configuration file:
+Create a standard JSON configuration template:
+
+```powershell
+indexly rename-watch --config "C:\\path\\to\\rename-watch.json" --init
+```
+
+It never overwrites an existing file. Create an `inbox` directory beside the JSON file, then edit the generated configuration if needed:
 
 ```json
 {

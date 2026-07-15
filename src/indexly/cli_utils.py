@@ -576,6 +576,7 @@ def build_parser():
 
     rename_watch_parser = subparsers.add_parser("rename-watch", help="Watch configured folders and rename/move files")
     rename_watch_parser.add_argument("--config", required=True, help="Path to rename-watch JSON configuration")
+    rename_watch_parser.add_argument("--init", action="store_true", help="Create a safe default JSON configuration and exit")
     rename_watch_parser.add_argument("--once", action="store_true", help="Run one reconciliation scan and exit")
     rename_watch_parser.add_argument("--mode", choices=["event", "interval", "hybrid"], help="Override configured run mode")
     rename_watch_parser.set_defaults(func=_lazy_handle_rename_watch)
