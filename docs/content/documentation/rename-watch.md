@@ -1,29 +1,126 @@
 ---
-title: "Watch and Rename Files"
+title: "Automate Safe File Renaming with Rename Watch"
 linkTitle: "Rename Watch"
 slug: "rename-watch"
+aliases:
+  - "/documentation/rename-watch/"
+  - "/en/documentation/watch-and-rename-files/"
+date: "2026-07-16"
+lastmod: "2026-07-16"
 weight: 31
+type: docs
+toc: true
+draft: false
+icon: "mdi:folder-sync"
+cta: "Automate file renaming safely"
+description: "Use Indexly rename-watch to monitor folders and rename incoming files safely with previews, filters, counters, quarantine, durable recovery, and audit logs."
+summary: "A complete guide to automated, collision-safe file renaming on Windows, macOS, and Linux with Indexly rename-watch."
+canonicalURL: "/en/documentation/rename-watch/"
+keywords:
+  - indexly rename-watch
+  - automatic file renaming
+  - watch folder rename files
+  - batch rename automation
+  - safe file rename tool
+  - file naming patterns
+  - file quarantine and retry
+  - cross-platform file watcher
+  - rename files on arrival
+  - document workflow automation
+tags:
+  - rename-watch
+  - file renaming
+  - automation
+  - file watching
+  - quarantine
+  - recovery
+  - cli
+categories:
+  - Documentation
+  - File Management
+  - Automation
+params:
+  audience: "Indexly users and operators automating local document intake"
 ---
 
-`rename-watch` is a standalone automation command. It does not index files,
-update the Indexly database, or change the behavior of `rename-file` or
-`watch`.
+## Overview
 
-Create a standard JSON configuration template:
+`indexly rename-watch` turns a local folder into a rigorous, user-friendly
+rename pipeline. It can watch continuously or process one frozen batch, wait
+for incoming files to finish copying, select only the files you want, generate
+predictable names, prevent overwrites, retain monotonic counters, quarantine
+terminal failures, and recover safely after interruption.
 
-```powershell
-indexly rename-watch --config "C:\\path\\to\\rename-watch.json" --init
-```
+Rename Watch is a **standalone filesystem command**. It does not index file
+contents, update the Indexly database, or change the behavior of
+[`rename-file`](/en/documentation/rename-file/) or `indexly watch`. This separation makes it
+useful even when all you need is reliable local rename automation.
 
-It never overwrites an existing file. Initialization creates an `inbox`
-directory beside the JSON file. Edit the generated configuration if needed:
+| Goal | Use this command | Why |
+| --- | --- | --- |
+| Rename a file or an existing folder on demand | [`indexly rename-file`](/en/documentation/rename-file/) | Direct, interactive batch renaming with optional database sync and organizer handoff. |
+| Rename new arrivals repeatedly from a JSON-defined pipeline | `indexly rename-watch` | Settling, retries, selection rules, counters, quarantine, recovery, and continuous modes. |
+| Keep the full-text index updated when files change | `indexly watch` | Indexing workflow; it does not replace Rename Watch's rename pipeline. |
+
+## Quick start
+
+These commands work in PowerShell, Command Prompt, Bash, and Zsh. Run them from
+the folder where you want to keep the configuration and its default `inbox`.
+
+1. Create a safe starter configuration and the `inbox` folder:
+
+   ```console
+   indexly rename-watch --config "./rename-watch.json" --init
+   ```
+
+2. Validate the configuration, its paths, runtime state, and lock availability:
+
+   ```console
+   indexly rename-watch --config "./rename-watch.json" --check-config
+   ```
+
+3. Add test documents to `./inbox`, then preview one frozen batch:
+
+   ```console
+   indexly rename-watch --config "./rename-watch.json" --once --dry-run
+   ```
+
+4. Apply that one batch after reviewing the preview:
+
+   ```console
+   indexly rename-watch --config "./rename-watch.json" --once
+   ```
+
+5. Run continuously when the pipeline is ready for normal use:
+
+   ```console
+   indexly rename-watch --config "./rename-watch.json"
+   ```
+
+6. From another terminal, inspect its read-only durable status:
+
+   ```console
+   indexly rename-watch --config "./rename-watch.json" --status
+   ```
+
+{{< alert title="Start with validation and preview" color="warning" >}}
+`--check-config` checks safety prerequisites. `--once --dry-run` then shows the
+planned source and destination names without moving files or consuming
+counters. Use both before leaving a new configuration running continuously.
+{{< /alert >}}
+
+## Configuration example
+
+`--init` never overwrites an existing configuration. It creates an `inbox`
+directory beside the JSON file and writes a standard document profile. The
+following expanded example also enables a terminal-failure quarantine:
 
 ```json
 {
   "version": 1,
   "jobs": [{
-    "id": "downloads",
-    "watch_path": "./incoming",
+    "id": "inbox",
+    "watch_path": "./inbox",
     "destination_subfolder": "processed",
     "pattern": "{date}-{title}-{counter}",
     "date_format": "%Y%m%d",
@@ -42,13 +139,95 @@ directory beside the JSON file. Edit the generated configuration if needed:
 }
 ```
 
-Run it continuously with `indexly rename-watch --config rename-watch.json`, or
-perform one reconciliation pass with `--once`. Relative paths are resolved from
-the configuration file. A configured watch directory is created automatically,
-including missing parent directories, when rename-watch starts. An existing
-non-directory path is rejected, and an inaccessible location reports a clear
-configuration error. The destination must be a child of the watched folder; it
-is created only when a ready file is moved.
+Relative paths are resolved from the configuration file, not from the shell's
+current directory. A missing watch directory is created automatically,
+including missing parent directories. An existing non-directory or an
+inaccessible location is rejected. Each destination and quarantine must be a
+strict child of its watch folder. Every quarantine must also be disjoint from
+all configured destination and quarantine subtrees that it could overlap.
+
+### Job settings
+
+| Setting | Purpose | Default when omitted |
+| --- | --- | --- |
+| `id` | Unique, case-sensitive job identifier used by operator commands and durable state. | Required. |
+| `watch_path` | Folder from which eligible files are consumed. Relative paths start beside the JSON file. | Required. |
+| `destination_subfolder` | Strict child of `watch_path` that receives completed files. | Required. |
+| `pattern` | Output name built from `{date}`, `{title}`, `{counter}`, and `{prefix}`. | `{date}-{title}-{counter}` |
+| `date_format` | Format used by `{date}`. | `%Y%m%d` |
+| `counter_format` | Python integer format such as `03d`; must be empty when `{counter}` is absent. | `d` with `{counter}`, otherwise empty. |
+| `title_format` | `standard` for lowercase kebab case or `camel-case`. | `standard` |
+| `mode` | `event`, `interval`, or `hybrid`. | `hybrid` |
+| `scan_interval_seconds` | Interval-mode rescan period in seconds. | `60` |
+| `settle_seconds` | Required unchanged period before a move is attempted. | `3` |
+| `include` | Root-relative POSIX globs that opt files in. | All otherwise eligible files. |
+| `exclude` | Root-relative POSIX globs that opt files or subtrees out. | No additional glob exclusions. |
+| `respect_indexlyignore` | Add rules from `<watch_path>/.indexlyignore`. | `false` |
+| `recursive` | Select eligible files below the watch root. | `false` |
+| `max_file_size_bytes` | Positive maximum size; a file exactly at the limit is accepted. | No size limit. |
+| `quarantine_subfolder` | Optional protected child for files that reach a terminal failure. | Disabled; failed files stay at source. |
+| `no_counter_collision_policy` | For patterns without `{counter}`: `fail`, `quarantine`, or `leave-source`. | `fail` |
+| `retry.max_attempts` | Maximum bounded processing attempts. | `8` |
+| `retry.initial_delay_seconds` | First retry delay before exponential backoff. | `2` |
+| `retry.max_delay_seconds` | Maximum delay between retry attempts. | `60` |
+
+Unknown keys and invalid combinations are rejected rather than ignored.
+Multiple jobs can share one configuration; when their watch roots overlap,
+Rename Watch validates each quarantine against every configured destination
+and quarantine before starting.
+
+## Choose a run mode
+
+| Mode | How it finds files | When to use it |
+| --- | --- | --- |
+| `hybrid` | Filesystem events plus periodic reconciliation scans. | Recommended for normal operation; catches arrivals and files missed while copying or locked. |
+| `event` | Filesystem events only. | Low-latency local workflows where the platform watcher is reliable and periodic rescans are not wanted. |
+| `interval` | Periodic reconciliation scans only. | Network shares, mounted volumes, or environments where filesystem events are unavailable or unreliable. |
+
+The job's `mode` is persistent. To override every configured job for one
+invocation without editing JSON, use one of these copy/paste-ready commands:
+
+```console
+indexly rename-watch --config "./rename-watch.json" --mode event
+indexly rename-watch --config "./rename-watch.json" --mode interval
+indexly rename-watch --config "./rename-watch.json" --mode hybrid
+```
+
+The override controls file discovery during continuous operation. The parser
+also accepts it with `--once`, but a one-batch run always uses its frozen
+initial reconciliation set and starts neither observers nor periodic rescans,
+so changing the mode does not change that batch algorithm. `--mode` cannot be
+combined with `--init`, `--check-config`, `--once --dry-run`, or a state-operator
+action.
+
+## Command and flag guide
+
+| Flag or combination | Use it when | Example |
+| --- | --- | --- |
+| `--config PATH` | Select the required JSON configuration for every Rename Watch action. | `indexly rename-watch --config "./rename-watch.json" --status` |
+| `--init` | Create a starter JSON file and adjacent `inbox`; refuses to overwrite. | `indexly rename-watch --config "./rename-watch.json" --init` |
+| `--check-config` | Validate schema, paths, state access, recovery integrity, and lock availability without consuming files. | `indexly rename-watch --config "./rename-watch.json" --check-config` |
+| `--once` | Process only the filesystem identities captured by the initial scan, then exit. | `indexly rename-watch --config "./rename-watch.json" --once` |
+| `--once --dry-run` | Preview a frozen batch without moving files or consuming counters. | `indexly rename-watch --config "./rename-watch.json" --once --dry-run` |
+| `--mode MODE` | Temporarily override all job modes for one invocation; meaningful for continuous discovery. | `indexly rename-watch --config "./rename-watch.json" --mode interval` |
+| `--status` | Read configured jobs, recovery state, active failures, and retained history. | `indexly rename-watch --config "./rename-watch.json" --status` |
+| `--inspect-counters` | Read counter state for all jobs or one `--job`. | `indexly rename-watch --config "./rename-watch.json" --inspect-counters --job inbox` |
+| `--reset-counters` | Reset one `--date-key` or `--all-counters` for one counter-enabled `--job`. | `indexly rename-watch --config "./rename-watch.json" --reset-counters --job inbox --date-key 20260716` |
+| `--retry-failures` | Retry one durable `--failure-id` or a snapshot selected by `--all-failures`. | `indexly rename-watch --config "./rename-watch.json" --retry-failures --job inbox --failure-id 3f7bbf87-842b-4a68-a3a8-1450d36f47f5` |
+| `--job ID` | Select an exact, case-sensitive job for counter or failure operations. | `indexly rename-watch --config "./rename-watch.json" --inspect-counters --job inbox` |
+| `--yes` | Bypass a destructive operator confirmation; required for non-interactive and machine-readable reset/retry calls. | `indexly rename-watch --config "./rename-watch.json" --retry-failures --job inbox --all-failures --yes` |
+| `--json` | Emit successful status, counter, reset, or retry output as one JSON document. | `indexly rename-watch --config "./rename-watch.json" --status --json` |
+| `--json-errors` | Emit failures as one versioned JSON document on standard error. | `indexly rename-watch --config "./rename-watch.json" --status --json --json-errors` |
+
+Action flags such as `--status`, `--inspect-counters`, `--reset-counters`, and
+`--retry-failures` are mutually exclusive. Run
+`indexly rename-watch --help` for the parser-level reference.
+
+## Continuous and one-batch behavior
+
+Run continuously with `indexly rename-watch --config "./rename-watch.json"`, or
+perform one reconciliation batch with `--once`. The destination is created
+only when a ready file is moved.
 
 `--once` freezes the files found by its initial scan; files arriving later are
 left for the next invocation. It does not run periodic rescans, but it does wait
@@ -64,9 +243,11 @@ filesystem cannot provide a stable identity, `--once` leaves the file in place
 and applies the configured retry and terminal-failure policy.
 
 Hybrid mode reacts to filesystem events and periodically scans for files missed
-while copied or locked. Rename-watch waits for a file to remain unchanged for
+while copied or locked. Rename Watch waits for a file to remain unchanged for
 the configured settling period, retries transient filesystem errors, and logs
 only completed moves or final failures under Indexly's normal NDJSON log tree.
+For log storage, rotation, and analysis, see the
+[Indexly Logging System](/en/documentation/indexly-logging-system/).
 
 ## File selection
 
@@ -95,6 +276,21 @@ rule. It is read once while the watch-root lock is held; restart rename-watch to
 apply later edits. An unsafe, unreadable, oversized, or non-UTF-8 ignore file
 fails closed. Rename-watch never creates or changes this file.
 
+Create and inspect a standard `.indexlyignore` before starting Rename Watch:
+
+```console
+indexly ignore init "./inbox"
+indexly ignore show "./inbox" --source --effective
+indexly rename-watch --config "./rename-watch.json" --check-config
+```
+
+Then keep `respect_indexlyignore` set to `true`. The explicit `include` and
+`exclude` lists still apply; `.indexlyignore` adds exclusions and never opts a
+file back in. See [Ignore Rules & Index Hygiene](/en/documentation/ignore-rules-index-hygiene/)
+for rule syntax, presets, inspection, and upgrade commands. Rename Watch uses
+the root file's rule semantics, but its root-only loading and fail-closed safety
+checks are specific to this command.
+
 Set `recursive` to `true` to select files below the watch root. The default is
 `false`. Recursive scans and filesystem events use the same policy and never
 follow linked directories. Add `max_file_size_bytes` as a positive integer to
@@ -106,8 +302,8 @@ checked again immediately before a move.
 
 Validate a configuration before starting the service:
 
-```powershell
-indexly rename-watch --config rename-watch.json --check-config
+```console
+indexly rename-watch --config "./rename-watch.json" --check-config
 ```
 
 This validates the schema and relative paths, creates a missing watch root,
@@ -121,8 +317,8 @@ recover operations, move user files, consume counters, or write audit records.
 Preview the frozen `--once` plan without moving files or consuming counter
 state:
 
-```powershell
-indexly rename-watch --config rename-watch.json --once --dry-run
+```console
+indexly rename-watch --config "./rename-watch.json" --once --dry-run
 ```
 
 Each output line identifies the job, source, and proposed destination. For an
@@ -144,9 +340,9 @@ probe events.
 Inspect configured jobs and durable operational state without starting the
 service:
 
-```powershell
-indexly rename-watch --config rename-watch.json --status
-indexly rename-watch --config rename-watch.json --status --json
+```console
+indexly rename-watch --config "./rename-watch.json" --status
+indexly rename-watch --config "./rename-watch.json" --status --json
 ```
 
 The human report and versioned JSON document include each configured mode and
@@ -178,9 +374,9 @@ exactly one document to standard output.
 
 Inspect every configured job, or select one exact, case-sensitive job ID:
 
-```powershell
-indexly rename-watch --config rename-watch.json --inspect-counters
-indexly rename-watch --config rename-watch.json --inspect-counters --job downloads --json
+```console
+indexly rename-watch --config "./rename-watch.json" --inspect-counters
+indexly rename-watch --config "./rename-watch.json" --inspect-counters --job inbox --json
 ```
 
 Inspection is lock-free and read-only. It reports jobs in configuration order
@@ -194,10 +390,10 @@ directories.
 
 Reset one existing date key or all counter allocations for one job:
 
-```powershell
-indexly rename-watch --config rename-watch.json --reset-counters --job downloads --date-key 20260716
-indexly rename-watch --config rename-watch.json --reset-counters --job downloads --all-counters --yes
-indexly rename-watch --config rename-watch.json --reset-counters --job downloads --all-counters --yes --json
+```console
+indexly rename-watch --config "./rename-watch.json" --reset-counters --job inbox --date-key 20260716
+indexly rename-watch --config "./rename-watch.json" --reset-counters --job inbox --all-counters --yes
+indexly rename-watch --config "./rename-watch.json" --reset-counters --job inbox --all-counters --yes --json
 ```
 
 Reset accepts exactly one counter-enabled job and exactly one of `--date-key`
@@ -264,6 +460,14 @@ set on a counter pattern. `fail` preserves bounded retry behavior;
 value requires `quarantine_subfolder`. No policy appends an undeclared counter
 or overwrites the exact destination. For example:
 
+| Policy | Collision behavior | Use it when |
+| --- | --- | --- |
+| `fail` | Apply bounded retries, then use the configured terminal-failure destination or leave the source in place. | A destination collision may be temporary or should require explicit operator review. |
+| `quarantine` | Record an immediate terminal failure and move the source into its unique quarantine incident directory. | Exact output names are mandatory and collisions should leave the intake queue. Requires `quarantine_subfolder`. |
+| `leave-source` | Record an immediate terminal failure and keep the unchanged source where it arrived. | Another process or an operator should resolve the collision in the watch folder. |
+
+Exact-name collision configuration:
+
 ```json
 {
   "pattern": "{date}-{title}",
@@ -276,10 +480,10 @@ or overwrites the exact destination. For example:
 Use the failure IDs shown by `--status` to retry one failure or a confirmed
 snapshot of all failures for one job:
 
-```powershell
-indexly rename-watch --config rename-watch.json --retry-failures --job downloads --failure-id 3f7bbf87-842b-4a68-a3a8-1450d36f47f5
-indexly rename-watch --config rename-watch.json --retry-failures --job downloads --all-failures --yes
-indexly rename-watch --config rename-watch.json --retry-failures --job downloads --all-failures --yes --json
+```console
+indexly rename-watch --config "./rename-watch.json" --retry-failures --job inbox --failure-id 3f7bbf87-842b-4a68-a3a8-1450d36f47f5
+indexly rename-watch --config "./rename-watch.json" --retry-failures --job inbox --all-failures --yes
+indexly rename-watch --config "./rename-watch.json" --retry-failures --job inbox --all-failures --yes --json
 ```
 
 Without `--yes`, an interactive single retry requires `RETRY <failure-id>` and
@@ -305,13 +509,13 @@ only: successful human output remains human, and successful `--json` status or
 counter output remains one JSON document on standard output. For automation,
 combine the options when success and failure must both be structured:
 
-```powershell
-indexly rename-watch --config rename-watch.json --status --json --json-errors
+```console
+indexly rename-watch --config "./rename-watch.json" --status --json --json-errors
 ```
 
-Counter reset and failure retry require `--yes` whenever `--json-errors` is present. This
-prevents an interactive confirmation prompt from contaminating either machine
-output stream.
+Counter reset and failure retry require `--yes` whenever `--json-errors` is
+present. This prevents an interactive confirmation prompt from contaminating
+either machine output stream.
 
 On failure, standard output is empty and `--json-errors` writes exactly one
 compact, newline-terminated ASCII JSON document to standard error:
@@ -426,10 +630,21 @@ authoritative macOS Homebrew formula audit.
 | `counter_format` | Python integer format such as `03d`, or `""` | Provide a non-empty value only when the pattern contains `{counter}`. Omit it or use `""` otherwise. |
 | `title_format` | `standard`, `camel-case` | `standard` preserves the current lowercase kebab-case form (`Monthly Report` → `monthly-report`); `camel-case` produces `monthlyReport`. |
 
-A pattern without `{counter}` is valid, for example `"{date}-{title}"`. Its names are exact: if a destination with the same name already exists, rename-watch does not add a counter automatically and does not overwrite the file. Use `{counter}` when duplicate filenames need automatic numbering.
+A pattern without `{counter}` is valid, for example `"{date}-{title}"`. Its
+names are exact: if a destination with the same name already exists,
+rename-watch does not add a counter automatically and does not overwrite the
+file. Use `{counter}` when duplicate filenames need automatic numbering.
 Persisted counter state is ignored and left unchanged whenever the configured
 pattern does not contain `{counter}`.
 
 With `title_format: "standard"`, rename-watch uses the same low-level naming
 rules as `rename-file`. A supported date already at the start of a filename is
 preserved and removed from the title portion instead of being duplicated.
+
+## See also
+
+- [Rename File](/en/documentation/rename-file/) for direct, on-demand file and folder renaming, optional database path sync, and organizer handoff.
+- [Ignore Rules & Index Hygiene](/en/documentation/ignore-rules-index-hygiene/) for `.indexlyignore` syntax, presets, inspection, and upgrades.
+- [Indexly Logging System](/en/documentation/indexly-logging-system/) for NDJSON storage, rotation, and analysis.
+- [Usage Guide](/en/documentation/usage-guide/) for the wider indexing, search, rename, organize, and analysis workflow.
+- [Index Files and Folders](/en/documentation/index-files-and-folders/) when renamed files also need to become searchable.

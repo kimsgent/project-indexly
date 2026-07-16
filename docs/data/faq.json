@@ -51,7 +51,7 @@
         "answer": "A practical first session is: check `indexly --help`, index a folder, run a simple search, then try one structured-data command. That sequence confirms the CLI is available, indexing works, and your environment is ready for the workflows you care about.",
         "links": [
           { "label": "Usage Guide", "href": "/en/documentation/usage-guide/" },
-          { "label": "Indexing", "href": "/en/documentation/indexing/" }
+          { "label": "Indexing", "href": "/en/documentation/index-files-and-folders/" }
         ]
       },
       {
@@ -68,6 +68,46 @@
         "links": [
           { "label": "Usage Guide", "href": "/en/documentation/usage-guide/" },
           { "label": "Configuration", "href": "/en/documentation/config/" }
+        ]
+      }
+    ]
+  },
+  {
+    "category": "rename-automation",
+    "title": "Rename Automation",
+    "description": "Choose and operate Indexly's on-demand and watch-folder renaming commands safely.",
+    "items": [
+      {
+        "question": "Should I use `rename-file` or `rename-watch`?",
+        "answer": "Use `rename-file` for an on-demand file or folder that already exists, especially when you need optional database path sync or organizer handoff. Use `rename-watch` when files arrive over time and should pass through a repeatable JSON-defined pipeline with settling, filters, counters, quarantine, operator retry, and crash recovery.",
+        "links": [
+          { "label": "Rename Watch", "href": "/en/documentation/rename-watch/" },
+          { "label": "Rename File", "href": "/en/documentation/rename-file/" }
+        ]
+      },
+      {
+        "question": "How do I preview automatic renaming before any file moves?",
+        "answer": "Create the starter configuration, validate it, and then run `indexly rename-watch --config \"./rename-watch.json\" --once --dry-run`. The preview freezes the initial file set, models counters and collisions, and does not move files or consume counter state.",
+        "links": [
+          { "label": "Rename Watch", "href": "/en/documentation/rename-watch/" },
+          { "label": "Usage Guide", "href": "/en/documentation/usage-guide/" }
+        ]
+      },
+      {
+        "question": "What happens when Rename Watch cannot move or name a file?",
+        "answer": "Rename Watch never overwrites an existing destination. Depending on the job configuration and failure type, it applies bounded retries, leaves the unchanged source in place, or moves it to a unique quarantine incident directory. `--status` reports durable active failures and their IDs; `--retry-failures` performs a guarded operator retry under the same watch-root lock.",
+        "links": [
+          { "label": "Quarantine and Failure Retry", "href": "/en/documentation/rename-watch/#quarantine-exact-name-collisions-and-retry" },
+          { "label": "Indexly Logging System", "href": "/en/documentation/indexly-logging-system/" }
+        ]
+      },
+      {
+        "question": "Does Rename Watch index files or update database paths?",
+        "answer": "No. `rename-watch` is a standalone filesystem rename pipeline. Use `indexly watch` when you want live indexing, or use `rename-file --update-db` for an on-demand rename that should also synchronize existing Indexly database paths.",
+        "links": [
+          { "label": "Rename Watch", "href": "/en/documentation/rename-watch/" },
+          { "label": "Rename File", "href": "/en/documentation/rename-file/" },
+          { "label": "Indexing", "href": "/en/documentation/index-files-and-folders/" }
         ]
       }
     ]
@@ -168,7 +208,7 @@
         "answer": "`clear-search` removes rows from the local FTS5 search index only; it does not delete source files. To recover search results, re-run `indexly index` on the folder that contains the files. If you used `--all`, re-index every folder you expect to search. If cache invalidation failed, remove `search_cache.json` from the Indexly runtime directory so future searches rebuild fresh cache entries.",
         "links": [
           { "label": "Clear Search Results Safely", "href": "/en/documentation/clear-search/" },
-          { "label": "Indexing", "href": "/en/documentation/indexing/" },
+          { "label": "Indexing", "href": "/en/documentation/index-files-and-folders/" },
           { "label": "Indexly Doctor", "href": "/en/documentation/indexly-doctor/" }
         ]
       }
