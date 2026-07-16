@@ -68,6 +68,23 @@ class RenameWatchService:
     def _prepare_watch_paths(self):
         for job in self.jobs:
             ensure_watch_directory(job.watch_path, "job '{0}' watch_path".format(job.job_id))
+    def _audit_move(self, job, result):
+        log_move(
+            job.job_id,
+            result.source,
+            result.destination,
+            result.pattern,
+            result.attempts,
+            operation_id=result.operation_id,
+            recovered=result.recovered,
+        )
+        self.movers[job.job_id].complete(result.operation_id)
+    def _recover_job(self, job):
+        for result in self.movers[job.job_id].recover_pending():
+            self._audit_move(job, result)
+    def _recover_pending_moves(self):
+        for job in self.jobs:
+            self._recover_job(job)
     def _acquire_root_locks(self):
         locks = []
         covered_keys = set()
@@ -121,8 +138,23 @@ class RenameWatchService:
                 )
             ) from exc
         for path in paths: self.schedule(job, path)
+    def _handle_processing_error(self, job, source, key, attempts, error):
+        self._discard_snapshot(key)
+        if attempts + 1 < job.retry.max_attempts and source.exists():
+            delay = min(job.retry.initial_delay_seconds * (2 ** attempts), job.retry.max_delay_seconds)
+            self.schedule(job, source, attempts + 1, delay, required_delay=True)
+        elif source.exists():
+            target = job.destination_path / source.name
+            log_failure(job.job_id, source, target, job.pattern, attempts + 1, error)
     def _process(self, job, source, attempts):
         key = (job.job_id, str(source))
+        try:
+            recovered = self.movers[job.job_id].recover_pending(source, attempts + 1)
+        except (PermissionError, OSError) as error:
+            self._handle_processing_error(job, source, key, attempts, error)
+            return
+        for recovered_result in recovered:
+            self._audit_move(job, recovered_result)
         if not self._eligible(job, source): self._discard_snapshot(key); return
         try:
             stat = source.stat(); fingerprint = (stat.st_size, stat.st_mtime_ns)
@@ -140,16 +172,12 @@ class RenameWatchService:
                 self.schedule(job, source, attempts, job.settle_seconds, required_delay=True); return
             if rescheduled:
                 return
-            target = self.movers[job.job_id].plan_and_move(source)
-            self._discard_snapshot(key); log_move(job.job_id, source, target, job.pattern, attempts + 1)
+            result = self.movers[job.job_id].plan_and_move_operation(source, attempts + 1)
         except (PermissionError, OSError) as error:
+            self._handle_processing_error(job, source, key, attempts, error)
+        else:
             self._discard_snapshot(key)
-            if attempts + 1 < job.retry.max_attempts and source.exists():
-                delay = min(job.retry.initial_delay_seconds * (2 ** attempts), job.retry.max_delay_seconds)
-                self.schedule(job, source, attempts + 1, delay, required_delay=True)
-            elif source.exists():
-                target = job.destination_path / source.name
-                log_failure(job.job_id, source, target, job.pattern, attempts + 1, error)
+            self._audit_move(job, result)
     def tick(self):
         now = self.clock()
         for job in self.jobs:
@@ -160,6 +188,7 @@ class RenameWatchService:
     def run_once(self):
         self._prepare_watch_paths(); self._acquire_root_locks()
         try:
+            self._recover_pending_moves()
             for job in self.jobs: self.reconcile(job)
             deadline = self.clock() + max(j.settle_seconds for j in self.jobs) + 0.1
             while self._has_pending() and self.clock() <= deadline:
@@ -193,6 +222,7 @@ class RenameWatchService:
     def run_forever(self):
         try:
             self._prepare_watch_paths(); self._acquire_root_locks()
+            self._recover_pending_moves()
             self._start_observers()
             while not self.stop_event.is_set(): self.tick(); self.stop_event.wait(0.1)
         finally:

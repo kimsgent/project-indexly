@@ -9,8 +9,17 @@ from indexly.log_utils import log_index_event_dict_sync
 from indexly.path_utils import normalize_path
 
 
-def _entry(event: str, job_id: str, source: Path, destination: Path, pattern: str, attempts: int) -> dict:
-    return {
+def _entry(
+    event: str,
+    job_id: str,
+    source: Path,
+    destination: Path,
+    pattern: str,
+    attempts: int,
+    operation_id: str = None,
+    recovered: bool = False,
+) -> dict:
+    entry = {
         "timestamp": datetime.now().isoformat(timespec="seconds"),
         "event": event,
         "path": normalize_path(str(destination)),
@@ -20,10 +29,33 @@ def _entry(event: str, job_id: str, source: Path, destination: Path, pattern: st
         "pattern": pattern,
         "attempts": attempts,
     }
+    if operation_id is not None:
+        entry["operation_id"] = operation_id
+        entry["recovered"] = recovered
+    return entry
 
 
-def log_move(job_id: str, source: Path, destination: Path, pattern: str, attempts: int) -> None:
-    log_index_event_dict_sync(_entry("RENAME_WATCH_MOVED", job_id, source, destination, pattern, attempts))
+def log_move(
+    job_id: str,
+    source: Path,
+    destination: Path,
+    pattern: str,
+    attempts: int,
+    operation_id: str = None,
+    recovered: bool = False,
+) -> None:
+    log_index_event_dict_sync(
+        _entry(
+            "RENAME_WATCH_MOVED",
+            job_id,
+            source,
+            destination,
+            pattern,
+            attempts,
+            operation_id,
+            recovered,
+        )
+    )
 
 
 def log_failure(job_id: str, source: Path, destination: Path, pattern: str, attempts: int, error: Exception) -> None:

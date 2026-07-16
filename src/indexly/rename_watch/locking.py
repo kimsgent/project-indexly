@@ -3,33 +3,19 @@
 from __future__ import annotations
 
 import ctypes
-import hashlib
 import os
 import threading
-import unicodedata
 from pathlib import Path
 
 from .config import RenameWatchConfigError
+from .identity import identity_hash, root_identity_strings
 
 _PROCESS_KEYS = set()
 _PROCESS_KEYS_LOCK = threading.Lock()
 
 
-def _hash_identity(identity: str) -> str:
-    return hashlib.sha256(identity.encode("utf-8")).hexdigest()
-
-
 def _root_identities(root: Path) -> tuple[str, ...]:
-    resolved = root.resolve()
-    normalized = unicodedata.normalize("NFC", os.path.normcase(str(resolved)))
-    identities = ["path:{0}".format(normalized)]
-    try:
-        stat = resolved.stat()
-    except OSError:
-        stat = None
-    if stat is not None and stat.st_ino:
-        identities.append("stat:{0}:{1}".format(stat.st_dev, stat.st_ino))
-    return tuple(identities)
+    return root_identity_strings(root)
 
 
 class WatchRootLock:
@@ -38,8 +24,8 @@ class WatchRootLock:
     def __init__(self, watch_root: Path):
         self.watch_root = watch_root.resolve()
         identities = _root_identities(self.watch_root)
-        self.key = _hash_identity(identities[0])
-        self.keys = tuple(sorted({_hash_identity(value) for value in identities}))
+        self.key = identity_hash(identities[0])
+        self.keys = tuple(sorted({identity_hash(value) for value in identities}))
         self._handles = []
         self._reserved = False
 

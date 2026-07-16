@@ -202,16 +202,26 @@ Completed:
   exclusion when a root is recreated. Multiple roots are acquired in stable
   order and all release attempts run after `--once`, shutdown, or startup
   failure.
+- Durable per-operation journals are written and flushed before counter state
+  or destination creation. Recovery runs under the watch-root lock before
+  reconciliation, resumes the exact reserved target when no destination was
+  created, and requires a durable destination-finalized phase before accepting
+  a source-missing move. Interrupted hard links, partial copies, unreliable
+  filesystem identities, and identity conflicts fail closed with both paths
+  preserved; recovery never deletes a pre-existing destination. Counter
+  and journal filenames are derived from canonical root plus job ID rather
+  than raw IDs; safe legacy counter files are read and migrate on the next
+  write. Move audit records carry a stable operation ID, providing portable
+  at-least-once recovery with deduplication across the unavoidable audit/journal
+  commit boundary.
 
 Immediate next:
 
-- Add a recovery journal for interruptions between planning, moving, counter
-  persistence, and audit logging.
+- Define deterministic `--once` settling and bounded-retry completion
+  semantics.
 
 Later in Stage 1:
 
-- Define deterministic `--once` settling and bounded-retry completion
-  semantics.
 - Add Windows, macOS, and Linux CI coverage for the focused rename-watch
   suites.
 

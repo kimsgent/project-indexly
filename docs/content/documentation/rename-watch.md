@@ -60,6 +60,38 @@ cannot silently bypass exclusion. The namespace is independent of
 error. POSIX lock files may remain after shutdown, but they do not represent a
 stale lock because ownership is enforced by the operating system.
 
+## Crash recovery and state
+
+Before consuming a counter or creating a destination, rename-watch writes and
+flushes a per-operation recovery journal under Indexly's normal state
+directory. On restart it acquires the watch-root lock first, then completes
+unfinished operations before scanning or starting filesystem observers. The
+recorded destination is reused exactly, so a restart does not consume another
+counter or silently append a counter to an exact-name pattern.
+
+Recovery automatically resumes the exact target when no destination was
+created and accepts a source-missing move only after a durable
+destination-finalized record. If an interruption leaves both a source and a
+destination—whether duplicate hard links or a partial copy—recovery stops that
+job with a clear conflict and preserves both paths. It also fails closed when
+filesystem identities are unavailable or a path was replaced externally;
+recovery never deletes a pre-existing destination. Keep the journal in place
+while investigating such a conflict. Changing or deleting it removes the
+evidence needed for safe recovery.
+
+Successful move audit entries include a stable `operation_id`. Audit delivery
+is at least once: a sudden stop after the NDJSON append but before the separate
+journal update can repeat the event after restart, and consumers can
+deduplicate those entries by `operation_id`. A journal is removed only after
+the audit append succeeds.
+
+Counter and journal filenames use a hash of the canonical watch root and job
+ID. This avoids raw job IDs becoming path components and keeps jobs with the
+same ID but different roots independent. Existing safe `<job-id>.json` counter
+files remain readable and are migrated to the hashed filename on the next
+counter update. Patterns without `{counter}` still neither read nor change
+counter state.
+
 ## Naming configuration
 
 `pattern` is fully configurable. It accepts these placeholders:
