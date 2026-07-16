@@ -456,8 +456,8 @@ def main() -> None:
 
     out_path = Path(args.out)
     write_formula(out_path, formula)
-    print(f"✔ Formula written to {out_path}")
-    print("✔ Formula uses virtualenv_install_with_resources")
+    print(f"Formula written to {out_path}")
+    print("Formula uses virtualenv_install_with_resources")
 
 
 if __name__ == "__main__":

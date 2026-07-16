@@ -1,0 +1,5 @@
+# Focused, CI-only test tooling for rename-watch portability checks.
+# Project runtime dependencies come from the editable package installation.
+# Keep test tooling out of runtime package metadata and Homebrew resources.
+
+pytest>=8.4.2,<9.0

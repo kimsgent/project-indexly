@@ -105,6 +105,18 @@ files remain readable and are migrated to the hashed filename on the next
 counter update. Patterns without `{counter}` still neither read nor change
 counter state.
 
+## Portability checks
+
+The repository runs the focused rename-watch and rename compatibility suites
+on GitHub-hosted Windows, macOS, and Linux. Package installation supplies only
+Indexly's declared runtime dependencies; pytest is installed separately from
+the CI-only `requirements-rename-watch-ci.txt` and is not included in Indexly's
+runtime dependencies or generated Homebrew resources. This workflow is
+advisory: setup, import, or pytest failures produce warnings and upload a JUnit
+report when one is available, but do not fail or depend on release and
+Homebrew publishing workflows. These portability checks do not replace the
+authoritative macOS Homebrew formula audit.
+
 ## Naming configuration
 
 `pattern` is fully configurable. It accepts these placeholders:

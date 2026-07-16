@@ -180,7 +180,7 @@ Status values used below are **Completed**, **In progress**, and **Next**.
 
 ### Stage 1: Production hardening
 
-Status: **In progress**
+Status: **Completed**
 
 Completed:
 
@@ -222,15 +222,27 @@ Completed:
   externally removed, or represented by one terminal failure; a continuously
   changing file receives a bounded `TimeoutError` failure instead of being
   left pending when the process exits.
+- A standalone advisory CI matrix runs the focused rename-watch and rename
+  suites on GitHub-hosted Windows, macOS, and Linux. Runtime dependencies are
+  installed from package metadata while pytest remains in an explicit CI-only
+  requirements file. Setup, import, and pytest failures emit warnings and
+  upload test artifacts when available without failing the workflow. It has no
+  tag trigger, release dependency, or Homebrew formula input, so it cannot gate
+  publishing or alter brew resources. The existing Homebrew generator's final
+  status output is also ASCII-safe so successful formula generation does not
+  report a false failure on Windows consoles using legacy encodings. Formula
+  content and audit behavior remain unchanged; macOS remains the authoritative
+  Homebrew validation environment.
 
 Immediate next:
 
-- Add Windows, macOS, and Linux CI coverage for the focused rename-watch
-  suites.
+- Begin Stage 2 with `--check-config`, including lock and state-access checks
+  that do not start observers or move files.
 
 Later in Stage 1:
 
-- Complete final Stage 1 review and mark production hardening completed.
+- None. Production hardening is complete; future defects return here only when
+  evidence requires another hardening increment.
 
 ### Stage 2: Operator commands
 
