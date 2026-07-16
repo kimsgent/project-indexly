@@ -195,14 +195,21 @@ Completed:
 - Event callbacks and service ticks synchronize pending work, settling
   snapshots, and retry claims. Due work is claimed atomically so a callback
   arriving between selection and processing is not removed as stale work.
+- Dependency-free OS locks combine normalized canonical watch-root path and
+  filesystem identity: a global named mutex on Windows and fixed `/tmp` flock
+  files on macOS/Linux. They remain consistent when `INDEXLY_HOME`, `TEMP`, or
+  `TMPDIR` differs and cover common path aliases without losing stable
+  exclusion when a root is recreated. Multiple roots are acquired in stable
+  order and all release attempts run after `--once`, shutdown, or startup
+  failure.
 
-Next:
+Immediate next:
 
-- Add a portable interprocess lock keyed by canonical watch root so two
-  rename-watch processes cannot consume the same root concurrently, even when
-  their job IDs differ.
 - Add a recovery journal for interruptions between planning, moving, counter
   persistence, and audit logging.
+
+Later in Stage 1:
+
 - Define deterministic `--once` settling and bounded-retry completion
   semantics.
 - Add Windows, macOS, and Linux CI coverage for the focused rename-watch

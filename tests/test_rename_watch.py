@@ -1,6 +1,8 @@
 import json
 import errno
 import os
+import subprocess
+import sys
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
@@ -8,7 +10,9 @@ from pathlib import Path
 import pytest
 
 from indexly.rename_watch.config import RenameWatchConfigError, initialize_settings, load_settings
+from indexly.rename_watch import locking as locking_module
 from indexly.rename_watch import planner as planner_module
+from indexly.rename_watch.locking import WatchRootLock
 from indexly.rename_watch.planner import PlanMoveLog
 from indexly.rename_watch.service import RenameWatchService
 
@@ -64,7 +68,7 @@ def test_once_ignores_empty_folder_without_logging(tmp_path, monkeypatch):
     job = load_settings(str(path)).jobs[0]
     calls = []
     monkeypatch.setattr("indexly.rename_watch.service.log_move", lambda *args: calls.append(args))
-    RenameWatchService([job]).run_once()
+    RenameWatchService([job], state_root=tmp_path / "state").run_once()
     assert calls == []
 
 
@@ -170,10 +174,194 @@ def test_once_creates_missing_watch_folder_without_creating_destination(tmp_path
     incoming = tmp_path / "missing" / "parents" / "inbox"
     job = load_settings(str(path)).jobs[0]
 
-    RenameWatchService([job]).run_once()
+    RenameWatchService([job], state_root=tmp_path / "state").run_once()
 
     assert incoming.is_dir()
     assert not job.destination_path.exists()
+
+
+def test_watch_root_lock_blocks_other_instances_and_releases(tmp_path):
+    watch_root = tmp_path / "incoming"
+    watch_root.mkdir()
+    first = WatchRootLock(watch_root)
+    second = WatchRootLock(watch_root / ".")
+    first.acquire()
+    try:
+        with pytest.raises(RenameWatchConfigError, match="locked or unavailable"):
+            second.acquire()
+    finally:
+        first.release()
+
+    second.acquire()
+    second.release()
+
+
+def test_once_releases_watch_root_lock_after_failure(tmp_path, monkeypatch):
+    path, incoming = _config(tmp_path)
+    job = load_settings(str(path)).jobs[0]
+    state_root = tmp_path / "state"
+    service = RenameWatchService([job], state_root=state_root)
+    monkeypatch.setattr(service, "reconcile", lambda _: (_ for _ in ()).throw(OSError("scan failed")))
+
+    with pytest.raises(OSError, match="scan failed"):
+        service.run_once()
+
+    lock = WatchRootLock(incoming)
+    lock.acquire()
+    lock.release()
+
+
+def test_service_deduplicates_same_canonical_watch_root_lock(tmp_path):
+    path, incoming = _config(tmp_path)
+    first_job = load_settings(str(path)).jobs[0]
+    second_job = replace(
+        first_job,
+        job_id="second",
+        watch_path=incoming / ".",
+        destination_path=incoming / "other-processed",
+    )
+    service = RenameWatchService(
+        [first_job, second_job], state_root=tmp_path / "state"
+    )
+    service._prepare_watch_paths()
+
+    service._acquire_root_locks()
+    try:
+        assert len(service.root_locks) == 1
+    finally:
+        service._release_root_locks()
+
+
+def test_lock_namespace_does_not_depend_on_service_state_root(tmp_path):
+    watch_root = tmp_path / "incoming"
+    watch_root.mkdir()
+    first = WatchRootLock(watch_root)
+    second = WatchRootLock(watch_root)
+    first.acquire()
+    try:
+        with pytest.raises(RenameWatchConfigError, match="locked or unavailable"):
+            second.acquire()
+    finally:
+        first.release()
+
+
+def test_lock_namespace_ignores_process_temp_environment(tmp_path):
+    watch_root = tmp_path / "incoming"
+    watch_root.mkdir()
+    alternate_temp = tmp_path / "alternate-temp"
+    alternate_temp.mkdir()
+    script = (
+        "import sys; from pathlib import Path; "
+        "from indexly.rename_watch.locking import WatchRootLock; "
+        "lock=WatchRootLock(Path(sys.argv[1])); lock.acquire(); "
+        "print('ready', flush=True); sys.stdin.readline(); lock.release()"
+    )
+    environment = os.environ.copy()
+    environment.update(
+        {"TEMP": str(alternate_temp), "TMP": str(alternate_temp), "TMPDIR": str(alternate_temp)}
+    )
+    process = subprocess.Popen(
+        [sys.executable, "-c", script, str(watch_root)],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=environment,
+    )
+    try:
+        assert process.stdout.readline().strip() == "ready"
+        with pytest.raises(RenameWatchConfigError, match="locked or unavailable"):
+            WatchRootLock(watch_root).acquire()
+    finally:
+        try:
+            process.communicate("\n", timeout=10)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.communicate(timeout=10)
+
+
+def test_release_attempts_every_root_lock(tmp_path):
+    service = RenameWatchService([], state_root=tmp_path / "state")
+    released = []
+
+    class FakeLock:
+        def __init__(self, name, error=None):
+            self.name = name
+            self.error = error
+
+        def release(self):
+            released.append(self.name)
+            if self.error:
+                raise self.error
+
+    service.root_locks = [
+        FakeLock("first"),
+        FakeLock("second", OSError("unlock failed")),
+    ]
+
+    with pytest.raises(OSError, match="unlock failed"):
+        service._release_root_locks()
+
+    assert released == ["second", "first"]
+    assert service.root_locks == []
+
+
+def test_observer_stop_failure_still_releases_root_lock(tmp_path, monkeypatch):
+    path, incoming = _config(tmp_path, mode="event")
+    job = load_settings(str(path)).jobs[0]
+    service = RenameWatchService([job], state_root=tmp_path / "state")
+    service.stop_event.set()
+
+    class BrokenObserver:
+        def schedule(self, handler, watch_path, recursive=False):
+            pass
+
+        def start(self):
+            pass
+
+        def stop(self):
+            raise OSError("stop failed")
+
+        def is_alive(self):
+            return False
+
+    monkeypatch.setattr("indexly.rename_watch.service.Observer", BrokenObserver)
+
+    with pytest.raises(OSError, match="stop failed"):
+        service.run_forever()
+
+    lock = WatchRootLock(incoming)
+    lock.acquire()
+    lock.release()
+
+
+def test_non_oserror_during_partial_lock_acquisition_cleans_up(tmp_path, monkeypatch):
+    watch_root = tmp_path / "incoming"
+    watch_root.mkdir()
+    lock = WatchRootLock(watch_root)
+    assert len(lock.keys) == 2
+    calls = []
+    released = []
+
+    def acquire_platform(key):
+        calls.append(key)
+        if len(calls) == 2:
+            raise KeyboardInterrupt()
+        return ("test", object())
+
+    def release_handles():
+        released.extend(lock._handles)
+        lock._handles = []
+        return None
+
+    monkeypatch.setattr(lock, "_acquire_platform_lock", acquire_platform)
+    monkeypatch.setattr(lock, "_release_handles", release_handles)
+
+    with pytest.raises(KeyboardInterrupt):
+        lock.acquire()
+
+    assert len(released) == 1
+    assert not set(lock.keys).intersection(locking_module._PROCESS_KEYS)
 
 
 def test_symlink_candidates_are_ignored(tmp_path):
@@ -387,7 +575,9 @@ def test_observer_startup_creates_missing_path_and_cleans_up_on_failure(tmp_path
     monkeypatch.setattr("indexly.rename_watch.service.Observer", FakeObserver)
 
     try:
-        RenameWatchService([first_job, second_job]).run_forever()
+        RenameWatchService(
+            [first_job, second_job], state_root=tmp_path / "state"
+        ).run_forever()
     except RenameWatchConfigError as exc:
         assert "second" in str(exc)
         assert str(second_path) in str(exc)

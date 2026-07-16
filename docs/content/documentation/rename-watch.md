@@ -50,6 +50,16 @@ while copied or locked. Rename-watch waits for a file to remain unchanged for
 the configured settling period, retries transient filesystem errors, and logs
 only completed moves or final failures under Indexly's normal NDJSON log tree.
 
+Only one rename-watch process can consume a canonical watch root at a time.
+The service holds a non-blocking operating-system lock for the complete
+`--once` or continuous run: a global named mutex on Windows and a fixed `/tmp`
+`flock` namespace on macOS and Linux. Lock identity combines a stable normalized
+path with filesystem identity so directory recreation and common path aliases
+cannot silently bypass exclusion. The namespace is independent of
+`INDEXLY_HOME`, `TEMP`, and `TMPDIR`. A second process exits with a clear lock
+error. POSIX lock files may remain after shutdown, but they do not represent a
+stale lock because ownership is enforced by the operating system.
+
 ## Naming configuration
 
 `pattern` is fully configurable. It accepts these placeholders:
