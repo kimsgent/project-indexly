@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -82,7 +83,12 @@ def _require_object(value: Any, context: str) -> Dict[str, Any]:
 
 
 def _positive_number(value: Any, context: str) -> float:
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or value <= 0
+        or not math.isfinite(value)
+    ):
         raise RenameWatchConfigError("{0} must be a positive number".format(context))
     return float(value)
 

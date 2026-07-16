@@ -1,6 +1,6 @@
 """Independent Watchdog and reconciliation service for rename-watch."""
 from __future__ import annotations
-import os, threading, time
+import math, os, sys, threading, time
 from pathlib import Path
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
@@ -15,6 +15,8 @@ from .logging import log_failure, log_move
 from .locking import WatchRootLock
 from .planner import PlanMoveLog
 
+_IDENTITY_UNAVAILABLE = object()
+
 def _temporary(path: Path) -> bool:
     return path.name.startswith(("~$", ".~")) or path.name.lower().endswith((".tmp", ".lock"))
 
@@ -27,15 +29,31 @@ class RenameWatchService:
         self.jobs = jobs; self.clock = clock; self.sleeper = sleeper; self.stop_event = threading.Event()
         self.state_root = state_root
         self._state_lock = threading.Lock()
+        self._once_keys = None
+        self._once_identities = None
+        self._once_capture = False
+        self._once_discovered_identities = {}
         self.pending = {}; self.snapshots = {}; self.next_scan = {j.job_id: 0.0 for j in jobs}
         self.movers = {j.job_id: PlanMoveLog(j, state_root) for j in jobs}; self.observers = []; self.root_locks = []
     def _eligible(self, job, path):
         return path.exists() and path.is_file() and not path.is_symlink() and not _temporary(path) and _inside(path, job.watch_path) and not _inside(path, job.destination_path)
-    def schedule(self, job, path, attempts=0, delay=0.0, reset_settle=False, required_delay=False):
+    def schedule(self, job, path, attempts=0, delay=0.0, reset_settle=False, required_delay=False, assume_eligible=False):
         path = Path(path)
-        if not self._eligible(job, path): return
+        if not assume_eligible and not self._eligible(job, path): return
         resolved = path.resolve(); key = (job.job_id, str(resolved)); now = self.clock(); due = now + delay
         with self._state_lock:
+            capture_identity = self._once_capture
+        discovered_identity = None
+        if capture_identity:
+            try:
+                discovered_identity = self._capture_once_identity(resolved)
+            except OSError:
+                discovered_identity = _IDENTITY_UNAVAILABLE
+        with self._state_lock:
+            if self._once_keys is not None and key not in self._once_keys:
+                return
+            if self._once_capture and capture_identity:
+                self._once_discovered_identities.setdefault(key, discovered_identity)
             old = self.pending.get(key)
             if reset_settle and key in self.snapshots:
                 due = now + job.settle_seconds
@@ -138,16 +156,48 @@ class RenameWatchService:
                 )
             ) from exc
         for path in paths: self.schedule(job, path)
-    def _handle_processing_error(self, job, source, key, attempts, error):
+    def _handle_processing_error(self, job, source, key, attempts, error, force_retry=False):
         self._discard_snapshot(key)
-        if attempts + 1 < job.retry.max_attempts and source.exists():
+        source_available = force_retry or source.exists()
+        if attempts + 1 < job.retry.max_attempts and source_available:
             delay = min(job.retry.initial_delay_seconds * (2 ** attempts), job.retry.max_delay_seconds)
-            self.schedule(job, source, attempts + 1, delay, required_delay=True)
-        elif source.exists():
+            self.schedule(
+                job,
+                source,
+                attempts + 1,
+                delay,
+                required_delay=True,
+                assume_eligible=force_retry,
+            )
+        elif source_available:
+            if not self.movers[job.job_id].abort_unstarted(source):
+                raise RenameWatchConfigError(
+                    "job '{0}' reached its retry limit with an unresolved recovery operation".format(
+                        job.job_id
+                    )
+                )
             target = job.destination_path / source.name
             log_failure(job.job_id, source, target, job.pattern, attempts + 1, error)
     def _process(self, job, source, attempts):
         key = (job.job_id, str(source))
+        try:
+            source_replaced = self._once_source_replaced(key, source)
+        except OSError as error:
+            self._handle_processing_error(
+                job, source, key, attempts, error, force_retry=True
+            )
+            return
+        if source_replaced:
+            if not self.movers[job.job_id].abort_unstarted(
+                source, allow_source_replaced=True
+            ):
+                raise RenameWatchConfigError(
+                    "job '{0}' has an unresolved operation after its frozen source was replaced".format(
+                        job.job_id
+                    )
+                )
+            self._discard_snapshot(key)
+            return
         try:
             recovered = self.movers[job.job_id].recover_pending(source, attempts + 1)
         except (PermissionError, OSError) as error:
@@ -172,28 +222,199 @@ class RenameWatchService:
                 self.schedule(job, source, attempts, job.settle_seconds, required_delay=True); return
             if rescheduled:
                 return
-            result = self.movers[job.job_id].plan_and_move_operation(source, attempts + 1)
+            with self._state_lock:
+                expected_identity = (
+                    self._once_identities.get(key)
+                    if self._once_identities is not None
+                    else None
+                )
+            result = self.movers[job.job_id].plan_and_move_operation(
+                source, attempts + 1, expected_identity
+            )
         except (PermissionError, OSError) as error:
             self._handle_processing_error(job, source, key, attempts, error)
         else:
             self._discard_snapshot(key)
             self._audit_move(job, result)
-    def tick(self):
+    def tick(self, reconcile=True):
         now = self.clock()
-        for job in self.jobs:
-            if job.mode in ("interval", "hybrid") and now >= self.next_scan[job.job_id]:
-                self.reconcile(job); self.next_scan[job.job_id] = now + job.scan_interval_seconds
+        if reconcile:
+            for job in self.jobs:
+                if job.mode in ("interval", "hybrid") and now >= self.next_scan[job.job_id]:
+                    self.reconcile(job); self.next_scan[job.job_id] = now + job.scan_interval_seconds
         for _, (job, path, _, attempts, _) in self._claim_due(now):
             self._process(job, path, attempts)
+    @staticmethod
+    def _safe_duration_product(value, count):
+        try:
+            result = value * count
+        except OverflowError:
+            return sys.float_info.max
+        return result if math.isfinite(result) else sys.float_info.max
+    @staticmethod
+    def _retry_delay_total(job, start_attempt=0):
+        remaining = max(0, job.retry.max_attempts - 1 - start_attempt)
+        delay = job.retry.initial_delay_seconds
+        skipped = start_attempt
+        while skipped and delay < job.retry.max_delay_seconds:
+            delay = min(delay * 2.0, job.retry.max_delay_seconds)
+            skipped -= 1
+        total = 0.0
+        while remaining and delay < job.retry.max_delay_seconds:
+            total += delay
+            if not math.isfinite(total):
+                return sys.float_info.max
+            remaining -= 1
+            delay = min(delay * 2.0, job.retry.max_delay_seconds)
+        if remaining:
+            capped = RenameWatchService._safe_duration_product(
+                job.retry.max_delay_seconds, remaining
+            )
+            if not math.isfinite(capped) or total > sys.float_info.max - capped:
+                return sys.float_info.max
+            total += capped
+        return total
+    @classmethod
+    def _once_budget(cls, job):
+        settling = cls._safe_duration_product(
+            job.settle_seconds, job.retry.max_attempts
+        )
+        retries = cls._retry_delay_total(job)
+        budget = settling + retries + 0.1
+        return budget if math.isfinite(budget) else sys.float_info.max
+    def _freeze_once_work(self):
+        started = self.clock()
+        with self._state_lock:
+            self._once_capture = False
+            self._once_keys = set(self.pending)
+            values = dict(self.pending)
+            deadlines = {
+                key: started + self._once_budget(value[0])
+                for key, value in values.items()
+            }
+        with self._state_lock:
+            self._once_identities = {
+                key: self._once_discovered_identities.get(
+                    key, _IDENTITY_UNAVAILABLE
+                )
+                for key in values
+            }
+        return deadlines, {key: 0 for key in deadlines}
+    @staticmethod
+    def _capture_once_identity(source):
+        stat = source.stat()
+        if not stat.st_ino:
+            raise OSError(
+                "stable filesystem identity is unavailable for --once: {0}".format(
+                    source
+                )
+            )
+        return stat.st_dev, stat.st_ino
+    def _once_source_replaced(self, key, source):
+        with self._state_lock:
+            if self._once_identities is None or key not in self._once_identities:
+                return False
+            expected = self._once_identities[key]
+        if expected is _IDENTITY_UNAVAILABLE:
+            raise OSError(
+                "initial filesystem identity is unavailable for --once: {0}".format(
+                    source
+                )
+            )
+        try:
+            stat = source.stat()
+        except FileNotFoundError:
+            return True
+        return not stat.st_ino or (stat.st_dev, stat.st_ino) != expected
+    def _refresh_once_deadlines(self, deadlines, retry_versions, now):
+        with self._state_lock:
+            values = {
+                key: value
+                for key, value in self.pending.items()
+                if key in deadlines
+            }
+        for key, value in values.items():
+            attempts = value[3]
+            if attempts <= retry_versions[key]:
+                continue
+            retry_versions[key] = attempts
+            job = value[0]
+            remaining_settles = self._safe_duration_product(
+                job.settle_seconds, job.retry.max_attempts - attempts
+            )
+            remaining = (
+                max(0.0, value[2] - now)
+                + remaining_settles
+                + self._retry_delay_total(job, attempts)
+                + 0.1
+            )
+            deadlines[key] = max(deadlines[key], now + remaining)
+    def _expire_once_work(self, deadlines, now):
+        expired = []
+        with self._state_lock:
+            for key, deadline in deadlines.items():
+                value = self.pending.get(key)
+                if value is None or now < deadline:
+                    continue
+                expired.append(value)
+                del self.pending[key]
+                self.snapshots.pop(key, None)
+        for job, source, _, attempts, _ in expired:
+            if not source.exists():
+                continue
+            error = TimeoutError(
+                "file did not settle or complete retries within the bounded --once window"
+            )
+            target = job.destination_path / source.name
+            log_failure(
+                job.job_id,
+                source,
+                target,
+                job.pattern,
+                max(1, attempts + 1),
+                error,
+            )
+    def _next_once_delay(self, deadlines, now):
+        with self._state_lock:
+            wake_times = [
+                min(value[2], deadlines[key])
+                for key, value in self.pending.items()
+                if key in deadlines
+            ]
+        if not wake_times:
+            return 0.0
+        return max(0.0, min(wake_times) - now)
     def run_once(self):
         self._prepare_watch_paths(); self._acquire_root_locks()
         try:
             self._recover_pending_moves()
+            with self._state_lock:
+                self._once_capture = True
+                self._once_discovered_identities = {}
             for job in self.jobs: self.reconcile(job)
-            deadline = self.clock() + max(j.settle_seconds for j in self.jobs) + 0.1
-            while self._has_pending() and self.clock() <= deadline:
-                self.tick(); self.sleeper(0.01)
+            deadlines, retry_versions = self._freeze_once_work()
+            while self._has_pending():
+                tick_started = self.clock()
+                self.tick(reconcile=False)
+                now = self.clock()
+                processing_time = max(0.0, now - tick_started)
+                if processing_time:
+                    for key in deadlines:
+                        deadlines[key] += processing_time
+                self._refresh_once_deadlines(deadlines, retry_versions, now)
+                self._expire_once_work(deadlines, now)
+                if self._has_pending():
+                    delay = self._next_once_delay(deadlines, now)
+                    before_sleep = self.clock()
+                    self.sleeper(delay)
+                    if delay > 0 and self.clock() <= before_sleep:
+                        self._expire_once_work(deadlines, float("inf"))
         finally:
+            with self._state_lock:
+                self._once_keys = None
+                self._once_identities = None
+                self._once_capture = False
+                self._once_discovered_identities = {}
             self._release_root_locks()
     def _start_observers(self):
         service = self

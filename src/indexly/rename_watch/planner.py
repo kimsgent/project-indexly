@@ -86,10 +86,20 @@ def _copy_without_overwrite(
     target: Path,
     on_destination_created: Optional[Callable[[Dict[str, int]], None]] = None,
     on_destination_finalized: Optional[Callable[[], None]] = None,
+    expected_source_identity: Optional[Tuple[int, int]] = None,
 ) -> None:
     """Copy then remove a source when hard links are unavailable."""
     with source.open("rb") as source_handle, target.open("xb") as target_handle:
         before = os.fstat(source_handle.fileno())
+        if (
+            expected_source_identity is not None
+            and _stat_identity(before) != expected_source_identity
+        ):
+            raise OSError(
+                "Source identity changed after the --once snapshot: {0}".format(
+                    source
+                )
+            )
         target_stat = os.fstat(target_handle.fileno())
         if target_stat.st_ino == 0:
             raise OSError(
@@ -122,6 +132,7 @@ def _move_without_overwrite(
     target: Path,
     on_destination_created: Optional[Callable[[Dict[str, int]], None]] = None,
     on_destination_finalized: Optional[Callable[[], None]] = None,
+    expected_source_identity: Optional[Tuple[int, int]] = None,
 ) -> None:
     """Move a file without ever replacing an existing destination."""
     try:
@@ -132,11 +143,23 @@ def _move_without_overwrite(
         if exc.errno not in _COPY_FALLBACK_ERRORS:
             raise
         _copy_without_overwrite(
-            source, target, on_destination_created, on_destination_finalized
+            source,
+            target,
+            on_destination_created,
+            on_destination_finalized,
+            expected_source_identity,
         )
         return
 
     target_stat = target.stat()
+    if (
+        expected_source_identity is not None
+        and _stat_identity(target_stat) != expected_source_identity
+    ):
+        raise RenameWatchConfigError(
+            "--once source identity changed while the destination link was created; "
+            "both paths were preserved: {0} -> {1}".format(source, target)
+        )
     if target_stat.st_ino == 0:
         raise OSError(
             "Destination identity is unavailable; source was preserved: {0}".format(
@@ -216,19 +239,34 @@ class PlanMoveLog:
         self.complete(result.operation_id)
         return result.destination
 
-    def plan_and_move_operation(self, source: Path, attempts: int = 1) -> MoveResult:
+    def plan_and_move_operation(
+        self,
+        source: Path,
+        attempts: int = 1,
+        expected_source_identity: Optional[Tuple[int, int]] = None,
+    ) -> MoveResult:
         source = source.resolve()
         with self.state.lock:
             if self.journal.pending():
                 raise RenameWatchConfigError(
                     "job '{0}' has an unfinished recovery operation".format(self.job.job_id)
                 )
+            initial_source_stat = source.stat()
+            if (
+                expected_source_identity is not None
+                and _stat_identity(initial_source_stat) != expected_source_identity
+            ):
+                raise OSError(
+                    "Source identity changed after the --once snapshot: {0}".format(
+                        source
+                    )
+                )
             uses_counter = "{counter}" in self.job.pattern
             data = {}
             counter = 0
             date_key = None
             if uses_counter:
-                date_key = datetime.fromtimestamp(source.stat().st_mtime).strftime(self.job.date_format)
+                date_key = datetime.fromtimestamp(initial_source_stat.st_mtime).strftime(self.job.date_format)
                 if self.job.title_format == "standard":
                     rendered_date = generate_new_filename(
                         source,
@@ -255,7 +293,17 @@ class PlanMoveLog:
                     counter += 1
                     continue
 
-                source_identity = _identity_record(source.stat())
+                source_stat = source.stat()
+                if (
+                    expected_source_identity is not None
+                    and _stat_identity(source_stat) != expected_source_identity
+                ):
+                    raise OSError(
+                        "Source identity changed after the --once snapshot: {0}".format(
+                            source
+                        )
+                    )
+                source_identity = _identity_record(source_stat)
                 record = self.journal.prepare(
                     source,
                     target,
@@ -281,7 +329,11 @@ class PlanMoveLog:
 
                 try:
                     _move_without_overwrite(
-                        source, target, destination_created, destination_finalized
+                        source,
+                        target,
+                        destination_created,
+                        destination_finalized,
+                        expected_source_identity,
                     )
                 except FileExistsError:
                     self.journal.delete(holder[0])
@@ -329,6 +381,35 @@ class PlanMoveLog:
             if record["state"] != "audited":
                 record = self.journal.mark_audited(record)
             self.journal.delete(record)
+
+    def abort_unstarted(
+        self, source: Path, allow_source_replaced: bool = False
+    ) -> bool:
+        """Discard only a prepared operation that never created a destination."""
+        expected_source = canonical_root_identity(source)
+        with self.state.lock:
+            matching = [
+                record
+                for record in self.journal.pending()
+                if canonical_root_identity(Path(record["source_path"]))
+                == expected_source
+            ]
+            for record in matching:
+                if record["state"] != "prepared":
+                    return False
+                target = Path(record["destination_path"])
+                if target.exists():
+                    return False
+                if not allow_source_replaced:
+                    try:
+                        source_stat = Path(record["source_path"]).stat()
+                    except OSError:
+                        return False
+                    if _identity_record(source_stat) != record["source_identity"]:
+                        return False
+            for record in matching:
+                self.journal.delete(record)
+        return True
 
     def _recover_move(self, record: Dict[str, object]) -> Dict[str, object]:
         source = Path(record["source_path"])

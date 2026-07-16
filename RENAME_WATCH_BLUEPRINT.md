@@ -214,16 +214,23 @@ Completed:
   write. Move audit records carry a stable operation ID, providing portable
   at-least-once recovery with deduplication across the unavoidable audit/journal
   commit boundary.
+- `--once` freezes the initial reconciliation set, disables interval rescans,
+  and waits through every configured settle interval and exponential retry
+  delay. The snapshot uses reliable discovery-time filesystem identity, so a
+  later file at the same pathname is not consumed; unavailable identities use
+  the retry/failure policy. Each initial file therefore ends as moved,
+  externally removed, or represented by one terminal failure; a continuously
+  changing file receives a bounded `TimeoutError` failure instead of being
+  left pending when the process exits.
 
 Immediate next:
 
-- Define deterministic `--once` settling and bounded-retry completion
-  semantics.
+- Add Windows, macOS, and Linux CI coverage for the focused rename-watch
+  suites.
 
 Later in Stage 1:
 
-- Add Windows, macOS, and Linux CI coverage for the focused rename-watch
-  suites.
+- Complete final Stage 1 review and mark production hardening completed.
 
 ### Stage 2: Operator commands
 

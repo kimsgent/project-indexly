@@ -45,6 +45,19 @@ non-directory path is rejected, and an inaccessible location reports a clear
 configuration error. The destination must be a child of the watched folder; it
 is created only when a ready file is moved.
 
+`--once` freezes the files found by its initial scan; files arriving later are
+left for the next invocation. It does not run periodic rescans, but it does wait
+for every initial file to settle and for the complete configured retry policy,
+including exponential backoff. It exits only after each initial file moved,
+disappeared externally, or produced one terminal failure record. A file that
+keeps changing beyond the bounded settle-and-retry window is left in place and
+logged with `TimeoutError`. Consequently, `--once` can run for the sum of all
+configured settle intervals and retry delays rather than returning after only
+one settle interval. The frozen snapshot uses filesystem identity, not only a
+pathname, so a later file appearing at the same path is not consumed. If the
+filesystem cannot provide a stable identity, `--once` leaves the file in place
+and applies the configured retry and terminal-failure policy.
+
 Hybrid mode reacts to filesystem events and periodically scans for files missed
 while copied or locked. Rename-watch waits for a file to remain unchanged for
 the configured settling period, retries transient filesystem errors, and logs

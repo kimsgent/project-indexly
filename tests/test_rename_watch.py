@@ -1,5 +1,6 @@
 import json
 import errno
+import math
 import os
 import subprocess
 import sys
@@ -55,6 +56,14 @@ def test_config_rejects_watch_path_that_is_a_file(tmp_path):
         pass
     else:
         raise AssertionError("a watch path that is a file must be rejected")
+
+
+@pytest.mark.parametrize("value", [float("inf"), float("nan")])
+def test_config_rejects_nonfinite_timing_values(tmp_path, value):
+    path, _ = _config(tmp_path, settle_seconds=value)
+
+    with pytest.raises(RenameWatchConfigError, match="positive number"):
+        load_settings(str(path))
 
 
 def test_planner_moves_and_creates_destination(tmp_path):
@@ -117,7 +126,13 @@ job = load_settings(sys.argv[1]).jobs[0]
 source = Path(sys.argv[2])
 state = Path(sys.argv[3])
 
-def crash(source_path, target_path, destination_created, destination_finalized):
+def crash(
+    source_path,
+    target_path,
+    destination_created,
+    destination_finalized,
+    expected_source_identity=None,
+):
     os.link(source_path, target_path)
     destination_created(p._destination_identity(target_path.stat()))
     os._exit(23)
@@ -154,7 +169,11 @@ def test_recovery_preserves_source_and_partial_copy_for_manual_resolution(
     state_root = tmp_path / "state"
 
     def crash_during_copy(
-        source_path, target_path, destination_created, destination_finalized
+        source_path,
+        target_path,
+        destination_created,
+        destination_finalized,
+        expected_source_identity=None,
     ):
         with target_path.open("xb") as handle:
             handle.write(b"partial")
@@ -183,13 +202,18 @@ def test_recovery_detects_completed_move_before_moved_transition(tmp_path, monke
     real_move = planner_module._move_without_overwrite
 
     def move_then_interrupt(
-        source_path, target_path, destination_created, destination_finalized
+        source_path,
+        target_path,
+        destination_created,
+        destination_finalized,
+        expected_source_identity=None,
     ):
         real_move(
             source_path,
             target_path,
             destination_created,
             destination_finalized,
+            expected_source_identity,
         )
         raise KeyboardInterrupt()
 
@@ -215,7 +239,11 @@ def test_recovery_fails_closed_when_owned_destination_identity_changes(tmp_path,
     state_root = tmp_path / "state"
 
     def leave_destination(
-        source_path, target_path, destination_created, destination_finalized
+        source_path,
+        target_path,
+        destination_created,
+        destination_finalized,
+        expected_source_identity=None,
     ):
         target_path.write_text("partial", encoding="utf-8")
         destination_created(planner_module._destination_identity(target_path.stat()))
@@ -245,7 +273,11 @@ def test_recovery_rejects_unreliable_zero_destination_identity(tmp_path, monkeyp
     state_root = tmp_path / "state"
 
     def leave_destination(
-        source_path, target_path, destination_created, destination_finalized
+        source_path,
+        target_path,
+        destination_created,
+        destination_finalized,
+        expected_source_identity=None,
     ):
         target_path.write_text("partial", encoding="utf-8")
         destination_created({"device": 0, "inode": 0})
@@ -271,7 +303,11 @@ def test_source_missing_requires_destination_finalized_phase(tmp_path, monkeypat
     state_root = tmp_path / "state"
 
     def leave_same_size_corruption(
-        source_path, target_path, destination_created, destination_finalized
+        source_path,
+        target_path,
+        destination_created,
+        destination_finalized,
+        expected_source_identity=None,
     ):
         target_path.write_text("7654321", encoding="utf-8")
         destination_created(planner_module._destination_identity(target_path.stat()))
@@ -462,6 +498,465 @@ def test_once_ignores_empty_folder_without_logging(tmp_path, monkeypatch):
     assert calls == []
 
 
+def test_once_waits_through_full_retry_schedule_and_can_succeed(
+    tmp_path, monkeypatch
+):
+    path, incoming = _config(
+        tmp_path,
+        settle_seconds=0.5,
+        retry={
+            "max_attempts": 3,
+            "initial_delay_seconds": 2,
+            "max_delay_seconds": 4,
+        },
+    )
+    source = incoming / "report.txt"
+    source.write_text("content", encoding="utf-8")
+    job = load_settings(str(path)).jobs[0]
+    current = [0.0]
+    service = RenameWatchService(
+        [job],
+        state_root=tmp_path / "state",
+        clock=lambda: current[0],
+        sleeper=lambda delay: current.__setitem__(0, current[0] + delay),
+    )
+    mover = service.movers[job.job_id]
+    real_plan = mover.plan_and_move_operation
+    attempts_seen = []
+    audits = []
+
+    def fail_twice(source_path, attempts, expected_source_identity=None):
+        attempts_seen.append((attempts, current[0]))
+        if len(attempts_seen) < 3:
+            raise PermissionError("locked")
+        return real_plan(source_path, attempts, expected_source_identity)
+
+    mover.plan_and_move_operation = fail_twice
+    monkeypatch.setattr(
+        "indexly.rename_watch.service.log_move",
+        lambda *args, **kwargs: audits.append((args, kwargs)),
+    )
+
+    service.run_once()
+
+    assert [value[0] for value in attempts_seen] == [1, 2, 3]
+    assert current[0] == pytest.approx(7.5)
+    assert len(audits) == 1
+    assert not source.exists()
+    assert service.pending == {}
+
+
+def test_once_exhausts_retries_and_logs_one_terminal_failure(tmp_path, monkeypatch):
+    path, incoming = _config(
+        tmp_path,
+        settle_seconds=0.5,
+        retry={
+            "max_attempts": 3,
+            "initial_delay_seconds": 2,
+            "max_delay_seconds": 4,
+        },
+    )
+    source = incoming / "report.txt"
+    source.write_text("content", encoding="utf-8")
+    job = load_settings(str(path)).jobs[0]
+    current = [0.0]
+    service = RenameWatchService(
+        [job],
+        state_root=tmp_path / "state",
+        clock=lambda: current[0],
+        sleeper=lambda delay: current.__setitem__(0, current[0] + delay),
+    )
+    attempts_seen = []
+    failures = []
+
+    def always_locked(source_path, attempts, expected_source_identity=None):
+        attempts_seen.append(attempts)
+        raise PermissionError("locked")
+
+    service.movers[job.job_id].plan_and_move_operation = always_locked
+    monkeypatch.setattr(
+        "indexly.rename_watch.service.log_failure",
+        lambda *args: failures.append(args),
+    )
+
+    service.run_once()
+
+    assert attempts_seen == [1, 2, 3]
+    assert len(failures) == 1
+    assert failures[0][4] == 3
+    assert isinstance(failures[0][5], PermissionError)
+    assert source.exists()
+    assert service.pending == {}
+
+
+def test_once_terminal_failure_clears_only_unstarted_journal(tmp_path, monkeypatch):
+    path, incoming = _config(
+        tmp_path,
+        settle_seconds=0.5,
+        retry={
+            "max_attempts": 2,
+            "initial_delay_seconds": 1,
+            "max_delay_seconds": 1,
+        },
+    )
+    source = incoming / "report.txt"
+    source.write_text("content", encoding="utf-8")
+    job = load_settings(str(path)).jobs[0]
+    current = [0.0]
+    service = RenameWatchService(
+        [job],
+        state_root=tmp_path / "state",
+        clock=lambda: current[0],
+        sleeper=lambda delay: current.__setitem__(0, current[0] + delay),
+    )
+    failures = []
+    monkeypatch.setattr(
+        planner_module,
+        "_move_without_overwrite",
+        lambda *args: (_ for _ in ()).throw(PermissionError("locked")),
+    )
+    monkeypatch.setattr(
+        "indexly.rename_watch.service.log_failure",
+        lambda *args: failures.append(args),
+    )
+
+    service.run_once()
+
+    assert len(failures) == 1
+    assert source.exists()
+    assert service.movers[job.job_id].journal.pending() == []
+
+
+def test_once_times_out_a_continuously_changing_file(tmp_path, monkeypatch):
+    path, incoming = _config(
+        tmp_path,
+        settle_seconds=0.5,
+        retry={
+            "max_attempts": 2,
+            "initial_delay_seconds": 1,
+            "max_delay_seconds": 1,
+        },
+    )
+    source = incoming / "report.txt"
+    source.write_text("x", encoding="utf-8")
+    job = load_settings(str(path)).jobs[0]
+    current = [0.0]
+    changes = [1]
+
+    def advance(delay):
+        current[0] += delay
+        changes[0] += 1
+        source.write_text("x" * changes[0], encoding="utf-8")
+
+    service = RenameWatchService(
+        [job],
+        state_root=tmp_path / "state",
+        clock=lambda: current[0],
+        sleeper=advance,
+    )
+    failures = []
+    monkeypatch.setattr(
+        "indexly.rename_watch.service.log_failure",
+        lambda *args: failures.append(args),
+    )
+
+    service.run_once()
+
+    assert len(failures) == 1
+    assert isinstance(failures[0][5], TimeoutError)
+    assert source.exists()
+    assert service.pending == {}
+    assert current[0] == pytest.approx(service._once_budget(job))
+
+
+def test_once_freezes_initial_reconciliation_set(tmp_path, monkeypatch):
+    path, incoming = _config(tmp_path, settle_seconds=0.5)
+    initial = incoming / "initial.txt"
+    later = incoming / "later.txt"
+    initial.write_text("initial", encoding="utf-8")
+    job = load_settings(str(path)).jobs[0]
+    current = [0.0]
+
+    def advance(delay):
+        current[0] += delay
+        if not later.exists():
+            later.write_text("later", encoding="utf-8")
+
+    monkeypatch.setattr("indexly.rename_watch.service.log_move", lambda *args, **kwargs: None)
+
+    RenameWatchService(
+        [job],
+        state_root=tmp_path / "state",
+        clock=lambda: current[0],
+        sleeper=advance,
+    ).run_once()
+
+    assert not initial.exists()
+    assert later.read_text(encoding="utf-8") == "later"
+    assert len(list(job.destination_path.iterdir())) == 1
+
+
+def test_once_does_not_consume_replacement_at_frozen_path(tmp_path, monkeypatch):
+    path, incoming = _config(tmp_path, settle_seconds=0.5)
+    source = incoming / "report.txt"
+    replacement = tmp_path / "replacement.txt"
+    source.write_text("initial", encoding="utf-8")
+    replacement.write_text("replacement", encoding="utf-8")
+    job = load_settings(str(path)).jobs[0]
+    current = [0.0]
+    replaced = [False]
+
+    def advance(delay):
+        current[0] += delay
+        if not replaced[0]:
+            os.replace(replacement, source)
+            replaced[0] = True
+
+    monkeypatch.setattr("indexly.rename_watch.service.log_move", lambda *args, **kwargs: None)
+    RenameWatchService(
+        [job],
+        state_root=tmp_path / "state",
+        clock=lambda: current[0],
+        sleeper=advance,
+    ).run_once()
+
+    assert source.read_text(encoding="utf-8") == "replacement"
+    assert not job.destination_path.exists()
+
+
+def test_once_identity_is_captured_during_reconciliation(tmp_path, monkeypatch):
+    path, incoming = _config(tmp_path, settle_seconds=0.5)
+    source = incoming / "report.txt"
+    replacement = tmp_path / "replacement.txt"
+    source.write_text("initial", encoding="utf-8")
+    replacement.write_text("replacement", encoding="utf-8")
+    job = load_settings(str(path)).jobs[0]
+    service = RenameWatchService([job], state_root=tmp_path / "state")
+    real_freeze = service._freeze_once_work
+
+    def replace_before_freeze():
+        os.replace(replacement, source)
+        return real_freeze()
+
+    service._freeze_once_work = replace_before_freeze
+    monkeypatch.setattr("indexly.rename_watch.service.log_move", lambda *args, **kwargs: None)
+
+    service.run_once()
+
+    assert source.read_text(encoding="utf-8") == "replacement"
+    assert not job.destination_path.exists()
+
+
+def test_once_planner_boundary_rejects_last_moment_replacement(
+    tmp_path, monkeypatch
+):
+    path, incoming = _config(
+        tmp_path,
+        settle_seconds=0.5,
+        retry={
+            "max_attempts": 2,
+            "initial_delay_seconds": 1,
+            "max_delay_seconds": 1,
+        },
+    )
+    source = incoming / "report.txt"
+    replacement = tmp_path / "replacement.txt"
+    source.write_text("initial", encoding="utf-8")
+    replacement.write_text("replacement", encoding="utf-8")
+    job = load_settings(str(path)).jobs[0]
+    current = [0.0]
+    service = RenameWatchService(
+        [job],
+        state_root=tmp_path / "state",
+        clock=lambda: current[0],
+        sleeper=lambda delay: current.__setitem__(0, current[0] + delay),
+    )
+    mover = service.movers[job.job_id]
+    real_plan = mover.plan_and_move_operation
+    replaced = [False]
+
+    def replace_at_boundary(source_path, attempts, expected_source_identity=None):
+        if not replaced[0]:
+            os.replace(replacement, source_path)
+            replaced[0] = True
+        return real_plan(source_path, attempts, expected_source_identity)
+
+    mover.plan_and_move_operation = replace_at_boundary
+    monkeypatch.setattr("indexly.rename_watch.service.log_move", lambda *args, **kwargs: None)
+
+    service.run_once()
+
+    assert source.read_text(encoding="utf-8") == "replacement"
+    assert not job.destination_path.exists()
+    assert mover.journal.pending() == []
+
+
+def test_once_transient_identity_stat_error_uses_retry_policy(tmp_path, monkeypatch):
+    path, incoming = _config(tmp_path, settle_seconds=0.5)
+    source = incoming / "report.txt"
+    source.write_text("content", encoding="utf-8")
+    job = load_settings(str(path)).jobs[0]
+    current = [0.0]
+    service = RenameWatchService(
+        [job],
+        state_root=tmp_path / "state",
+        clock=lambda: current[0],
+        sleeper=lambda delay: current.__setitem__(0, current[0] + delay),
+    )
+    real_identity_check = service._once_source_replaced
+    checks = [0]
+    audits = []
+
+    def fail_once(key, source_path):
+        checks[0] += 1
+        if checks[0] == 1:
+            raise PermissionError("temporary stat failure")
+        return real_identity_check(key, source_path)
+
+    service._once_source_replaced = fail_once
+    monkeypatch.setattr(
+        "indexly.rename_watch.service.log_move",
+        lambda *args, **kwargs: audits.append((args, kwargs)),
+    )
+
+    service.run_once()
+
+    assert checks[0] >= 2
+    assert len(audits) == 1
+    assert audits[0][0][4] == 2
+    assert not source.exists()
+
+
+def test_once_unavailable_discovery_identity_fails_closed_on_replacement(
+    tmp_path, monkeypatch
+):
+    path, incoming = _config(
+        tmp_path,
+        settle_seconds=0.5,
+        retry={
+            "max_attempts": 2,
+            "initial_delay_seconds": 1,
+            "max_delay_seconds": 1,
+        },
+    )
+    source = incoming / "report.txt"
+    replacement = tmp_path / "replacement.txt"
+    source.write_text("initial", encoding="utf-8")
+    replacement.write_text("replacement", encoding="utf-8")
+    job = load_settings(str(path)).jobs[0]
+    current = [0.0]
+    service = RenameWatchService(
+        [job],
+        state_root=tmp_path / "state",
+        clock=lambda: current[0],
+        sleeper=lambda delay: current.__setitem__(0, current[0] + delay),
+    )
+    real_freeze = service._freeze_once_work
+    failures = []
+    monkeypatch.setattr(
+        service,
+        "_capture_once_identity",
+        lambda source_path: (_ for _ in ()).throw(PermissionError("stat failed")),
+    )
+
+    def replace_before_freeze():
+        os.replace(replacement, source)
+        return real_freeze()
+
+    service._freeze_once_work = replace_before_freeze
+    monkeypatch.setattr(
+        "indexly.rename_watch.service.log_failure",
+        lambda *args: failures.append(args),
+    )
+
+    service.run_once()
+
+    assert len(failures) == 1
+    assert isinstance(failures[0][5], OSError)
+    assert source.read_text(encoding="utf-8") == "replacement"
+    assert not job.destination_path.exists()
+
+
+def test_once_excludes_other_file_processing_time_from_deadlines(
+    tmp_path, monkeypatch
+):
+    path, first_root = _config(tmp_path, settle_seconds=0.5)
+    first_job = load_settings(str(path)).jobs[0]
+    first_job = replace(first_job, retry=replace(first_job.retry, max_attempts=1))
+    second_root = tmp_path / "second"
+    second_root.mkdir()
+    second_job = replace(
+        first_job,
+        job_id="second",
+        watch_path=second_root,
+        destination_path=second_root / "processed",
+        settle_seconds=1.0,
+    )
+    first_source = first_root / "first.txt"
+    second_source = second_root / "second.txt"
+    first_source.write_text("first", encoding="utf-8")
+    second_source.write_text("second", encoding="utf-8")
+    current = [0.0]
+    service = RenameWatchService(
+        [first_job, second_job],
+        state_root=tmp_path / "state",
+        clock=lambda: current[0],
+        sleeper=lambda delay: current.__setitem__(0, current[0] + delay),
+    )
+    first_mover = service.movers[first_job.job_id]
+    real_first_plan = first_mover.plan_and_move_operation
+
+    def slow_first(source_path, attempts, expected_source_identity=None):
+        current[0] += 100.0
+        return real_first_plan(source_path, attempts, expected_source_identity)
+
+    first_mover.plan_and_move_operation = slow_first
+    monkeypatch.setattr("indexly.rename_watch.service.log_move", lambda *args, **kwargs: None)
+
+    service.run_once()
+
+    assert not first_source.exists()
+    assert not second_source.exists()
+    assert len(list(second_job.destination_path.iterdir())) == 1
+
+
+def test_once_fixed_clock_exits_and_releases_root_lock(tmp_path, monkeypatch):
+    path, incoming = _config(tmp_path, settle_seconds=0.5)
+    source = incoming / "report.txt"
+    source.write_text("content", encoding="utf-8")
+    job = load_settings(str(path)).jobs[0]
+    failures = []
+    monkeypatch.setattr(
+        "indexly.rename_watch.service.log_failure",
+        lambda *args: failures.append(args),
+    )
+    service = RenameWatchService(
+        [job],
+        state_root=tmp_path / "state",
+        clock=lambda: 0.0,
+        sleeper=lambda delay: None,
+    )
+
+    service.run_once()
+
+    assert len(failures) == 1
+    assert isinstance(failures[0][5], TimeoutError)
+    lock = WatchRootLock(incoming)
+    lock.acquire()
+    lock.release()
+
+
+def test_once_budget_handles_huge_retry_count_without_exponentiation(tmp_path):
+    path, _ = _config(tmp_path)
+    job = load_settings(str(path)).jobs[0]
+    job = replace(job, retry=replace(job.retry, max_attempts=10 ** 1000))
+
+    budget = RenameWatchService._once_budget(job)
+
+    assert math.isfinite(budget)
+    assert budget > job.retry.max_delay_seconds * 1000
+
+
 def test_due_work_is_claimed_atomically_and_future_work_remains(tmp_path):
     path, incoming = _config(tmp_path)
     first = incoming / "first.txt"
@@ -512,7 +1007,7 @@ def test_callback_cannot_shorten_retry_backoff_or_reset_attempts(tmp_path):
     service.schedule(job, source)
     claimed = service._claim_due(10.0)
 
-    def callback_then_fail(_, attempts=1):
+    def callback_then_fail(_, attempts=1, expected_source_identity=None):
         service.schedule(job, source, reset_settle=True)
         raise PermissionError("locked")
 
@@ -867,6 +1362,7 @@ def test_collision_race_never_overwrites_existing_target(tmp_path, monkeypatch):
         target_path,
         on_destination_created=None,
         on_destination_finalized=None,
+        expected_source_identity=None,
     ):
         if not collided:
             target_path.write_text("existing", encoding="utf-8")
@@ -876,6 +1372,7 @@ def test_collision_race_never_overwrites_existing_target(tmp_path, monkeypatch):
             target_path,
             on_destination_created,
             on_destination_finalized,
+            expected_source_identity,
         )
 
     monkeypatch.setattr(planner_module, "_move_without_overwrite", create_collision_then_move)
