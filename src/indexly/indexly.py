@@ -16,6 +16,18 @@ Usage:
     indexly regex "pattern"
 """
 
+# ``python -m indexly.indexly`` bypasses the installed ``indexly.__main__``
+# entry point. Preserve the same side-effect-free status boundary for that
+# supported development invocation before importing the full application.
+if __name__ == "__main__":
+    import sys as _early_sys
+
+    from .rename_watch.status_cli import maybe_run_status as _maybe_run_status
+
+    _status_result = _maybe_run_status(_early_sys.argv[1:])
+    if _status_result is not None:
+        raise SystemExit(_status_result)
+
 import os
 import re
 import sys
@@ -1596,7 +1608,11 @@ def main():
     # ----------------------------------
     # 2) Automatic update check
     # ----------------------------------
-    if not getattr(args, "no_update_check", False):
+    rename_watch_status = (
+        getattr(args, "command", None) == "rename-watch"
+        and getattr(args, "status", False)
+    )
+    if not getattr(args, "no_update_check", False) and not rename_watch_status:
         try:
             from .update_utils import check_for_updates
 

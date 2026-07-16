@@ -10,19 +10,10 @@ from .db_utils import _sync_path_in_db
 from rich.prompt import Prompt
 from indexly.organize.profiles import business_rules
 from indexly.pipeline.rename_plan import RenameEntry
+from .rename_constants import DEFAULT_PATTERN, SUPPORTED_DATE_FORMATS
 
 
 logger = logging.getLogger(__name__)
-
-SUPPORTED_DATE_FORMATS = [
-    "%Y%m%d",
-    "%Y-%m-%d",
-    "%y%m%d",
-    "%d-%m-%Y",
-    "%d%m%Y",
-]
-
-DEFAULT_PATTERN = "{date}-{title}"
 
 BUSINESS_CATEGORIES = ["invoice", "tax", "receipt", "payroll", "contract"]
 

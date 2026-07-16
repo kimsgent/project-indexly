@@ -27,6 +27,7 @@ Add a new command without changing existing commands:
 
 ```text
 indexly rename-watch --config PATH [--once] [--mode event|interval|hybrid]
+indexly rename-watch --config PATH --status [--json]
 ```
 
 - `--config` is required and points to a JSON configuration file.
@@ -135,6 +136,8 @@ src/indexly/rename_watch/
   operator.py     # disposable operator access and filesystem-policy probes
   planner.py      # counter state and plan-move-log service
   service.py      # Watchdog/interval lifecycle, readiness, queue, retries
+  status.py       # read-only durable state and retained audit snapshots
+  status_cli.py   # side-effect-free early dispatch for status output
 tests/
   test_rename_watch_config.py
   test_rename_watch_planner.py
@@ -266,16 +269,24 @@ Completed:
   aware source-to-destination plans without moving user files or consuming
   counter state. It models the destination volume's case/Unicode behavior with
   cleaned probes and reserves shared-root sources in configuration order.
+- `--status` reports configured jobs, watch-path availability, durable pending
+  recovery operations, and retained successful-move and terminal-failure
+  history in escaped human output or schema-versioned JSON. It does not acquire
+  the consumer lock, start the service, run probes, recover or mutate journals,
+  inspect counters, create configured directories, apply retention, or write
+  logs. Live settling/retry queues are process-local and are explicitly reported
+  as unavailable. Partial log reads produce a degraded snapshot with warnings;
+  malformed or unsafe active journals fail closed. Future audit entries use UTC
+  timestamps and a canonical root/job namespace while legacy entries require
+  uniquely matching IDs and lexical paths.
 
 Immediate next:
 
-- Add `--status` with human-readable and JSON output for jobs, pending files,
-  last successful moves, and terminal failures.
+- Add explicit counter-state inspection and reset commands with confirmation,
+  backup, and job selection.
 
 Later in Stage 2:
 
-- Add explicit counter-state inspection and reset commands with confirmation,
-  backup, and job selection.
 - Define stable machine-readable exit codes and optional JSON error output.
 
 ### Stage 3: File selection
@@ -330,7 +341,9 @@ Status: **Next**
 ### Incremental delivery order
 
 1. Completed: Stage 1 in focused, independently tested commits.
-2. Completed: `--check-config` and `--dry-run --once` from Stage 2.
+2. In progress: Stage 2 operator commands; `--check-config`,
+   `--dry-run --once`, and `--status [--json]` are completed, with explicit
+   counter-state inspection/reset next.
 3. Add include/exclude selection from Stage 3.
 4. Add quarantine and retry workflows from Stage 4.
 5. Add portable service integration from Stage 5.

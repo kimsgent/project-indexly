@@ -355,6 +355,7 @@ def test_service_recovers_moved_journal_and_audits_stable_operation_id(
     assert calls[0][1] == {
         "operation_id": result.operation_id,
         "recovered": True,
+        "job_namespace": identity_module.state_namespace(job.watch_path, job.job_id),
     }
     assert service.movers[job.job_id].journal.pending() == []
 
@@ -384,7 +385,15 @@ def test_audit_failure_retains_moved_journal_for_stable_retry(tmp_path, monkeypa
         lambda *args, **kwargs: calls.append(kwargs),
     )
     RenameWatchService([job], state_root=state_root)._recover_pending_moves()
-    assert calls == [{"operation_id": result.operation_id, "recovered": True}]
+    assert calls == [
+        {
+            "operation_id": result.operation_id,
+            "recovered": True,
+            "job_namespace": identity_module.state_namespace(
+                job.watch_path, job.job_id
+            ),
+        }
+    ]
 
 
 def test_moved_recovery_rejects_same_size_destination_modification(tmp_path):

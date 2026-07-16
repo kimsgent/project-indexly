@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List
 
-from indexly.rename_utils import DEFAULT_PATTERN, SUPPORTED_DATE_FORMATS
+from indexly.rename_constants import DEFAULT_PATTERN, SUPPORTED_DATE_FORMATS
 
 VALID_MODES = {"event", "interval", "hybrid"}
 _JOB_KEYS = {

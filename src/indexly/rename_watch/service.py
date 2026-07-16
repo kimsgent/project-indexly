@@ -14,7 +14,7 @@ from .config import (
 from .logging import log_failure, log_move
 from .locking import WatchRootLock
 from .planner import PlanMoveLog
-from .identity import canonical_root_identity
+from .identity import canonical_root_identity, state_namespace
 
 _IDENTITY_UNAVAILABLE = object()
 
@@ -111,6 +111,7 @@ class RenameWatchService:
             result.attempts,
             operation_id=result.operation_id,
             recovered=result.recovered,
+            job_namespace=state_namespace(job.watch_path, job.job_id),
         )
         self.movers[job.job_id].complete(result.operation_id)
     def _recover_job(self, job):
@@ -179,7 +180,7 @@ class RenameWatchService:
         elif source_available:
             finalized = self.movers[job.job_id].finalized_operation(source)
             if finalized is not None:
-                _, target = finalized
+                operation_id, target = finalized
                 log_failure(
                     job.job_id,
                     source,
@@ -187,6 +188,8 @@ class RenameWatchService:
                     job.pattern,
                     attempts + 1,
                     error,
+                    operation_id,
+                    state_namespace(job.watch_path, job.job_id),
                 )
                 return
             if not self.movers[job.job_id].abort_unstarted(source):
@@ -196,7 +199,16 @@ class RenameWatchService:
                     )
                 )
             target = job.destination_path / source.name
-            log_failure(job.job_id, source, target, job.pattern, attempts + 1, error)
+            log_failure(
+                job.job_id,
+                source,
+                target,
+                job.pattern,
+                attempts + 1,
+                error,
+                None,
+                state_namespace(job.watch_path, job.job_id),
+            )
     def _process(self, job, source, attempts):
         key = (job.job_id, str(source))
         try:
@@ -392,6 +404,8 @@ class RenameWatchService:
                 job.pattern,
                 max(1, attempts + 1),
                 error,
+                None,
+                state_namespace(job.watch_path, job.job_id),
             )
     def _next_once_delay(self, deadlines, now):
         with self._state_lock:

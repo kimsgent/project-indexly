@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from indexly.log_utils import log_index_event_dict_sync
@@ -18,9 +18,10 @@ def _entry(
     attempts: int,
     operation_id: str = None,
     recovered: bool = False,
+    job_namespace: str = None,
 ) -> dict:
     entry = {
-        "timestamp": datetime.now().isoformat(timespec="seconds"),
+        "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "event": event,
         "path": normalize_path(str(destination)),
         "source_path": normalize_path(str(source)),
@@ -32,6 +33,8 @@ def _entry(
     if operation_id is not None:
         entry["operation_id"] = operation_id
         entry["recovered"] = recovered
+    if job_namespace is not None:
+        entry["job_namespace"] = job_namespace
     return entry
 
 
@@ -43,6 +46,7 @@ def log_move(
     attempts: int,
     operation_id: str = None,
     recovered: bool = False,
+    job_namespace: str = None,
 ) -> None:
     log_index_event_dict_sync(
         _entry(
@@ -54,12 +58,31 @@ def log_move(
             attempts,
             operation_id,
             recovered,
+            job_namespace,
         )
     )
 
 
-def log_failure(job_id: str, source: Path, destination: Path, pattern: str, attempts: int, error: Exception) -> None:
-    entry = _entry("RENAME_WATCH_FAILED", job_id, source, destination, pattern, attempts)
+def log_failure(
+    job_id: str,
+    source: Path,
+    destination: Path,
+    pattern: str,
+    attempts: int,
+    error: Exception,
+    operation_id: str = None,
+    job_namespace: str = None,
+) -> None:
+    entry = _entry(
+        "RENAME_WATCH_FAILED",
+        job_id,
+        source,
+        destination,
+        pattern,
+        attempts,
+        operation_id=operation_id,
+        job_namespace=job_namespace,
+    )
     entry["error_type"] = type(error).__name__
     entry["error"] = str(error)
     log_index_event_dict_sync(entry)

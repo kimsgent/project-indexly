@@ -100,6 +100,36 @@ lock. No probe, destination directory, journal, counter update, or audit record
 is retained, but another filesystem-monitoring tool may observe those brief
 probe events.
 
+Inspect configured jobs and durable operational state without starting the
+service:
+
+```powershell
+indexly rename-watch --config rename-watch.json --status
+indexly rename-watch --config rename-watch.json --status --json
+```
+
+The human report and versioned JSON document include each configured mode and
+path, watch-path availability, pending recovery journals, the latest successful
+move found in retained logs, and the count plus newest ten terminal failures
+found in retained logs. The JSON schema identifier is
+`indexly.rename-watch.status` and its current version is `1`.
+
+Status is a read-only snapshot. It does not acquire the consumer lock, start an
+observer or worker, run access or filesystem-policy probes, recover or change a
+journal, inspect or consume counters, apply log retention, write audit records,
+or create configured watch and destination directories. A running service's
+settling and retry queue exists only in that process, so status reports the live
+pending queue as unavailable rather than incorrectly reporting zero files.
+
+History is limited to NDJSON files still present under Indexly's configured log
+tree. Missing retained events therefore mean “not found in retained logs,” not
+“never happened.” A malformed, unreadable, or concurrently changing log entry
+is skipped and makes the snapshot explicitly degraded with structured warnings;
+the command can still report the remaining retained history. An unsafe,
+malformed, or unreadable active recovery journal fails the command instead of
+presenting recovery state as complete. Use `--json` only with `--status`; a
+successful JSON invocation writes exactly one document to standard output.
+
 Only one rename-watch process can consume a canonical watch root at a time.
 The service holds a non-blocking operating-system lock for the complete
 `--once` or continuous run: a global named mutex on Windows and a fixed `/tmp`
@@ -133,10 +163,15 @@ symlink or Windows reparse point; it never deletes a pre-existing destination.
 Keep the journal in place while investigating such a conflict. Changing or
 deleting it removes the evidence needed for safe recovery.
 
-Successful move audit entries include a stable `operation_id`. Audit delivery
-is at least once: a sudden stop after the NDJSON append but before the separate
-journal update can repeat the event after restart, and consumers can
-deduplicate those entries by `operation_id`. A journal is removed only after
+Successful move audit entries include a stable `operation_id`. New move and
+terminal-failure entries also include a namespace derived from the canonical
+watch root and job ID, preventing retained history from being attributed to a
+different configuration that later reuses the same job ID. New entries use
+timezone-aware UTC timestamps; status remains compatible with older retained
+entries and identifies legacy path-based attribution as ambiguous. Audit
+delivery is at least once: a sudden stop after the NDJSON append but before the
+separate journal update can repeat the event after restart, and consumers can
+deduplicate successful moves by `operation_id`. A journal is removed only after
 the audit append succeeds.
 
 Counter and journal filenames use a hash of the canonical watch root and job

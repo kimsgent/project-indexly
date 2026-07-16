@@ -11,8 +11,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from indexly.config import BASE_DIR
-
 from .config import RenameWatchConfigError, RenameWatchJob
 from .identity import state_namespace
 
@@ -28,7 +26,11 @@ STATES = {
 
 
 def state_directory(state_root: Optional[Path] = None) -> Path:
-    return Path(state_root) if state_root is not None else Path(BASE_DIR) / "rename-watch"
+    if state_root is not None:
+        return Path(state_root)
+    from indexly.runtime_paths import resolve_base_dir
+
+    return resolve_base_dir() / "rename-watch"
 
 
 def _sync_directory(path: Path) -> None:
