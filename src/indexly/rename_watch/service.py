@@ -4,7 +4,13 @@ import os, threading, time
 from pathlib import Path
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
-from .config import RenameWatchConfigError, RenameWatchJob, initialize_settings, load_settings
+from .config import (
+    RenameWatchConfigError,
+    RenameWatchJob,
+    ensure_watch_directory,
+    initialize_settings,
+    load_settings,
+)
 from .logging import log_failure, log_move
 from .planner import PlanMoveLog
 
@@ -21,7 +27,7 @@ class RenameWatchService:
         self.pending = {}; self.snapshots = {}; self.next_scan = {j.job_id: 0.0 for j in jobs}
         self.movers = {j.job_id: PlanMoveLog(j, state_root) for j in jobs}; self.observers = []
     def _eligible(self, job, path):
-        return path.exists() and path.is_file() and not _temporary(path) and _inside(path, job.watch_path) and not _inside(path, job.destination_path)
+        return path.exists() and path.is_file() and not path.is_symlink() and not _temporary(path) and _inside(path, job.watch_path) and not _inside(path, job.destination_path)
     def schedule(self, job, path, attempts=0, delay=0.0):
         path = Path(path)
         if not self._eligible(job, path): return
@@ -29,15 +35,24 @@ class RenameWatchService:
         old = self.pending.get(key)
         if old is None or due < old[2]: self.pending[key] = (job, path.resolve(), due, attempts)
     def reconcile(self, job):
-        for path in job.watch_path.iterdir(): self.schedule(job, path)
+        ensure_watch_directory(job.watch_path, "job '{0}' watch_path".format(job.job_id))
+        try:
+            paths = list(job.watch_path.iterdir())
+        except OSError as exc:
+            raise RenameWatchConfigError(
+                "job '{0}' watch_path could not be scanned: {1} ({2})".format(
+                    job.job_id, job.watch_path, exc
+                )
+            ) from exc
+        for path in paths: self.schedule(job, path)
     def _process(self, job, source, attempts):
         key = (job.job_id, str(source)); self.pending.pop(key, None)
         if not self._eligible(job, source): self.snapshots.pop(key, None); return
-        stat = source.stat(); fingerprint = (stat.st_size, stat.st_mtime_ns)
-        previous = self.snapshots.get(key)
-        if previous != fingerprint:
-            self.snapshots[key] = fingerprint; self.schedule(job, source, attempts, job.settle_seconds); return
         try:
+            stat = source.stat(); fingerprint = (stat.st_size, stat.st_mtime_ns)
+            previous = self.snapshots.get(key)
+            if previous != fingerprint:
+                self.snapshots[key] = fingerprint; self.schedule(job, source, attempts, job.settle_seconds); return
             target = self.movers[job.job_id].plan_and_move(source)
             self.snapshots.pop(key, None); log_move(job.job_id, source, target, job.pattern, attempts + 1)
         except (PermissionError, OSError) as error:
@@ -72,16 +87,28 @@ class RenameWatchService:
                 if not event.is_directory: service.schedule(self.job, event.dest_path)
         for job in self.jobs:
             if job.mode not in ("event", "hybrid"): continue
-            observer = Observer(); observer.schedule(Handler(job), str(job.watch_path), recursive=False); observer.start(); self.observers.append(observer)
+            ensure_watch_directory(job.watch_path, "job '{0}' watch_path".format(job.job_id))
+            observer = Observer()
+            self.observers.append(observer)
+            try:
+                observer.schedule(Handler(job), str(job.watch_path), recursive=False)
+                observer.start()
+            except Exception as exc:
+                raise RenameWatchConfigError(
+                    "job '{0}' watch_path could not be watched: {1} ({2})".format(
+                        job.job_id, job.watch_path, exc
+                    )
+                ) from exc
     def run_forever(self):
-        self._start_observers()
         try:
+            self._start_observers()
             while not self.stop_event.is_set(): self.tick(); self.stop_event.wait(0.1)
         finally: self.stop()
     def stop(self):
         self.stop_event.set()
         for observer in self.observers: observer.stop()
-        for observer in self.observers: observer.join(timeout=2)
+        for observer in self.observers:
+            if observer.is_alive(): observer.join(timeout=2)
         self.observers = []
 
 def handle_rename_watch(args):
@@ -91,17 +118,17 @@ def handle_rename_watch(args):
         except RenameWatchConfigError as error:
             raise ValueError(str(error))
         print("Created rename-watch configuration: {0}".format(path))
-        print("Create the 'inbox' folder beside it, then run rename-watch again.")
+        print("Created default watch folder: {0}".format(path.parent / "inbox"))
         return
     try:
         settings = load_settings(args.config)
+        jobs = settings.jobs
+        if getattr(args, "mode", None):
+            jobs = [type(job)(**dict(job.__dict__, mode=args.mode)) for job in jobs]
+        service = RenameWatchService(jobs)
+        if getattr(args, "once", False):
+            service.run_once()
+        else:
+            service.run_forever()
     except RenameWatchConfigError as error:
         raise ValueError(str(error))
-    jobs = settings.jobs
-    if getattr(args, "mode", None):
-        jobs = [type(job)(**dict(job.__dict__, mode=args.mode)) for job in jobs]
-    service = RenameWatchService(jobs)
-    if getattr(args, "once", False):
-        service.run_once()
-    else:
-        service.run_forever()

@@ -69,8 +69,10 @@ current working directory.
 Validation rejects unknown/invalid modes, duplicate job IDs, unsupported date
 formats, unsafe destination paths (absolute paths, `..`, or the watched root),
 non-positive timings, malformed retry blocks, and a destination that is not a
-strict child of its watched root. The destination directory is created only
-after a file is ready to move.
+strict child of its watched root. A missing watch root is valid and is created
+by `--init` for the default configuration or when the service starts for an
+existing configuration. An existing non-directory watch path is rejected. The
+destination directory is created only after a file is ready to move.
 
 ## Processing model
 
@@ -98,8 +100,9 @@ files. `event` and `interval` provide deliberate alternatives.
 
 - `generate_new_filename` is used only for deterministic token rendering; the
   new feature owns all planning/moving behavior.
-- The file timestamp used by the existing renderer remains the basis for
-  `{date}`. The job maintains a per-date, persistent counter state under the
+- The existing renderer's date resolution remains the basis for `{date}`: a
+  supported leading filename date is preserved, otherwise the file timestamp
+  is used. The job maintains a per-date, persistent counter state under the
   Indexly runtime directory so `{counter}` is monotonic across restarts.
 - A job-level lock protects counter allocation and target existence checks.
 - The implementation never overwrites an existing file. A collision obtains
@@ -139,6 +142,8 @@ docs/content/documentation/
 ## Tests and acceptance criteria
 
 - Config validation and config-relative path resolution.
+- `--init` and normal startup create missing watch roots without creating an
+  empty destination directory.
 - `--once` moves a ready file, creates its destination folder, and produces a
   success record.
 - Empty scans produce no logs.
@@ -147,6 +152,7 @@ docs/content/documentation/
   either later moves or emits exactly one terminal failure record.
 - Destination-subtree events are ignored.
 - Counter persistence and collision avoidance survive a service restart.
+- Patterns without `{counter}` neither read nor update persisted counter state.
 - Existing `rename-file --help`, `watch --help`, and their focused tests remain
   unchanged; no DB synchronization is invoked.
 - Run focused pytest suites, CLI help smoke tests, and the existing rename and
@@ -162,3 +168,115 @@ docs/content/documentation/
   reconciliation is therefore a correctness feature, not merely a fallback.
 - The local virtual environment currently reports Indexly 2.1.4 while the
   project declares 2.1.5; realign it before final validation.
+
+## Professional extension roadmap
+
+This roadmap extends rename-watch as an operational service while preserving
+the existing `rename-file`, `watch`, configuration-version-1, and database
+contracts. New configuration fields remain optional unless a future explicit
+schema migration says otherwise.
+
+Status values used below are **Completed**, **In progress**, and **Next**.
+
+### Stage 1: Production hardening
+
+Status: **In progress**
+
+Completed:
+
+- Missing watch roots are created by `--init` or service startup without
+  eagerly creating the destination.
+- No-counter patterns ignore persistent counter state.
+- Collision-safe moves do not overwrite existing targets.
+- Unsupported hard-link filesystems use an exclusive, verified copy fallback
+  that preserves a source that changes during copying.
+- Partial observer startup is cleaned up, filesystem failures identify their
+  job and path, and symlink candidates are ignored.
+
+Next:
+
+- Add a per-job process lock so two rename-watch processes cannot consume the
+  same configured root concurrently.
+- Make event-thread scheduling, pending work, snapshots, and retry state
+  explicitly thread-safe.
+- Add a recovery journal for interruptions between planning, moving, counter
+  persistence, and audit logging.
+- Define deterministic `--once` settling and bounded-retry completion
+  semantics.
+- Add Windows, macOS, and Linux CI coverage for the focused rename-watch
+  suites.
+
+### Stage 2: Operator commands
+
+Status: **Next**
+
+- Add `--check-config` to validate schema, path creation/access, destination
+  containment, state access, and lock availability without starting workers.
+- Add `--dry-run --once` to report source-to-destination plans without moving
+  files or consuming counter state.
+- Add `--status` with human-readable and JSON output for jobs, pending files,
+  last successful moves, and terminal failures.
+- Add explicit counter-state inspection and reset commands with confirmation,
+  backup, and job selection.
+- Define stable machine-readable exit codes and optional JSON error output.
+
+### Stage 3: File selection
+
+Status: **Next**
+
+- Add optional `include` and `exclude` glob lists, defaulting to the existing
+  candidate behavior.
+- Add opt-in recursive watching; the default remains non-recursive.
+- Add an optional maximum-file-size guard.
+- Apply identical selection rules to event, interval, hybrid, and `--once`
+  workflows.
+- Keep destination subtrees, temporary files, symlinks, and directories
+  excluded regardless of user globs.
+
+### Stage 4: Failure handling
+
+Status: **Next**
+
+- Add an optional quarantine destination for terminal failures.
+- Write sidecar failure metadata containing the job, source, attempted target,
+  attempts, timestamps, and sanitized error details.
+- Add an explicit command to retry quarantined or terminal failures.
+- Add an optional exact-name collision policy for no-counter patterns with
+  safe values such as `fail`, `quarantine`, and `leave-source`; never append an
+  undeclared counter and never overwrite.
+
+### Stage 5: Service operation
+
+Status: **Next**
+
+- Provide supported Windows service, systemd, and macOS launchd templates.
+- Add configurable graceful-shutdown draining with a bounded timeout.
+- Add lightweight health and readiness reporting.
+- Validate log retention/rotation and expose operational metrics without
+  changing generic index-event semantics.
+- Document installation, upgrade, rollback, and least-privilege service
+  operation on all supported platforms.
+
+### Stage 6: Configuration evolution
+
+Status: **Next**
+
+- Publish a JSON Schema for editor validation and automation.
+- Document environment-variable and user-home expansion without embedding
+  secrets or machine-specific paths.
+- Keep new version-1 keys optional and backward-compatible.
+- Add configuration migration tooling before introducing a version 2 schema.
+- Consider live configuration reload only after locking, queues, state, and
+  recovery behavior are proven safe.
+
+### Incremental delivery order
+
+1. Complete Stage 1 in focused, independently tested commits.
+2. Implement `--check-config` and `--dry-run --once` from Stage 2.
+3. Add include/exclude selection from Stage 3.
+4. Add quarantine and retry workflows from Stage 4.
+5. Add portable service integration from Stage 5.
+6. Publish the schema and migration foundation from Stage 6.
+
+After every increment, update this roadmap with what is **Completed**, what is
+**In progress**, and the single next implementation step.

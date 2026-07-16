@@ -8,8 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List
 
-DEFAULT_PATTERN = "{date}-{title}"
-SUPPORTED_DATE_FORMATS = {"%Y%m%d", "%Y-%m-%d", "%y%m%d", "%d-%m-%Y", "%d%m%Y"}
+from indexly.rename_utils import DEFAULT_PATTERN, SUPPORTED_DATE_FORMATS
+
 VALID_MODES = {"event", "interval", "hybrid"}
 _JOB_KEYS = {
     "id", "watch_path", "destination_subfolder", "pattern", "date_format",
@@ -61,6 +61,18 @@ def _is_relative_to(path: Path, parent: Path) -> bool:
         return True
     except ValueError:
         return False
+
+
+def ensure_watch_directory(path: Path, context: str = "watch_path") -> None:
+    """Create a configured watch directory and verify it is usable as a directory."""
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise RenameWatchConfigError(
+            "{0} could not be created: {1} ({2})".format(context, path, exc)
+        ) from exc
+    if not path.is_dir():
+        raise RenameWatchConfigError("{0} must be a directory: {1}".format(context, path))
 
 
 def _require_object(value: Any, context: str) -> Dict[str, Any]:
@@ -124,8 +136,8 @@ def _parse_job(raw_value: Any, index: int, config_directory: Path) -> RenameWatc
     if not isinstance(watch_value, str) or not watch_value.strip():
         raise RenameWatchConfigError("{0}.watch_path must be a non-empty string".format(context))
     watch_path = _resolve_path(watch_value, config_directory)
-    if not watch_path.exists() or not watch_path.is_dir():
-        raise RenameWatchConfigError("{0}.watch_path must be an existing directory: {1}".format(context, watch_path))
+    if watch_path.exists() and not watch_path.is_dir():
+        raise RenameWatchConfigError("{0}.watch_path must be a directory: {1}".format(context, watch_path))
 
     destination = raw.get("destination_subfolder")
     if not isinstance(destination, str) or not destination.strip():
@@ -200,13 +212,14 @@ def load_settings(config_path: str) -> RenameWatchSettings:
 
 
 def initialize_settings(config_path: str) -> Path:
-    """Create a safe, editable configuration template without overwriting data."""
+    """Create a safe configuration template and its default watch directory."""
     path = Path(os.path.expandvars(os.path.expanduser(config_path))).resolve()
     if path.exists():
         raise RenameWatchConfigError("Configuration file already exists: {0}".format(path))
     if path.suffix.lower() != ".json":
         raise RenameWatchConfigError("Configuration path must end in .json: {0}".format(path))
-    path.parent.mkdir(parents=True, exist_ok=True)
+    ensure_watch_directory(path.parent, "configuration directory")
+    ensure_watch_directory(path.parent / "inbox", "default watch_path")
     template = {"version": 1, "jobs": [{"id": "inbox", "watch_path": "inbox", "destination_subfolder": "processed", "pattern": "{date}-{title}-{counter}", "date_format": "%Y%m%d", "counter_format": "03d", "title_format": "standard", "mode": "hybrid", "scan_interval_seconds": 60, "settle_seconds": 3, "retry": {"max_attempts": 8, "initial_delay_seconds": 2, "max_delay_seconds": 60}}]}
     with path.open("x", encoding="utf-8") as handle:
         json.dump(template, handle, indent=2)
