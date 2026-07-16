@@ -182,6 +182,54 @@ files or recovery journals. Existing destination names remain protected by the
 normal collision checks, so the next move may advance beyond the reset value
 rather than overwrite a file.
 
+## Automation errors and exit codes
+
+Every rename-watch mode accepts `--json-errors`. The option changes failures
+only: successful human output remains human, and successful `--json` status or
+counter output remains one JSON document on standard output. For automation,
+combine the options when success and failure must both be structured:
+
+```powershell
+indexly rename-watch --config rename-watch.json --status --json --json-errors
+```
+
+Counter reset requires `--yes` whenever `--json-errors` is present. This
+prevents an interactive confirmation prompt from contaminating either machine
+output stream.
+
+On failure, standard output is empty and `--json-errors` writes exactly one
+compact, newline-terminated ASCII JSON document to standard error:
+
+```json
+{"schema":"indexly.rename-watch.error","version":1,"exit_code":3,"error":{"category":"config_or_safety","message":"Configuration file not found: rename-watch.json"}}
+```
+
+The schema identifier is `indexly.rename-watch.error` and its current version
+is `1`. The `category` and numeric status are stable automation fields. The
+human-readable `message` is diagnostic and may change between releases; do not
+parse it.
+
+| Exit code | Category | Meaning |
+| --- | --- | --- |
+| `0` | Success | The command completed successfully. |
+| `1` | `internal` | An unexpected implementation failure occurred. |
+| `2` | `usage` | Arguments or an option combination were invalid. |
+| `3` | `config_or_safety` | Configuration, environment, state integrity, locking, recovery, confirmation, or another safety check refused the operation. |
+| `130` | `interrupted` | The process received `KeyboardInterrupt`, normally from Ctrl+C. |
+
+Without `--json-errors`, failures use one ASCII-safe human diagnostic on
+standard error and the same exit codes. Help remains human text and exits `0`.
+Rename-watch handles its command boundary before automatic update checks, so
+structured errors cannot be preceded by update notices or generic Indexly error
+formatting. This isolation does not change other Indexly commands.
+
+Exit code `0` means the command itself completed. For `--once`, individual files
+that exhaust their settling or retry policy retain the existing terminal-failure
+logging behavior; a successful command status does not claim that every file
+moved. Only Python `KeyboardInterrupt` is normalized to `130` by this contract.
+Native signal statuses, including service-manager termination conventions,
+remain platform and shell dependent.
+
 Only one rename-watch process can consume a canonical watch root at a time.
 The service holds a non-blocking operating-system lock for the complete
 `--once` or continuous run: a global named mutex on Windows and a fixed `/tmp`

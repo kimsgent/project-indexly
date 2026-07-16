@@ -14,6 +14,7 @@ from typing import Callable, Optional
 from indexly.runtime_paths import resolve_base_dir
 
 from .config import RenameWatchConfigError, RenameWatchJob, load_settings
+from .error_contract import RenameWatchUsageError
 from .counter_state import CounterSnapshot, CounterState
 from .identity import state_namespace
 from .locking import WatchRootLock
@@ -288,7 +289,7 @@ def _confirm(job: RenameWatchJob, input_func: Callable[[str], str], stdin) -> No
     prompt = "Type {0} to confirm: ".format(_quoted(expected))
     try:
         response = input_func(prompt)
-    except (EOFError, KeyboardInterrupt) as exc:
+    except EOFError as exc:
         raise RenameWatchConfigError("rename-watch counter reset was not confirmed") from exc
     if response != expected:
         raise RenameWatchConfigError("rename-watch counter reset confirmation did not match")
@@ -302,18 +303,21 @@ def reset_counters(
     all_counters: bool = False,
     yes: bool = False,
     json_output: bool = False,
+    json_errors: bool = False,
     base_dir: Optional[Path] = None,
     input_func: Callable[[str], str] = input,
     stdin=None,
 ) -> dict:
     if not job_id:
-        raise RenameWatchConfigError("--job is required with --reset-counters")
+        raise RenameWatchUsageError("--job is required with --reset-counters")
     if (date_key is None) == (not all_counters):
-        raise RenameWatchConfigError(
+        raise RenameWatchUsageError(
             "--reset-counters requires exactly one of --date-key or --all-counters"
         )
     if json_output and not yes:
-        raise RenameWatchConfigError("--json reset output requires --yes")
+        raise RenameWatchUsageError("--json reset output requires --yes")
+    if json_errors and not yes:
+        raise RenameWatchUsageError("--json-errors counter reset requires --yes")
     settings = load_settings(config_path)
     job = _select_jobs(settings, job_id)[0]
     if "{counter}" not in job.pattern:
@@ -325,6 +329,7 @@ def reset_counters(
     state = CounterState(job, state_root)
     lock = WatchRootLock(job.watch_path)
     lock.acquire()
+    primary_error = None
     try:
         with state.lock:
             _require_no_pending(job, state_root)
@@ -376,8 +381,15 @@ def reset_counters(
                 "remaining_entries": _entries(remaining),
                 "remaining_count": len(remaining),
             }
+    except BaseException as error:
+        primary_error = error
+        raise
     finally:
-        lock.release()
+        try:
+            lock.release()
+        except BaseException:
+            if primary_error is None:
+                raise
     if json_output:
         print(json.dumps(result, ensure_ascii=True, sort_keys=True, separators=(",", ":")))
     else:

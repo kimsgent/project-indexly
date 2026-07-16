@@ -15,6 +15,7 @@ from .logging import log_failure, log_move
 from .locking import WatchRootLock
 from .planner import PlanMoveLog
 from .identity import canonical_root_identity, state_namespace
+from .error_contract import RenameWatchUsageError
 
 _IDENTITY_UNAVAILABLE = object()
 
@@ -151,6 +152,12 @@ class RenameWatchService:
                 if first_error is None: first_error = exc
         self.root_locks = []
         if first_error is not None: raise first_error
+    def _release_root_locks_preserving_primary(self, primary_error):
+        try:
+            self._release_root_locks()
+        except BaseException:
+            if primary_error is None:
+                raise
     def _stop_and_release(self):
         first_error = None
         try:
@@ -419,6 +426,7 @@ class RenameWatchService:
         return max(0.0, min(wake_times) - now)
     def run_once(self):
         self._prepare_watch_paths(); self._acquire_root_locks()
+        primary_error = None
         try:
             self._recover_pending_moves()
             with self._state_lock:
@@ -442,23 +450,31 @@ class RenameWatchService:
                     self.sleeper(delay)
                     if delay > 0 and self.clock() <= before_sleep:
                         self._expire_once_work(deadlines, float("inf"))
+        except BaseException as error:
+            primary_error = error
+            raise
         finally:
             with self._state_lock:
                 self._once_keys = None
                 self._once_identities = None
                 self._once_capture = False
                 self._once_discovered_identities = {}
-            self._release_root_locks()
+            self._release_root_locks_preserving_primary(primary_error)
     def check_config(self):
         self._prepare_watch_paths(); self._acquire_root_locks()
+        primary_error = None
         try:
             for job in self.jobs:
                 self._discover_candidates(job)
                 self.movers[job.job_id].validate_check_access()
+        except BaseException as error:
+            primary_error = error
+            raise
         finally:
-            self._release_root_locks()
+            self._release_root_locks_preserving_primary(primary_error)
     def dry_run_once(self):
         self._prepare_watch_paths(); self._acquire_root_locks()
+        primary_error = None
         try:
             frozen = [
                 (job, self._discover_candidates(job)) for job in self.jobs
@@ -480,8 +496,11 @@ class RenameWatchService:
                     )
                 )
             return plans
+        except BaseException as error:
+            primary_error = error
+            raise
         finally:
-            self._release_root_locks()
+            self._release_root_locks_preserving_primary(primary_error)
     def _start_observers(self):
         service = self
         class Handler(FileSystemEventHandler):
@@ -507,13 +526,21 @@ class RenameWatchService:
                     )
                 ) from exc
     def run_forever(self):
+        primary_error = None
         try:
             self._prepare_watch_paths(); self._acquire_root_locks()
             self._recover_pending_moves()
             self._start_observers()
             while not self.stop_event.is_set(): self.tick(); self.stop_event.wait(0.1)
+        except BaseException as error:
+            primary_error = error
+            raise
         finally:
-            self._stop_and_release()
+            try:
+                self._stop_and_release()
+            except BaseException:
+                if primary_error is None:
+                    raise
     def stop(self):
         self.stop_event.set()
         for observer in self.observers: observer.stop()
@@ -528,40 +555,34 @@ def handle_rename_watch(args):
     dry_run = getattr(args, "dry_run", False)
     mode = getattr(args, "mode", None)
     if dry_run and not once:
-        raise ValueError("--dry-run requires --once")
+        raise RenameWatchUsageError("--dry-run requires --once")
     if initialize and (once or dry_run or mode or check_config):
-        raise ValueError("--init cannot be combined with --once, --dry-run, --mode, or --check-config")
+        raise RenameWatchUsageError("--init cannot be combined with --once, --dry-run, --mode, or --check-config")
     if check_config and (once or dry_run or mode or initialize):
-        raise ValueError("--check-config cannot be combined with --once, --dry-run, --mode, or --init")
+        raise RenameWatchUsageError("--check-config cannot be combined with --once, --dry-run, --mode, or --init")
     if dry_run and mode:
-        raise ValueError("--dry-run cannot be combined with --mode")
+        raise RenameWatchUsageError("--dry-run cannot be combined with --mode")
     if initialize:
-        try:
-            path = initialize_settings(args.config)
-        except RenameWatchConfigError as error:
-            raise ValueError(str(error))
+        path = initialize_settings(args.config)
         print("Created rename-watch configuration: {0}".format(path))
         print("Created default watch folder: {0}".format(path.parent / "inbox"))
         return
-    try:
-        settings = load_settings(args.config)
-        jobs = settings.jobs
-        if mode:
-            jobs = [type(job)(**dict(job.__dict__, mode=mode)) for job in jobs]
-        service = RenameWatchService(jobs)
-        if check_config:
-            service.check_config()
-            print("Rename-watch configuration is valid: {0}".format(settings.config_path))
-        elif dry_run:
-            for plan in service.dry_run_once():
-                print(
-                    "DRY-RUN job={0} source={1} destination={2}".format(
-                        plan.job_id, plan.source, plan.destination
-                    )
+    settings = load_settings(args.config)
+    jobs = settings.jobs
+    if mode:
+        jobs = [type(job)(**dict(job.__dict__, mode=mode)) for job in jobs]
+    service = RenameWatchService(jobs)
+    if check_config:
+        service.check_config()
+        print("Rename-watch configuration is valid: {0}".format(settings.config_path))
+    elif dry_run:
+        for plan in service.dry_run_once():
+            print(
+                "DRY-RUN job={0} source={1} destination={2}".format(
+                    plan.job_id, plan.source, plan.destination
                 )
-        elif once:
-            service.run_once()
-        else:
-            service.run_forever()
-    except RenameWatchConfigError as error:
-        raise ValueError(str(error))
+            )
+    elif once:
+        service.run_once()
+    else:
+        service.run_forever()

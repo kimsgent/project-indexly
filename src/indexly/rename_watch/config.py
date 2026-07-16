@@ -202,14 +202,30 @@ def _parse_job(raw_value: Any, index: int, config_directory: Path) -> RenameWatc
 
 
 def load_settings(config_path: str) -> RenameWatchSettings:
-    path = Path(os.path.expandvars(os.path.expanduser(config_path))).resolve()
+    unresolved = Path(os.path.expandvars(os.path.expanduser(config_path)))
+    try:
+        path = unresolved.resolve()
+    except OSError as exc:
+        raise RenameWatchConfigError(
+            "Configuration path could not be resolved: {0} ({1})".format(
+                unresolved, exc
+            )
+        ) from exc
     try:
         with path.open("r", encoding="utf-8") as handle:
             raw = json.load(handle)
     except FileNotFoundError:
         raise RenameWatchConfigError("Configuration file not found: {0}".format(path))
+    except UnicodeDecodeError as exc:
+        raise RenameWatchConfigError(
+            "Configuration file is not valid UTF-8: {0} ({1})".format(path, exc)
+        ) from exc
     except json.JSONDecodeError as exc:
         raise RenameWatchConfigError("Invalid JSON in {0}: {1}".format(path, exc))
+    except OSError as exc:
+        raise RenameWatchConfigError(
+            "Configuration file could not be read: {0} ({1})".format(path, exc)
+        ) from exc
     root = _require_object(raw, "configuration")
     if set(root) - {"version", "jobs"}:
         raise RenameWatchConfigError("configuration has unsupported key(s): {0}".format(", ".join(sorted(set(root) - {"version", "jobs"}))))
@@ -227,7 +243,15 @@ def load_settings(config_path: str) -> RenameWatchSettings:
 
 def initialize_settings(config_path: str) -> Path:
     """Create a safe configuration template and its default watch directory."""
-    path = Path(os.path.expandvars(os.path.expanduser(config_path))).resolve()
+    unresolved = Path(os.path.expandvars(os.path.expanduser(config_path)))
+    try:
+        path = unresolved.resolve()
+    except OSError as exc:
+        raise RenameWatchConfigError(
+            "Configuration path could not be resolved: {0} ({1})".format(
+                unresolved, exc
+            )
+        ) from exc
     if path.exists():
         raise RenameWatchConfigError("Configuration file already exists: {0}".format(path))
     if path.suffix.lower() != ".json":
@@ -235,7 +259,16 @@ def initialize_settings(config_path: str) -> Path:
     ensure_watch_directory(path.parent, "configuration directory")
     ensure_watch_directory(path.parent / "inbox", "default watch_path")
     template = {"version": 1, "jobs": [{"id": "inbox", "watch_path": "inbox", "destination_subfolder": "processed", "pattern": "{date}-{title}-{counter}", "date_format": "%Y%m%d", "counter_format": "03d", "title_format": "standard", "mode": "hybrid", "scan_interval_seconds": 60, "settle_seconds": 3, "retry": {"max_attempts": 8, "initial_delay_seconds": 2, "max_delay_seconds": 60}}]}
-    with path.open("x", encoding="utf-8") as handle:
-        json.dump(template, handle, indent=2)
-        handle.write("\n")
+    try:
+        with path.open("x", encoding="utf-8") as handle:
+            json.dump(template, handle, indent=2)
+            handle.write("\n")
+    except FileExistsError as exc:
+        raise RenameWatchConfigError(
+            "Configuration file already exists: {0}".format(path)
+        ) from exc
+    except OSError as exc:
+        raise RenameWatchConfigError(
+            "Configuration file could not be created: {0} ({1})".format(path, exc)
+        ) from exc
     return path

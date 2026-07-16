@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
-import argparse
-import json
 import sys
 from typing import List, Optional, Sequence
+
+from .cli_arguments import RenameWatchArgumentParser, add_rename_watch_arguments
+from .error_contract import run_with_error_contract
 
 _TOP_LEVEL_OVERRIDES = {"--version", "--check-updates", "--show-license"}
 
 
 def status_command_index(argv: Sequence[str]) -> Optional[int]:
-    """Locate a lightweight rename-watch operator command before heavy imports."""
+    """Locate rename-watch before importing the full Indexly application."""
     for index, value in enumerate(argv):
         if value in _TOP_LEVEL_OVERRIDES:
             return None
@@ -21,8 +22,7 @@ def status_command_index(argv: Sequence[str]) -> Optional[int]:
             return None
         if value != "rename-watch":
             return None
-        actions = {"--status", "--inspect-counters", "--reset-counters"}
-        return index if actions.intersection(argv[index + 1 :]) else None
+        return index
     return None
 
 
@@ -32,37 +32,22 @@ def run_status_command(argv: Sequence[str], command_index: int) -> int:
             stream.reconfigure(encoding="utf-8")
         except (AttributeError, OSError, ValueError):
             pass
-    parser = argparse.ArgumentParser(
+    parser = RenameWatchArgumentParser(
         prog="indexly rename-watch",
         description="Inspect or safely operate rename-watch runtime state",
+        allow_abbrev=False,
     )
-    parser.add_argument("--config", required=True)
-    actions = parser.add_mutually_exclusive_group()
-    actions.add_argument("--init", action="store_true")
-    actions.add_argument("--check-config", action="store_true")
-    actions.add_argument("--status", action="store_true")
-    actions.add_argument("--inspect-counters", action="store_true")
-    actions.add_argument("--reset-counters", action="store_true")
-    parser.add_argument("--once", action="store_true")
-    parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument("--json", action="store_true", dest="rename_watch_status_json")
-    parser.add_argument("--job")
-    reset_scope = parser.add_mutually_exclusive_group()
-    reset_scope.add_argument("--date-key")
-    reset_scope.add_argument("--all-counters", action="store_true")
-    parser.add_argument("--yes", action="store_true")
-    parser.add_argument("--mode", choices=["event", "interval", "hybrid"])
-    args = parser.parse_args(list(argv[command_index + 1 :]))
+    add_rename_watch_arguments(parser)
+    command_argv = list(argv[command_index + 1 :])
+    json_errors = "--json-errors" in command_argv
 
-    from . import handle_rename_watch
+    def run_command() -> None:
+        args = parser.parse_args(command_argv)
+        from . import handle_rename_watch
 
-    try:
         handle_rename_watch(args)
-        return 0
-    except ValueError as exc:
-        message = json.dumps(str(exc), ensure_ascii=True)[1:-1]
-        print("Error: {0}".format(message), file=sys.stderr)
-        return 1
+
+    return run_with_error_contract(run_command, json_errors=json_errors)
 
 
 def maybe_run_status(argv: Optional[Sequence[str]] = None) -> Optional[int]:

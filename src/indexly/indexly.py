@@ -1610,11 +1610,14 @@ def main():
     # ----------------------------------
     rename_watch_status = (
         getattr(args, "command", None) == "rename-watch"
-        and any(
+        and (
+            getattr(args, "json_errors", False)
+            or any(
             (
                 getattr(args, "status", False),
                 getattr(args, "inspect_counters", False),
                 getattr(args, "reset_counters", False),
+            )
             )
         )
     )
@@ -1660,6 +1663,16 @@ def main():
     # 5) Dispatch subcommand safely
     # --------------------------
     if hasattr(args, "func"):
+        if getattr(args, "command", None) == "rename-watch":
+            from .rename_watch.error_contract import run_with_error_contract
+
+            exit_code = run_with_error_contract(
+                lambda: args.func(args),
+                json_errors=getattr(args, "json_errors", False),
+            )
+            if exit_code:
+                raise SystemExit(exit_code)
+            return 0
         try:
             args.func(args)  # run the subcommand
         except ValueError as e:

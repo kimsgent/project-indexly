@@ -1,11 +1,14 @@
 """Lazy command boundary for the standalone rename-watch feature."""
 
+from .error_contract import RenameWatchUsageError
+
 
 def handle_rename_watch(args):
     status = getattr(args, "status", False)
     inspect = getattr(args, "inspect_counters", False)
     reset = getattr(args, "reset_counters", False)
     status_json = getattr(args, "rename_watch_status_json", False)
+    json_errors = getattr(args, "json_errors", False)
     incompatible = (
         getattr(args, "init", False),
         getattr(args, "check_config", False),
@@ -15,11 +18,11 @@ def handle_rename_watch(args):
     )
     selected = [status, inspect, reset]
     if sum(bool(value) for value in selected) > 1:
-        raise ValueError("rename-watch operator actions are mutually exclusive")
+        raise RenameWatchUsageError("rename-watch operator actions are mutually exclusive")
     if status_json and not any(selected):
-        raise ValueError("--json is valid only with --status, --inspect-counters, or --reset-counters")
+        raise RenameWatchUsageError("--json is valid only with --status, --inspect-counters, or --reset-counters")
     if any(selected) and any(incompatible):
-        raise ValueError(
+        raise RenameWatchUsageError(
             "operator actions cannot be combined with --init, --check-config, --once, --dry-run, or --mode"
         )
     operator_options = (
@@ -35,13 +38,13 @@ def handle_rename_watch(args):
         or bool(operator_options[3])
     )
     if has_operator_options and not (inspect or reset):
-        raise ValueError("counter operator options require --inspect-counters or --reset-counters")
+        raise RenameWatchUsageError("counter operator options require --inspect-counters or --reset-counters")
     if inspect and (
         operator_options[1] is not None
         or bool(operator_options[2])
         or bool(operator_options[3])
     ):
-        raise ValueError("--date-key, --all-counters, and --yes are valid only with --reset-counters")
+        raise RenameWatchUsageError("--date-key, --all-counters, and --yes are valid only with --reset-counters")
     if status:
         from .status import render_status
 
@@ -64,6 +67,7 @@ def handle_rename_watch(args):
             all_counters=getattr(args, "all_counters", False),
             yes=getattr(args, "yes", False),
             json_output=status_json,
+            json_errors=json_errors,
         )
 
     from .service import handle_rename_watch as handle_service
@@ -71,4 +75,4 @@ def handle_rename_watch(args):
     return handle_service(args)
 
 
-__all__ = ["handle_rename_watch"]
+__all__ = ["RenameWatchUsageError", "handle_rename_watch"]

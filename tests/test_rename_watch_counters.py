@@ -10,6 +10,7 @@ import pytest
 from indexly.cli_utils import build_parser
 from indexly.rename_watch import handle_rename_watch
 from indexly.rename_watch.config import RenameWatchConfigError, load_settings
+from indexly.rename_watch.error_contract import RenameWatchUsageError
 from indexly.rename_watch.counter_operator import (
     BACKUP_SCHEMA,
     COUNTER_SCHEMA,
@@ -235,7 +236,7 @@ def test_reset_rejects_job_without_counter(tmp_path):
             str(config), job_id="plain", all_counters=True, yes=True,
             base_dir=tmp_path / "runtime",
         )
-    with pytest.raises(RenameWatchConfigError, match="requires --yes"):
+    with pytest.raises(RenameWatchUsageError, match="requires --yes"):
         reset_counters(
             str(config), job_id="alpha", all_counters=True, json_output=True,
             base_dir=tmp_path / "runtime",

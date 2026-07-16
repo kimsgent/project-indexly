@@ -33,6 +33,7 @@ indexly rename-watch --config PATH --reset-counters --job JOB_ID (--date-key KEY
 ```
 
 - `--config` is required and points to a JSON configuration file.
+- Every mode accepts `--json-errors`, which changes failure output only.
 - `--once` performs one reconciliation scan and exits; it schedules no
   observer.
 - `--mode` overrides the configured default only for the running process.
@@ -131,6 +132,8 @@ checks, or intermediate retry delays.
 src/indexly/rename_watch/
   __init__.py
   config.py       # JSON parsing, path resolution, validation, data models
+  cli_arguments.py # shared CLI option registration and typed usage parser
+  error_contract.py # stable exit classification and human/JSON diagnostics
   identity.py     # canonical root and state identities
   journal.py      # durable per-operation recovery records
   locking.py      # portable watch-root process exclusion
@@ -141,10 +144,11 @@ src/indexly/rename_watch/
   planner.py      # collision planning and plan-move-log service
   service.py      # Watchdog/interval lifecycle, readiness, queue, retries
   status.py       # read-only durable state and retained audit snapshots
-  status_cli.py   # side-effect-free early dispatch for operator output
+  status_cli.py   # side-effect-free early dispatch for rename-watch commands
 tests/
   test_rename_watch_config.py
   test_rename_watch_counters.py
+  test_rename_watch_errors.py
   test_rename_watch_planner.py
   test_rename_watch_service.py
 docs/content/documentation/
@@ -262,7 +266,7 @@ Later in Stage 1:
 
 ### Stage 2: Operator commands
 
-Status: **In progress**
+Status: **Completed**
 
 Completed:
 
@@ -299,14 +303,25 @@ Completed:
   also requires it. Legacy state is backed up and retained while the reset
   result is written to the canonical namespaced file, which safely shadows the
   legacy file. Resetting an absent or empty all-counter state is a no-op.
+- Every rename-watch mode uses one command-owned error boundary across the
+  installed console script, `python -m indexly`, and `python -m
+  indexly.indexly`. Stable process statuses are `0` for success, `1` for an
+  unexpected internal failure, `2` for invalid command usage, `3` for an
+  expected configuration or safety refusal, and `130` for `KeyboardInterrupt`.
+  Classification is exception-type based and never depends on diagnostic text.
+  `--json-errors` emits one compact, ASCII-safe `indexly.rename-watch.error`
+  version-1 document to standard error while leaving successful output
+  unchanged. Argument parsing, update checks, and the generic application error
+  renderer cannot add noise or duplicate output at this boundary.
 
 Immediate next:
 
-- Define stable machine-readable exit codes and optional JSON error output.
+- Begin Stage 3 with optional `include` and `exclude` glob lists that preserve
+  the current candidate behavior by default.
 
 Later in Stage 2:
 
-- None after the exit-code and JSON-error contract is complete.
+- None. The operator-command stage is complete.
 
 ### Stage 3: File selection
 
@@ -360,11 +375,10 @@ Status: **Next**
 ### Incremental delivery order
 
 1. Completed: Stage 1 in focused, independently tested commits.
-2. In progress: Stage 2 operator commands; `--check-config`,
+2. Completed: Stage 2 operator commands; `--check-config`,
    `--dry-run --once`, `--status [--json]`, counter inspection, and guarded
-   counter reset are completed, with stable exit codes and optional JSON errors
-   next.
-3. Add include/exclude selection from Stage 3.
+   counter reset now share stable exit codes and optional JSON errors.
+3. Next: add include/exclude selection from Stage 3.
 4. Add quarantine and retry workflows from Stage 4.
 5. Add portable service integration from Stage 5.
 6. Publish the schema and migration foundation from Stage 6.
