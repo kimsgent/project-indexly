@@ -151,8 +151,16 @@ def _parse_job(raw_value: Any, index: int, config_directory: Path) -> RenameWatc
     destination_relative = Path(destination)
     if destination_relative.is_absolute() or ".." in destination_relative.parts:
         raise RenameWatchConfigError("{0}.destination_subfolder must stay below watch_path".format(context))
-    destination_path = (watch_path / destination_relative).resolve()
-    if destination_path == watch_path or not _is_relative_to(destination_path, watch_path):
+    # Keep the configured destination lexical. Resolving it here would turn a
+    # later symlink swap into an apparently trusted absolute destination and
+    # discard the boundary that runtime containment checks need to enforce.
+    destination_path = Path(os.path.abspath(str(watch_path / destination_relative)))
+    resolved_destination = destination_path.resolve()
+    if (
+        destination_path == watch_path
+        or not _is_relative_to(destination_path, watch_path)
+        or not _is_relative_to(resolved_destination, watch_path)
+    ):
         raise RenameWatchConfigError("{0}.destination_subfolder must be a strict child of watch_path".format(context))
 
     pattern = _validate_pattern(raw.get("pattern", DEFAULT_PATTERN), context)

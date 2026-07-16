@@ -1486,6 +1486,289 @@ def test_source_unlink_failure_preserves_hard_link_destination(tmp_path, monkeyp
     assert os.path.samestat(source.stat(), target.stat())
 
 
+def test_planner_rejects_nested_destination_symlink_swap_before_state_changes(
+    tmp_path,
+):
+    path, incoming = _config(
+        tmp_path,
+        destination_subfolder="nested/processed",
+        pattern="{date}-{title}-{counter}",
+    )
+    source = incoming / "report.txt"
+    source.write_text("content", encoding="utf-8")
+    job = load_settings(str(path)).jobs[0]
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (incoming / "nested").symlink_to(outside, target_is_directory=True)
+    state_root = tmp_path / "state"
+
+    with pytest.raises(RenameWatchConfigError, match="symlink or reparse point"):
+        PlanMoveLog(job, state_root).plan_and_move_operation(source)
+
+    assert source.read_text(encoding="utf-8") == "content"
+    assert list(outside.iterdir()) == []
+    assert not state_root.exists()
+
+
+def test_once_revalidates_destination_after_readiness_before_planning(
+    tmp_path, monkeypatch
+):
+    path, incoming = _config(
+        tmp_path,
+        settle_seconds=0.5,
+        destination_subfolder="processed",
+    )
+    source = incoming / "report.txt"
+    source.write_text("content", encoding="utf-8")
+    job = load_settings(str(path)).jobs[0]
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    state_root = tmp_path / "state"
+    current = [0.0]
+
+    def swap_during_settle(delay):
+        current[0] += delay
+        if not job.destination_path.exists():
+            job.destination_path.symlink_to(outside, target_is_directory=True)
+
+    monkeypatch.setattr(
+        "indexly.rename_watch.service.log_move",
+        lambda *args, **kwargs: pytest.fail("unsafe move was audited"),
+    )
+    service = RenameWatchService(
+        [job],
+        state_root=state_root,
+        clock=lambda: current[0],
+        sleeper=swap_during_settle,
+    )
+
+    with pytest.raises(RenameWatchConfigError, match="symlink or reparse point"):
+        service.run_once()
+
+    assert source.read_text(encoding="utf-8") == "content"
+    assert list(outside.iterdir()) == []
+    assert not state_root.exists()
+
+
+def test_planner_final_guard_catches_destination_swap_before_target_creation(
+    tmp_path, monkeypatch
+):
+    path, incoming = _config(
+        tmp_path,
+        pattern="{date}-{title}",
+        counter_format="",
+    )
+    source = incoming / "report.txt"
+    source.write_text("content", encoding="utf-8")
+    job = load_settings(str(path)).jobs[0]
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    held_destination = incoming / "held-processed"
+    mover = PlanMoveLog(job, tmp_path / "state")
+    real_guard = mover._guard_destination
+    swapped = []
+
+    def swap_after_journal_before_target(target=None, expected_destination_identity=None):
+        if target is not None and mover.journal.pending() and not swapped:
+            job.destination_path.rename(held_destination)
+            job.destination_path.symlink_to(outside, target_is_directory=True)
+            swapped.append(True)
+        return real_guard(target, expected_destination_identity)
+
+    monkeypatch.setattr(mover, "_guard_destination", swap_after_journal_before_target)
+
+    with pytest.raises(RenameWatchConfigError, match="symlink or reparse point"):
+        mover.plan_and_move_operation(source)
+
+    assert swapped == [True]
+    assert source.read_text(encoding="utf-8") == "content"
+    assert list(outside.iterdir()) == []
+    assert list(held_destination.iterdir()) == []
+    assert mover.journal.pending()[0]["state"] == "prepared"
+
+
+def test_recovery_guards_destination_before_counter_or_journal_mutation(tmp_path):
+    path, incoming = _config(tmp_path, pattern="{date}-{title}-{counter}")
+    source = incoming / "report.txt"
+    source.write_text("content", encoding="utf-8")
+    job = load_settings(str(path)).jobs[0]
+    state_root = tmp_path / "state"
+    mover = PlanMoveLog(job, state_root)
+    job.destination_path.mkdir()
+    target = job.destination_path / "target.txt"
+    record = mover.journal.prepare(
+        source,
+        target,
+        planner_module._identity_record(source.stat()),
+        job.pattern,
+        1,
+        date_key="20240115",
+        counter=0,
+        counter_next=1,
+    )
+    journal_path = mover.journal._path(record["operation_id"])
+    journal_before = journal_path.read_bytes()
+    held_destination = incoming / "held-processed"
+    job.destination_path.rename(held_destination)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    job.destination_path.symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(RenameWatchConfigError, match="symlink or reparse point"):
+        mover.recover_pending()
+
+    assert source.read_text(encoding="utf-8") == "content"
+    assert list(outside.iterdir()) == []
+    assert not mover.state.path.exists()
+    assert journal_path.read_bytes() == journal_before
+
+
+@pytest.mark.parametrize("transfer_kind", ["hard_link", "copy"])
+def test_once_retries_only_finalized_source_unlink_and_completes(
+    tmp_path, monkeypatch, transfer_kind
+):
+    path, incoming = _config(
+        tmp_path,
+        settle_seconds=0.5,
+        retry={
+            "max_attempts": 3,
+            "initial_delay_seconds": 1,
+            "max_delay_seconds": 1,
+        },
+    )
+    source = incoming / "report.txt"
+    source.write_text("content", encoding="utf-8")
+    job = load_settings(str(path)).jobs[0]
+    current = [0.0]
+    state_root = tmp_path / "state"
+    service = RenameWatchService(
+        [job],
+        state_root=state_root,
+        clock=lambda: current[0],
+        sleeper=lambda delay: current.__setitem__(0, current[0] + delay),
+    )
+    real_unlink = Path.unlink
+    unlink_attempts = []
+    audits = []
+    failures = []
+
+    if transfer_kind == "copy":
+        monkeypatch.setattr(
+            planner_module.os,
+            "link",
+            lambda *args, **kwargs: (_ for _ in ()).throw(
+                OSError(errno.EXDEV, "force copy fallback")
+            ),
+        )
+
+    def fail_source_unlink_once(path_value, *args, **kwargs):
+        if path_value == source:
+            unlink_attempts.append(path_value)
+            if len(unlink_attempts) == 1:
+                raise PermissionError("source locked")
+        return real_unlink(path_value, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", fail_source_unlink_once)
+    monkeypatch.setattr(
+        "indexly.rename_watch.service.log_move",
+        lambda *args, **kwargs: audits.append((args, kwargs)),
+    )
+    monkeypatch.setattr(
+        "indexly.rename_watch.service.log_failure",
+        lambda *args: failures.append(args),
+    )
+
+    service.run_once()
+
+    assert len(unlink_attempts) == 2
+    assert len(audits) == 1
+    assert failures == []
+    assert not source.exists()
+    target = Path(audits[0][0][2])
+    assert target.read_text(encoding="utf-8") == "content"
+    assert service.movers[job.job_id].journal.pending() == []
+
+
+@pytest.mark.parametrize("transfer_kind", ["hard_link", "copy"])
+def test_once_persistent_finalized_unlink_failure_logs_once_and_keeps_evidence(
+    tmp_path, monkeypatch, transfer_kind
+):
+    path, incoming = _config(
+        tmp_path,
+        settle_seconds=0.5,
+        retry={
+            "max_attempts": 2,
+            "initial_delay_seconds": 1,
+            "max_delay_seconds": 1,
+        },
+    )
+    source = incoming / "report.txt"
+    source.write_text("content", encoding="utf-8")
+    other_root = tmp_path / "other-incoming"
+    other_root.mkdir()
+    other_source = other_root / "other.txt"
+    other_source.write_text("other", encoding="utf-8")
+    job = load_settings(str(path)).jobs[0]
+    other_job = replace(
+        job,
+        job_id="other",
+        watch_path=other_root,
+        destination_path=other_root / "processed",
+    )
+    current = [0.0]
+    service = RenameWatchService(
+        [job, other_job],
+        state_root=tmp_path / "state",
+        clock=lambda: current[0],
+        sleeper=lambda delay: current.__setitem__(0, current[0] + delay),
+    )
+    real_unlink = Path.unlink
+    failures = []
+    audits = []
+
+    if transfer_kind == "copy":
+        monkeypatch.setattr(
+            planner_module.os,
+            "link",
+            lambda *args, **kwargs: (_ for _ in ()).throw(
+                OSError(errno.EXDEV, "force copy fallback")
+            ),
+        )
+
+    def keep_source_locked(path_value, *args, **kwargs):
+        if path_value == source:
+            raise PermissionError("source locked")
+        return real_unlink(path_value, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", keep_source_locked)
+    monkeypatch.setattr(
+        "indexly.rename_watch.service.log_failure",
+        lambda *args: failures.append(args),
+    )
+    monkeypatch.setattr(
+        "indexly.rename_watch.service.log_move",
+        lambda *args, **kwargs: audits.append((args, kwargs)),
+    )
+
+    service.run_once()
+
+    assert len(failures) == 1
+    assert len(audits) == 1
+    assert isinstance(failures[0][5], PermissionError)
+    assert source.read_text(encoding="utf-8") == "content"
+    assert not other_source.exists()
+    pending = service.movers[job.job_id].journal.pending()
+    assert len(pending) == 1
+    assert pending[0]["state"] == "destination_finalized"
+    assert pending[0]["transfer_kind"] == transfer_kind
+    destination = Path(pending[0]["destination_path"])
+    assert destination.read_text(encoding="utf-8") == "content"
+    if transfer_kind == "hard_link":
+        assert os.path.samestat(source.stat(), destination.stat())
+    else:
+        assert not os.path.samestat(source.stat(), destination.stat())
+
+
 def test_counter_uses_rendered_filename_date_across_restarts(tmp_path):
     path, incoming = _config(
         tmp_path,

@@ -5,6 +5,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import threading
 import unicodedata
 from dataclasses import dataclass
@@ -26,6 +27,21 @@ _COPY_FALLBACK_ERRORS = {
     getattr(errno, "ENOTSUP", errno.EINVAL),
     getattr(errno, "EOPNOTSUPP", errno.EINVAL),
 }
+
+
+def _lexical_absolute(path: Path) -> Path:
+    return Path(os.path.abspath(os.fspath(path)))
+
+
+def _is_link_or_reparse(value) -> bool:
+    if stat.S_ISLNK(value.st_mode):
+        return True
+    reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+    return bool(reparse_flag and getattr(value, "st_file_attributes", 0) & reparse_flag)
+
+
+def _directory_identity(value) -> Tuple[int, int]:
+    return value.st_dev, value.st_ino
 
 def _slug(value: str) -> str:
     value = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii").lower()
@@ -69,8 +85,11 @@ def _identity_record(value) -> Dict[str, int]:
     }
 
 
-def _destination_identity(value) -> Dict[str, int]:
-    return {"device": value.st_dev, "inode": value.st_ino}
+def _destination_identity(value, transfer_kind: Optional[str] = None) -> Dict[str, object]:
+    identity = {"device": value.st_dev, "inode": value.st_ino}
+    if transfer_kind is not None:
+        identity["transfer_kind"] = transfer_kind
+    return identity
 
 
 def _same_reliable_identity(left, right) -> bool:
@@ -108,7 +127,7 @@ def _copy_without_overwrite(
                 )
             )
         if on_destination_created is not None:
-            on_destination_created(_destination_identity(target_stat))
+            on_destination_created(_destination_identity(target_stat, "copy"))
         shutil.copyfileobj(source_handle, target_handle)
         after = os.fstat(source_handle.fileno())
         if _stat_fingerprint(before) != _stat_fingerprint(after) or target_handle.tell() != before.st_size:
@@ -167,7 +186,7 @@ def _move_without_overwrite(
             )
         )
     if on_destination_created is not None:
-        on_destination_created(_destination_identity(target_stat))
+        on_destination_created(_destination_identity(target_stat, "hard_link"))
 
     if on_destination_finalized is not None:
         on_destination_finalized()
@@ -230,8 +249,149 @@ class MoveResult:
 class PlanMoveLog:
     def __init__(self, job: RenameWatchJob, state_root: Path = None):
         self.job = job
+        self.watch_boundary = _lexical_absolute(job.watch_path)
+        self.destination = _lexical_absolute(job.destination_path)
+        try:
+            relative_destination = self.destination.relative_to(self.watch_boundary)
+        except ValueError as exc:
+            raise RenameWatchConfigError(
+                "job '{0}' destination is outside its immutable watch boundary".format(
+                    job.job_id
+                )
+            ) from exc
+        if not relative_destination.parts:
+            raise RenameWatchConfigError(
+                "job '{0}' destination must be below its watch boundary".format(
+                    job.job_id
+                )
+            )
+        self._destination_parts = relative_destination.parts
         self.state = CounterState(job, state_root)
         self.journal = MoveJournal(job, state_root)
+
+    def _guard_destination(
+        self,
+        target: Optional[Path] = None,
+        expected_destination_identity: Optional[Tuple[int, int]] = None,
+    ) -> None:
+        """Fail closed if the lexical destination traverses a link/reparse point."""
+        if target is not None:
+            lexical_target = _lexical_absolute(target)
+            if lexical_target.parent != self.destination:
+                raise RenameWatchConfigError(
+                    "job '{0}' target escaped its configured destination: {1}".format(
+                        self.job.job_id, target
+                    )
+                )
+
+        components = (self.watch_boundary,) + tuple(
+            self.watch_boundary.joinpath(*self._destination_parts[:index])
+            for index in range(1, len(self._destination_parts) + 1)
+        )
+        destination_stat = None
+        for index, component in enumerate(components):
+            try:
+                component_stat = component.lstat()
+            except FileNotFoundError:
+                if index == 0 or expected_destination_identity is not None:
+                    raise RenameWatchConfigError(
+                        "job '{0}' destination boundary is unavailable: {1}".format(
+                            self.job.job_id, component
+                        )
+                    )
+                return
+            except OSError as exc:
+                raise RenameWatchConfigError(
+                    "job '{0}' destination boundary could not be inspected: {1} ({2})".format(
+                        self.job.job_id, component, exc
+                    )
+                ) from exc
+            if _is_link_or_reparse(component_stat):
+                raise RenameWatchConfigError(
+                    "job '{0}' destination boundary contains a symlink or reparse point: {1}".format(
+                        self.job.job_id, component
+                    )
+                )
+            if not stat.S_ISDIR(component_stat.st_mode):
+                raise RenameWatchConfigError(
+                    "job '{0}' destination boundary component is not a directory: {1}".format(
+                        self.job.job_id, component
+                    )
+                )
+            if component == self.destination:
+                destination_stat = component_stat
+
+        if expected_destination_identity is not None:
+            if destination_stat is None or _directory_identity(destination_stat) != expected_destination_identity:
+                raise RenameWatchConfigError(
+                    "job '{0}' destination directory changed during the operation: {1}".format(
+                        self.job.job_id, self.destination
+                    )
+                )
+
+        if target is not None:
+            try:
+                target_stat = _lexical_absolute(target).lstat()
+            except FileNotFoundError:
+                return
+            except OSError as exc:
+                raise RenameWatchConfigError(
+                    "job '{0}' target could not be inspected without following links: {1} ({2})".format(
+                        self.job.job_id, target, exc
+                    )
+                ) from exc
+            if _is_link_or_reparse(target_stat):
+                raise RenameWatchConfigError(
+                    "job '{0}' target is a symlink or reparse point: {1}".format(
+                        self.job.job_id, target
+                    )
+                )
+
+    def _ensure_destination_directory(self) -> Tuple[int, int]:
+        """Create destination components without following links when supported."""
+        self._guard_destination()
+        supports_dir_fd = (
+            os.name != "nt"
+            and os.mkdir in getattr(os, "supports_dir_fd", set())
+            and os.open in getattr(os, "supports_dir_fd", set())
+        )
+        if not supports_dir_fd:
+            self.destination.mkdir(parents=True, exist_ok=True)
+            self._guard_destination()
+            return _directory_identity(self.destination.lstat())
+
+        flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+        flags |= getattr(os, "O_NOFOLLOW", 0)
+        descriptor = None
+        try:
+            descriptor = os.open(str(self.watch_boundary), flags)
+            for component in self._destination_parts:
+                try:
+                    child = os.open(component, flags, dir_fd=descriptor)
+                except FileNotFoundError:
+                    os.mkdir(component, dir_fd=descriptor)
+                    child = os.open(component, flags, dir_fd=descriptor)
+                os.close(descriptor)
+                descriptor = child
+            identity = _directory_identity(os.fstat(descriptor))
+        except OSError as exc:
+            raise RenameWatchConfigError(
+                "job '{0}' destination could not be created safely: {1} ({2})".format(
+                    self.job.job_id, self.destination, exc
+                )
+            ) from exc
+        finally:
+            if descriptor is not None:
+                os.close(descriptor)
+        self._guard_destination(expected_destination_identity=identity)
+        return identity
+
+    def _guard_record(self, record: Dict[str, object]) -> Path:
+        if _lexical_absolute(Path(record["watch_root"])) != self.watch_boundary:
+            self._conflict(record, "recorded watch root changed")
+        target = _lexical_absolute(Path(record["destination_path"]))
+        self._guard_destination(target)
+        return target
 
     def plan_and_move(self, source: Path) -> Path:
         """Compatibility wrapper for callers that do not own audit logging."""
@@ -247,6 +407,7 @@ class PlanMoveLog:
     ) -> MoveResult:
         source = source.resolve()
         with self.state.lock:
+            self._guard_destination()
             if self.journal.pending():
                 raise RenameWatchConfigError(
                     "job '{0}' has an unfinished recovery operation".format(self.job.job_id)
@@ -277,9 +438,9 @@ class PlanMoveLog:
                     )
                     date_key = Path(rendered_date).stem
                 data, counter = self.state.next(date_key)
-            self.job.destination_path.mkdir(parents=True, exist_ok=True)
+            destination_identity = self._ensure_destination_directory()
             while True:
-                target = self.job.destination_path / render_name(
+                target = self.destination / render_name(
                     source,
                     self.job.pattern,
                     self.job.date_format,
@@ -287,6 +448,7 @@ class PlanMoveLog:
                     self.job.title_format,
                     counter,
                 )
+                self._guard_destination(target, destination_identity)
                 if target.exists():
                     if not uses_counter:
                         raise FileExistsError("Destination already exists: {0}".format(target))
@@ -304,6 +466,7 @@ class PlanMoveLog:
                         )
                     )
                 source_identity = _identity_record(source_stat)
+                self._guard_destination(target, destination_identity)
                 record = self.journal.prepare(
                     source,
                     target,
@@ -315,19 +478,27 @@ class PlanMoveLog:
                     counter_next=counter + 1 if uses_counter else None,
                 )
                 if uses_counter:
+                    self._guard_destination(target, destination_identity)
                     data[date_key] = counter + 1
                     self.state._save(data)
                 holder = [record]
 
                 def destination_created(identity):
-                    holder[0] = self.journal.mark_destination_created(holder[0], identity)
+                    self._guard_destination(target, destination_identity)
+                    identity = dict(identity)
+                    transfer_kind = identity.pop("transfer_kind", None)
+                    holder[0] = self.journal.mark_destination_created(
+                        holder[0], identity, transfer_kind
+                    )
 
                 def destination_finalized():
+                    self._guard_destination(target, destination_identity)
                     holder[0] = self.journal.mark_destination_finalized(
                         holder[0], _identity_record(target.stat())
                     )
 
                 try:
+                    self._guard_destination(target, destination_identity)
                     _move_without_overwrite(
                         source,
                         target,
@@ -336,11 +507,13 @@ class PlanMoveLog:
                         expected_source_identity,
                     )
                 except FileExistsError:
+                    self._guard_destination(target, destination_identity)
                     self.journal.delete(holder[0])
                     if not uses_counter:
                         raise FileExistsError("Destination already exists: {0}".format(target))
                     counter += 1
                     continue
+                self._guard_destination(target, destination_identity)
                 record = self.journal.mark_moved(holder[0])
                 return self._result(record, recovered=False)
 
@@ -351,10 +524,12 @@ class PlanMoveLog:
         resolved_source = source.resolve() if source is not None else None
         with self.state.lock:
             for record in self.journal.pending():
+                self._guard_record(record)
                 if record["state"] == "audited":
                     self.journal.delete(record)
                     continue
                 if record["uses_counter"]:
+                    self._guard_record(record)
                     self.state.ensure_at_least(record["date_key"], record["counter_next"])
                 if (
                     resolved_source is not None
@@ -363,6 +538,7 @@ class PlanMoveLog:
                     and attempts is not None
                     and attempts > record["attempts"]
                 ):
+                    self._guard_record(record)
                     record = self.journal.update_attempts(record, attempts)
                 record = self._recover_move(record)
                 results.append(self._result(record, recovered=True))
@@ -378,6 +554,7 @@ class PlanMoveLog:
             if not records:
                 return
             record = records[0]
+            self._guard_record(record)
             if record["state"] != "audited":
                 record = self.journal.mark_audited(record)
             self.journal.delete(record)
@@ -395,6 +572,7 @@ class PlanMoveLog:
                 == expected_source
             ]
             for record in matching:
+                self._guard_record(record)
                 if record["state"] != "prepared":
                     return False
                 target = Path(record["destination_path"])
@@ -408,12 +586,30 @@ class PlanMoveLog:
                     if _identity_record(source_stat) != record["source_identity"]:
                         return False
             for record in matching:
+                self._guard_record(record)
                 self.journal.delete(record)
         return True
 
+    def finalized_operation(
+        self, source: Path
+    ) -> Optional[Tuple[str, Path]]:
+        """Return preserved evidence for a transfer awaiting source deletion."""
+        expected_source = canonical_root_identity(source)
+        with self.state.lock:
+            for record in self.journal.pending():
+                if (
+                    canonical_root_identity(Path(record["source_path"]))
+                    != expected_source
+                    or record["state"] != "destination_finalized"
+                ):
+                    continue
+                target = self._guard_record(record)
+                return record["operation_id"], target
+        return None
+
     def _recover_move(self, record: Dict[str, object]) -> Dict[str, object]:
         source = Path(record["source_path"])
-        target = Path(record["destination_path"])
+        target = self._guard_record(record)
         source_exists = source.exists()
         target_exists = target.exists()
         if source_exists and (source.is_symlink() or not source.is_file()):
@@ -442,6 +638,26 @@ class PlanMoveLog:
                 self._conflict(record, "completed destination metadata changed")
             return record
 
+        if record["state"] == "destination_finalized":
+            if not target_exists:
+                self._conflict(record, "finalized destination is missing")
+            if _identity_record(target_stat) != record["destination_fingerprint"]:
+                self._conflict(record, "finalized destination metadata changed")
+            if not source_exists:
+                return self.journal.mark_moved(record)
+            transfer_kind = record.get("transfer_kind")
+            same_identity = _same_reliable_identity(source_stat, target_stat)
+            if transfer_kind == "hard_link" and not same_identity:
+                self._conflict(record, "finalized hard-link identity changed")
+            if transfer_kind == "copy" and same_identity:
+                self._conflict(record, "finalized copy unexpectedly aliases the source")
+            self._guard_destination(target)
+            if _identity_record(source.stat()) != record["source_identity"]:
+                self._conflict(record, "source identity changed before final deletion")
+            source.unlink()
+            self._guard_destination(target)
+            return self.journal.mark_moved(record)
+
         if source_exists and target_exists:
             if _same_reliable_identity(source_stat, target_stat):
                 self._conflict(
@@ -467,16 +683,24 @@ class PlanMoveLog:
         holder = [record]
 
         def destination_created(identity):
-            holder[0] = self.journal.mark_destination_created(holder[0], identity)
+            self._guard_destination(target)
+            identity = dict(identity)
+            transfer_kind = identity.pop("transfer_kind", None)
+            holder[0] = self.journal.mark_destination_created(
+                holder[0], identity, transfer_kind
+            )
 
         def destination_finalized():
+            self._guard_destination(target)
             holder[0] = self.journal.mark_destination_finalized(
                 holder[0], _identity_record(target.stat())
             )
 
+        self._guard_destination(target)
         _move_without_overwrite(
             source, target, destination_created, destination_finalized
         )
+        self._guard_destination(target)
         return self.journal.mark_moved(holder[0])
 
     @staticmethod

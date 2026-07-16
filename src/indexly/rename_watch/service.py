@@ -170,6 +170,18 @@ class RenameWatchService:
                 assume_eligible=force_retry,
             )
         elif source_available:
+            finalized = self.movers[job.job_id].finalized_operation(source)
+            if finalized is not None:
+                _, target = finalized
+                log_failure(
+                    job.job_id,
+                    source,
+                    target,
+                    job.pattern,
+                    attempts + 1,
+                    error,
+                )
+                return
             if not self.movers[job.job_id].abort_unstarted(source):
                 raise RenameWatchConfigError(
                     "job '{0}' reached its retry limit with an unresolved recovery operation".format(

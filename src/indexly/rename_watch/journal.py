@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+import unicodedata
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -13,7 +14,7 @@ from typing import Any, Dict, List, Optional
 from indexly.config import BASE_DIR
 
 from .config import RenameWatchConfigError, RenameWatchJob
-from .identity import canonical_root_identity, state_namespace
+from .identity import state_namespace
 
 SCHEMA = "indexly.rename-watch.operation"
 VERSION = 1
@@ -65,14 +66,16 @@ def atomic_write_json(path: Path, data: Dict[str, Any]) -> None:
             os.unlink(temporary)
 
 
-def _canonical(value: Path) -> str:
-    return canonical_root_identity(value)
+def _lexical(value: Path) -> str:
+    return unicodedata.normalize(
+        "NFC", os.path.normcase(os.path.abspath(os.fspath(value)))
+    )
 
 
 def _inside(path: Path, parent: Path) -> bool:
     try:
-        child_identity = canonical_root_identity(path)
-        parent_identity = canonical_root_identity(parent)
+        child_identity = _lexical(path)
+        parent_identity = _lexical(parent)
         return os.path.commonpath([child_identity, parent_identity]) == parent_identity
     except (OSError, ValueError):
         return False
@@ -121,12 +124,13 @@ class MoveJournal:
             "operation_id": operation_id,
             "state": "prepared",
             "job_id": self.job.job_id,
-            "watch_root": str(self.job.watch_path.resolve()),
+            "watch_root": os.path.abspath(os.fspath(self.job.watch_path)),
             "source_path": str(source.resolve()),
-            "destination_path": str(destination.resolve()),
+            "destination_path": os.path.abspath(os.fspath(destination)),
             "source_identity": source_identity,
             "destination_identity": None,
             "destination_fingerprint": None,
+            "transfer_kind": None,
             "uses_counter": counter_next is not None,
             "date_key": date_key,
             "counter": counter,
@@ -140,9 +144,18 @@ class MoveJournal:
         return self._validate(record, path)
 
     def mark_destination_created(
-        self, record: Dict[str, Any], destination_identity: Dict[str, int]
+        self,
+        record: Dict[str, Any],
+        destination_identity: Dict[str, int],
+        transfer_kind: Optional[str] = None,
     ) -> Dict[str, Any]:
-        return self._transition(record, "destination_created", destination_identity)
+        updated = dict(record)
+        updated["state"] = "destination_created"
+        updated["destination_identity"] = destination_identity
+        updated["transfer_kind"] = transfer_kind
+        path = self._path(updated["operation_id"])
+        atomic_write_json(path, updated)
+        return self._validate(updated, path)
 
     def mark_destination_finalized(
         self, record: Dict[str, Any], destination_fingerprint: Dict[str, int]
@@ -213,7 +226,7 @@ class MoveJournal:
             if not isinstance(raw.get(key), str) or not raw[key]:
                 self._invalid(path, "{0} is invalid".format(key))
         try:
-            if _canonical(Path(raw["watch_root"])) != _canonical(self.job.watch_path):
+            if _lexical(Path(raw["watch_root"])) != _lexical(self.job.watch_path):
                 self._invalid(path, "watch_root does not match the configured job")
             source = Path(raw["source_path"])
             destination = Path(raw["destination_path"])
@@ -246,6 +259,9 @@ class MoveJournal:
             "audited",
         } and destination_identity is None:
             self._invalid(path, "destination_identity is required for this state")
+        transfer_kind = raw.get("transfer_kind")
+        if transfer_kind not in (None, "hard_link", "copy"):
+            self._invalid(path, "transfer_kind is invalid")
         destination_fingerprint = raw.get("destination_fingerprint")
         if destination_fingerprint is not None:
             if (
