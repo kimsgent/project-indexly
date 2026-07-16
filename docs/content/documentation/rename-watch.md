@@ -63,6 +63,43 @@ while copied or locked. Rename-watch waits for a file to remain unchanged for
 the configured settling period, retries transient filesystem errors, and logs
 only completed moves or final failures under Indexly's normal NDJSON log tree.
 
+## Validate and preview
+
+Validate a configuration before starting the service:
+
+```powershell
+indexly rename-watch --config rename-watch.json --check-config
+```
+
+This validates the schema and relative paths, creates a missing watch root,
+tests watch-root, destination, and runtime-state creation/access, strictly
+reads existing counter and recovery state, and verifies that every watch-root
+lock is available. The access checks use disposable create, flush,
+atomic-replace, and delete probes and restore destination and state directories
+that did not exist before the check. They do not start observers, recover
+operations, move user files, consume counters, or write audit records.
+
+Preview the frozen `--once` plan without moving files or consuming counter
+state:
+
+```powershell
+indexly rename-watch --config rename-watch.json --once --dry-run
+```
+
+Each output line identifies the job, source, and proposed destination. Preview
+uses the same deterministic source order as a real `--once` run, models
+persisted counters and existing/planned collisions in memory, and refuses to
+continue when recovery state is unfinished or malformed. When jobs share a
+watch root, the first job in configuration order reserves each source, matching
+the order in which a real `--once` run can consume it.
+
+To model case and Unicode filename collisions on the destination's actual
+filesystem, dry-run briefly creates and removes uniquely named probe files in
+the nearest existing directory on that volume while holding the watch-root
+lock. No probe, destination directory, journal, counter update, or audit record
+is retained, but another filesystem-monitoring tool may observe those brief
+probe events.
+
 Only one rename-watch process can consume a canonical watch root at a time.
 The service holds a non-blocking operating-system lock for the complete
 `--once` or continuous run: a global named mutex on Windows and a fixed `/tmp`
@@ -84,13 +121,17 @@ counter or silently append a counter to an exact-name pattern.
 
 Recovery automatically resumes the exact target when no destination was
 created and accepts a source-missing move only after a durable
-destination-finalized record. If an interruption leaves both a source and a
-destination—whether duplicate hard links or a partial copy—recovery stops that
-job with a clear conflict and preserves both paths. It also fails closed when
-filesystem identities are unavailable or a path was replaced externally;
-recovery never deletes a pre-existing destination. Keep the journal in place
-while investigating such a conflict. Changing or deleting it removes the
-evidence needed for safe recovery.
+destination-finalized record. If a verified hard-link or copy reached that
+finalized phase but source deletion was temporarily blocked, recovery retries
+only the source deletion. A persistent deletion failure emits one terminal
+record and preserves both paths and the journal for a later run. Other
+interruptions that leave both paths—including an unfinalized hard link or a
+partial copy—stop that job with a clear conflict and preserve both paths.
+Recovery also fails closed when filesystem identities are unavailable, a path
+was replaced externally, or a configured destination component becomes a
+symlink or Windows reparse point; it never deletes a pre-existing destination.
+Keep the journal in place while investigating such a conflict. Changing or
+deleting it removes the evidence needed for safe recovery.
 
 Successful move audit entries include a stable `operation_id`. Audit delivery
 is at least once: a sudden stop after the NDJSON append but before the separate

@@ -128,9 +128,13 @@ checks, or intermediate retry delays.
 src/indexly/rename_watch/
   __init__.py
   config.py       # JSON parsing, path resolution, validation, data models
+  identity.py     # canonical root and state identities
+  journal.py      # durable per-operation recovery records
+  locking.py      # portable watch-root process exclusion
+  logging.py      # rename-watch NDJSON entry construction/writing
+  operator.py     # disposable operator access and filesystem-policy probes
   planner.py      # counter state and plan-move-log service
   service.py      # Watchdog/interval lifecycle, readiness, queue, retries
-  logging.py      # rename-watch NDJSON entry construction/writing
 tests/
   test_rename_watch_config.py
   test_rename_watch_planner.py
@@ -162,6 +166,10 @@ docs/content/documentation/
 
 - No cross-volume move is atomic. Configuration limits the destination to the
   watched root to retain same-volume behavior by default.
+- Runtime containment rejects symlink and Windows reparse-point components and
+  revalidates the destination at durable operation boundaries. Target creation
+  still uses a path after the final validation, leaving a very small hostile
+  destination-swap window for future descriptor-relative hardening.
 - Filesystem lock semantics vary by platform; settle checks plus retry handling
   are the portable behavior, not an OS-specific lock probe.
 - Watchdog can coalesce or miss events on some filesystems; hybrid
@@ -233,11 +241,11 @@ Completed:
   report a false failure on Windows consoles using legacy encodings. Formula
   content and audit behavior remain unchanged; macOS remains the authoritative
   Homebrew validation environment.
-
-Immediate next:
-
-- Begin Stage 2 with `--check-config`, including lock and state-access checks
-  that do not start observers or move files.
+- Runtime planning and recovery reject destination symlink/reparse swaps before
+  durable state mutation and revalidate containment throughout the operation.
+  A verified destination-finalized hard-link or copy retries only source
+  deletion; exhaustion writes one terminal record while preserving both paths
+  and the recovery journal, without stopping independent jobs.
 
 Later in Stage 1:
 
@@ -246,14 +254,26 @@ Later in Stage 1:
 
 ### Stage 2: Operator commands
 
-Status: **Next**
+Status: **In progress**
 
-- Add `--check-config` to validate schema, path creation/access, destination
-  containment, state access, and lock availability without starting workers.
-- Add `--dry-run --once` to report source-to-destination plans without moving
-  files or consuming counter state.
+Completed:
+
+- `--check-config` validates schema, real watch-root/destination/state
+  creation/access, destination containment, strict counter/journal state, and
+  lock availability through cleaned runtime-equivalent probes without starting
+  workers or moving files.
+- `--dry-run --once` freezes deterministic candidates and reports collision-
+  aware source-to-destination plans without moving user files or consuming
+  counter state. It models the destination volume's case/Unicode behavior with
+  cleaned probes and reserves shared-root sources in configuration order.
+
+Immediate next:
+
 - Add `--status` with human-readable and JSON output for jobs, pending files,
   last successful moves, and terminal failures.
+
+Later in Stage 2:
+
 - Add explicit counter-state inspection and reset commands with confirmation,
   backup, and job selection.
 - Define stable machine-readable exit codes and optional JSON error output.
@@ -309,8 +329,8 @@ Status: **Next**
 
 ### Incremental delivery order
 
-1. Complete Stage 1 in focused, independently tested commits.
-2. Implement `--check-config` and `--dry-run --once` from Stage 2.
+1. Completed: Stage 1 in focused, independently tested commits.
+2. Completed: `--check-config` and `--dry-run --once` from Stage 2.
 3. Add include/exclude selection from Stage 3.
 4. Add quarantine and retry workflows from Stage 4.
 5. Add portable service integration from Stage 5.

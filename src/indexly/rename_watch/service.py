@@ -14,6 +14,7 @@ from .config import (
 from .logging import log_failure, log_move
 from .locking import WatchRootLock
 from .planner import PlanMoveLog
+from .identity import canonical_root_identity
 
 _IDENTITY_UNAVAILABLE = object()
 
@@ -86,6 +87,21 @@ class RenameWatchService:
     def _prepare_watch_paths(self):
         for job in self.jobs:
             ensure_watch_directory(job.watch_path, "job '{0}' watch_path".format(job.job_id))
+    def _discover_candidates(self, job):
+        ensure_watch_directory(job.watch_path, "job '{0}' watch_path".format(job.job_id))
+        try:
+            paths = list(job.watch_path.iterdir())
+        except OSError as exc:
+            raise RenameWatchConfigError(
+                "job '{0}' watch_path could not be scanned: {1} ({2})".format(
+                    job.job_id, job.watch_path, exc
+                )
+            ) from exc
+        eligible = [path.resolve() for path in paths if self._eligible(job, path)]
+        return sorted(
+            eligible,
+            key=lambda path: os.path.normcase(os.path.abspath(os.fspath(path))),
+        )
     def _audit_move(self, job, result):
         log_move(
             job.job_id,
@@ -146,16 +162,7 @@ class RenameWatchService:
             if first_error is None: first_error = exc
         if first_error is not None: raise first_error
     def reconcile(self, job):
-        ensure_watch_directory(job.watch_path, "job '{0}' watch_path".format(job.job_id))
-        try:
-            paths = list(job.watch_path.iterdir())
-        except OSError as exc:
-            raise RenameWatchConfigError(
-                "job '{0}' watch_path could not be scanned: {1} ({2})".format(
-                    job.job_id, job.watch_path, exc
-                )
-            ) from exc
-        for path in paths: self.schedule(job, path)
+        for path in self._discover_candidates(job): self.schedule(job, path)
     def _handle_processing_error(self, job, source, key, attempts, error, force_retry=False):
         self._discard_snapshot(key)
         source_available = force_retry or source.exists()
@@ -428,6 +435,39 @@ class RenameWatchService:
                 self._once_capture = False
                 self._once_discovered_identities = {}
             self._release_root_locks()
+    def check_config(self):
+        self._prepare_watch_paths(); self._acquire_root_locks()
+        try:
+            for job in self.jobs:
+                self._discover_candidates(job)
+                self.movers[job.job_id].validate_check_access()
+        finally:
+            self._release_root_locks()
+    def dry_run_once(self):
+        self._prepare_watch_paths(); self._acquire_root_locks()
+        try:
+            frozen = [
+                (job, self._discover_candidates(job)) for job in self.jobs
+            ]
+            reservations = set()
+            source_reservations = set()
+            plans = []
+            for job, sources in frozen:
+                unique_sources = []
+                for source in sources:
+                    source_key = canonical_root_identity(source)
+                    if source_key in source_reservations:
+                        continue
+                    source_reservations.add(source_key)
+                    unique_sources.append(source)
+                plans.extend(
+                    self.movers[job.job_id].preview(
+                        unique_sources, reservations
+                    )
+                )
+            return plans
+        finally:
+            self._release_root_locks()
     def _start_observers(self):
         service = self
         class Handler(FileSystemEventHandler):
@@ -468,7 +508,20 @@ class RenameWatchService:
         self.observers = []
 
 def handle_rename_watch(args):
-    if getattr(args, "init", False):
+    initialize = getattr(args, "init", False)
+    check_config = getattr(args, "check_config", False)
+    once = getattr(args, "once", False)
+    dry_run = getattr(args, "dry_run", False)
+    mode = getattr(args, "mode", None)
+    if dry_run and not once:
+        raise ValueError("--dry-run requires --once")
+    if initialize and (once or dry_run or mode or check_config):
+        raise ValueError("--init cannot be combined with --once, --dry-run, --mode, or --check-config")
+    if check_config and (once or dry_run or mode or initialize):
+        raise ValueError("--check-config cannot be combined with --once, --dry-run, --mode, or --init")
+    if dry_run and mode:
+        raise ValueError("--dry-run cannot be combined with --mode")
+    if initialize:
         try:
             path = initialize_settings(args.config)
         except RenameWatchConfigError as error:
@@ -479,10 +532,20 @@ def handle_rename_watch(args):
     try:
         settings = load_settings(args.config)
         jobs = settings.jobs
-        if getattr(args, "mode", None):
-            jobs = [type(job)(**dict(job.__dict__, mode=args.mode)) for job in jobs]
+        if mode:
+            jobs = [type(job)(**dict(job.__dict__, mode=mode)) for job in jobs]
         service = RenameWatchService(jobs)
-        if getattr(args, "once", False):
+        if check_config:
+            service.check_config()
+            print("Rename-watch configuration is valid: {0}".format(settings.config_path))
+        elif dry_run:
+            for plan in service.dry_run_once():
+                print(
+                    "DRY-RUN job={0} source={1} destination={2}".format(
+                        plan.job_id, plan.source, plan.destination
+                    )
+                )
+        elif once:
             service.run_once()
         else:
             service.run_forever()

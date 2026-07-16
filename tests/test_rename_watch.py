@@ -2,6 +2,7 @@ import json
 import errno
 import math
 import os
+import stat
 import subprocess
 import sys
 from types import SimpleNamespace
@@ -11,13 +12,15 @@ from pathlib import Path
 
 import pytest
 
+from indexly.cli_utils import build_parser
 from indexly.rename_watch.config import RenameWatchConfigError, initialize_settings, load_settings
 from indexly.rename_watch import locking as locking_module
 from indexly.rename_watch import identity as identity_module
 from indexly.rename_watch import planner as planner_module
 from indexly.rename_watch.locking import WatchRootLock
 from indexly.rename_watch.planner import PlanMoveLog
-from indexly.rename_watch.service import RenameWatchService
+from indexly.rename_watch import service as service_module
+from indexly.rename_watch.service import RenameWatchService, handle_rename_watch
 
 
 def _config(tmp_path, **job_values):
@@ -1842,3 +1845,683 @@ def test_observer_startup_creates_missing_path_and_cleans_up_on_failure(tmp_path
     assert incoming.is_dir()
     assert second_path.is_dir()
     assert all(observer.stopped for observer in observers)
+
+
+def _operator_args(config, **values):
+    defaults = {
+        "config": str(config),
+        "init": False,
+        "check_config": False,
+        "once": False,
+        "dry_run": False,
+        "mode": None,
+    }
+    defaults.update(values)
+    return SimpleNamespace(**defaults)
+
+
+def test_rename_watch_parser_accepts_stage_two_operator_flags(tmp_path):
+    parser = build_parser()
+    config = tmp_path / "rename-watch.json"
+
+    checked = parser.parse_args(
+        ["rename-watch", "--config", str(config), "--check-config"]
+    )
+    previewed = parser.parse_args(
+        ["rename-watch", "--config", str(config), "--once", "--dry-run"]
+    )
+
+    assert checked.check_config and not checked.once
+    assert previewed.once and previewed.dry_run
+    with pytest.raises(SystemExit):
+        parser.parse_args(
+            [
+                "rename-watch",
+                "--config",
+                str(config),
+                "--init",
+                "--check-config",
+            ]
+        )
+
+
+@pytest.mark.parametrize(
+    ("values", "message"),
+    [
+        ({"dry_run": True}, "--dry-run requires --once"),
+        ({"init": True, "once": True}, "--init cannot be combined"),
+        ({"check_config": True, "mode": "event"}, "--check-config cannot be combined"),
+        ({"check_config": True, "once": True}, "--check-config cannot be combined"),
+        ({"dry_run": True, "once": True, "mode": "event"}, "--dry-run cannot be combined"),
+    ],
+)
+def test_operator_handler_rejects_incompatible_actions_before_loading_config(
+    tmp_path, values, message
+):
+    with pytest.raises(ValueError, match=message):
+        handle_rename_watch(_operator_args(tmp_path / "missing.json", **values))
+
+
+def test_check_config_creates_only_watch_root_and_has_no_runtime_side_effects(
+    tmp_path, monkeypatch
+):
+    path, incoming = _config(
+        tmp_path,
+        watch_path="missing/parents/incoming",
+        destination_subfolder="processed",
+    )
+    incoming.rmdir()
+    state_root = tmp_path / "state"
+    job = load_settings(str(path)).jobs[0]
+    service = RenameWatchService([job], state_root=state_root)
+    monkeypatch.setattr(
+        service,
+        "_recover_pending_moves",
+        lambda: pytest.fail("check-config attempted recovery"),
+    )
+    monkeypatch.setattr(
+        service,
+        "_start_observers",
+        lambda: pytest.fail("check-config started observers"),
+    )
+    monkeypatch.setattr(
+        "indexly.rename_watch.service.log_move",
+        lambda *args, **kwargs: pytest.fail("check-config wrote an audit"),
+    )
+
+    service.check_config()
+
+    assert job.watch_path.is_dir()
+    assert not job.destination_path.exists()
+    assert not state_root.exists()
+    assert service.root_locks == []
+
+
+def test_check_config_strictly_reads_counter_and_journal_without_mutating_them(
+    tmp_path
+):
+    path, _ = _config(tmp_path, pattern="{date}-{title}-{counter}")
+    job = load_settings(str(path)).jobs[0]
+    state_root = tmp_path / "state"
+    mover = PlanMoveLog(job, state_root)
+    mover.state.path.parent.mkdir(parents=True)
+    mover.state.path.write_text(json.dumps({"20240115": 4}), encoding="utf-8")
+    source = job.watch_path / "report.txt"
+    source.write_text("content", encoding="utf-8")
+    job.destination_path.mkdir()
+    record = mover.journal.prepare(
+        source,
+        job.destination_path / "planned.txt",
+        planner_module._identity_record(source.stat()),
+        job.pattern,
+        1,
+        date_key="20240115",
+        counter=4,
+        counter_next=5,
+    )
+    counter_before = mover.state.path.read_bytes()
+    journal_path = mover.journal._path(record["operation_id"])
+    journal_before = journal_path.read_bytes()
+
+    RenameWatchService([job], state_root=state_root).check_config()
+
+    assert mover.state.path.read_bytes() == counter_before
+    assert journal_path.read_bytes() == journal_before
+    assert source.exists()
+
+
+@pytest.mark.parametrize("state_kind", ["counter", "journal"])
+def test_check_config_surfaces_corrupt_state(tmp_path, state_kind):
+    path, _ = _config(tmp_path, pattern="{date}-{title}-{counter}")
+    job = load_settings(str(path)).jobs[0]
+    state_root = tmp_path / "state"
+    mover = PlanMoveLog(job, state_root)
+    if state_kind == "counter":
+        mover.state.path.parent.mkdir(parents=True)
+        mover.state.path.write_text("{", encoding="utf-8")
+        match = "counter state is unreadable"
+    else:
+        mover.journal.directory.mkdir(parents=True)
+        (mover.journal.directory / "broken.json").write_text("{", encoding="utf-8")
+        match = "journal is unreadable"
+
+    with pytest.raises(RenameWatchConfigError, match=match):
+        RenameWatchService([job], state_root=state_root).check_config()
+
+    lock = WatchRootLock(job.watch_path)
+    lock.acquire()
+    lock.release()
+
+
+@pytest.mark.parametrize(
+    "failure", ["mkdir-destination", "mkdir-state", "open", "replace"]
+)
+def test_check_config_runtime_probe_failures_clean_artifacts_and_release_lock(
+    tmp_path, monkeypatch, failure
+):
+    path, incoming = _config(tmp_path, pattern="{date}-{title}-{counter}")
+    job = load_settings(str(path)).jobs[0]
+    state_root = tmp_path / "state"
+    real_mkdir = Path.mkdir
+    real_open = planner_module.os.open
+    real_replace = planner_module.os.replace
+
+    if failure.startswith("mkdir"):
+        denied_directory = (
+            job.destination_path
+            if failure == "mkdir-destination"
+            else state_root
+        )
+
+        def fail_probe_mkdir(path_value, *args, **kwargs):
+            if path_value == denied_directory:
+                raise PermissionError("injected mkdir failure")
+            return real_mkdir(path_value, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "mkdir", fail_probe_mkdir)
+    elif failure == "open":
+        def fail_probe_open(path_value, *args, **kwargs):
+            if ".indexly-rename-watch-check-" in os.fspath(path_value):
+                raise PermissionError("injected open failure")
+            return real_open(path_value, *args, **kwargs)
+
+        monkeypatch.setattr(planner_module.os, "open", fail_probe_open)
+    else:
+        def fail_probe_replace(source_path, destination_path, *args, **kwargs):
+            if ".indexly-rename-watch-check-" in os.fspath(destination_path):
+                raise PermissionError("injected replace failure")
+            return real_replace(source_path, destination_path, *args, **kwargs)
+
+        monkeypatch.setattr(planner_module.os, "replace", fail_probe_replace)
+
+    with pytest.raises(RenameWatchConfigError, match="runtime probe"):
+        RenameWatchService([job], state_root=state_root).check_config()
+
+    assert not job.destination_path.exists()
+    assert not state_root.exists()
+    assert sorted(path_value.name for path_value in incoming.iterdir()) == []
+    lock = WatchRootLock(incoming)
+    lock.acquire()
+    lock.release()
+
+
+def test_check_config_counter_update_open_failure_preserves_bytes_and_cleans(
+    tmp_path, monkeypatch
+):
+    path, incoming = _config(tmp_path, pattern="{date}-{title}-{counter}")
+    job = load_settings(str(path)).jobs[0]
+    state_root = tmp_path / "state"
+    mover = PlanMoveLog(job, state_root)
+    state_root.mkdir()
+    mover.state.path.write_text('{"20240115": 4}\n', encoding="utf-8")
+    before = mover.state.path.read_bytes()
+    real_open = planner_module.os.open
+
+    def fail_counter_open(path_value, *args, **kwargs):
+        if Path(path_value) == mover.state.path:
+            raise PermissionError("injected counter open failure")
+        return real_open(path_value, *args, **kwargs)
+
+    monkeypatch.setattr(planner_module.os, "open", fail_counter_open)
+
+    with pytest.raises(RenameWatchConfigError, match="counter update runtime probe"):
+        RenameWatchService([job], state_root=state_root).check_config()
+
+    assert mover.state.path.read_bytes() == before
+    assert not job.destination_path.exists()
+    assert sorted(path_value.name for path_value in state_root.iterdir()) == [
+        mover.state.path.name
+    ]
+    lock = WatchRootLock(incoming)
+    lock.acquire()
+    lock.release()
+
+
+def test_check_config_watch_root_probe_failure_with_existing_destination_cleans(
+    tmp_path, monkeypatch
+):
+    path, incoming = _config(tmp_path, pattern="{date}-{title}-{counter}")
+    job = load_settings(str(path)).jobs[0]
+    job.destination_path.mkdir()
+    state_root = tmp_path / "state"
+    real_open = planner_module.os.open
+
+    def fail_watch_root_probe(path_value, *args, **kwargs):
+        candidate = Path(path_value)
+        if (
+            candidate.parent == incoming
+            and candidate.name.startswith(".indexly-rename-watch-check-")
+        ):
+            raise PermissionError("injected watch-root probe failure")
+        return real_open(path_value, *args, **kwargs)
+
+    monkeypatch.setattr(planner_module.os, "open", fail_watch_root_probe)
+
+    with pytest.raises(RenameWatchConfigError, match="watch_path.*runtime probe"):
+        RenameWatchService([job], state_root=state_root).check_config()
+
+    assert job.destination_path.is_dir()
+    assert list(job.destination_path.iterdir()) == []
+    assert not state_root.exists()
+    assert sorted(path_value.name for path_value in incoming.iterdir()) == [
+        job.destination_path.name
+    ]
+    lock = WatchRootLock(incoming)
+    lock.acquire()
+    lock.release()
+
+
+@pytest.mark.parametrize("counter_kind", ["symlink", "directory", "reparse"])
+@pytest.mark.parametrize("operation", ["check", "dry-run"])
+def test_strict_counter_state_rejects_links_reparse_and_non_regular_files(
+    tmp_path, monkeypatch, counter_kind, operation
+):
+    path, incoming = _config(tmp_path, pattern="{date}-{title}-{counter}")
+    (incoming / "report.txt").write_text("content", encoding="utf-8")
+    job = load_settings(str(path)).jobs[0]
+    state_root = tmp_path / "state"
+    mover = PlanMoveLog(job, state_root)
+    state_root.mkdir()
+    if counter_kind == "symlink":
+        target = tmp_path / "counter-target.json"
+        target.write_text("{}", encoding="utf-8")
+        mover.state.path.symlink_to(target)
+    elif counter_kind == "directory":
+        mover.state.path.mkdir()
+    else:
+        mover.state.path.write_text("{}", encoding="utf-8")
+        real_lstat = Path.lstat
+        monkeypatch.setattr(
+            planner_module.stat,
+            "FILE_ATTRIBUTE_REPARSE_POINT",
+            0x400,
+            raising=False,
+        )
+
+        def reparse_lstat(path_value):
+            if path_value == mover.state.path:
+                return SimpleNamespace(
+                    st_mode=stat.S_IFREG | 0o600,
+                    st_file_attributes=0x400,
+                )
+            return real_lstat(path_value)
+
+        monkeypatch.setattr(Path, "lstat", reparse_lstat)
+
+    service = RenameWatchService([job], state_root=state_root)
+    with pytest.raises(RenameWatchConfigError, match="regular file"):
+        service.check_config() if operation == "check" else service.dry_run_once()
+
+    assert not job.destination_path.exists()
+    lock = WatchRootLock(incoming)
+    lock.acquire()
+    lock.release()
+
+
+@pytest.mark.parametrize("operation", ["check", "dry-run"])
+def test_operator_commands_fail_nonblocking_when_watch_root_is_locked(
+    tmp_path, operation
+):
+    path, incoming = _config(tmp_path)
+    job = load_settings(str(path)).jobs[0]
+    held = WatchRootLock(incoming)
+    held.acquire()
+    service = RenameWatchService([job], state_root=tmp_path / "state")
+    try:
+        with pytest.raises(RenameWatchConfigError, match="locked or unavailable"):
+            if operation == "check":
+                service.check_config()
+            else:
+                service.dry_run_once()
+    finally:
+        held.release()
+    assert service.root_locks == []
+
+
+def test_dry_run_is_pure_and_uses_strict_snapshot_collisions_and_reservations(
+    tmp_path, monkeypatch
+):
+    path, incoming = _config(
+        tmp_path,
+        pattern="{date}-{title}-{counter}",
+        counter_format="03d",
+    )
+    second = incoming / "20240115-b.txt"
+    first = incoming / "20240115-a.txt"
+    second.write_text("second", encoding="utf-8")
+    first.write_text("first", encoding="utf-8")
+    job = load_settings(str(path)).jobs[0]
+    state_root = tmp_path / "state"
+    mover = PlanMoveLog(job, state_root)
+    mover.state.path.parent.mkdir(parents=True)
+    mover.state.path.write_text(json.dumps({"20240115": 2}), encoding="utf-8")
+    counter_before = mover.state.path.read_bytes()
+    monkeypatch.setattr(
+        planner_module,
+        "_move_without_overwrite",
+        lambda *args, **kwargs: pytest.fail("dry-run attempted a move"),
+    )
+    monkeypatch.setattr(
+        "indexly.rename_watch.service.log_move",
+        lambda *args, **kwargs: pytest.fail("dry-run wrote a move audit"),
+    )
+    monkeypatch.setattr(
+        "indexly.rename_watch.service.log_failure",
+        lambda *args, **kwargs: pytest.fail("dry-run wrote a failure audit"),
+    )
+    service = RenameWatchService([job], state_root=state_root)
+
+    plans = service.dry_run_once()
+
+    assert [plan.source for plan in plans] == [first.resolve(), second.resolve()]
+    assert [plan.destination.name for plan in plans] == [
+        "20240115-a-002.txt",
+        "20240115-b-003.txt",
+    ]
+    assert first.read_text(encoding="utf-8") == "first"
+    assert second.read_text(encoding="utf-8") == "second"
+    assert not job.destination_path.exists()
+    assert mover.state.path.read_bytes() == counter_before
+    assert not mover.journal.directory.exists()
+
+
+def test_dry_run_models_existing_counter_collision_without_consuming_state(tmp_path):
+    path, incoming = _config(
+        tmp_path,
+        pattern="{date}-{title}-{counter}",
+        counter_format="03d",
+    )
+    source = incoming / "20240115-report.txt"
+    source.write_text("content", encoding="utf-8")
+    job = load_settings(str(path)).jobs[0]
+    job.destination_path.mkdir()
+    collision = job.destination_path / "20240115-report-000.txt"
+    collision.write_text("existing", encoding="utf-8")
+    state_root = tmp_path / "state"
+
+    plans = RenameWatchService([job], state_root=state_root).dry_run_once()
+
+    assert plans[0].destination.name == "20240115-report-001.txt"
+    assert collision.read_text(encoding="utf-8") == "existing"
+    assert not state_root.exists()
+
+
+@pytest.mark.parametrize("collision_kind", ["existing", "reservation"])
+def test_dry_run_rejects_no_counter_collisions(tmp_path, collision_kind):
+    path, incoming = _config(
+        tmp_path,
+        pattern="{date}",
+        counter_format="",
+    )
+    first = incoming / "20240115-a.txt"
+    first.write_text("first", encoding="utf-8")
+    job = load_settings(str(path)).jobs[0]
+    if collision_kind == "existing":
+        job.destination_path.mkdir()
+        (job.destination_path / "20240115.txt").write_text(
+            "existing", encoding="utf-8"
+        )
+    else:
+        (incoming / "20240115-b.txt").write_text("second", encoding="utf-8")
+
+    with pytest.raises(RenameWatchConfigError, match="dry-run destination collision"):
+        RenameWatchService([job], state_root=tmp_path / "state").dry_run_once()
+
+    assert first.exists()
+
+
+def test_filesystem_name_policy_detects_actual_volume_and_cleans_probes(tmp_path):
+    path, incoming = _config(tmp_path)
+    job = load_settings(str(path)).jobs[0]
+
+    policy = planner_module._filesystem_name_policy(job.destination_path)
+
+    assert isinstance(policy.case_insensitive, bool)
+    assert isinstance(policy.unicode_normalizing, bool)
+    assert list(incoming.iterdir()) == []
+
+
+@pytest.mark.parametrize("case_insensitive", [True, False])
+def test_dry_run_case_equivalence_matches_destination_filesystem_policy(
+    tmp_path, monkeypatch, case_insensitive
+):
+    path, incoming = _config(tmp_path, pattern="{date}", counter_format="")
+    upper = incoming / "20240115-alpha.TXT"
+    lower = incoming / "20240115-beta.txt"
+    upper.write_text("upper", encoding="utf-8")
+    lower.write_text("lower", encoding="utf-8")
+    job = load_settings(str(path)).jobs[0]
+    monkeypatch.setattr(
+        planner_module,
+        "_filesystem_name_policy",
+        lambda destination: planner_module.FilesystemNamePolicy(
+            directory_key=str(destination),
+            case_insensitive=case_insensitive,
+            unicode_normalizing=False,
+        ),
+    )
+    service = RenameWatchService([job], state_root=tmp_path / "state")
+
+    if case_insensitive:
+        with pytest.raises(
+            RenameWatchConfigError, match="dry-run destination collision"
+        ):
+            service.dry_run_once()
+    else:
+        plans = service.dry_run_once()
+        assert [plan.destination.name for plan in plans] == [
+            "20240115.TXT",
+            "20240115.txt",
+        ]
+
+    assert sorted(path_value.name for path_value in incoming.iterdir()) == [
+        upper.name,
+        lower.name,
+    ]
+
+
+@pytest.mark.parametrize("unicode_normalizing", [True, False])
+def test_dry_run_unicode_equivalence_matches_destination_filesystem_policy(
+    tmp_path, monkeypatch, unicode_normalizing
+):
+    path, incoming = _config(tmp_path, pattern="{date}", counter_format="")
+    composed = incoming / "20240115-alpha.\u00e9"
+    decomposed = incoming / "20240115-beta.e\u0301"
+    composed.write_text("composed", encoding="utf-8")
+    decomposed.write_text("decomposed", encoding="utf-8")
+    job = load_settings(str(path)).jobs[0]
+    monkeypatch.setattr(
+        planner_module,
+        "_filesystem_name_policy",
+        lambda destination: planner_module.FilesystemNamePolicy(
+            directory_key=str(destination),
+            case_insensitive=False,
+            unicode_normalizing=unicode_normalizing,
+        ),
+    )
+    service = RenameWatchService([job], state_root=tmp_path / "state")
+
+    if unicode_normalizing:
+        with pytest.raises(
+            RenameWatchConfigError, match="dry-run destination collision"
+        ):
+            service.dry_run_once()
+    else:
+        plans = service.dry_run_once()
+        assert len(plans) == 2
+
+    assert composed.exists() and decomposed.exists()
+
+
+def test_dry_run_fails_closed_on_counter_or_recovery_state(tmp_path):
+    path, incoming = _config(tmp_path, pattern="{date}-{title}-{counter}")
+    source = incoming / "report.txt"
+    source.write_text("content", encoding="utf-8")
+    job = load_settings(str(path)).jobs[0]
+    state_root = tmp_path / "state"
+    mover = PlanMoveLog(job, state_root)
+    mover.state.path.parent.mkdir(parents=True)
+    mover.state.path.write_text(json.dumps({"date": True}), encoding="utf-8")
+
+    with pytest.raises(RenameWatchConfigError, match="invalid entry"):
+        RenameWatchService([job], state_root=state_root).dry_run_once()
+
+    mover.state.path.write_text("{}", encoding="utf-8")
+    job.destination_path.mkdir()
+    record = mover.journal.prepare(
+        source,
+        job.destination_path / "planned.txt",
+        planner_module._identity_record(source.stat()),
+        job.pattern,
+        1,
+        date_key="date",
+        counter=0,
+        counter_next=1,
+    )
+    journal_path = mover.journal._path(record["operation_id"])
+    journal_before = journal_path.read_bytes()
+
+    with pytest.raises(RenameWatchConfigError, match="unfinished recovery operation"):
+        RenameWatchService([job], state_root=state_root).dry_run_once()
+
+    assert journal_path.read_bytes() == journal_before
+    assert source.exists()
+
+
+def test_dry_run_freezes_candidates_before_planning(tmp_path, monkeypatch):
+    path, incoming = _config(tmp_path)
+    initial = incoming / "initial.txt"
+    initial.write_text("initial", encoding="utf-8")
+    later = incoming / "later.txt"
+    job = load_settings(str(path)).jobs[0]
+    service = RenameWatchService([job], state_root=tmp_path / "state")
+    mover = service.movers[job.job_id]
+    real_preview = mover.preview
+
+    def add_later_then_preview(sources, reservations):
+        later.write_text("later", encoding="utf-8")
+        return real_preview(sources, reservations)
+
+    monkeypatch.setattr(mover, "preview", add_later_then_preview)
+
+    plans = service.dry_run_once()
+
+    assert [plan.source for plan in plans] == [initial.resolve()]
+    assert later.exists()
+
+
+def test_real_once_matches_dry_run_sorted_counter_mapping(tmp_path, monkeypatch):
+    path, incoming = _config(
+        tmp_path,
+        pattern="{date}-{title}-{counter}",
+        counter_format="03d",
+        settle_seconds=0.5,
+    )
+    second = incoming / "20240115-b.txt"
+    first = incoming / "20240115-a.txt"
+    second.write_text("second", encoding="utf-8")
+    first.write_text("first", encoding="utf-8")
+    job = load_settings(str(path)).jobs[0]
+    state_root = tmp_path / "state"
+    preview = RenameWatchService([job], state_root=state_root).dry_run_once()
+    current = [0.0]
+    moved = []
+    monkeypatch.setattr(
+        "indexly.rename_watch.service.log_move",
+        lambda job_id, source, destination, *args, **kwargs: moved.append(
+            (Path(source), Path(destination))
+        ),
+    )
+
+    RenameWatchService(
+        [job],
+        state_root=state_root,
+        clock=lambda: current[0],
+        sleeper=lambda delay: current.__setitem__(0, current[0] + delay),
+    ).run_once()
+
+    assert moved == [
+        (plan.source, plan.destination)
+        for plan in preview
+    ]
+
+
+def test_dry_run_reserves_sources_across_same_root_jobs_like_real_once(
+    tmp_path, monkeypatch
+):
+    path, incoming = _config(
+        tmp_path,
+        pattern="{date}-{title}-{counter}",
+        counter_format="03d",
+        settle_seconds=0.5,
+    )
+    source = incoming / "20240115-report.txt"
+    source.write_text("content", encoding="utf-8")
+    first_job = load_settings(str(path)).jobs[0]
+    second_job = replace(
+        first_job,
+        job_id="second",
+        destination_path=incoming / "second-processed",
+    )
+    state_root = tmp_path / "state"
+    preview = RenameWatchService(
+        [first_job, second_job], state_root=state_root
+    ).dry_run_once()
+    assert [plan.job_id for plan in preview] == [first_job.job_id]
+
+    current = [0.0]
+    moved = []
+    monkeypatch.setattr(
+        "indexly.rename_watch.service.log_move",
+        lambda job_id, source_path, destination, *args, **kwargs: moved.append(
+            (job_id, Path(source_path), Path(destination))
+        ),
+    )
+    RenameWatchService(
+        [first_job, second_job],
+        state_root=state_root,
+        clock=lambda: current[0],
+        sleeper=lambda delay: current.__setitem__(0, current[0] + delay),
+    ).run_once()
+
+    assert moved == [
+        (preview[0].job_id, preview[0].source, preview[0].destination)
+    ]
+
+
+def test_handler_dispatches_check_and_dry_run_with_deterministic_output(
+    tmp_path, monkeypatch, capsys
+):
+    path, incoming = _config(tmp_path)
+    source = incoming / "report.txt"
+    source.write_text("content", encoding="utf-8")
+    calls = []
+
+    class FakeService:
+        def __init__(self, jobs):
+            self.jobs = jobs
+
+        def check_config(self):
+            calls.append("check")
+
+        def dry_run_once(self):
+            calls.append("dry-run")
+            return [
+                SimpleNamespace(
+                    job_id="inbox",
+                    source=source.resolve(),
+                    destination=(incoming / "processed" / "planned.txt").resolve(),
+                )
+            ]
+
+    monkeypatch.setattr(service_module, "RenameWatchService", FakeService)
+
+    handle_rename_watch(_operator_args(path, check_config=True))
+    handle_rename_watch(_operator_args(path, once=True, dry_run=True))
+    output = capsys.readouterr().out.splitlines()
+
+    assert calls == ["check", "dry-run"]
+    assert output[0].startswith("Rename-watch configuration is valid:")
+    assert output[1] == "DRY-RUN job=inbox source={0} destination={1}".format(
+        source.resolve(), (incoming / "processed" / "planned.txt").resolve()
+    )

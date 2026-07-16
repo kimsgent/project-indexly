@@ -18,6 +18,11 @@ from indexly.rename_utils import generate_new_filename
 from .config import RenameWatchConfigError, RenameWatchJob
 from .identity import canonical_root_identity, state_namespace
 from .journal import MoveJournal, atomic_write_json, state_directory
+from .operator import (
+    FilesystemNamePolicy,
+    filesystem_name_policy as _filesystem_name_policy,
+    validate_check_access as _validate_check_access,
+)
 
 _COPY_FALLBACK_ERRORS = {
     errno.EACCES,
@@ -42,6 +47,7 @@ def _is_link_or_reparse(value) -> bool:
 
 def _directory_identity(value) -> Tuple[int, int]:
     return value.st_dev, value.st_ino
+
 
 def _slug(value: str) -> str:
     value = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii").lower()
@@ -221,6 +227,74 @@ class CounterState:
         except (OSError, ValueError, TypeError):
             return {}
 
+    def _read_path(self) -> Optional[Path]:
+        try:
+            self.path.lstat()
+        except FileNotFoundError:
+            pass
+        else:
+            return self.path
+        if self.legacy_path is not None:
+            try:
+                self.legacy_path.lstat()
+            except FileNotFoundError:
+                pass
+            else:
+                return self.legacy_path
+        return None
+
+    def strict_snapshot(self) -> Dict[str, int]:
+        """Read counter state without mutation and reject any malformed entry."""
+        try:
+            path = self._read_path()
+        except OSError as exc:
+            raise RenameWatchConfigError(
+                "rename-watch counter state could not be inspected ({0})".format(
+                    exc
+                )
+            ) from exc
+        if path is None:
+            return {}
+        try:
+            value = path.lstat()
+        except OSError as exc:
+            raise RenameWatchConfigError(
+                "rename-watch counter state could not be inspected: {0} ({1})".format(
+                    path, exc
+                )
+            ) from exc
+        if _is_link_or_reparse(value) or not stat.S_ISREG(value.st_mode):
+            raise RenameWatchConfigError(
+                "rename-watch counter state must be a regular file without links or reparse points: {0}".format(
+                    path
+                )
+            )
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError, TypeError) as exc:
+            raise RenameWatchConfigError(
+                "rename-watch counter state is unreadable: {0} ({1})".format(
+                    path, exc
+                )
+            ) from exc
+        if not isinstance(data, dict):
+            raise RenameWatchConfigError(
+                "rename-watch counter state must be an object: {0}".format(path)
+            )
+        for date_key, value in data.items():
+            if (
+                not isinstance(date_key, str)
+                or isinstance(value, bool)
+                or not isinstance(value, int)
+                or value < 0
+            ):
+                raise RenameWatchConfigError(
+                    "rename-watch counter state has an invalid entry: {0}".format(
+                        path
+                    )
+                )
+        return dict(data)
+
     def _save(self, data: Dict[str, int]) -> None:
         atomic_write_json(self.path, data)
 
@@ -244,6 +318,13 @@ class MoveResult:
     pattern: str
     attempts: int
     recovered: bool = False
+
+
+@dataclass(frozen=True)
+class PreviewPlan:
+    job_id: str
+    source: Path
+    destination: Path
 
 
 class PlanMoveLog:
@@ -393,6 +474,81 @@ class PlanMoveLog:
         self._guard_destination(target)
         return target
 
+    def validate_check_access(self) -> None:
+        """Strictly validate paths and state through disposable runtime probes."""
+        _validate_check_access(self)
+
+    def _date_key(self, source: Path, source_stat) -> str:
+        date_key = datetime.fromtimestamp(source_stat.st_mtime).strftime(
+            self.job.date_format
+        )
+        if self.job.title_format == "standard":
+            rendered_date = generate_new_filename(
+                source,
+                pattern="{date}",
+                counter=0,
+                date_format=self.job.date_format,
+                counter_format="d",
+            )
+            date_key = Path(rendered_date).stem
+        return date_key
+
+    def preview(
+        self, sources, reserved_destinations: Optional[set] = None
+    ) -> List[PreviewPlan]:
+        """Return non-moving plans with read-only state and ephemeral counters."""
+        reservations = (
+            reserved_destinations if reserved_destinations is not None else set()
+        )
+        with self.state.lock:
+            self._guard_destination()
+            if self.journal.pending():
+                raise RenameWatchConfigError(
+                    "job '{0}' has an unfinished recovery operation; dry-run cannot continue".format(
+                        self.job.job_id
+                    )
+                )
+            uses_counter = "{counter}" in self.job.pattern
+            counters = self.state.strict_snapshot() if uses_counter else {}
+            name_policy = _filesystem_name_policy(self.destination)
+            plans = []
+            for source in sources:
+                source = Path(source).resolve()
+                source_stat = source.stat()
+                date_key = self._date_key(source, source_stat) if uses_counter else None
+                counter = counters.get(date_key, 0) if uses_counter else 0
+                while True:
+                    target = self.destination / render_name(
+                        source,
+                        self.job.pattern,
+                        self.job.date_format,
+                        self.job.counter_format,
+                        self.job.title_format,
+                        counter,
+                    )
+                    self._guard_destination(target)
+                    reservation = name_policy.key(target.name)
+                    if not target.exists() and reservation not in reservations:
+                        break
+                    if not uses_counter:
+                        raise RenameWatchConfigError(
+                            "job '{0}' dry-run destination collision: {1}".format(
+                                self.job.job_id, target
+                            )
+                        )
+                    counter += 1
+                reservations.add(reservation)
+                if uses_counter:
+                    counters[date_key] = counter + 1
+                plans.append(
+                    PreviewPlan(
+                        job_id=self.job.job_id,
+                        source=source,
+                        destination=target,
+                    )
+                )
+            return plans
+
     def plan_and_move(self, source: Path) -> Path:
         """Compatibility wrapper for callers that do not own audit logging."""
         result = self.plan_and_move_operation(source)
@@ -427,16 +583,7 @@ class PlanMoveLog:
             counter = 0
             date_key = None
             if uses_counter:
-                date_key = datetime.fromtimestamp(initial_source_stat.st_mtime).strftime(self.job.date_format)
-                if self.job.title_format == "standard":
-                    rendered_date = generate_new_filename(
-                        source,
-                        pattern="{date}",
-                        counter=0,
-                        date_format=self.job.date_format,
-                        counter_format="d",
-                    )
-                    date_key = Path(rendered_date).stem
+                date_key = self._date_key(source, initial_source_stat)
                 data, counter = self.state.next(date_key)
             destination_identity = self._ensure_destination_directory()
             while True:
