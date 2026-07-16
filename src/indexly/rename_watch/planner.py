@@ -33,6 +33,15 @@ _COPY_FALLBACK_ERRORS = {
 }
 
 
+class ExactNameCollision(FileExistsError):
+    """A no-counter job produced an already occupied exact destination."""
+
+    def __init__(self, target: Path, policy: str):
+        self.target = Path(target)
+        self.policy = policy
+        super().__init__("Destination already exists: {0}".format(target))
+
+
 def _lexical_absolute(path: Path) -> Path:
     return Path(os.path.abspath(os.fspath(path)))
 
@@ -111,8 +120,11 @@ def _copy_without_overwrite(
     on_destination_created: Optional[Callable[[Dict[str, int]], None]] = None,
     on_destination_finalized: Optional[Callable[[], None]] = None,
     expected_source_identity: Optional[Tuple[int, int]] = None,
+    before_destination_create: Optional[Callable[[], None]] = None,
 ) -> None:
     """Copy then remove a source when hard links are unavailable."""
+    if before_destination_create is not None:
+        before_destination_create()
     with source.open("rb") as source_handle, target.open("xb") as target_handle:
         before = os.fstat(source_handle.fileno())
         if (
@@ -157,9 +169,12 @@ def _move_without_overwrite(
     on_destination_created: Optional[Callable[[Dict[str, int]], None]] = None,
     on_destination_finalized: Optional[Callable[[], None]] = None,
     expected_source_identity: Optional[Tuple[int, int]] = None,
+    before_destination_create: Optional[Callable[[], None]] = None,
 ) -> None:
     """Move a file without ever replacing an existing destination."""
     try:
+        if before_destination_create is not None:
+            before_destination_create()
         os.link(source, target)
     except FileExistsError:
         raise
@@ -172,6 +187,7 @@ def _move_without_overwrite(
             on_destination_created,
             on_destination_finalized,
             expected_source_identity,
+            before_destination_create,
         )
         return
 
@@ -216,6 +232,7 @@ class PreviewPlan:
     job_id: str
     source: Path
     destination: Path
+    disposition: str = "move"
 
 
 class PlanMoveLog:
@@ -422,12 +439,27 @@ class PlanMoveLog:
                     if not target.exists() and reservation not in reservations:
                         break
                     if not uses_counter:
+                        if self.job.no_counter_collision_policy in {
+                            "quarantine",
+                            "leave-source",
+                        }:
+                            plans.append(
+                                PreviewPlan(
+                                    job_id=self.job.job_id,
+                                    source=source,
+                                    destination=target,
+                                    disposition=self.job.no_counter_collision_policy,
+                                )
+                            )
+                            break
                         raise RenameWatchConfigError(
                             "job '{0}' dry-run destination collision: {1}".format(
                                 self.job.job_id, target
                             )
                         )
                     counter += 1
+                if plans and plans[-1].source == source and plans[-1].disposition != "move":
+                    continue
                 reservations.add(reservation)
                 if uses_counter:
                     counters[date_key] = counter + 1
@@ -489,7 +521,9 @@ class PlanMoveLog:
                 self._guard_destination(target, destination_identity)
                 if target.exists():
                     if not uses_counter:
-                        raise FileExistsError("Destination already exists: {0}".format(target))
+                        raise ExactNameCollision(
+                            target, self.job.no_counter_collision_policy
+                        )
                     counter += 1
                     continue
 
@@ -548,7 +582,9 @@ class PlanMoveLog:
                     self._guard_destination(target, destination_identity)
                     self.journal.delete(holder[0])
                     if not uses_counter:
-                        raise FileExistsError("Destination already exists: {0}".format(target))
+                        raise ExactNameCollision(
+                            target, self.job.no_counter_collision_policy
+                        )
                     counter += 1
                     continue
                 self._guard_destination(target, destination_identity)

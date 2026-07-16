@@ -1773,6 +1773,11 @@ def test_once_persistent_finalized_unlink_failure_logs_once_and_keeps_evidence(
     assert len(pending) == 1
     assert pending[0]["state"] == "destination_finalized"
     assert pending[0]["transfer_kind"] == transfer_kind
+    durable_failures = service.failure_stores[job.job_id].records()
+    assert len(durable_failures) == 1
+    assert durable_failures[0]["reason"] == "recovery_pending"
+    assert durable_failures[0]["disposition"] == "leave-source"
+    assert durable_failures[0]["attempted_destination_path"] == pending[0]["destination_path"]
     destination = Path(pending[0]["destination_path"])
     assert destination.read_text(encoding="utf-8") == "content"
     if transfer_kind == "hard_link":

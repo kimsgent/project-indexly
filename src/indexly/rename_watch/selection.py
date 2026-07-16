@@ -236,8 +236,15 @@ class SelectionPolicy:
     max_file_size_bytes: Optional[int]
     root_ignore: Optional[IgnoreRules]
     protect_indexlyignore: bool
+    quarantine_path: Optional[Path]
 
     def accepts_file(self, path: Path, size: int) -> bool:
+        if self.quarantine_path is not None:
+            try:
+                path.resolve().relative_to(self.quarantine_path.resolve())
+                return False
+            except (ValueError, OSError):
+                pass
         if (
             self.protect_indexlyignore
             and path.parent.resolve() == self.root.resolve()
@@ -259,6 +266,12 @@ class SelectionPolicy:
         return self.max_file_size_bytes is None or size <= self.max_file_size_bytes
 
     def excludes_directory(self, path: Path) -> bool:
+        if self.quarantine_path is not None:
+            try:
+                path.resolve().relative_to(self.quarantine_path.resolve())
+                return True
+            except (ValueError, OSError):
+                pass
         if _matches_globs(self.exclude, path, self.root, directory=True):
             return True
         return self.root_ignore is not None and self.root_ignore.should_ignore(
@@ -280,6 +293,7 @@ def load_selection_policy(job: RenameWatchJob) -> SelectionPolicy:
         max_file_size_bytes=job.max_file_size_bytes,
         root_ignore=root_ignore,
         protect_indexlyignore=job.respect_indexlyignore,
+        quarantine_path=job.quarantine_path,
     )
 
 

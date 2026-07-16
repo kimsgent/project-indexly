@@ -314,14 +314,14 @@ Completed:
   unchanged. Argument parsing, update checks, and the generic application error
   renderer cannot add noise or duplicate output at this boundary.
 
-Immediate next:
+Roadmap next:
 
-- Begin Stage 4 with an optional quarantine destination and durable, sanitized
-  terminal-failure metadata.
+- Begin Stage 5 with portable service templates and a bounded graceful-shutdown
+  contract.
 
-Later in Stage 3:
+Deferred from completed stages:
 
-- None. The file-selection stage is complete.
+- None. Stages 1 through 4 are complete.
 
 ### Stage 3: File selection
 
@@ -348,15 +348,28 @@ Status: **Completed**
 
 ### Stage 4: Failure handling
 
-Status: **Next**
+Status: **Completed**
 
-- Add an optional quarantine destination for terminal failures.
-- Write sidecar failure metadata containing the job, source, attempted target,
-  attempts, timestamps, and sanitized error details.
-- Add an explicit command to retry quarantined or terminal failures.
-- Add an optional exact-name collision policy for no-counter patterns with
-  safe values such as `fail`, `quarantine`, and `leave-source`; never append an
-  undeclared counter and never overwrite.
+- Optional `quarantine_subfolder` keeps legacy configurations unchanged while
+  giving exhausted terminal failures an exclusive, identity-checked destination.
+  Every configured destination and quarantine subtree is excluded across jobs
+  that share a watch root.
+- Canonical version-1 failure records are namespaced, bounded, sanitized, and
+  durable independently of retained NDJSON logs. Quarantine uses recoverable
+  transfer phases and an immutable ASCII sidecar beside a payload directory
+  that preserves the original basename.
+- `--status` exposes sanitized durable failure summaries and retry IDs.
+  `--retry-failures` supports one UUID or a confirmed job snapshot, acquires the
+  normal root lock, validates payload identity and selection policy, and uses
+  the existing no-overwrite planner. Bulk retry is documented as fail-fast and
+  may commit an earlier success before a later refusal.
+- No-counter jobs can opt into `fail`, `quarantine`, or `leave-source` exact-name
+  collision handling. `fail` retains bounded retries; the other two are
+  immediately terminal. Counter jobs retain monotonic allocation, and ordinary
+  retries use a fresh counter.
+- Finalized normal moves that still need source deletion remain
+  `recovery_pending` with their original journal, target, and counter; they are
+  never quarantined or replanned.
 
 ### Stage 5: Service operation
 
@@ -390,8 +403,9 @@ Status: **Next**
    counter reset now share stable exit codes and optional JSON errors.
 3. Completed: Stage 3 file selection, opt-in recursive watching, root-local
    `.indexlyignore` integration, and maximum-size guards now share one policy.
-4. Next: add quarantine and retry workflows from Stage 4.
-5. Add portable service integration from Stage 5.
+4. Completed: Stage 4 durable failures, quarantine, guarded retry, and explicit
+   no-counter collision policies.
+5. Next: add portable service integration from Stage 5.
 6. Publish the schema and migration foundation from Stage 6.
 
 After every increment, update this roadmap with what is **Completed**, what is

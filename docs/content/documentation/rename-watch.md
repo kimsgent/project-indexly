@@ -36,6 +36,7 @@ directory beside the JSON file. Edit the generated configuration if needed:
     "exclude": ["Thumbs.db", "desktop.ini", ".DS_Store", ".thumbnails/"],
     "respect_indexlyignore": true,
     "recursive": false,
+    "quarantine_subfolder": ".indexly-quarantine",
     "retry": {"max_attempts": 8, "initial_delay_seconds": 2, "max_delay_seconds": 60}
   }]
 }
@@ -110,12 +111,12 @@ indexly rename-watch --config rename-watch.json --check-config
 ```
 
 This validates the schema and relative paths, creates a missing watch root,
-tests watch-root, destination, and runtime-state creation/access, strictly
-reads existing counter and recovery state, and verifies that every watch-root
-lock is available. The access checks use disposable create, flush,
-atomic-replace, and delete probes and restore destination and state directories
-that did not exist before the check. They do not start observers, recover
-operations, move user files, consume counters, or write audit records.
+probes watch-root, destination, optional-quarantine, and runtime-state access,
+strictly reads existing counter and recovery state, and verifies that every
+watch-root lock is available. The access checks use disposable create, flush,
+atomic-replace, and delete probes and restore destination, quarantine, and state
+directories that did not exist before the check. They do not start observers,
+recover operations, move user files, consume counters, or write audit records.
 
 Preview the frozen `--once` plan without moving files or consuming counter
 state:
@@ -124,7 +125,9 @@ state:
 indexly rename-watch --config rename-watch.json --once --dry-run
 ```
 
-Each output line identifies the job, source, and proposed destination. Preview
+Each output line identifies the job, source, and proposed destination. For an
+exact-name collision configured as `quarantine` or `leave-source`, it also
+reports that non-moving disposition. Preview
 uses the same deterministic source order as a real `--once` run, models
 persisted counters and existing/planned collisions in memory, and refuses to
 continue when recovery state is unfinished or malformed. When jobs share a
@@ -147,15 +150,18 @@ indexly rename-watch --config rename-watch.json --status --json
 ```
 
 The human report and versioned JSON document include each configured mode and
-path, watch-path availability, pending recovery journals, the latest successful
-move found in retained logs, and the count plus newest ten terminal failures
-found in retained logs. The JSON schema identifier is
+path, quarantine and collision settings, watch-path availability, pending
+recovery journals, sanitized durable active failures with their retry IDs, the
+latest successful move found in retained logs, and the count plus newest ten
+terminal failures found in retained logs. Durable failures are reported
+separately from retained history because log rotation never removes actionable
+failure state. The JSON schema identifier is
 `indexly.rename-watch.status` and its current version is `1`.
 
 Status is a read-only snapshot. It does not acquire the consumer lock, start an
 observer or worker, run access or filesystem-policy probes, recover or change a
 journal, inspect or consume counters, apply log retention, write audit records,
-or create configured watch and destination directories. A running service's
+or create configured watch, destination, or quarantine directories. A running service's
 settling and retry queue exists only in that process, so status reports the live
 pending queue as unavailable rather than incorrectly reporting zero files.
 
@@ -220,6 +226,78 @@ files or recovery journals. Existing destination names remain protected by the
 normal collision checks, so the next move may advance beyond the reset value
 rather than overwrite a file.
 
+## Quarantine, exact-name collisions, and retry
+
+`quarantine_subfolder` is an optional strict child of `watch_path`, disjoint
+from every configured destination and quarantine subtree that overlaps the
+same job set. When it is omitted, existing configurations keep terminal files
+at their source path. When it is configured, ordinary failures that exhaust
+the bounded retry policy are moved there with the same exclusive,
+identity-checked hard-link/copy fallback used by normal moves. Rename-watch
+rejects linked or Windows-reparse quarantine components, checks the directory
+identity throughout transfer, preserves the source on a detected substitution,
+and never overwrites an existing payload.
+
+Each quarantined file receives a UUID and this layout, preserving its original
+basename without reserving a filename that an input may legitimately use:
+
+```text
+<quarantine_subfolder>/<job-namespace>/<failure-id>/
+  payload/<original-basename>
+  failure.json
+```
+
+`failure.json` is immutable, ASCII-safe incident evidence containing the job,
+original source, attempted destination when known, attempts, timestamps,
+disposition, and bounded control-free error details. Canonical active state is
+stored separately under Indexly's `rename-watch/failures/<job-namespace>/`
+state tree. Startup completes only unambiguous quarantine transitions, repairs
+a missing sidecar after a finalized payload, and fails closed on detected
+directory substitution, replacement, linked, partial-copy, or otherwise
+ambiguous evidence. Failure audit delivery is at least once and is deduplicable
+by `failure_id`.
+
+For a pattern without `{counter}`, `no_counter_collision_policy` accepts
+`fail`, `quarantine`, or `leave-source` and defaults to `fail`. It must not be
+set on a counter pattern. `fail` preserves bounded retry behavior;
+`quarantine` and `leave-source` become terminal immediately. The `quarantine`
+value requires `quarantine_subfolder`. No policy appends an undeclared counter
+or overwrites the exact destination. For example:
+
+```json
+{
+  "pattern": "{date}-{title}",
+  "counter_format": "",
+  "quarantine_subfolder": ".indexly-quarantine",
+  "no_counter_collision_policy": "quarantine"
+}
+```
+
+Use the failure IDs shown by `--status` to retry one failure or a confirmed
+snapshot of all failures for one job:
+
+```powershell
+indexly rename-watch --config rename-watch.json --retry-failures --job downloads --failure-id 3f7bbf87-842b-4a68-a3a8-1450d36f47f5
+indexly rename-watch --config rename-watch.json --retry-failures --job downloads --all-failures --yes
+indexly rename-watch --config rename-watch.json --retry-failures --job downloads --all-failures --yes --json
+```
+
+Without `--yes`, an interactive single retry requires `RETRY <failure-id>` and
+a bulk retry requires `RETRY ALL <job-id>`. Non-interactive, `--json`, and
+`--json-errors` retries require `--yes`. Successful JSON output uses
+`indexly.rename-watch.failure-retry`, version `1`.
+
+Retry acquires the normal watch-root lock, recovers safe pending state, verifies
+that the recorded payload identity and original selection policy still match,
+and then uses the normal planner. Counter jobs allocate a fresh monotonic
+counter; exact-name jobs remain exact and no-overwrite. A successful retry
+removes canonical active state but retains an immutable quarantine sidecar.
+`--all-failures` is deterministic and fail-fast: records completed before a
+later refusal stay completed, while the refused and unattempted records remain
+durable for another invocation. A finalized normal move with source-deletion
+trouble is recorded as `recovery_pending`, never quarantined, and retry resumes
+its original journaled destination and counter instead of replanning it.
+
 ## Automation errors and exit codes
 
 Every rename-watch mode accepts `--json-errors`. The option changes failures
@@ -231,7 +309,7 @@ combine the options when success and failure must both be structured:
 indexly rename-watch --config rename-watch.json --status --json --json-errors
 ```
 
-Counter reset requires `--yes` whenever `--json-errors` is present. This
+Counter reset and failure retry require `--yes` whenever `--json-errors` is present. This
 prevents an interactive confirmation prompt from contaminating either machine
 output stream.
 

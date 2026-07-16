@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -12,10 +13,12 @@ from typing import Any, Dict, List, Optional, Tuple
 from indexly.rename_constants import DEFAULT_PATTERN, SUPPORTED_DATE_FORMATS
 
 VALID_MODES = {"event", "interval", "hybrid"}
+VALID_NO_COUNTER_COLLISION_POLICIES = {"fail", "quarantine", "leave-source"}
 _JOB_KEYS = {
     "id", "watch_path", "destination_subfolder", "pattern", "date_format",
     "counter_format", "title_format", "mode", "scan_interval_seconds", "settle_seconds", "retry",
     "include", "exclude", "respect_indexlyignore", "recursive", "max_file_size_bytes",
+    "quarantine_subfolder", "no_counter_collision_policy",
 }
 _RETRY_KEYS = {"max_attempts", "initial_delay_seconds", "max_delay_seconds"}
 _MISSING = object()
@@ -50,6 +53,8 @@ class RenameWatchJob:
     respect_indexlyignore: bool = False
     recursive: bool = False
     max_file_size_bytes: Optional[int] = None
+    quarantine_path: Optional[Path] = None
+    no_counter_collision_policy: str = "fail"
 
 
 @dataclass(frozen=True)
@@ -69,6 +74,19 @@ def _is_relative_to(path: Path, parent: Path) -> bool:
         return True
     except ValueError:
         return False
+
+
+def _portable_is_relative_to(path: Path, parent: Path) -> bool:
+    """Compare protected paths conservatively across case/Unicode filesystems."""
+    child_parts = tuple(
+        unicodedata.normalize("NFC", part).casefold()
+        for part in Path(os.path.abspath(os.fspath(path))).parts
+    )
+    parent_parts = tuple(
+        unicodedata.normalize("NFC", part).casefold()
+        for part in Path(os.path.abspath(os.fspath(parent))).parts
+    )
+    return child_parts[: len(parent_parts)] == parent_parts
 
 
 def ensure_watch_directory(path: Path, context: str = "watch_path") -> None:
@@ -162,6 +180,48 @@ def _parse_max_file_size(value: Any, context: str) -> Optional[int]:
     return value
 
 
+def _parse_quarantine_path(
+    value: Any,
+    context: str,
+    watch_path: Path,
+    destination_path: Path,
+) -> Optional[Path]:
+    if value is _MISSING:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise RenameWatchConfigError(
+            "{0} must be a non-empty relative path".format(context)
+        )
+    relative = Path(value)
+    if relative.is_absolute() or ".." in relative.parts:
+        raise RenameWatchConfigError("{0} must stay below watch_path".format(context))
+    path = Path(os.path.abspath(str(watch_path / relative)))
+    resolved = path.resolve()
+    if (
+        path == watch_path
+        or not _portable_is_relative_to(path, watch_path)
+        or not _is_relative_to(resolved, watch_path)
+        or _portable_is_relative_to(path, destination_path)
+        or _portable_is_relative_to(destination_path, path)
+    ):
+        raise RenameWatchConfigError(
+            "{0} must be a strict child of watch_path disjoint from destination_subfolder".format(
+                context
+            )
+        )
+    return path
+
+
+def _parse_collision_policy(value: Any, context: str) -> str:
+    if value is _MISSING:
+        return "fail"
+    if not isinstance(value, str) or value not in VALID_NO_COUNTER_COLLISION_POLICIES:
+        raise RenameWatchConfigError(
+            "{0} must be fail, quarantine, or leave-source".format(context)
+        )
+    return value
+
+
 def _validate_pattern(pattern: Any, context: str) -> str:
     if not isinstance(pattern, str) or not pattern.strip():
         raise RenameWatchConfigError("{0}.pattern must be a non-empty string".format(context))
@@ -240,6 +300,28 @@ def _parse_job(raw_value: Any, index: int, config_directory: Path) -> RenameWatc
     mode = raw.get("mode", "hybrid")
     if mode not in VALID_MODES:
         raise RenameWatchConfigError("{0}.mode must be event, interval, or hybrid".format(context))
+    quarantine_path = _parse_quarantine_path(
+        raw.get("quarantine_subfolder", _MISSING),
+        context + ".quarantine_subfolder",
+        watch_path,
+        destination_path,
+    )
+    collision_policy = _parse_collision_policy(
+        raw.get("no_counter_collision_policy", _MISSING),
+        context + ".no_counter_collision_policy",
+    )
+    if uses_counter and "no_counter_collision_policy" in raw:
+        raise RenameWatchConfigError(
+            "{0}.no_counter_collision_policy is valid only when pattern omits {{counter}}".format(
+                context
+            )
+        )
+    if collision_policy == "quarantine" and quarantine_path is None:
+        raise RenameWatchConfigError(
+            "{0}.quarantine_subfolder is required when no_counter_collision_policy is quarantine".format(
+                context
+            )
+        )
     return RenameWatchJob(
         job_id=job_id,
         watch_path=watch_path,
@@ -273,6 +355,8 @@ def _parse_job(raw_value: Any, index: int, config_directory: Path) -> RenameWatc
             raw.get("max_file_size_bytes", _MISSING),
             context + ".max_file_size_bytes",
         ),
+        quarantine_path=quarantine_path,
+        no_counter_collision_policy=collision_policy,
     )
 
 
@@ -313,6 +397,23 @@ def load_settings(config_path: str) -> RenameWatchSettings:
     ids = [job.job_id for job in jobs]
     if len(ids) != len(set(ids)):
         raise RenameWatchConfigError("configuration.jobs contains duplicate id values")
+    for job in jobs:
+        if job.quarantine_path is None:
+            continue
+        for other in jobs:
+            for protected in (other.destination_path, other.quarantine_path):
+                if protected is None or protected == job.quarantine_path:
+                    continue
+                if _portable_is_relative_to(
+                    job.quarantine_path, protected
+                ) or _portable_is_relative_to(
+                    protected, job.quarantine_path
+                ):
+                    raise RenameWatchConfigError(
+                        "job '{0}' quarantine_subfolder overlaps job '{1}' protected subtree".format(
+                            job.job_id, other.job_id
+                        )
+                    )
     return RenameWatchSettings(config_path=path, jobs=jobs)
 
 

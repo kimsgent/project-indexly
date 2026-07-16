@@ -19,6 +19,7 @@ from indexly.runtime_paths import resolve_base_dir
 from .config import RenameWatchConfigError, RenameWatchJob, load_settings
 from .identity import state_namespace
 from .journal import MoveJournal
+from .failure_store import FailureStore
 
 SCHEMA = "indexly.rename-watch.status"
 VERSION = 1
@@ -705,6 +706,23 @@ def build_status(
     jobs = []
     for index, job in enumerate(settings.jobs):
         pending = _read_journal_records(job, effective_state_root)
+        durable_failures = FailureStore(job, effective_state_root).records()
+        failure_summaries = [
+            {
+                "failure_id": record["failure_id"],
+                "state": record["state"],
+                "reason": record["reason"],
+                "disposition": record["disposition"],
+                "original_source_path": record["original_source_path"],
+                "current_path": record["current_path"],
+                "attempted_destination_path": record["attempted_destination_path"],
+                "attempts": record["attempts"],
+                "created_at": record["created_at"],
+                "updated_at": record["updated_at"],
+                "error": record["error"],
+            }
+            for record in durable_failures
+        ]
         moved = list(histories[index]["moved"].values())
         moved_order = 1 if any(value[2]["legacy_ambiguous"] for value in moved) else 0
         last_move = (
@@ -723,6 +741,12 @@ def build_status(
                 "mode": job.mode,
                 "watch_path": os.fspath(job.watch_path),
                 "destination_path": os.fspath(job.destination_path),
+                "quarantine_path": (
+                    os.fspath(job.quarantine_path)
+                    if job.quarantine_path is not None
+                    else None
+                ),
+                "no_counter_collision_policy": job.no_counter_collision_policy,
                 "watch_path_status": _watch_path_status(job.watch_path),
                 "pending_queue_available": False,
                 "pending_queue": None,
@@ -731,6 +755,8 @@ def build_status(
                 "last_successful_move": last_move,
                 "retained_terminal_failure_count": len(failures),
                 "recent_terminal_failures": [value[2] for value in failures[:10]],
+                "active_failure_count": len(failure_summaries),
+                "active_failures": failure_summaries,
             }
         )
     return {
@@ -769,6 +795,10 @@ def render_human(status: dict) -> str:
                     _quoted(job["watch_path"]), job["watch_path_status"]
                 ),
                 "  Destination: {0}".format(_quoted(job["destination_path"])),
+                "  Quarantine: {0}".format(_quoted(job["quarantine_path"])),
+                "  No-counter collision policy: {0}".format(
+                    _quoted(job["no_counter_collision_policy"])
+                ),
                 "  Pending recovery operations: {0}".format(
                     len(job["pending_recovery_operations"])
                 ),
@@ -783,6 +813,12 @@ def render_human(status: dict) -> str:
                 ),
                 "  Recent terminal failures (newest 10 retained): {0}".format(
                     _quoted(job["recent_terminal_failures"])
+                ),
+                "  Durable active failures: {0}".format(
+                    job["active_failure_count"]
+                ),
+                "  Durable failure detail: {0}".format(
+                    _quoted(job["active_failures"])
                 ),
             ]
         )

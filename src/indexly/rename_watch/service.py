@@ -11,12 +11,14 @@ from .config import (
     initialize_settings,
     load_settings,
 )
-from .logging import log_failure, log_move
+from .logging import log_failure, log_failure_record, log_move
 from .locking import WatchRootLock
 from .planner import PlanMoveLog
 from .identity import canonical_root_identity, state_namespace
 from .error_contract import RenameWatchUsageError
 from .selection import load_selection_policy
+from .failure_store import FailureStore
+from .planner import ExactNameCollision
 
 _IDENTITY_UNAVAILABLE = object()
 
@@ -43,6 +45,16 @@ class RenameWatchService:
         }
         self.pending = {}; self.snapshots = {}; self.next_scan = {j.job_id: 0.0 for j in jobs}
         self.movers = {j.job_id: PlanMoveLog(j, state_root) for j in jobs}; self.observers = []; self.root_locks = []
+        self.failure_stores = {
+            job.job_id: FailureStore(job, state_root) for job in jobs
+        }
+        self._protected_subtrees = tuple(
+            path
+            for configured_job in jobs
+            for path in (configured_job.destination_path, configured_job.quarantine_path)
+            if path is not None
+        )
+        self._blocked_failure_sources = {}
     def _selection_policy(self, job):
         policy = self.selection_policies.get(job.job_id)
         if policy is None:
@@ -78,8 +90,18 @@ class RenameWatchService:
             or is_reparse
             or _temporary(path)
             or not _inside(path, job.watch_path)
-            or _inside(path, job.destination_path)
+            or any(_inside(path, protected) for protected in self._protected_subtrees)
         ):
+            return False
+        blocked = self._blocked_failure_sources.get(
+            (job.job_id, os.path.normcase(os.path.abspath(os.fspath(path))))
+        )
+        if blocked is not None and blocked == {
+            "device": int(file_stat.st_dev),
+            "inode": int(file_stat.st_ino),
+            "size": int(file_stat.st_size),
+            "mtime_ns": int(file_stat.st_mtime_ns),
+        }:
             return False
         return self._selection_policy(job).accepts_file(path, file_stat.st_size)
     def schedule(self, job, path, attempts=0, delay=0.0, reset_settle=False, required_delay=False, assume_eligible=False):
@@ -195,7 +217,10 @@ class RenameWatchService:
                         )
                     except OSError:
                         linked = True
-                    if linked or _inside(candidate, job.destination_path):
+                    if linked or any(
+                        _inside(candidate, protected)
+                        for protected in self._protected_subtrees
+                    ):
                         continue
                     if policy.excludes_directory(candidate):
                         continue
@@ -231,13 +256,51 @@ class RenameWatchService:
             recovered=result.recovered,
             job_namespace=state_namespace(job.watch_path, job.job_id),
         )
+        self._resolve_failure_for_source(job, result.source)
         self.movers[job.job_id].complete(result.operation_id)
+
+    def _resolve_failure_for_source(self, job, source):
+        source_key = os.path.normcase(os.path.abspath(os.fspath(source)))
+        store = self.failure_stores[job.job_id]
+        for record in store.records():
+            if os.path.normcase(os.path.abspath(record["current_path"])) == source_key:
+                store.resolve(record)
     def _recover_job(self, job):
         for result in self.movers[job.job_id].recover_pending():
             self._audit_move(job, result)
     def _recover_pending_moves(self):
         for job in self.jobs:
+            # A retry uses the normal move journal. Recover it before validating
+            # the failure payload because a completed retry legitimately removes
+            # that payload before its audit and failure cleanup finish.
             self._recover_job(job)
+            self.failure_stores[job.job_id].recover()
+            for record in self.failure_stores[job.job_id].records():
+                if not record["audited"]:
+                    log_failure_record(job, record)
+                    self.failure_stores[job.job_id].mark_audited(record)
+            self._load_failure_blocks(job)
+
+    def _load_failure_blocks(self, job):
+        for key in [key for key in self._blocked_failure_sources if key[0] == job.job_id]:
+            self._blocked_failure_sources.pop(key, None)
+        for record in self.failure_stores[job.job_id].records():
+            if record["state"] != "active":
+                continue
+            key = (
+                job.job_id,
+                os.path.normcase(os.path.abspath(record["original_source_path"])),
+            )
+            self._blocked_failure_sources[key] = record["source_identity"]
+
+    def _validate_failure_state(self):
+        for job in self.jobs:
+            records = self.failure_stores[job.job_id].records()
+            if any(record["state"] not in {"active", "quarantined"} for record in records):
+                raise RenameWatchConfigError(
+                    "job '{0}' has an unfinished failure transition".format(job.job_id)
+                )
+            self._load_failure_blocks(job)
     def _acquire_root_locks(self):
         locks = []
         covered_keys = set()
@@ -293,10 +356,61 @@ class RenameWatchService:
         if first_error is not None: raise first_error
     def reconcile(self, job):
         for path in self._discover_candidates(job): self.schedule(job, path)
+    def _commit_terminal_failure(
+        self,
+        job,
+        source,
+        attempts,
+        error,
+        *,
+        reason,
+        attempted_destination,
+        disposition_override=None,
+    ):
+        disposition = disposition_override or (
+            error.policy
+            if isinstance(error, ExactNameCollision)
+            and error.policy in {"quarantine", "leave-source"}
+            else ("quarantine" if job.quarantine_path is not None else "leave-source")
+        )
+        record = self.failure_stores[job.job_id].record_terminal(
+            source,
+            attempted_destination,
+            error,
+            attempts,
+            reason=reason,
+            disposition=disposition,
+        )
+        if record["state"] == "active":
+            self._blocked_failure_sources[
+                (
+                    job.job_id,
+                    os.path.normcase(os.path.abspath(record["original_source_path"])),
+                )
+            ] = record["source_identity"]
+        log_failure(
+            job.job_id,
+            source,
+            attempted_destination or source,
+            job.pattern,
+            attempts,
+            error,
+            None,
+            state_namespace(job.watch_path, job.job_id),
+            record["failure_id"],
+            record["reason"],
+            record["disposition"],
+            Path(record["current_path"]),
+        )
+        return self.failure_stores[job.job_id].mark_audited(record)
+
     def _handle_processing_error(self, job, source, key, attempts, error, force_retry=False):
         self._discard_snapshot(key)
         source_available = force_retry or source.exists()
-        if attempts + 1 < job.retry.max_attempts and source_available:
+        immediate_collision = isinstance(error, ExactNameCollision) and error.policy in {
+            "quarantine", "leave-source"
+        }
+        if not immediate_collision and attempts + 1 < job.retry.max_attempts and source_available:
             delay = min(job.retry.initial_delay_seconds * (2 ** attempts), job.retry.max_delay_seconds)
             self.schedule(
                 job,
@@ -310,15 +424,14 @@ class RenameWatchService:
             finalized = self.movers[job.job_id].finalized_operation(source)
             if finalized is not None:
                 operation_id, target = finalized
-                log_failure(
-                    job.job_id,
+                self._commit_terminal_failure(
+                    job,
                     source,
-                    target,
-                    job.pattern,
                     attempts + 1,
                     error,
-                    operation_id,
-                    state_namespace(job.watch_path, job.job_id),
+                    reason="recovery_pending",
+                    attempted_destination=target,
+                    disposition_override="leave-source",
                 )
                 return
             if not self.movers[job.job_id].abort_unstarted(source):
@@ -327,16 +440,22 @@ class RenameWatchService:
                         job.job_id
                     )
                 )
-            target = job.destination_path / source.name
-            log_failure(
-                job.job_id,
+            target = (
+                error.target
+                if isinstance(error, ExactNameCollision)
+                else None
+            )
+            self._commit_terminal_failure(
+                job,
                 source,
-                target,
-                job.pattern,
                 attempts + 1,
                 error,
-                None,
-                state_namespace(job.watch_path, job.job_id),
+                reason=(
+                    "no_counter_collision"
+                    if isinstance(error, ExactNameCollision)
+                    else "processing_error"
+                ),
+                attempted_destination=target,
             )
     def _process(self, job, source, attempts):
         key = (job.job_id, str(source))
@@ -528,16 +647,13 @@ class RenameWatchService:
             error = TimeoutError(
                 "file did not settle or complete retries within the bounded --once window"
             )
-            target = job.destination_path / source.name
-            log_failure(
-                job.job_id,
+            self._commit_terminal_failure(
+                job,
                 source,
-                target,
-                job.pattern,
                 max(1, attempts + 1),
                 error,
-                None,
-                state_namespace(job.watch_path, job.job_id),
+                reason="settle_timeout",
+                attempted_destination=None,
             )
     def _next_once_delay(self, deadlines, now):
         with self._state_lock:
@@ -589,9 +705,11 @@ class RenameWatchService:
         self._prepare_watch_paths(); self._acquire_root_locks()
         primary_error = None
         try:
+            self._validate_failure_state()
             for job in self.jobs:
                 self._discover_candidates(job)
                 self.movers[job.job_id].validate_check_access()
+                self.failure_stores[job.job_id].validate_check_access()
         except BaseException as error:
             primary_error = error
             raise
@@ -601,6 +719,7 @@ class RenameWatchService:
         self._prepare_watch_paths(); self._acquire_root_locks()
         primary_error = None
         try:
+            self._validate_failure_state()
             frozen = [
                 (job, self._discover_candidates(job)) for job in self.jobs
             ]
@@ -713,8 +832,17 @@ def handle_rename_watch(args):
     elif dry_run:
         for plan in service.dry_run_once():
             print(
-                "DRY-RUN job={0} source={1} destination={2}".format(
-                    plan.job_id, plan.source, plan.destination
+                "DRY-RUN job={0} source={1} destination={2}{3}".format(
+                    plan.job_id,
+                    plan.source,
+                    plan.destination,
+                        (
+                            " disposition={0}".format(
+                                getattr(plan, "disposition", "move")
+                            )
+                            if getattr(plan, "disposition", "move") != "move"
+                        else ""
+                    ),
                 )
             )
     elif once:

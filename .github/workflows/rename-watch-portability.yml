@@ -13,6 +13,7 @@ on:
       - "tests/test_rename_watch_selection.py"
       - "tests/test_rename_watch_counters.py"
       - "tests/test_rename_watch_errors.py"
+      - "tests/test_rename_watch_failures.py"
       - "tests/test_rename_watch_status.py"
       - "tests/test_rename_module.py"
   pull_request:
@@ -26,6 +27,7 @@ on:
       - "tests/test_rename_watch_selection.py"
       - "tests/test_rename_watch_counters.py"
       - "tests/test_rename_watch_errors.py"
+      - "tests/test_rename_watch_failures.py"
       - "tests/test_rename_watch_status.py"
       - "tests/test_rename_module.py"
   workflow_dispatch:
@@ -94,6 +96,7 @@ jobs:
           tests/test_rename_watch_selection.py
           tests/test_rename_watch_counters.py
           tests/test_rename_watch_errors.py
+          tests/test_rename_watch_failures.py
           tests/test_rename_watch_status.py
           tests/test_rename_module.py
           -q

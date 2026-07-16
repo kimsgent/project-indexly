@@ -1617,6 +1617,7 @@ def main():
                 getattr(args, "status", False),
                 getattr(args, "inspect_counters", False),
                 getattr(args, "reset_counters", False),
+                getattr(args, "retry_failures", False),
             )
             )
         )

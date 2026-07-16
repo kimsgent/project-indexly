@@ -72,6 +72,10 @@ def log_failure(
     error: Exception,
     operation_id: str = None,
     job_namespace: str = None,
+    failure_id: str = None,
+    failure_reason: str = None,
+    failure_disposition: str = None,
+    current_path: Path = None,
 ) -> None:
     entry = _entry(
         "RENAME_WATCH_FAILED",
@@ -83,6 +87,38 @@ def log_failure(
         operation_id=operation_id,
         job_namespace=job_namespace,
     )
-    entry["error_type"] = type(error).__name__
-    entry["error"] = str(error)
+    from .failure_store import sanitize_error
+
+    details = sanitize_error(error)
+    entry["error_type"] = details["type"]
+    entry["error"] = details["message"]
+    if failure_id is not None:
+        entry["failure_id"] = failure_id
+    if failure_reason is not None:
+        entry["failure_reason"] = failure_reason
+    if failure_disposition is not None:
+        entry["failure_disposition"] = failure_disposition
+    if current_path is not None:
+        entry["current_path"] = normalize_path(str(current_path))
+    log_index_event_dict_sync(entry)
+
+
+def log_failure_record(job, record: dict) -> None:
+    """Append one durable failure record; callers mark it audited afterward."""
+    destination = record.get("attempted_destination_path") or record["original_source_path"]
+    entry = _entry(
+        "RENAME_WATCH_FAILED",
+        job.job_id,
+        Path(record["original_source_path"]),
+        Path(destination),
+        job.pattern,
+        record["attempts"],
+        job_namespace=record["job_namespace"],
+    )
+    entry["error_type"] = record["error"]["type"]
+    entry["error"] = record["error"]["message"]
+    entry["failure_id"] = record["failure_id"]
+    entry["failure_reason"] = record["reason"]
+    entry["failure_disposition"] = record["disposition"]
+    entry["current_path"] = normalize_path(record["current_path"])
     log_index_event_dict_sync(entry)

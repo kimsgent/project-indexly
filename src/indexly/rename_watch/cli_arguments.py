@@ -42,6 +42,11 @@ def add_rename_watch_arguments(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Safely reset durable counter allocator state",
     )
+    actions.add_argument(
+        "--retry-failures",
+        action="store_true",
+        help="Restore or requeue durable terminal failures",
+    )
     parser.add_argument(
         "--once", action="store_true", help="Run one reconciliation scan and exit"
     )
@@ -61,14 +66,19 @@ def add_rename_watch_arguments(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Emit rename-watch failures as one versioned JSON document",
     )
-    parser.add_argument("--job", help="Exact, case-sensitive job id for counter operations")
+    parser.add_argument("--job", help="Exact, case-sensitive job id for operator actions")
     reset_scope = parser.add_mutually_exclusive_group()
     reset_scope.add_argument("--date-key", help="Reset one existing counter date key")
     reset_scope.add_argument(
         "--all-counters", action="store_true", help="Reset all counters for one job"
     )
     parser.add_argument(
-        "--yes", action="store_true", help="Bypass interactive counter reset confirmation"
+        "--yes", action="store_true", help="Bypass interactive reset or retry confirmation"
+    )
+    failure_scope = parser.add_mutually_exclusive_group()
+    failure_scope.add_argument("--failure-id", help="Retry one durable failure UUID")
+    failure_scope.add_argument(
+        "--all-failures", action="store_true", help="Retry all durable failures for one job"
     )
     parser.add_argument(
         "--mode", choices=["event", "interval", "hybrid"], help="Override configured run mode"

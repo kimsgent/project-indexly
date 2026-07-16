@@ -100,6 +100,8 @@ def test_status_schema_missing_runtime_state_is_read_only(tmp_path):
                 "mode": "hybrid",
                 "watch_path": str((tmp_path / "incoming").resolve()),
                 "destination_path": str((tmp_path / "incoming/processed").resolve()),
+                "quarantine_path": None,
+                "no_counter_collision_policy": "fail",
                 "watch_path_status": "available",
                 "pending_queue_available": False,
                 "pending_queue": None,
@@ -108,6 +110,8 @@ def test_status_schema_missing_runtime_state_is_read_only(tmp_path):
                 "last_successful_move": None,
                 "retained_terminal_failure_count": 0,
                 "recent_terminal_failures": [],
+                "active_failure_count": 0,
+                "active_failures": [],
             }
         ],
     }
