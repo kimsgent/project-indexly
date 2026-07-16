@@ -7,7 +7,7 @@ import math
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Tuple
 
 from indexly.rename_constants import DEFAULT_PATTERN, SUPPORTED_DATE_FORMATS
 
@@ -15,8 +15,10 @@ VALID_MODES = {"event", "interval", "hybrid"}
 _JOB_KEYS = {
     "id", "watch_path", "destination_subfolder", "pattern", "date_format",
     "counter_format", "title_format", "mode", "scan_interval_seconds", "settle_seconds", "retry",
+    "include", "exclude", "respect_indexlyignore", "recursive", "max_file_size_bytes",
 }
 _RETRY_KEYS = {"max_attempts", "initial_delay_seconds", "max_delay_seconds"}
+_MISSING = object()
 
 
 class RenameWatchConfigError(ValueError):
@@ -43,6 +45,11 @@ class RenameWatchJob:
     scan_interval_seconds: float
     settle_seconds: float
     retry: RetryPolicy
+    include: Optional[Tuple[str, ...]] = None
+    exclude: Tuple[str, ...] = ()
+    respect_indexlyignore: bool = False
+    recursive: bool = False
+    max_file_size_bytes: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -106,6 +113,53 @@ def _parse_retry(value: Any, context: str) -> RetryPolicy:
     if maximum < initial:
         raise RenameWatchConfigError("{0}.max_delay_seconds must be at least initial_delay_seconds".format(context))
     return RetryPolicy(max_attempts=max_attempts, initial_delay_seconds=initial, max_delay_seconds=maximum)
+
+
+def _parse_boolean(value: Any, context: str, default: bool = False) -> bool:
+    if value is _MISSING:
+        return default
+    if not isinstance(value, bool):
+        raise RenameWatchConfigError("{0} must be a boolean".format(context))
+    return value
+
+
+def _parse_globs(
+    value: Any,
+    context: str,
+    *,
+    absent: Optional[Tuple[str, ...]],
+    allow_empty: bool,
+) -> Optional[Tuple[str, ...]]:
+    if value is _MISSING:
+        return absent
+    if not isinstance(value, list):
+        raise RenameWatchConfigError("{0} must be a list of glob strings".format(context))
+    if not value and not allow_empty:
+        raise RenameWatchConfigError("{0} must contain at least one glob".format(context))
+    patterns = []
+    for pattern_index, pattern_value in enumerate(value):
+        item_context = "{0}[{1}]".format(context, pattern_index)
+        if not isinstance(pattern_value, str) or not pattern_value.strip():
+            raise RenameWatchConfigError("{0} must be a non-empty string".format(item_context))
+        pattern = pattern_value.strip()
+        if "\x00" in pattern:
+            raise RenameWatchConfigError("{0} must not contain NUL".format(item_context))
+        if pattern.startswith(("/", "\\")):
+            raise RenameWatchConfigError("{0} must be a relative POSIX glob".format(item_context))
+        if "\\" in pattern:
+            raise RenameWatchConfigError("{0} must use '/' as the path separator".format(item_context))
+        if ".." in pattern.split("/"):
+            raise RenameWatchConfigError("{0} must stay below watch_path".format(item_context))
+        patterns.append(pattern)
+    return tuple(patterns)
+
+
+def _parse_max_file_size(value: Any, context: str) -> Optional[int]:
+    if value is _MISSING:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise RenameWatchConfigError("{0} must be a positive integer".format(context))
+    return value
 
 
 def _validate_pattern(pattern: Any, context: str) -> str:
@@ -198,6 +252,27 @@ def _parse_job(raw_value: Any, index: int, config_directory: Path) -> RenameWatc
         scan_interval_seconds=_positive_number(raw.get("scan_interval_seconds", 60), context + ".scan_interval_seconds"),
         settle_seconds=_positive_number(raw.get("settle_seconds", 3), context + ".settle_seconds"),
         retry=_parse_retry(raw.get("retry"), context + ".retry"),
+        include=_parse_globs(
+            raw.get("include", _MISSING),
+            context + ".include",
+            absent=None,
+            allow_empty=False,
+        ),
+        exclude=_parse_globs(
+            raw.get("exclude", _MISSING),
+            context + ".exclude",
+            absent=(),
+            allow_empty=True,
+        ) or (),
+        respect_indexlyignore=_parse_boolean(
+            raw.get("respect_indexlyignore", _MISSING),
+            context + ".respect_indexlyignore",
+        ),
+        recursive=_parse_boolean(raw.get("recursive", _MISSING), context + ".recursive"),
+        max_file_size_bytes=_parse_max_file_size(
+            raw.get("max_file_size_bytes", _MISSING),
+            context + ".max_file_size_bytes",
+        ),
     )
 
 
@@ -258,7 +333,7 @@ def initialize_settings(config_path: str) -> Path:
         raise RenameWatchConfigError("Configuration path must end in .json: {0}".format(path))
     ensure_watch_directory(path.parent, "configuration directory")
     ensure_watch_directory(path.parent / "inbox", "default watch_path")
-    template = {"version": 1, "jobs": [{"id": "inbox", "watch_path": "inbox", "destination_subfolder": "processed", "pattern": "{date}-{title}-{counter}", "date_format": "%Y%m%d", "counter_format": "03d", "title_format": "standard", "mode": "hybrid", "scan_interval_seconds": 60, "settle_seconds": 3, "retry": {"max_attempts": 8, "initial_delay_seconds": 2, "max_delay_seconds": 60}}]}
+    template = {"version": 1, "jobs": [{"id": "inbox", "watch_path": "inbox", "destination_subfolder": "processed", "pattern": "{date}-{title}-{counter}", "date_format": "%Y%m%d", "counter_format": "03d", "title_format": "standard", "mode": "hybrid", "scan_interval_seconds": 60, "settle_seconds": 3, "include": ["*.docx", "*.pdf", "*.txt", "*.md"], "exclude": ["Thumbs.db", "desktop.ini", ".DS_Store", ".thumbnails/"], "respect_indexlyignore": True, "recursive": False, "retry": {"max_attempts": 8, "initial_delay_seconds": 2, "max_delay_seconds": 60}}]}
     try:
         with path.open("x", encoding="utf-8") as handle:
             json.dump(template, handle, indent=2)

@@ -316,25 +316,35 @@ Completed:
 
 Immediate next:
 
-- Begin Stage 3 with optional `include` and `exclude` glob lists that preserve
-  the current candidate behavior by default.
+- Begin Stage 4 with an optional quarantine destination and durable, sanitized
+  terminal-failure metadata.
 
-Later in Stage 2:
+Later in Stage 3:
 
-- None. The operator-command stage is complete.
+- None. The file-selection stage is complete.
 
 ### Stage 3: File selection
 
-Status: **Next**
+Status: **Completed**
 
-- Add optional `include` and `exclude` glob lists, defaulting to the existing
-  candidate behavior.
-- Add opt-in recursive watching; the default remains non-recursive.
-- Add an optional maximum-file-size guard.
-- Apply identical selection rules to event, interval, hybrid, and `--once`
-  workflows.
-- Keep destination subtrees, temporary files, symlinks, and directories
-  excluded regardless of user globs.
+- Optional `include` and `exclude` glob lists preserve the existing candidate
+  behavior when omitted. New templates explicitly recommend document inputs
+  (`docx`, `pdf`, `txt`, and `md`) and exclude common desktop metadata and
+  thumbnail artifacts.
+- Jobs can opt into the exact root-local `.indexlyignore` as an additional
+  exclusion source. Rename-watch never searches ancestors, loads an implicit
+  preset, or mutates the file, and it reads the rules once under the watch-root
+  lock so a restart is required after edits.
+- Recursive watching is opt-in and never follows linked directories. The
+  destination and excluded subtrees are pruned from reconciliation while
+  events still pass through the same central eligibility policy.
+- `max_file_size_bytes` is an optional positive-integer guard with an inclusive
+  boundary. Selection and size are rechecked before moving a settled file.
+- Event, interval, hybrid, `--once`, dry-run, and configuration checking share
+  one immutable per-job selection policy. Recovery remains independent of new
+  selection rules.
+- Destination subtrees, temporary files, symlinks, Windows reparse points, and
+  directories remain excluded regardless of user globs.
 
 ### Stage 4: Failure handling
 
@@ -378,8 +388,9 @@ Status: **Next**
 2. Completed: Stage 2 operator commands; `--check-config`,
    `--dry-run --once`, `--status [--json]`, counter inspection, and guarded
    counter reset now share stable exit codes and optional JSON errors.
-3. Next: add include/exclude selection from Stage 3.
-4. Add quarantine and retry workflows from Stage 4.
+3. Completed: Stage 3 file selection, opt-in recursive watching, root-local
+   `.indexlyignore` integration, and maximum-size guards now share one policy.
+4. Next: add quarantine and retry workflows from Stage 4.
 5. Add portable service integration from Stage 5.
 6. Publish the schema and migration foundation from Stage 6.
 

@@ -32,6 +32,10 @@ directory beside the JSON file. Edit the generated configuration if needed:
     "mode": "hybrid",
     "scan_interval_seconds": 60,
     "settle_seconds": 3,
+    "include": ["*.docx", "*.pdf", "*.txt", "*.md"],
+    "exclude": ["Thumbs.db", "desktop.ini", ".DS_Store", ".thumbnails/"],
+    "respect_indexlyignore": true,
+    "recursive": false,
     "retry": {"max_attempts": 8, "initial_delay_seconds": 2, "max_delay_seconds": 60}
   }]
 }
@@ -62,6 +66,40 @@ Hybrid mode reacts to filesystem events and periodically scans for files missed
 while copied or locked. Rename-watch waits for a file to remain unchanged for
 the configured settling period, retries transient filesystem errors, and logs
 only completed moves or final failures under Indexly's normal NDJSON log tree.
+
+## File selection
+
+New configurations created by `--init` use a standard document profile:
+`*.docx`, `*.pdf`, `*.txt`, and `*.md`. They also exclude common desktop
+metadata and thumbnail artifacts. These are explicit template values, not
+implicit defaults: an existing configuration that omits `include` and
+`exclude` continues to accept every otherwise eligible file.
+
+`include` and `exclude` are root-relative POSIX glob lists. Patterns without a
+slash match a filename at any selected depth; matching is case-insensitive so
+the document profile also accepts names such as `REPORT.PDF`. Within a path,
+`*` stays in one segment and `**` spans any number of directories. Matching
+normalizes composed and decomposed Unicode names. An exclude that matches a
+directory removes its subtree; a trailing slash makes that directory intent
+explicit. If a file matches both lists, `exclude` wins.
+Directories, symlinks or Windows reparse points, temporary files, and the
+destination subtree remain ineligible regardless of configured globs.
+
+Set `respect_indexlyignore` to `true` to add rules from exactly
+`<watch_path>/.indexlyignore` to the job's exclusions. Rename-watch does not
+search parent directories, recognize `.indexignore`, or substitute an ignore
+preset when the file is absent. The file uses Indexly's existing ignore-rule
+semantics, including its platform case behavior and built-in Office lock-file
+rule. It is read once while the watch-root lock is held; restart rename-watch to
+apply later edits. An unsafe, unreadable, oversized, or non-UTF-8 ignore file
+fails closed. Rename-watch never creates or changes this file.
+
+Set `recursive` to `true` to select files below the watch root. The default is
+`false`. Recursive scans and filesystem events use the same policy and never
+follow linked directories. Add `max_file_size_bytes` as a positive integer to
+reject files larger than that many bytes; a file exactly at the limit remains
+eligible. Omitting it leaves file size unrestricted. Selection and size are
+checked again immediately before a move.
 
 ## Validate and preview
 

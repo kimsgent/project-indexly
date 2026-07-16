@@ -10,6 +10,7 @@ on:
       - "src/indexly/**"
       - "tests/conftest.py"
       - "tests/test_rename_watch.py"
+      - "tests/test_rename_watch_selection.py"
       - "tests/test_rename_watch_counters.py"
       - "tests/test_rename_watch_errors.py"
       - "tests/test_rename_watch_status.py"
@@ -22,6 +23,7 @@ on:
       - "src/indexly/**"
       - "tests/conftest.py"
       - "tests/test_rename_watch.py"
+      - "tests/test_rename_watch_selection.py"
       - "tests/test_rename_watch_counters.py"
       - "tests/test_rename_watch_errors.py"
       - "tests/test_rename_watch_status.py"
@@ -89,6 +91,7 @@ jobs:
         run: >-
           python -m pytest
           tests/test_rename_watch.py
+          tests/test_rename_watch_selection.py
           tests/test_rename_watch_counters.py
           tests/test_rename_watch_errors.py
           tests/test_rename_watch_status.py

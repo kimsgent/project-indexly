@@ -1,6 +1,6 @@
 """Independent Watchdog and reconciliation service for rename-watch."""
 from __future__ import annotations
-import math, os, sys, threading, time
+import math, os, stat, sys, threading, time
 from pathlib import Path
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
@@ -16,6 +16,7 @@ from .locking import WatchRootLock
 from .planner import PlanMoveLog
 from .identity import canonical_root_identity, state_namespace
 from .error_contract import RenameWatchUsageError
+from .selection import load_selection_policy
 
 _IDENTITY_UNAVAILABLE = object()
 
@@ -35,10 +36,52 @@ class RenameWatchService:
         self._once_identities = None
         self._once_capture = False
         self._once_discovered_identities = {}
+        self.selection_policies = {
+            job.job_id: load_selection_policy(job)
+            for job in jobs
+            if not job.respect_indexlyignore
+        }
         self.pending = {}; self.snapshots = {}; self.next_scan = {j.job_id: 0.0 for j in jobs}
         self.movers = {j.job_id: PlanMoveLog(j, state_root) for j in jobs}; self.observers = []; self.root_locks = []
+    def _selection_policy(self, job):
+        policy = self.selection_policies.get(job.job_id)
+        if policy is None:
+            raise RenameWatchConfigError(
+                "job '{0}' selection policy was not loaded under its root lock".format(
+                    job.job_id
+                )
+            )
+        return policy
+    def _load_selection_policies(self):
+        loaded = []
+        try:
+            for job in self.jobs:
+                if job.job_id not in self.selection_policies:
+                    self.selection_policies[job.job_id] = load_selection_policy(job)
+                    loaded.append(job.job_id)
+        except BaseException:
+            for job_id in loaded:
+                self.selection_policies.pop(job_id, None)
+            raise
     def _eligible(self, job, path):
-        return path.exists() and path.is_file() and not path.is_symlink() and not _temporary(path) and _inside(path, job.watch_path) and not _inside(path, job.destination_path)
+        path = Path(path)
+        try:
+            file_stat = path.lstat()
+        except OSError:
+            return False
+        is_reparse = bool(
+            getattr(file_stat, "st_file_attributes", 0) & 0x400
+        )
+        if (
+            not stat.S_ISREG(file_stat.st_mode)
+            or stat.S_ISLNK(file_stat.st_mode)
+            or is_reparse
+            or _temporary(path)
+            or not _inside(path, job.watch_path)
+            or _inside(path, job.destination_path)
+        ):
+            return False
+        return self._selection_policy(job).accepts_file(path, file_stat.st_size)
     def schedule(self, job, path, attempts=0, delay=0.0, reset_settle=False, required_delay=False, assume_eligible=False):
         path = Path(path)
         if not assume_eligible and not self._eligible(job, path): return
@@ -90,19 +133,93 @@ class RenameWatchService:
             ensure_watch_directory(job.watch_path, "job '{0}' watch_path".format(job.job_id))
     def _discover_candidates(self, job):
         ensure_watch_directory(job.watch_path, "job '{0}' watch_path".format(job.job_id))
-        try:
-            paths = list(job.watch_path.iterdir())
-        except OSError as exc:
+        if job.recursive:
+            eligible = self._discover_recursive_candidates(job)
+        else:
+            try:
+                paths = list(job.watch_path.iterdir())
+            except OSError as exc:
+                raise RenameWatchConfigError(
+                    "job '{0}' watch_path could not be scanned: {1} ({2})".format(
+                        job.job_id, job.watch_path, exc
+                    )
+                ) from exc
+            eligible = [path.resolve() for path in paths if self._eligible(job, path)]
+        return sorted(
+            eligible,
+            key=lambda path: os.path.normcase(os.path.abspath(os.fspath(path))),
+        )
+    def _discover_recursive_candidates(self, job):
+        policy = self._selection_policy(job)
+        eligible = []
+
+        def scan_error(exc):
             raise RenameWatchConfigError(
                 "job '{0}' watch_path could not be scanned: {1} ({2})".format(
                     job.job_id, job.watch_path, exc
                 )
             ) from exc
-        eligible = [path.resolve() for path in paths if self._eligible(job, path)]
-        return sorted(
-            eligible,
-            key=lambda path: os.path.normcase(os.path.abspath(os.fspath(path))),
-        )
+
+        try:
+            walker = os.walk(
+                job.watch_path,
+                topdown=True,
+                onerror=scan_error,
+                followlinks=False,
+            )
+            for directory, names, filenames in walker:
+                current = Path(directory)
+                try:
+                    current_stat = current.lstat()
+                except OSError:
+                    names[:] = []
+                    continue
+                if (
+                    not stat.S_ISDIR(current_stat.st_mode)
+                    or stat.S_ISLNK(current_stat.st_mode)
+                    or bool(
+                        getattr(current_stat, "st_file_attributes", 0) & 0x400
+                    )
+                    or not _inside(current, job.watch_path)
+                    or _inside(current, job.destination_path)
+                ):
+                    names[:] = []
+                    continue
+                kept = []
+                for name in names:
+                    candidate = current / name
+                    try:
+                        linked = candidate.is_symlink() or bool(
+                            getattr(candidate.lstat(), "st_file_attributes", 0)
+                            & 0x400
+                        )
+                    except OSError:
+                        linked = True
+                    if linked or _inside(candidate, job.destination_path):
+                        continue
+                    if policy.excludes_directory(candidate):
+                        continue
+                    kept.append(name)
+                names[:] = sorted(
+                    kept,
+                    key=lambda value: os.path.normcase(
+                        os.path.abspath(os.fspath(current / value))
+                    ),
+                )
+                for filename in sorted(
+                    filenames,
+                    key=lambda value: os.path.normcase(
+                        os.path.abspath(os.fspath(current / value))
+                    ),
+                ):
+                    candidate = current / filename
+                    if self._eligible(job, candidate):
+                        eligible.append(candidate.resolve())
+        except RenameWatchConfigError:
+            raise
+        except OSError as exc:
+            scan_error(exc)
+        return eligible
     def _audit_move(self, job, result):
         log_move(
             job.job_id,
@@ -143,6 +260,11 @@ class RenameWatchService:
                 pass
             raise
         self.root_locks = locks
+        try:
+            self._load_selection_policies()
+        except BaseException:
+            self._release_root_locks()
+            raise
     def _release_root_locks(self):
         first_error = None
         for lock in reversed(self.root_locks):
@@ -259,6 +381,9 @@ class RenameWatchService:
             if previous != fingerprint:
                 self.schedule(job, source, attempts, job.settle_seconds, required_delay=True); return
             if rescheduled:
+                return
+            if not self._eligible(job, source):
+                self._discard_snapshot(key)
                 return
             with self._state_lock:
                 expected_identity = (
@@ -506,18 +631,28 @@ class RenameWatchService:
         class Handler(FileSystemEventHandler):
             def __init__(self, job): self.job = job
             def on_created(self, event):
-                if not event.is_directory: service.schedule(self.job, event.src_path, reset_settle=True)
+                if event.is_directory:
+                    if self.job.recursive: service.reconcile(self.job)
+                else:
+                    service.schedule(self.job, event.src_path, reset_settle=True)
             def on_modified(self, event):
                 if not event.is_directory: service.schedule(self.job, event.src_path, reset_settle=True)
             def on_moved(self, event):
-                if not event.is_directory: service.schedule(self.job, event.dest_path, reset_settle=True)
+                if event.is_directory:
+                    if self.job.recursive: service.reconcile(self.job)
+                else:
+                    service.schedule(self.job, event.dest_path, reset_settle=True)
         for job in self.jobs:
             if job.mode not in ("event", "hybrid"): continue
             ensure_watch_directory(job.watch_path, "job '{0}' watch_path".format(job.job_id))
             observer = Observer()
             self.observers.append(observer)
             try:
-                observer.schedule(Handler(job), str(job.watch_path), recursive=False)
+                observer.schedule(
+                    Handler(job),
+                    str(job.watch_path),
+                    recursive=job.recursive,
+                )
                 observer.start()
             except Exception as exc:
                 raise RenameWatchConfigError(
