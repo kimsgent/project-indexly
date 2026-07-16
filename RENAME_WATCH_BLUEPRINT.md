@@ -192,13 +192,15 @@ Completed:
   that preserves a source that changes during copying.
 - Partial observer startup is cleaned up, filesystem failures identify their
   job and path, and symlink candidates are ignored.
+- Event callbacks and service ticks synchronize pending work, settling
+  snapshots, and retry claims. Due work is claimed atomically so a callback
+  arriving between selection and processing is not removed as stale work.
 
 Next:
 
-- Add a per-job process lock so two rename-watch processes cannot consume the
-  same configured root concurrently.
-- Make event-thread scheduling, pending work, snapshots, and retry state
-  explicitly thread-safe.
+- Add a portable interprocess lock keyed by canonical watch root so two
+  rename-watch processes cannot consume the same root concurrently, even when
+  their job IDs differ.
 - Add a recovery journal for interruptions between planning, moving, counter
   persistence, and audit logging.
 - Define deterministic `--once` settling and bounded-retry completion

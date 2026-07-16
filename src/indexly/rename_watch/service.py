@@ -24,16 +24,45 @@ def _inside(path: Path, parent: Path) -> bool:
 class RenameWatchService:
     def __init__(self, jobs, state_root=None, clock=time.monotonic, sleeper=time.sleep):
         self.jobs = jobs; self.clock = clock; self.sleeper = sleeper; self.stop_event = threading.Event()
+        self._state_lock = threading.Lock()
         self.pending = {}; self.snapshots = {}; self.next_scan = {j.job_id: 0.0 for j in jobs}
         self.movers = {j.job_id: PlanMoveLog(j, state_root) for j in jobs}; self.observers = []
     def _eligible(self, job, path):
         return path.exists() and path.is_file() and not path.is_symlink() and not _temporary(path) and _inside(path, job.watch_path) and not _inside(path, job.destination_path)
-    def schedule(self, job, path, attempts=0, delay=0.0):
+    def schedule(self, job, path, attempts=0, delay=0.0, reset_settle=False, required_delay=False):
         path = Path(path)
         if not self._eligible(job, path): return
-        key = (job.job_id, str(path.resolve())); due = self.clock() + delay
-        old = self.pending.get(key)
-        if old is None or due < old[2]: self.pending[key] = (job, path.resolve(), due, attempts)
+        resolved = path.resolve(); key = (job.job_id, str(resolved)); now = self.clock(); due = now + delay
+        with self._state_lock:
+            old = self.pending.get(key)
+            if reset_settle and key in self.snapshots:
+                due = now + job.settle_seconds
+                required_delay = True
+            if old is not None:
+                attempts = max(attempts, old[3])
+                old_required = old[4]
+                if old_required and required_delay:
+                    due = max(due, old[2])
+                elif old_required:
+                    due = old[2]
+                elif not required_delay:
+                    due = min(due, old[2])
+                required_delay = required_delay or old_required
+            self.pending[key] = (job, resolved, due, attempts, required_delay)
+    def _claim_due(self, now):
+        claimed = []
+        with self._state_lock:
+            for key, value in list(self.pending.items()):
+                if value[2] <= now:
+                    claimed.append((key, value))
+                    del self.pending[key]
+        return claimed
+    def _has_pending(self):
+        with self._state_lock:
+            return bool(self.pending)
+    def _discard_snapshot(self, key):
+        with self._state_lock:
+            self.snapshots.pop(key, None)
     def reconcile(self, job):
         ensure_watch_directory(job.watch_path, "job '{0}' watch_path".format(job.job_id))
         try:
@@ -46,20 +75,31 @@ class RenameWatchService:
             ) from exc
         for path in paths: self.schedule(job, path)
     def _process(self, job, source, attempts):
-        key = (job.job_id, str(source)); self.pending.pop(key, None)
-        if not self._eligible(job, source): self.snapshots.pop(key, None); return
+        key = (job.job_id, str(source))
+        if not self._eligible(job, source): self._discard_snapshot(key); return
         try:
             stat = source.stat(); fingerprint = (stat.st_size, stat.st_mtime_ns)
-            previous = self.snapshots.get(key)
+            with self._state_lock:
+                previous = self.snapshots.get(key)
+                if previous != fingerprint:
+                    self.snapshots[key] = fingerprint
+                replacement = self.pending.get(key)
+                rescheduled = replacement is not None
+                if replacement is not None and replacement[3] < attempts:
+                    self.pending[key] = (
+                        replacement[0], replacement[1], replacement[2], attempts, replacement[4]
+                    )
             if previous != fingerprint:
-                self.snapshots[key] = fingerprint; self.schedule(job, source, attempts, job.settle_seconds); return
+                self.schedule(job, source, attempts, job.settle_seconds, required_delay=True); return
+            if rescheduled:
+                return
             target = self.movers[job.job_id].plan_and_move(source)
-            self.snapshots.pop(key, None); log_move(job.job_id, source, target, job.pattern, attempts + 1)
+            self._discard_snapshot(key); log_move(job.job_id, source, target, job.pattern, attempts + 1)
         except (PermissionError, OSError) as error:
-            self.snapshots.pop(key, None)
+            self._discard_snapshot(key)
             if attempts + 1 < job.retry.max_attempts and source.exists():
                 delay = min(job.retry.initial_delay_seconds * (2 ** attempts), job.retry.max_delay_seconds)
-                self.schedule(job, source, attempts + 1, delay)
+                self.schedule(job, source, attempts + 1, delay, required_delay=True)
             elif source.exists():
                 target = job.destination_path / source.name
                 log_failure(job.job_id, source, target, job.pattern, attempts + 1, error)
@@ -68,23 +108,23 @@ class RenameWatchService:
         for job in self.jobs:
             if job.mode in ("interval", "hybrid") and now >= self.next_scan[job.job_id]:
                 self.reconcile(job); self.next_scan[job.job_id] = now + job.scan_interval_seconds
-        for job, path, due, attempts in list(self.pending.values()):
-            if due <= now: self._process(job, path, attempts)
+        for _, (job, path, _, attempts, _) in self._claim_due(now):
+            self._process(job, path, attempts)
     def run_once(self):
         for job in self.jobs: self.reconcile(job)
         deadline = self.clock() + max(j.settle_seconds for j in self.jobs) + 0.1
-        while self.pending and self.clock() <= deadline:
+        while self._has_pending() and self.clock() <= deadline:
             self.tick(); self.sleeper(0.01)
     def _start_observers(self):
         service = self
         class Handler(FileSystemEventHandler):
             def __init__(self, job): self.job = job
             def on_created(self, event):
-                if not event.is_directory: service.schedule(self.job, event.src_path)
+                if not event.is_directory: service.schedule(self.job, event.src_path, reset_settle=True)
             def on_modified(self, event):
-                if not event.is_directory: service.schedule(self.job, event.src_path)
+                if not event.is_directory: service.schedule(self.job, event.src_path, reset_settle=True)
             def on_moved(self, event):
-                if not event.is_directory: service.schedule(self.job, event.dest_path)
+                if not event.is_directory: service.schedule(self.job, event.dest_path, reset_settle=True)
         for job in self.jobs:
             if job.mode not in ("event", "hybrid"): continue
             ensure_watch_directory(job.watch_path, "job '{0}' watch_path".format(job.job_id))

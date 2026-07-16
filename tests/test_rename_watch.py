@@ -1,6 +1,7 @@
 import json
 import errno
 import os
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
 
@@ -65,6 +66,103 @@ def test_once_ignores_empty_folder_without_logging(tmp_path, monkeypatch):
     monkeypatch.setattr("indexly.rename_watch.service.log_move", lambda *args: calls.append(args))
     RenameWatchService([job]).run_once()
     assert calls == []
+
+
+def test_due_work_is_claimed_atomically_and_future_work_remains(tmp_path):
+    path, incoming = _config(tmp_path)
+    first = incoming / "first.txt"
+    second = incoming / "second.txt"
+    first.write_text("first", encoding="utf-8")
+    second.write_text("second", encoding="utf-8")
+    job = load_settings(str(path)).jobs[0]
+    service = RenameWatchService([job], clock=lambda: 10.0)
+    service.schedule(job, first)
+    service.schedule(job, second, delay=5.0)
+
+    claimed = service._claim_due(10.0)
+
+    assert [value[1] for _, value in claimed] == [first.resolve()]
+    assert [value[1] for value in service.pending.values()] == [second.resolve()]
+
+
+def test_schedule_between_claim_and_processing_is_not_lost(tmp_path):
+    path, incoming = _config(tmp_path)
+    source = incoming / "report.txt"
+    source.write_text("content", encoding="utf-8")
+    job = load_settings(str(path)).jobs[0]
+    service = RenameWatchService([job], clock=lambda: 10.0)
+    service.schedule(job, source)
+    claimed = service._claim_due(10.0)
+
+    service.schedule(job, source, reset_settle=True)
+    _, (claimed_job, claimed_path, _, attempts, _) = claimed[0]
+    service._process(claimed_job, claimed_path, attempts)
+
+    key = (job.job_id, str(source.resolve()))
+    assert key in service.pending
+    assert service.pending[key][2] > 10.0
+    service.tick()
+    assert source.exists()
+    assert key in service.pending
+
+
+def test_callback_cannot_shorten_retry_backoff_or_reset_attempts(tmp_path):
+    path, incoming = _config(tmp_path)
+    source = incoming / "report.txt"
+    source.write_text("content", encoding="utf-8")
+    job = load_settings(str(path)).jobs[0]
+    service = RenameWatchService([job], clock=lambda: 10.0)
+    key = (job.job_id, str(source.resolve()))
+    stat = source.stat()
+    service.snapshots[key] = (stat.st_size, stat.st_mtime_ns)
+    service.schedule(job, source)
+    claimed = service._claim_due(10.0)
+
+    def callback_then_fail(_):
+        service.schedule(job, source, reset_settle=True)
+        raise PermissionError("locked")
+
+    service.movers[job.job_id].plan_and_move = callback_then_fail
+
+    _, (claimed_job, claimed_path, _, attempts, _) = claimed[0]
+    service._process(claimed_job, claimed_path, attempts)
+
+    assert service.pending[key][2] == 12.0
+    assert service.pending[key][3] == 1
+    assert service.pending[key][4] is True
+
+
+@pytest.mark.parametrize("reset_settle", [False, True])
+def test_replacement_after_retry_claim_preserves_attempt_count(tmp_path, reset_settle):
+    path, incoming = _config(tmp_path)
+    source = incoming / "report.txt"
+    source.write_text("content", encoding="utf-8")
+    job = load_settings(str(path)).jobs[0]
+    service = RenameWatchService([job], clock=lambda: 10.0)
+    key = (job.job_id, str(source.resolve()))
+    stat = source.stat()
+    service.snapshots[key] = (stat.st_size, stat.st_mtime_ns)
+    service.schedule(job, source, attempts=2)
+    claimed = service._claim_due(10.0)
+    service.schedule(job, source, reset_settle=reset_settle)
+
+    _, (claimed_job, claimed_path, _, attempts, _) = claimed[0]
+    service._process(claimed_job, claimed_path, attempts)
+
+    assert service.pending[key][3] == 2
+
+
+def test_concurrent_event_scheduling_is_synchronized(tmp_path):
+    path, incoming = _config(tmp_path)
+    source = incoming / "report.txt"
+    source.write_text("content", encoding="utf-8")
+    job = load_settings(str(path)).jobs[0]
+    service = RenameWatchService([job], clock=lambda: 10.0)
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        list(executor.map(lambda _: service.schedule(job, source), range(100)))
+
+    assert len(service.pending) == 1
 
 
 def test_once_creates_missing_watch_folder_without_creating_destination(tmp_path):
