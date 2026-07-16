@@ -1,12 +1,10 @@
 """Pure planning and filesystem moves owned by rename-watch."""
 from __future__ import annotations
 import errno
-import json
 import os
 import re
 import shutil
 import stat
-import threading
 import unicodedata
 from dataclasses import dataclass
 from datetime import datetime
@@ -16,8 +14,9 @@ from typing import Callable, Dict, List, Optional, Tuple
 from indexly.rename_utils import generate_new_filename
 
 from .config import RenameWatchConfigError, RenameWatchJob
-from .identity import canonical_root_identity, state_namespace
-from .journal import MoveJournal, atomic_write_json, state_directory
+from .counter_state import CounterState
+from .identity import canonical_root_identity
+from .journal import MoveJournal
 from .operator import (
     FilesystemNamePolicy,
     filesystem_name_policy as _filesystem_name_policy,
@@ -201,114 +200,6 @@ def _move_without_overwrite(
         raise OSError("Destination changed before source removal: {0}".format(target))
 
     source.unlink()
-
-class CounterState:
-    def __init__(self, job: RenameWatchJob, state_root: Path = None):
-        root = state_directory(state_root)
-        key = state_namespace(job.watch_path, job.job_id)
-        self.path = root / ("counter-" + key + ".json")
-        legacy_name = Path(job.job_id)
-        self.legacy_path = (
-            root / (job.job_id + ".json")
-            if not legacy_name.is_absolute()
-            and len(legacy_name.parts) == 1
-            and legacy_name.name not in ("", ".", "..")
-            else None
-        )
-        self.lock = threading.Lock()
-
-    def _load(self) -> Dict[str, int]:
-        path = self.path
-        if not path.exists() and self.legacy_path is not None and self.legacy_path.exists():
-            path = self.legacy_path
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-            return {str(k): int(v) for k, v in data.items() if isinstance(v, int) and v >= 0}
-        except (OSError, ValueError, TypeError):
-            return {}
-
-    def _read_path(self) -> Optional[Path]:
-        try:
-            self.path.lstat()
-        except FileNotFoundError:
-            pass
-        else:
-            return self.path
-        if self.legacy_path is not None:
-            try:
-                self.legacy_path.lstat()
-            except FileNotFoundError:
-                pass
-            else:
-                return self.legacy_path
-        return None
-
-    def strict_snapshot(self) -> Dict[str, int]:
-        """Read counter state without mutation and reject any malformed entry."""
-        try:
-            path = self._read_path()
-        except OSError as exc:
-            raise RenameWatchConfigError(
-                "rename-watch counter state could not be inspected ({0})".format(
-                    exc
-                )
-            ) from exc
-        if path is None:
-            return {}
-        try:
-            value = path.lstat()
-        except OSError as exc:
-            raise RenameWatchConfigError(
-                "rename-watch counter state could not be inspected: {0} ({1})".format(
-                    path, exc
-                )
-            ) from exc
-        if _is_link_or_reparse(value) or not stat.S_ISREG(value.st_mode):
-            raise RenameWatchConfigError(
-                "rename-watch counter state must be a regular file without links or reparse points: {0}".format(
-                    path
-                )
-            )
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError, TypeError) as exc:
-            raise RenameWatchConfigError(
-                "rename-watch counter state is unreadable: {0} ({1})".format(
-                    path, exc
-                )
-            ) from exc
-        if not isinstance(data, dict):
-            raise RenameWatchConfigError(
-                "rename-watch counter state must be an object: {0}".format(path)
-            )
-        for date_key, value in data.items():
-            if (
-                not isinstance(date_key, str)
-                or isinstance(value, bool)
-                or not isinstance(value, int)
-                or value < 0
-            ):
-                raise RenameWatchConfigError(
-                    "rename-watch counter state has an invalid entry: {0}".format(
-                        path
-                    )
-                )
-        return dict(data)
-
-    def _save(self, data: Dict[str, int]) -> None:
-        atomic_write_json(self.path, data)
-
-    def next(self, date_key: str) -> Tuple[Dict[str, int], int]:
-        data = self._load()
-        return data, data.get(date_key, 0)
-
-    def ensure_at_least(self, date_key: str, next_value: int) -> None:
-        data = self._load()
-        if data.get(date_key, 0) >= next_value:
-            return
-        data[date_key] = next_value
-        self._save(data)
-
 
 @dataclass(frozen=True)
 class MoveResult:

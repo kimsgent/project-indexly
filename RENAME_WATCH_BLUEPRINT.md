@@ -28,6 +28,8 @@ Add a new command without changing existing commands:
 ```text
 indexly rename-watch --config PATH [--once] [--mode event|interval|hybrid]
 indexly rename-watch --config PATH --status [--json]
+indexly rename-watch --config PATH --inspect-counters [--job JOB_ID] [--json]
+indexly rename-watch --config PATH --reset-counters --job JOB_ID (--date-key KEY | --all-counters) [--yes] [--json]
 ```
 
 - `--config` is required and points to a JSON configuration file.
@@ -134,12 +136,15 @@ src/indexly/rename_watch/
   locking.py      # portable watch-root process exclusion
   logging.py      # rename-watch NDJSON entry construction/writing
   operator.py     # disposable operator access and filesystem-policy probes
-  planner.py      # counter state and plan-move-log service
+  counter_operator.py # read-only counter inspection and guarded reset
+  counter_state.py # strict durable counter state and atomic replacement
+  planner.py      # collision planning and plan-move-log service
   service.py      # Watchdog/interval lifecycle, readiness, queue, retries
   status.py       # read-only durable state and retained audit snapshots
-  status_cli.py   # side-effect-free early dispatch for status output
+  status_cli.py   # side-effect-free early dispatch for operator output
 tests/
   test_rename_watch_config.py
+  test_rename_watch_counters.py
   test_rename_watch_planner.py
   test_rename_watch_service.py
 docs/content/documentation/
@@ -279,15 +284,29 @@ Completed:
   malformed or unsafe active journals fail closed. Future audit entries use UTC
   timestamps and a canonical root/job namespace while legacy entries require
   uniquely matching IDs and lexical paths.
+- `--inspect-counters` reports schema-versioned counter state for all jobs in
+  configuration order or one exact, case-sensitive `--job`. Counter-enabled
+  jobs expose their canonical namespace, storage source, legacy ambiguity, and
+  sorted date-key allocations. Jobs without `{counter}` are reported as not
+  applicable without reading stale counter files. Inspection is lock-free,
+  read-only, and does not create runtime directories.
+- `--reset-counters` operates on exactly one counter-enabled job and requires
+  either one existing `--date-key` or `--all-counters`. It acquires the normal
+  watch-root exclusion lock, fails closed on pending or malformed recovery
+  journals and unsafe or malformed counter state, revalidates after interactive
+  confirmation, and writes a flushed, exclusive backup before atomically
+  replacing namespaced state. Automation must pass `--yes`; JSON reset output
+  also requires it. Legacy state is backed up and retained while the reset
+  result is written to the canonical namespaced file, which safely shadows the
+  legacy file. Resetting an absent or empty all-counter state is a no-op.
 
 Immediate next:
 
-- Add explicit counter-state inspection and reset commands with confirmation,
-  backup, and job selection.
+- Define stable machine-readable exit codes and optional JSON error output.
 
 Later in Stage 2:
 
-- Define stable machine-readable exit codes and optional JSON error output.
+- None after the exit-code and JSON-error contract is complete.
 
 ### Stage 3: File selection
 
@@ -342,8 +361,9 @@ Status: **Next**
 
 1. Completed: Stage 1 in focused, independently tested commits.
 2. In progress: Stage 2 operator commands; `--check-config`,
-   `--dry-run --once`, and `--status [--json]` are completed, with explicit
-   counter-state inspection/reset next.
+   `--dry-run --once`, `--status [--json]`, counter inspection, and guarded
+   counter reset are completed, with stable exit codes and optional JSON errors
+   next.
 3. Add include/exclude selection from Stage 3.
 4. Add quarantine and retry workflows from Stage 4.
 5. Add portable service integration from Stage 5.

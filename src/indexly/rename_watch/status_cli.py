@@ -1,8 +1,9 @@
-"""Lightweight, read-only CLI entry for rename-watch status snapshots."""
+"""Lightweight CLI entry for rename-watch operator commands."""
 
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from typing import List, Optional, Sequence
 
@@ -10,7 +11,7 @@ _TOP_LEVEL_OVERRIDES = {"--version", "--check-updates", "--show-license"}
 
 
 def status_command_index(argv: Sequence[str]) -> Optional[int]:
-    """Locate a genuine rename-watch status command before heavy CLI imports."""
+    """Locate a lightweight rename-watch operator command before heavy imports."""
     for index, value in enumerate(argv):
         if value in _TOP_LEVEL_OVERRIDES:
             return None
@@ -20,7 +21,8 @@ def status_command_index(argv: Sequence[str]) -> Optional[int]:
             return None
         if value != "rename-watch":
             return None
-        return index if "--status" in argv[index + 1 :] else None
+        actions = {"--status", "--inspect-counters", "--reset-counters"}
+        return index if actions.intersection(argv[index + 1 :]) else None
     return None
 
 
@@ -32,16 +34,23 @@ def run_status_command(argv: Sequence[str], command_index: int) -> int:
             pass
     parser = argparse.ArgumentParser(
         prog="indexly rename-watch",
-        description="Show read-only rename-watch status",
+        description="Inspect or safely operate rename-watch runtime state",
     )
     parser.add_argument("--config", required=True)
     actions = parser.add_mutually_exclusive_group()
     actions.add_argument("--init", action="store_true")
     actions.add_argument("--check-config", action="store_true")
     actions.add_argument("--status", action="store_true")
+    actions.add_argument("--inspect-counters", action="store_true")
+    actions.add_argument("--reset-counters", action="store_true")
     parser.add_argument("--once", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--json", action="store_true", dest="rename_watch_status_json")
+    parser.add_argument("--job")
+    reset_scope = parser.add_mutually_exclusive_group()
+    reset_scope.add_argument("--date-key")
+    reset_scope.add_argument("--all-counters", action="store_true")
+    parser.add_argument("--yes", action="store_true")
     parser.add_argument("--mode", choices=["event", "interval", "hybrid"])
     args = parser.parse_args(list(argv[command_index + 1 :]))
 
@@ -51,7 +60,7 @@ def run_status_command(argv: Sequence[str], command_index: int) -> int:
         handle_rename_watch(args)
         return 0
     except ValueError as exc:
-        message = str(exc).encode("ascii", errors="backslashreplace").decode("ascii")
+        message = json.dumps(str(exc), ensure_ascii=True)[1:-1]
         print("Error: {0}".format(message), file=sys.stderr)
         return 1
 

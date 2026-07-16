@@ -127,8 +127,60 @@ tree. Missing retained events therefore mean “not found in retained logs,” n
 is skipped and makes the snapshot explicitly degraded with structured warnings;
 the command can still report the remaining retained history. An unsafe,
 malformed, or unreadable active recovery journal fails the command instead of
-presenting recovery state as complete. Use `--json` only with `--status`; a
-successful JSON invocation writes exactly one document to standard output.
+presenting recovery state as complete. A successful JSON invocation writes
+exactly one document to standard output.
+
+## Inspect and reset counters
+
+Inspect every configured job, or select one exact, case-sensitive job ID:
+
+```powershell
+indexly rename-watch --config rename-watch.json --inspect-counters
+indexly rename-watch --config rename-watch.json --inspect-counters --job downloads --json
+```
+
+Inspection is lock-free and read-only. It reports jobs in configuration order
+with the canonical state namespace, whether the pattern uses `{counter}`, the
+storage source (`namespaced`, `legacy`, `missing`, or `not_applicable`), legacy
+ambiguity, and sorted date-key allocations. A job without `{counter}` is marked
+`not_applicable`; stale state for that job is not read. The JSON schema is
+`indexly.rename-watch.counters`, version `1`. Inspection does not start the
+service, acquire its consumer lock, recover operations, or create runtime
+directories.
+
+Reset one existing date key or all counter allocations for one job:
+
+```powershell
+indexly rename-watch --config rename-watch.json --reset-counters --job downloads --date-key 20260716
+indexly rename-watch --config rename-watch.json --reset-counters --job downloads --all-counters --yes
+indexly rename-watch --config rename-watch.json --reset-counters --job downloads --all-counters --yes --json
+```
+
+Reset accepts exactly one counter-enabled job and exactly one of `--date-key`
+or `--all-counters`. Without `--yes`, an interactive terminal must type the
+exact phrase `RESET <job-id>`. Non-interactive use requires `--yes`, and JSON
+reset output requires `--yes` even from an interactive terminal. The reset JSON
+schema is `indexly.rename-watch.counter-reset`, version `1`.
+
+The command acquires the same watch-root lock as the service, so it refuses to
+run while that root is being consumed by another rename-watch process. It also
+fails closed if a recovery journal is pending, malformed, unsafe, or changes
+during confirmation. Counter state must be a bounded, regular UTF-8 JSON object
+with supported date keys and non-negative integer values; malformed state is
+never treated as empty by either the operator or the live allocator.
+
+Before a change, rename-watch flushes an exclusive backup under
+`INDEXLY_HOME/rename-watch/counter-backups/<namespace>/`. The backup schema is
+`indexly.rename-watch.counter-backup`, version `1`, and contains the complete
+validated pre-reset map. Existing legacy `<job-id>.json` state is backed up and
+left unchanged; the reset writes canonical namespaced state, which takes
+precedence on the next run. Resetting all counters when state is already absent
+or empty is a no-op and creates neither a backup nor counter state.
+
+A reset changes only the allocator's next-value floor. It never changes moved
+files or recovery journals. Existing destination names remain protected by the
+normal collision checks, so the next move may advance beyond the reset value
+rather than overwrite a file.
 
 Only one rename-watch process can consume a canonical watch root at a time.
 The service holds a non-blocking operating-system lock for the complete

@@ -678,6 +678,10 @@ def _read_journal_records(
     return records
 
 
+# Public hardened reader shared by read-only status and guarded counter reset.
+read_journal_records = _read_journal_records
+
+
 def build_status(
     config_path: str,
     *,

@@ -1610,7 +1610,13 @@ def main():
     # ----------------------------------
     rename_watch_status = (
         getattr(args, "command", None) == "rename-watch"
-        and getattr(args, "status", False)
+        and any(
+            (
+                getattr(args, "status", False),
+                getattr(args, "inspect_counters", False),
+                getattr(args, "reset_counters", False),
+            )
+        )
     )
     if not getattr(args, "no_update_check", False) and not rename_watch_status:
         try:
