@@ -80,6 +80,31 @@ jobs:
           python -m pip install -r requirements-rename-watch-ci.txt
           python -m pip install -e .
 
+      - name: Diagnostic: show Python + packages
+        id: diag
+        continue-on-error: true
+        run: |
+          echo "--- python info ---"
+          python -V || true
+          python -c "import sys; print('executable:', sys.executable)" || true
+          python -c "import sys, json; print('sys.path:', json.dumps(sys.path))" || true
+          echo "--- pip version & list ---"
+          python -m pip --version || true
+          python -m pip list --disable-pip-version-check || true
+          echo "--- import diagnostics ---"
+          python - <<'PY'
+import importlib, traceback, sys
+modules = ('jsonschema','pytest','watchdog')
+for m in modules:
+    try:
+        importlib.import_module(m)
+        print(m, 'OK')
+    except Exception:
+        print(m, 'IMPORT ERROR')
+        traceback.print_exc()
+print('diagnostics complete')
+PY
+
       - name: Verify focused imports
         id: imports
         continue-on-error: true
