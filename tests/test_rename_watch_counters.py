@@ -133,6 +133,28 @@ def test_strict_counter_reader_rejects_invalid_state(tmp_path, payload):
         state.strict_snapshot()
 
 
+@pytest.mark.skipif(os.name != "nt", reason="Windows-specific open mode")
+def test_strict_counter_reader_opens_counter_state_in_binary_mode(tmp_path, monkeypatch):
+    config = _config(tmp_path)
+    _, state = _state(tmp_path, config)
+    state.path.write_text('{"20240101": 1}', encoding="utf-8")
+    real_open = os.open
+    flags_seen = []
+
+    def capture_open(path, flags, *args, **kwargs):
+        flags_seen.append(flags)
+        return real_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr("indexly.rename_watch.counter_state.os.open", capture_open)
+
+    assert state.strict_snapshot() == {"20240101": 1}
+    assert flags_seen == [
+        os.O_RDONLY
+        | os.O_BINARY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    ]
+
 def test_strict_counter_reader_rejects_oversize_symlink_and_nonregular(tmp_path):
     config = _config(tmp_path)
     _, state = _state(tmp_path, config)

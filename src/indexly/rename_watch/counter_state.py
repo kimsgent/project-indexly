@@ -162,7 +162,12 @@ class CounterState:
                     raise RenameWatchConfigError(
                         "rename-watch counter state is oversized: {0}".format(path)
                     )
-                flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+                flags = (
+                    os.O_RDONLY
+                    | getattr(os, "O_BINARY", 0)
+                    | getattr(os, "O_CLOEXEC", 0)
+                    | getattr(os, "O_NOFOLLOW", 0)
+                )
                 descriptor = os.open(os.fspath(path), flags)
                 opened = os.fstat(descriptor)
                 if (
