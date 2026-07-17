@@ -47,6 +47,14 @@ def add_rename_watch_arguments(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Restore or requeue durable terminal failures",
     )
+    actions.add_argument("--health", action="store_true", help="Report service liveness")
+    actions.add_argument("--readiness", action="store_true", help="Report service readiness")
+    actions.add_argument("--metrics", action="store_true", help="Report process metrics")
+    actions.add_argument(
+        "--export-service-template",
+        choices=["windows", "systemd", "launchd", "launchd-newsyslog"],
+        help="Render one supported service-manager template",
+    )
     parser.add_argument(
         "--once", action="store_true", help="Run one reconciliation scan and exit"
     )
@@ -59,7 +67,7 @@ def add_rename_watch_arguments(parser: argparse.ArgumentParser) -> None:
         "--json",
         action="store_true",
         dest="rename_watch_status_json",
-        help="Emit status or counter operator output as one JSON document",
+        help="Emit operator output as one JSON document",
     )
     parser.add_argument(
         "--json-errors",
@@ -83,6 +91,9 @@ def add_rename_watch_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--mode", choices=["event", "interval", "hybrid"], help="Override configured run mode"
     )
+    parser.add_argument("--output", help="Output path for --export-service-template")
+    parser.add_argument("--service-user", help="Service account for a rendered template")
+    parser.add_argument("--service-group", help="Service group for a rendered template")
 
 
 __all__ = ["RenameWatchArgumentParser", "add_rename_watch_arguments"]

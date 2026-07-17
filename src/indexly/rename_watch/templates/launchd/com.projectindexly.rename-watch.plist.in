@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.projectindexly.rename-watch</string>
+
+  <key>Program</key>
+  <string>@@PYTHON_EXECUTABLE@@</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>@@PYTHON_EXECUTABLE@@</string>
+    <string>-m</string>
+    <string>indexly</string>
+    <string>rename-watch</string>
+    <string>--config</string>
+    <string>@@CONFIG_PATH@@</string>
+  </array>
+
+  <key>UserName</key>
+  <string>@@SERVICE_USER@@</string>
+  <key>GroupName</key>
+  <string>@@SERVICE_GROUP@@</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>INDEXLY_HOME</key>
+    <string>@@INDEXLY_HOME@@</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+  <key>ExitTimeOut</key>
+  <integer>@@MANAGER_STOP_TIMEOUT_SECONDS@@</integer>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>Umask</key>
+  <string>0027</string>
+
+  <key>StandardOutPath</key>
+  <string>@@SERVICE_LOG_DIR@@/rename-watch.stdout.log</string>
+  <key>StandardErrorPath</key>
+  <string>@@SERVICE_LOG_DIR@@/rename-watch.stderr.log</string>
+</dict>
+</plist>

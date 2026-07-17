@@ -6,7 +6,7 @@ aliases:
   - "/documentation/rename-watch/"
   - "/en/documentation/watch-and-rename-files/"
 date: "2026-07-16"
-lastmod: "2026-07-16"
+lastmod: "2026-07-17"
 weight: 31
 type: docs
 toc: true
@@ -103,6 +103,9 @@ the folder where you want to keep the configuration and its default `inbox`.
    indexly rename-watch --config "./rename-watch.json" --status
    ```
 
+7. For unattended operation, continue with
+   [Operate Rename Watch as a Service](/en/documentation/rename-watch-service-operation/).
+
 {{< alert title="Start with validation and preview" color="warning" >}}
 `--check-config` checks safety prerequisites. `--once --dry-run` then shows the
 planned source and destination names without moving files or consuming
@@ -118,6 +121,11 @@ following expanded example also enables a terminal-failure quarantine:
 ```json
 {
   "version": 1,
+  "service": {
+    "shutdown_drain_timeout_seconds": 30,
+    "health_interval_seconds": 5,
+    "health_stale_after_seconds": 15
+  },
   "jobs": [{
     "id": "inbox",
     "watch_path": "./inbox",
@@ -171,6 +179,22 @@ all configured destination and quarantine subtrees that it could overlap.
 | `retry.initial_delay_seconds` | First retry delay before exponential backoff. | `2` |
 | `retry.max_delay_seconds` | Maximum delay between retry attempts. | `60` |
 
+### Service settings
+
+The optional top-level `service` object applies to the continuous process, not
+to one individual job.
+
+| Setting | Purpose | Default when omitted |
+| --- | --- | --- |
+| `shutdown_drain_timeout_seconds` | Process-wide deadline for draining pending work after intake stops. | `30` |
+| `health_interval_seconds` | Interval between atomic live-status heartbeat updates. | `5` |
+| `health_stale_after_seconds` | Maximum healthy heartbeat age; must exceed the heartbeat interval. | `15` |
+
+All service values must be finite positive numbers. Existing version-1
+configurations remain valid when the object is omitted. See
+[service operation](/en/documentation/rename-watch-service-operation/) for the
+shutdown sequence and manager-timeout requirements.
+
 Unknown keys and invalid combinations are rejected rather than ignored.
 Multiple jobs can share one configuration; when their watch roots overlap,
 Rename Watch validates each quarantine against every configured destination
@@ -211,15 +235,20 @@ action.
 | `--once --dry-run` | Preview a frozen batch without moving files or consuming counters. | `indexly rename-watch --config "./rename-watch.json" --once --dry-run` |
 | `--mode MODE` | Temporarily override all job modes for one invocation; meaningful for continuous discovery. | `indexly rename-watch --config "./rename-watch.json" --mode interval` |
 | `--status` | Read configured jobs, recovery state, active failures, and retained history. | `indexly rename-watch --config "./rename-watch.json" --status` |
+| `--health` | Check whether the live service heartbeat is present and fresh. | `indexly rename-watch --config "./rename-watch.json" --health --json` |
+| `--readiness` | Check whether startup is complete and the service is accepting work. | `indexly rename-watch --config "./rename-watch.json" --readiness --json` |
+| `--metrics` | Read current-process operational counters and gauges. | `indexly rename-watch --config "./rename-watch.json" --metrics --json` |
+| `--export-service-template PLATFORM --output PATH` | Render a reviewed WinSW, systemd, launchd, or newsyslog starting point without installing it. | `indexly rename-watch --config "./rename-watch.json" --export-service-template systemd --output "./indexly-rename-watch.service" --service-user indexly --service-group indexly` |
 | `--inspect-counters` | Read counter state for all jobs or one `--job`. | `indexly rename-watch --config "./rename-watch.json" --inspect-counters --job inbox` |
 | `--reset-counters` | Reset one `--date-key` or `--all-counters` for one counter-enabled `--job`. | `indexly rename-watch --config "./rename-watch.json" --reset-counters --job inbox --date-key 20260716` |
 | `--retry-failures` | Retry one durable `--failure-id` or a snapshot selected by `--all-failures`. | `indexly rename-watch --config "./rename-watch.json" --retry-failures --job inbox --failure-id 3f7bbf87-842b-4a68-a3a8-1450d36f47f5` |
 | `--job ID` | Select an exact, case-sensitive job for counter or failure operations. | `indexly rename-watch --config "./rename-watch.json" --inspect-counters --job inbox` |
 | `--yes` | Bypass a destructive operator confirmation; required for non-interactive and machine-readable reset/retry calls. | `indexly rename-watch --config "./rename-watch.json" --retry-failures --job inbox --all-failures --yes` |
-| `--json` | Emit successful status, counter, reset, or retry output as one JSON document. | `indexly rename-watch --config "./rename-watch.json" --status --json` |
+| `--json` | Emit successful status, probe, metrics, counter, reset, or retry output as one JSON document. | `indexly rename-watch --config "./rename-watch.json" --status --json` |
 | `--json-errors` | Emit failures as one versioned JSON document on standard error. | `indexly rename-watch --config "./rename-watch.json" --status --json --json-errors` |
 
-Action flags such as `--status`, `--inspect-counters`, `--reset-counters`, and
+Action flags such as `--status`, `--health`, `--readiness`, `--metrics`,
+`--export-service-template`, `--inspect-counters`, `--reset-counters`, and
 `--retry-failures` are mutually exclusive. Run
 `indexly rename-watch --help` for the parser-level reference.
 
@@ -369,6 +398,34 @@ the command can still report the remaining retained history. An unsafe,
 malformed, or unreadable active recovery journal fails the command instead of
 presenting recovery state as complete. A successful JSON invocation writes
 exactly one document to standard output.
+
+## Monitor a live service
+
+Health, readiness, and metrics read the private atomic runtime snapshot written
+by the continuous process:
+
+```console
+indexly rename-watch --config "./rename-watch.json" --health
+indexly rename-watch --config "./rename-watch.json" --readiness --json
+indexly rename-watch --config "./rename-watch.json" --metrics --json
+```
+
+The schemas are `indexly.rename-watch.health`,
+`indexly.rename-watch.readiness`, and `indexly.rename-watch.metrics`, each at
+version 1. Healthy or ready probes exit `0`; an unavailable, stale, unhealthy,
+or not-ready live service exits `4`. Metrics are scoped to the current process
+and remain separate from generic Indexly audit events.
+
+On a supported stop request, Rename Watch stops accepting new work, marks
+itself unready, and drains pending settling and retry work under the configured
+process-wide deadline. Work still pending at the deadline is left at source
+without a false terminal-failure record. Hybrid and interval jobs rediscover
+it; an unchanged event-only source may need a controlled `--once` run, a new
+filesystem event, or a temporary switch to hybrid mode.
+
+For complete WinSW, systemd, and launchd installation, timeout, permission,
+logging, upgrade, and rollback procedures, see
+[Operate Rename Watch as a Service](/en/documentation/rename-watch-service-operation/).
 
 ## Inspect and reset counters
 
@@ -529,12 +586,13 @@ is `1`. The `category` and numeric status are stable automation fields. The
 human-readable `message` is diagnostic and may change between releases; do not
 parse it.
 
-| Exit code | Category | Meaning |
+| Exit code | Category or report | Meaning |
 | --- | --- | --- |
 | `0` | Success | The command completed successfully. |
 | `1` | `internal` | An unexpected implementation failure occurred. |
 | `2` | `usage` | Arguments or an option combination were invalid. |
 | `3` | `config_or_safety` | Configuration, environment, state integrity, locking, recovery, confirmation, or another safety check refused the operation. |
+| `4` | Health, readiness, or metrics report | The live service is unavailable, stale, unhealthy, not ready, or has no available metrics snapshot. |
 | `130` | `interrupted` | The process received `KeyboardInterrupt`, normally from Ctrl+C. |
 
 Without `--json-errors`, failures use one ASCII-safe human diagnostic on
@@ -546,9 +604,11 @@ formatting. This isolation does not change other Indexly commands.
 Exit code `0` means the command itself completed. For `--once`, individual files
 that exhaust their settling or retry policy retain the existing terminal-failure
 logging behavior; a successful command status does not claim that every file
-moved. Only Python `KeyboardInterrupt` is normalized to `130` by this contract.
-Native signal statuses, including service-manager termination conventions,
-remain platform and shell dependent.
+moved. Interactive `KeyboardInterrupt` or `SIGINT` drains and retains status
+`130`. `SIGTERM` from a supported service manager starts the same bounded drain
+and exits successfully when cleanup completes. A second stop request forces the
+drain deadline to expire immediately; a manager that later forcibly terminates
+the process retains its platform-specific status.
 
 Only one rename-watch process can consume a canonical watch root at a time.
 The service holds a non-blocking operating-system lock for the complete
@@ -643,6 +703,7 @@ preserved and removed from the title portion instead of being duplicated.
 
 ## See also
 
+- [Operate Rename Watch as a Service](/en/documentation/rename-watch-service-operation/) for WinSW, systemd, launchd, health, metrics, upgrades, and rollback.
 - [Rename File](/en/documentation/rename-file/) for direct, on-demand file and folder renaming, optional database path sync, and organizer handoff.
 - [Ignore Rules & Index Hygiene](/en/documentation/ignore-rules-index-hygiene/) for `.indexlyignore` syntax, presets, inspection, and upgrades.
 - [Indexly Logging System](/en/documentation/indexly-logging-system/) for NDJSON storage, rotation, and analysis.

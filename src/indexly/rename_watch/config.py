@@ -20,6 +20,11 @@ _JOB_KEYS = {
     "include", "exclude", "respect_indexlyignore", "recursive", "max_file_size_bytes",
     "quarantine_subfolder", "no_counter_collision_policy",
 }
+_SERVICE_KEYS = {
+    "shutdown_drain_timeout_seconds",
+    "health_interval_seconds",
+    "health_stale_after_seconds",
+}
 _RETRY_KEYS = {"max_attempts", "initial_delay_seconds", "max_delay_seconds"}
 _MISSING = object()
 
@@ -58,9 +63,17 @@ class RenameWatchJob:
 
 
 @dataclass(frozen=True)
+class RenameWatchServiceSettings:
+    shutdown_drain_timeout_seconds: float = 30.0
+    health_interval_seconds: float = 5.0
+    health_stale_after_seconds: float = 15.0
+
+
+@dataclass(frozen=True)
 class RenameWatchSettings:
     config_path: Path
     jobs: List[RenameWatchJob]
+    service: RenameWatchServiceSettings = RenameWatchServiceSettings()
 
 
 def _resolve_path(value: str, config_directory: Path) -> Path:
@@ -131,6 +144,35 @@ def _parse_retry(value: Any, context: str) -> RetryPolicy:
     if maximum < initial:
         raise RenameWatchConfigError("{0}.max_delay_seconds must be at least initial_delay_seconds".format(context))
     return RetryPolicy(max_attempts=max_attempts, initial_delay_seconds=initial, max_delay_seconds=maximum)
+
+
+def _parse_service(value: Any) -> RenameWatchServiceSettings:
+    raw = _require_object(value if value is not None else {}, "service")
+    unknown = set(raw) - _SERVICE_KEYS
+    if unknown:
+        raise RenameWatchConfigError(
+            "service has unsupported key(s): {0}".format(", ".join(sorted(unknown)))
+        )
+    interval = _positive_number(
+        raw.get("health_interval_seconds", 5),
+        "service.health_interval_seconds",
+    )
+    stale_after = _positive_number(
+        raw.get("health_stale_after_seconds", 15),
+        "service.health_stale_after_seconds",
+    )
+    if stale_after <= interval:
+        raise RenameWatchConfigError(
+            "service.health_stale_after_seconds must be greater than health_interval_seconds"
+        )
+    return RenameWatchServiceSettings(
+        shutdown_drain_timeout_seconds=_positive_number(
+            raw.get("shutdown_drain_timeout_seconds", 30),
+            "service.shutdown_drain_timeout_seconds",
+        ),
+        health_interval_seconds=interval,
+        health_stale_after_seconds=stale_after,
+    )
 
 
 def _parse_boolean(value: Any, context: str, default: bool = False) -> bool:
@@ -386,8 +428,8 @@ def load_settings(config_path: str) -> RenameWatchSettings:
             "Configuration file could not be read: {0} ({1})".format(path, exc)
         ) from exc
     root = _require_object(raw, "configuration")
-    if set(root) - {"version", "jobs"}:
-        raise RenameWatchConfigError("configuration has unsupported key(s): {0}".format(", ".join(sorted(set(root) - {"version", "jobs"}))))
+    if set(root) - {"version", "jobs", "service"}:
+        raise RenameWatchConfigError("configuration has unsupported key(s): {0}".format(", ".join(sorted(set(root) - {"version", "jobs", "service"}))))
     if root.get("version") != 1:
         raise RenameWatchConfigError("configuration.version must be 1")
     jobs_value = root.get("jobs")
@@ -414,7 +456,11 @@ def load_settings(config_path: str) -> RenameWatchSettings:
                             job.job_id, other.job_id
                         )
                     )
-    return RenameWatchSettings(config_path=path, jobs=jobs)
+    return RenameWatchSettings(
+        config_path=path,
+        jobs=jobs,
+        service=_parse_service(root.get("service")),
+    )
 
 
 def initialize_settings(config_path: str) -> Path:
@@ -434,7 +480,7 @@ def initialize_settings(config_path: str) -> Path:
         raise RenameWatchConfigError("Configuration path must end in .json: {0}".format(path))
     ensure_watch_directory(path.parent, "configuration directory")
     ensure_watch_directory(path.parent / "inbox", "default watch_path")
-    template = {"version": 1, "jobs": [{"id": "inbox", "watch_path": "inbox", "destination_subfolder": "processed", "pattern": "{date}-{title}-{counter}", "date_format": "%Y%m%d", "counter_format": "03d", "title_format": "standard", "mode": "hybrid", "scan_interval_seconds": 60, "settle_seconds": 3, "include": ["*.docx", "*.pdf", "*.txt", "*.md"], "exclude": ["Thumbs.db", "desktop.ini", ".DS_Store", ".thumbnails/"], "respect_indexlyignore": True, "recursive": False, "retry": {"max_attempts": 8, "initial_delay_seconds": 2, "max_delay_seconds": 60}}]}
+    template = {"version": 1, "service": {"shutdown_drain_timeout_seconds": 30, "health_interval_seconds": 5, "health_stale_after_seconds": 15}, "jobs": [{"id": "inbox", "watch_path": "inbox", "destination_subfolder": "processed", "pattern": "{date}-{title}-{counter}", "date_format": "%Y%m%d", "counter_format": "03d", "title_format": "standard", "mode": "hybrid", "scan_interval_seconds": 60, "settle_seconds": 3, "include": ["*.docx", "*.pdf", "*.txt", "*.md"], "exclude": ["Thumbs.db", "desktop.ini", ".DS_Store", ".thumbnails/"], "respect_indexlyignore": True, "recursive": False, "retry": {"max_attempts": 8, "initial_delay_seconds": 2, "max_delay_seconds": 60}}]}
     try:
         with path.open("x", encoding="utf-8") as handle:
             json.dump(template, handle, indent=2)

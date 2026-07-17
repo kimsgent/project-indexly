@@ -16,7 +16,7 @@ weight: 1
 type: docs
 toc: true
 date: "2026-04-22"
-lastmod: "2026-07-11"
+lastmod: "2026-07-17"
 draft: false
 categories:
   - Overview
@@ -90,6 +90,8 @@ flowchart LR
 | Prepare the maintained contributor workstation | [Windows Development Environment Setup](windows-terminal-setup.md), [Linux Development Environment Setup](linux-development-environment.md) |
 | Learn command workflows end-to-end | [Usage Guide](usage.md) |
 | Standardize filenames before analysis or organization | [Rename File](rename-file.md) |
+| Automate incoming-file renaming | [Rename Watch](rename-watch.md) |
+| Run Rename Watch under WinSW, systemd, or launchd | [Rename Watch Service Operation](rename-watch-service-operation.md) |
 | Remove stale search results without deleting files | [Clear Search Results Safely](clear-search.md) |
 | Diagnose search, cache, analysis DB, and integrity issues | [Indexly Doctor](indexly-doctor.md) |
 | Get short answers for setup, paths, file support, and troubleshooting | [FAQ](faq.md) |

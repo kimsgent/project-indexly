@@ -1,0 +1,28 @@
+[Unit]
+Description=Indexly Rename Watch
+Documentation=https://projectindexly.com/en/documentation/rename-watch-service-operation/
+After=local-fs.target
+
+[Service]
+Type=simple
+User=@@SERVICE_USER@@
+Group=@@SERVICE_GROUP@@
+UMask=0027
+Environment="INDEXLY_HOME=@@INDEXLY_HOME@@"
+ExecStartPre=@@PYTHON_EXECUTABLE@@ -m indexly rename-watch --config @@CONFIG_PATH@@ --check-config
+ExecStart=@@PYTHON_EXECUTABLE@@ -m indexly rename-watch --config @@CONFIG_PATH@@
+KillSignal=SIGTERM
+KillMode=control-group
+TimeoutStopSec=@@MANAGER_STOP_TIMEOUT_SECONDS@@s
+Restart=on-failure
+RestartSec=10s
+NoNewPrivileges=true
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=indexly-rename-watch
+
+# Rename Watch uses a shared /tmp lock namespace for cross-process exclusion.
+# Do not enable PrivateTmp for this unit.
+
+[Install]
+WantedBy=multi-user.target

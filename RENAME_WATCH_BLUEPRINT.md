@@ -316,12 +316,12 @@ Completed:
 
 Roadmap next:
 
-- Begin Stage 5 with portable service templates and a bounded graceful-shutdown
-  contract.
+- Begin Stage 6 with a published JSON Schema and backward-compatible
+  configuration migration foundation.
 
 Deferred from completed stages:
 
-- None. Stages 1 through 4 are complete.
+- None. Stages 1 through 5 are complete.
 
 ### Stage 3: File selection
 
@@ -373,15 +373,20 @@ Status: **Completed**
 
 ### Stage 5: Service operation
 
-Status: **Next**
+Status: **Completed**
 
-- Provide supported Windows service, systemd, and macOS launchd templates.
-- Add configurable graceful-shutdown draining with a bounded timeout.
-- Add lightweight health and readiness reporting.
-- Validate log retention/rotation and expose operational metrics without
-  changing generic index-event semantics.
-- Document installation, upgrade, rollback, and least-privilege service
-  operation on all supported platforms.
+- Packaged, safely rendered WinSW, systemd, launchd, and newsyslog templates
+  derive absolute runtime values without installing or elevating anything.
+- Configurable SIGTERM/SIGINT draining stops intake immediately, publishes a
+  non-ready state, applies one aggregate deadline between file operations and
+  observer joins, and records work abandoned at the boundary.
+- Namespaced atomic runtime snapshots provide bounded, side-effect-free
+  `--health`, `--readiness`, and `--metrics` probes with stable schemas.
+- `--check-config` validates the real audit-log destination plus configured
+  retention and rotation boundaries; rename-watch metrics do not change the
+  generic index-event schema.
+- The operations runbook covers installation, least privilege, logging,
+  upgrade, rollback, removal, and manager-specific shutdown behavior.
 
 ### Stage 6: Configuration evolution
 
@@ -405,8 +410,9 @@ Status: **Next**
    `.indexlyignore` integration, and maximum-size guards now share one policy.
 4. Completed: Stage 4 durable failures, quarantine, guarded retry, and explicit
    no-counter collision policies.
-5. Next: add portable service integration from Stage 5.
-6. Publish the schema and migration foundation from Stage 6.
+5. Completed: Stage 5 portable service templates, bounded draining, runtime
+   probes and metrics, log-policy validation, and cross-platform operations.
+6. Next: publish the schema and migration foundation from Stage 6.
 
 After every increment, update this roadmap with what is **Completed**, what is
 **In progress**, and the single next implementation step.

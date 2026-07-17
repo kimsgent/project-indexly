@@ -13,7 +13,7 @@ keywords:
   - windows install indexly
   - linux install indexly
 weight: 10
-lastmod: "2026-04-25"
+lastmod: "2026-07-17"
 type: docs
 toc: true
 aliases:
@@ -170,7 +170,17 @@ On Windows, contributors can also use the repo-native bootstrap script:
 .\setup.ps1
 ```
 
-## 8. Troubleshooting
+## 8. Continuous Rename Watch Service
+
+First install and validate Indexly normally. For an unattended Rename Watch
+deployment, use a dedicated, versioned virtual environment so upgrades and
+rollbacks do not modify the executable beneath a running service.
+
+See [Operate Rename Watch as a Service](rename-watch-service-operation.md) for
+the supported WinSW, systemd, and launchd templates, least-privilege accounts,
+health and readiness probes, log retention, upgrades, and rollback.
+
+## 9. Troubleshooting
 
 - `indexly: command not found`
   - Restart terminal.

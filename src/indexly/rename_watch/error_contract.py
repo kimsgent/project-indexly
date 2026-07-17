@@ -74,12 +74,12 @@ def run_with_error_contract(
 ) -> int:
     """Run a rename-watch action without catching argparse/help SystemExit."""
     try:
-        action()
+        result = action()
     except KeyboardInterrupt as error:
         return render_error(error, json_errors=json_errors, stream=stream)
     except Exception as error:
         return render_error(error, json_errors=json_errors, stream=stream)
-    return 0
+    return result if isinstance(result, int) and not isinstance(result, bool) else 0
 
 
 __all__ = [

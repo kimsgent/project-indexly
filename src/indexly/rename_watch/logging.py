@@ -2,11 +2,77 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+import os
 from pathlib import Path
+import tempfile
 
-from indexly.log_utils import log_index_event_dict_sync
+from indexly.config import LOG_RETENTION_DAYS, MAX_LOG_SIZE
+from indexly.log_utils import NDJSON_LOG_DIR, LogManager, log_index_event_dict_sync
 from indexly.path_utils import normalize_path
+
+from .config import RenameWatchConfigError
+
+
+def validate_log_policy(max_bytes=None, retention_days=None) -> tuple[int, int]:
+    """Validate and exercise Indexly's configured NDJSON rotation policy in isolation."""
+    maximum = MAX_LOG_SIZE if max_bytes is None else max_bytes
+    retention = LOG_RETENTION_DAYS if retention_days is None else retention_days
+    for value, name in ((maximum, "MAX_LOG_SIZE"), (retention, "LOG_RETENTION_DAYS")):
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            raise RenameWatchConfigError("{0} must be a positive integer".format(name))
+    actual_root = Path(NDJSON_LOG_DIR)
+    descriptor = None
+    probe_path = None
+    try:
+        descriptor, name = tempfile.mkstemp(
+            prefix=".rename-watch-access-", suffix=".tmp", dir=str(actual_root)
+        )
+        probe_path = Path(name)
+        os.write(descriptor, b"{}\n")
+        os.fsync(descriptor)
+    except OSError as exc:
+        raise RenameWatchConfigError(
+            "rename-watch audit log directory is not writable: {0} ({1})".format(
+                actual_root, exc
+            )
+        ) from exc
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+        if probe_path is not None:
+            try:
+                probe_path.unlink()
+            except OSError as exc:
+                raise RenameWatchConfigError(
+                    "rename-watch audit log access probe could not be removed: {0} ({1})".format(
+                        probe_path, exc
+                    )
+                ) from exc
+    with tempfile.TemporaryDirectory(prefix="indexly-rename-watch-log-check-") as directory:
+        root = Path(directory)
+        expired = datetime.now().date() - timedelta(days=retention + 1)
+        old = root / expired.strftime("%Y") / expired.strftime("%m") / (
+            expired.isoformat() + "_index_events.ndjson"
+        )
+        old.parent.mkdir(parents=True)
+        old.write_text("{}\n", encoding="utf-8")
+        manager = LogManager(
+            log_dir=root,
+            max_bytes=maximum,
+            retention_days=retention,
+            async_mode=False,
+        )
+        current = Path(manager._choose_log_path({}))
+        current.parent.mkdir(parents=True, exist_ok=True)
+        with current.open("wb") as handle:
+            handle.truncate(maximum)
+        probe = {"event": "RENAME_WATCH_POLICY_PROBE", "timestamp": datetime.now(timezone.utc).isoformat()}
+        manager.log_sync(probe)
+        active = list(root.rglob("*_index_events*.ndjson"))
+        if len(active) < 2 or old.exists():
+            raise RenameWatchConfigError("rename-watch log rotation/retention probe failed")
+    return maximum, retention
 
 
 def _entry(

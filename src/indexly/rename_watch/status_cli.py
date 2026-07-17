@@ -41,11 +41,11 @@ def run_status_command(argv: Sequence[str], command_index: int) -> int:
     command_argv = list(argv[command_index + 1 :])
     json_errors = "--json-errors" in command_argv
 
-    def run_command() -> None:
+    def run_command() -> object:
         args = parser.parse_args(command_argv)
         from . import handle_rename_watch
 
-        handle_rename_watch(args)
+        return handle_rename_watch(args)
 
     return run_with_error_contract(run_command, json_errors=json_errors)
 
