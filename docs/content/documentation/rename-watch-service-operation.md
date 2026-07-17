@@ -6,7 +6,7 @@ aliases:
   - "/documentation/rename-watch-service-operation/"
 date: "2026-07-17"
 lastmod: "2026-07-17"
-weight: 32
+weight: 33
 type: docs
 toc: true
 draft: false
@@ -42,6 +42,9 @@ under administrator control.
 This guide assumes that the normal Rename Watch workflow already succeeds. If
 you have not validated and previewed the configuration, start with
 [Rename Watch](/en/documentation/rename-watch/).
+For schema validation, portable path expressions, and non-overwriting
+configuration migration, also read
+[Rename Watch Configuration](/en/documentation/rename-watch-configuration/).
 
 {{< alert title="Use hybrid mode for unattended operation" color="warning" >}}
 The supplied templates supervise one continuously running process. Configure
@@ -400,15 +403,19 @@ log.
 2. Preserve the complete `INDEXLY_HOME`. Do not edit or discard pending
    journals, counter state, or durable failure records.
 3. Install the new Indexly version beside the current environment.
-4. Stop the service and wait for its manager to report stopped. Check
+4. When preparing a configuration change, use `--migrate-config --output` to
+   create a separate canonical copy and review its diff. Never replace the
+   running file in place. See
+   [Rename Watch Configuration](/en/documentation/rename-watch-configuration/).
+5. Stop the service and wait for its manager to report stopped. Check
    `shutdown_abandoned_pending` and investigate event-only jobs before
    continuing.
-5. As the service identity, run the new executable with `--check-config` and
+6. As the service identity, run the new executable with `--check-config` and
    `--once --dry-run` against the production configuration.
-6. Export a new manager template, review its diff, and install or refresh it.
-7. Start the service. Require both health and readiness to succeed, then review
+7. Export a new manager template, review its diff, and install or refresh it.
+8. Start the service. Require both health and readiness to succeed, then review
    metrics, durable status, audit logs, and manager logs.
-8. Keep the previous environment and configuration copy until the observation
+9. Keep the previous environment and configuration copy until the observation
    window passes.
 
 Do not run `pip install --upgrade` inside the active environment while the

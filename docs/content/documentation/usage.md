@@ -276,7 +276,10 @@ indexly rename-watch --config "./rename-watch.json"
 Rename Watch adds document filters, `.indexlyignore` exclusions, settling,
 bounded retries, durable counters, quarantine, operator retry, and crash-safe
 recovery. See the [Rename Watch guide](/en/documentation/rename-watch/) for the
-complete configuration and operator command reference.
+complete operator command reference. Use
+[Rename Watch Configuration](/en/documentation/rename-watch-configuration/)
+for its published JSON Schema, portable path expansion, and non-overwriting
+configuration migration workflow.
 
 For business folders, `rename-file` can pass its planned names directly into profile-based organization:
 

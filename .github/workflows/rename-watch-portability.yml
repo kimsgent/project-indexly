@@ -10,6 +10,7 @@ on:
       - "src/indexly/**"
       - "tests/conftest.py"
       - "tests/test_rename_watch.py"
+      - "tests/test_rename_watch_configuration_evolution.py"
       - "tests/test_rename_watch_selection.py"
       - "tests/test_rename_watch_counters.py"
       - "tests/test_rename_watch_errors.py"
@@ -24,6 +25,7 @@ on:
       - "src/indexly/**"
       - "tests/conftest.py"
       - "tests/test_rename_watch.py"
+      - "tests/test_rename_watch_configuration_evolution.py"
       - "tests/test_rename_watch_selection.py"
       - "tests/test_rename_watch_counters.py"
       - "tests/test_rename_watch_errors.py"
@@ -82,7 +84,7 @@ jobs:
         id: imports
         continue-on-error: true
         run: >-
-          python -c "import pytest, watchdog;
+          python -c "import jsonschema, pytest, watchdog;
           from indexly.rename_watch.service import RenameWatchService;
           from indexly.rename_watch.planner import PlanMoveLog;
           print('rename-watch test dependencies available')"
@@ -93,6 +95,7 @@ jobs:
         run: >-
           python -m pytest
           tests/test_rename_watch.py
+          tests/test_rename_watch_configuration_evolution.py
           tests/test_rename_watch_selection.py
           tests/test_rename_watch_counters.py
           tests/test_rename_watch_errors.py

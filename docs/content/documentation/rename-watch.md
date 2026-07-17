@@ -103,7 +103,10 @@ the folder where you want to keep the configuration and its default `inbox`.
    indexly rename-watch --config "./rename-watch.json" --status
    ```
 
-7. For unattended operation, continue with
+7. For schema validation, portable paths, and safe migration, read
+   [Rename Watch Configuration](/en/documentation/rename-watch-configuration/).
+
+8. For unattended operation, continue with
    [Operate Rename Watch as a Service](/en/documentation/rename-watch-service-operation/).
 
 {{< alert title="Start with validation and preview" color="warning" >}}
@@ -153,6 +156,10 @@ including missing parent directories. An existing non-directory or an
 inaccessible location is rejected. Each destination and quarantine must be a
 strict child of its watch folder. Every quarantine must also be disjoint from
 all configured destination and quarantine subtrees that it could overlap.
+Environment variables and leading `~` are expanded only for `--config` and
+`watch_path`; destination and quarantine subfolders remain literal relative
+children. See [Rename Watch Configuration](/en/documentation/rename-watch-configuration/)
+for the published JSON Schema and exact expansion contract.
 
 ### Job settings
 
@@ -161,7 +168,7 @@ all configured destination and quarantine subtrees that it could overlap.
 | `id` | Unique, case-sensitive job identifier used by operator commands and durable state. | Required. |
 | `watch_path` | Folder from which eligible files are consumed. Relative paths start beside the JSON file. | Required. |
 | `destination_subfolder` | Strict child of `watch_path` that receives completed files. | Required. |
-| `pattern` | Output name built from `{date}`, `{title}`, `{counter}`, and `{prefix}`. | `{date}-{title}-{counter}` |
+| `pattern` | Output name built from `{date}`, `{title}`, `{counter}`, and `{prefix}`. | `{date}-{title}` |
 | `date_format` | Format used by `{date}`. | `%Y%m%d` |
 | `counter_format` | Python integer format such as `03d`; must be empty when `{counter}` is absent. | `d` with `{counter}`, otherwise empty. |
 | `title_format` | `standard` for lowercase kebab case or `camel-case`. | `standard` |
@@ -239,17 +246,18 @@ action.
 | `--readiness` | Check whether startup is complete and the service is accepting work. | `indexly rename-watch --config "./rename-watch.json" --readiness --json` |
 | `--metrics` | Read current-process operational counters and gauges. | `indexly rename-watch --config "./rename-watch.json" --metrics --json` |
 | `--export-service-template PLATFORM --output PATH` | Render a reviewed WinSW, systemd, launchd, or newsyslog starting point without installing it. | `indexly rename-watch --config "./rename-watch.json" --export-service-template systemd --output "./indexly-rename-watch.service" --service-user indexly --service-group indexly` |
+| `--migrate-config --output PATH` | Validate version 1 and write a deterministic, non-overwriting canonical copy without expanding stored paths or injecting defaults. | `indexly rename-watch --config "./rename-watch.json" --migrate-config --output "./rename-watch.migrated.json"` |
 | `--inspect-counters` | Read counter state for all jobs or one `--job`. | `indexly rename-watch --config "./rename-watch.json" --inspect-counters --job inbox` |
 | `--reset-counters` | Reset one `--date-key` or `--all-counters` for one counter-enabled `--job`. | `indexly rename-watch --config "./rename-watch.json" --reset-counters --job inbox --date-key 20260716` |
 | `--retry-failures` | Retry one durable `--failure-id` or a snapshot selected by `--all-failures`. | `indexly rename-watch --config "./rename-watch.json" --retry-failures --job inbox --failure-id 3f7bbf87-842b-4a68-a3a8-1450d36f47f5` |
 | `--job ID` | Select an exact, case-sensitive job for counter or failure operations. | `indexly rename-watch --config "./rename-watch.json" --inspect-counters --job inbox` |
 | `--yes` | Bypass a destructive operator confirmation; required for non-interactive and machine-readable reset/retry calls. | `indexly rename-watch --config "./rename-watch.json" --retry-failures --job inbox --all-failures --yes` |
-| `--json` | Emit successful status, probe, metrics, counter, reset, or retry output as one JSON document. | `indexly rename-watch --config "./rename-watch.json" --status --json` |
+| `--json` | Emit successful status, probe, metrics, migration, counter, reset, or retry output as one JSON document. | `indexly rename-watch --config "./rename-watch.json" --status --json` |
 | `--json-errors` | Emit failures as one versioned JSON document on standard error. | `indexly rename-watch --config "./rename-watch.json" --status --json --json-errors` |
 
 Action flags such as `--status`, `--health`, `--readiness`, `--metrics`,
 `--export-service-template`, `--inspect-counters`, `--reset-counters`, and
-`--retry-failures` are mutually exclusive. Run
+`--retry-failures`, and `--migrate-config` are mutually exclusive. Run
 `indexly rename-watch --help` for the parser-level reference.
 
 ## Continuous and one-batch behavior

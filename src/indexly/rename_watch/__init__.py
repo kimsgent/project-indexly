@@ -12,6 +12,7 @@ def handle_rename_watch(args):
     readiness = getattr(args, "readiness", False)
     metrics = getattr(args, "metrics", False)
     export_template = getattr(args, "export_service_template", None)
+    migrate_config_action = getattr(args, "migrate_config", False)
     status_json = getattr(args, "rename_watch_status_json", False)
     json_errors = getattr(args, "json_errors", False)
     incompatible = (
@@ -24,13 +25,18 @@ def handle_rename_watch(args):
     selected = [
         status, inspect, reset, retry_failures_action, health, readiness, metrics,
         export_template is not None,
+        migrate_config_action,
     ]
     if sum(bool(value) for value in selected) > 1:
         raise RenameWatchUsageError("rename-watch operator actions are mutually exclusive")
-    if status_json and not any(selected[:-1]):
+    json_actions = (
+        status, inspect, reset, retry_failures_action, health, readiness, metrics,
+        migrate_config_action,
+    )
+    if status_json and not any(json_actions):
         raise RenameWatchUsageError(
             "--json is valid only with --status, --inspect-counters, --reset-counters, "
-            "--retry-failures, --health, --readiness, or --metrics"
+            "--retry-failures, --health, --readiness, --metrics, or --migrate-config"
         )
     if any(selected) and any(incompatible):
         raise RenameWatchUsageError(
@@ -66,14 +72,18 @@ def handle_rename_watch(args):
         raise RenameWatchUsageError("--failure-id and --all-failures are valid only with --retry-failures")
     if getattr(args, "yes", False) and not (reset or retry_failures_action):
         raise RenameWatchUsageError("--yes is valid only with --reset-counters or --retry-failures")
-    template_options = (
-        getattr(args, "output", None),
-        getattr(args, "service_user", None),
-        getattr(args, "service_group", None),
-    )
-    if any(value is not None for value in template_options) and export_template is None:
+    if getattr(args, "output", None) is not None and not (
+        export_template is not None or migrate_config_action
+    ):
         raise RenameWatchUsageError(
-            "--output, --service-user, and --service-group require --export-service-template"
+            "--output requires --export-service-template or --migrate-config"
+        )
+    if (
+        getattr(args, "service_user", None) is not None
+        or getattr(args, "service_group", None) is not None
+    ) and export_template is None:
+        raise RenameWatchUsageError(
+            "--service-user and --service-group require --export-service-template"
         )
     if status:
         from .status import render_status
@@ -125,6 +135,14 @@ def handle_rename_watch(args):
             output=getattr(args, "output", None),
             service_user=getattr(args, "service_user", None),
             service_group=getattr(args, "service_group", None),
+        )
+    if migrate_config_action:
+        from .config_migration import migrate_config
+
+        return migrate_config(
+            args.config,
+            output=getattr(args, "output", None),
+            json_output=status_json,
         )
 
     from .service import handle_rename_watch as handle_service

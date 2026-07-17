@@ -1,0 +1,222 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://projectindexly.com/schemas/rename-watch-config-v1.schema.json",
+  "title": "Indexly Rename Watch configuration version 1",
+  "description": "Editor and automation schema for Rename Watch. Runtime filesystem and cross-job safety checks remain authoritative.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "jobs"
+  ],
+  "properties": {
+    "version": {
+      "const": 1,
+      "type": "integer",
+      "description": "Configuration format version."
+    },
+    "service": {
+      "$ref": "#/$defs/service"
+    },
+    "jobs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/job"
+      }
+    }
+  },
+  "$defs": {
+    "positiveNumber": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "nonEmptyString": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": ".*\\S.*"
+    },
+    "globList": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "^(?![\\\\/])(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).+"
+      }
+    },
+    "service": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "shutdown_drain_timeout_seconds": {
+          "$ref": "#/$defs/positiveNumber",
+          "default": 30,
+          "description": "Aggregate graceful-drain deadline in seconds."
+        },
+        "health_interval_seconds": {
+          "$ref": "#/$defs/positiveNumber",
+          "default": 5,
+          "description": "Runtime snapshot heartbeat interval in seconds."
+        },
+        "health_stale_after_seconds": {
+          "$ref": "#/$defs/positiveNumber",
+          "default": 15,
+          "description": "Maximum healthy snapshot age; runtime validation requires this to exceed health_interval_seconds."
+        }
+      }
+    },
+    "retry": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_attempts": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 8
+        },
+        "initial_delay_seconds": {
+          "$ref": "#/$defs/positiveNumber",
+          "default": 2
+        },
+        "max_delay_seconds": {
+          "$ref": "#/$defs/positiveNumber",
+          "default": 60,
+          "description": "Runtime validation requires this to be at least initial_delay_seconds."
+        }
+      }
+    },
+    "job": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "watch_path",
+        "destination_subfolder"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/nonEmptyString",
+          "description": "Unique, case-sensitive job identifier; uniqueness is enforced at runtime."
+        },
+        "watch_path": {
+          "$ref": "#/$defs/nonEmptyString",
+          "description": "Absolute or config-relative watch path. Environment and current-home expansion occurs at runtime."
+        },
+        "destination_subfolder": {
+          "$ref": "#/$defs/nonEmptyString",
+          "description": "Literal relative child of watch_path; environment and home expressions are not expanded."
+        },
+        "pattern": {
+          "$ref": "#/$defs/nonEmptyString",
+          "default": "{date}-{title}",
+          "description": "Name pattern using only the runtime-supported date, title, counter, and prefix placeholders."
+        },
+        "date_format": {
+          "type": "string",
+          "enum": [
+            "%Y%m%d",
+            "%Y-%m-%d",
+            "%y%m%d",
+            "%d-%m-%Y",
+            "%d%m%Y"
+          ],
+          "default": "%Y%m%d"
+        },
+        "counter_format": {
+          "type": "string",
+          "default": "",
+          "description": "Python integer format. Required and non-empty when pattern uses counter; otherwise it must be empty."
+        },
+        "title_format": {
+          "type": "string",
+          "enum": [
+            "standard",
+            "camel-case"
+          ],
+          "default": "standard"
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "event",
+            "interval",
+            "hybrid"
+          ],
+          "default": "hybrid"
+        },
+        "scan_interval_seconds": {
+          "$ref": "#/$defs/positiveNumber",
+          "default": 60
+        },
+        "settle_seconds": {
+          "$ref": "#/$defs/positiveNumber",
+          "default": 3
+        },
+        "retry": {
+          "$ref": "#/$defs/retry"
+        },
+        "include": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/globList"
+            },
+            {
+              "minItems": 1
+            }
+          ],
+          "description": "Root-relative POSIX globs; omission accepts every otherwise eligible file."
+        },
+        "exclude": {
+          "$ref": "#/$defs/globList",
+          "default": []
+        },
+        "respect_indexlyignore": {
+          "type": "boolean",
+          "default": false
+        },
+        "recursive": {
+          "type": "boolean",
+          "default": false
+        },
+        "max_file_size_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "quarantine_subfolder": {
+          "$ref": "#/$defs/nonEmptyString",
+          "description": "Optional literal relative child disjoint from every protected destination and quarantine subtree."
+        },
+        "no_counter_collision_policy": {
+          "type": "string",
+          "enum": [
+            "fail",
+            "quarantine",
+            "leave-source"
+          ],
+          "default": "fail",
+          "description": "Valid only when pattern omits the counter placeholder."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "no_counter_collision_policy"
+            ],
+            "properties": {
+              "no_counter_collision_policy": {
+                "const": "quarantine"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "quarantine_subfolder"
+            ]
+          }
+        }
+      ]
+    }
+  }
+}
+

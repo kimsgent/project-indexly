@@ -55,6 +55,11 @@ def add_rename_watch_arguments(parser: argparse.ArgumentParser) -> None:
         choices=["windows", "systemd", "launchd", "launchd-newsyslog"],
         help="Render one supported service-manager template",
     )
+    actions.add_argument(
+        "--migrate-config",
+        action="store_true",
+        help="Validate and write a canonical current-version configuration copy",
+    )
     parser.add_argument(
         "--once", action="store_true", help="Run one reconciliation scan and exit"
     )
@@ -91,7 +96,9 @@ def add_rename_watch_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--mode", choices=["event", "interval", "hybrid"], help="Override configured run mode"
     )
-    parser.add_argument("--output", help="Output path for --export-service-template")
+    parser.add_argument(
+        "--output", help="New output path for template export or configuration migration"
+    )
     parser.add_argument("--service-user", help="Service account for a rendered template")
     parser.add_argument("--service-group", help="Service group for a rendered template")
 

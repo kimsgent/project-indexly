@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
 import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
@@ -27,6 +28,10 @@ _SERVICE_KEYS = {
 }
 _RETRY_KEYS = {"max_attempts", "initial_delay_seconds", "max_delay_seconds"}
 _MISSING = object()
+_DOLLAR_ENVIRONMENT_REFERENCE = re.compile(
+    r"\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))"
+)
+_WINDOWS_ENVIRONMENT_REFERENCE = re.compile(r"%([A-Za-z_][A-Za-z0-9_]*)%")
 
 
 class RenameWatchConfigError(ValueError):
@@ -76,8 +81,36 @@ class RenameWatchSettings:
     service: RenameWatchServiceSettings = RenameWatchServiceSettings()
 
 
-def _resolve_path(value: str, config_directory: Path) -> Path:
-    expanded = Path(os.path.expandvars(os.path.expanduser(value)))
+def _expand_path(value: str, context: str) -> str:
+    references = [
+        match.group(1) or match.group(2)
+        for match in _DOLLAR_ENVIRONMENT_REFERENCE.finditer(value)
+    ]
+    if os.name == "nt":
+        references.extend(
+            match.group(1)
+            for match in _WINDOWS_ENVIRONMENT_REFERENCE.finditer(value)
+        )
+    missing = sorted({name for name in references if name not in os.environ})
+    if missing:
+        raise RenameWatchConfigError(
+            "{0} references undefined environment variable(s): {1}".format(
+                context, ", ".join(missing)
+            )
+        )
+    expanded = os.path.expandvars(value)
+    if value == "~" or value.startswith(("~/", "~\\")):
+        home_expanded = os.path.expanduser(expanded)
+        if home_expanded == expanded and expanded.startswith("~"):
+            raise RenameWatchConfigError(
+                "{0} could not expand the current user home".format(context)
+            )
+        expanded = home_expanded
+    return expanded
+
+
+def _resolve_path(value: str, config_directory: Path, context: str) -> Path:
+    expanded = Path(_expand_path(value, context))
     return (config_directory / expanded).resolve() if not expanded.is_absolute() else expanded.resolve()
 
 
@@ -297,7 +330,7 @@ def _parse_job(raw_value: Any, index: int, config_directory: Path) -> RenameWatc
     watch_value = raw.get("watch_path")
     if not isinstance(watch_value, str) or not watch_value.strip():
         raise RenameWatchConfigError("{0}.watch_path must be a non-empty string".format(context))
-    watch_path = _resolve_path(watch_value, config_directory)
+    watch_path = _resolve_path(watch_value, config_directory, context + ".watch_path")
     if watch_path.exists() and not watch_path.is_dir():
         raise RenameWatchConfigError("{0}.watch_path must be a directory: {1}".format(context, watch_path))
 
@@ -402,35 +435,17 @@ def _parse_job(raw_value: Any, index: int, config_directory: Path) -> RenameWatc
     )
 
 
-def load_settings(config_path: str) -> RenameWatchSettings:
-    unresolved = Path(os.path.expandvars(os.path.expanduser(config_path)))
-    try:
-        path = unresolved.resolve()
-    except OSError as exc:
-        raise RenameWatchConfigError(
-            "Configuration path could not be resolved: {0} ({1})".format(
-                unresolved, exc
-            )
-        ) from exc
-    try:
-        with path.open("r", encoding="utf-8") as handle:
-            raw = json.load(handle)
-    except FileNotFoundError:
-        raise RenameWatchConfigError("Configuration file not found: {0}".format(path))
-    except UnicodeDecodeError as exc:
-        raise RenameWatchConfigError(
-            "Configuration file is not valid UTF-8: {0} ({1})".format(path, exc)
-        ) from exc
-    except json.JSONDecodeError as exc:
-        raise RenameWatchConfigError("Invalid JSON in {0}: {1}".format(path, exc))
-    except OSError as exc:
-        raise RenameWatchConfigError(
-            "Configuration file could not be read: {0} ({1})".format(path, exc)
-        ) from exc
+def parse_settings_document(raw: Any, path: Path) -> RenameWatchSettings:
+    """Validate one in-memory document using the normal runtime semantics."""
+    path = Path(path)
     root = _require_object(raw, "configuration")
     if set(root) - {"version", "jobs", "service"}:
         raise RenameWatchConfigError("configuration has unsupported key(s): {0}".format(", ".join(sorted(set(root) - {"version", "jobs", "service"}))))
-    if root.get("version") != 1:
+    if (
+        isinstance(root.get("version"), bool)
+        or not isinstance(root.get("version"), int)
+        or root.get("version") != 1
+    ):
         raise RenameWatchConfigError("configuration.version must be 1")
     jobs_value = root.get("jobs")
     if not isinstance(jobs_value, list) or not jobs_value:
@@ -463,9 +478,37 @@ def load_settings(config_path: str) -> RenameWatchSettings:
     )
 
 
+def load_settings(config_path: str) -> RenameWatchSettings:
+    unresolved = Path(_expand_path(config_path, "--config"))
+    try:
+        path = unresolved.resolve()
+    except OSError as exc:
+        raise RenameWatchConfigError(
+            "Configuration path could not be resolved: {0} ({1})".format(
+                unresolved, exc
+            )
+        ) from exc
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            raw = json.load(handle)
+    except FileNotFoundError:
+        raise RenameWatchConfigError("Configuration file not found: {0}".format(path))
+    except UnicodeDecodeError as exc:
+        raise RenameWatchConfigError(
+            "Configuration file is not valid UTF-8: {0} ({1})".format(path, exc)
+        ) from exc
+    except json.JSONDecodeError as exc:
+        raise RenameWatchConfigError("Invalid JSON in {0}: {1}".format(path, exc))
+    except OSError as exc:
+        raise RenameWatchConfigError(
+            "Configuration file could not be read: {0} ({1})".format(path, exc)
+        ) from exc
+    return parse_settings_document(raw, path)
+
+
 def initialize_settings(config_path: str) -> Path:
     """Create a safe configuration template and its default watch directory."""
-    unresolved = Path(os.path.expandvars(os.path.expanduser(config_path)))
+    unresolved = Path(_expand_path(config_path, "--config"))
     try:
         path = unresolved.resolve()
     except OSError as exc:

@@ -316,12 +316,12 @@ Completed:
 
 Roadmap next:
 
-- Begin Stage 6 with a published JSON Schema and backward-compatible
-  configuration migration foundation.
+- None. The six-stage blueprint is complete; further configuration evolution
+  requires a separately reviewed roadmap.
 
 Deferred from completed stages:
 
-- None. Stages 1 through 5 are complete.
+- None. Stages 1 through 6 are complete.
 
 ### Stage 3: File selection
 
@@ -390,15 +390,21 @@ Status: **Completed**
 
 ### Stage 6: Configuration evolution
 
-Status: **Next**
+Status: **Completed**
 
-- Publish a JSON Schema for editor validation and automation.
-- Document environment-variable and user-home expansion without embedding
-  secrets or machine-specific paths.
-- Keep new version-1 keys optional and backward-compatible.
-- Add configuration migration tooling before introducing a version 2 schema.
-- Consider live configuration reload only after locking, queues, state, and
-  recovery behavior are proven safe.
+- A Draft 2020-12 version-1 JSON Schema is packaged with Indexly and published
+  byte-identically through Hugo for editor association and automation.
+- Portable environment and current-home expansion is limited to `--config`
+  and `watch_path`, fails closed for undefined references, and is documented
+  separately from literal destination and quarantine subfolders.
+- Version-1 defaults remain optional and backward-compatible. The runtime now
+  rejects Boolean versions so it agrees with the published integer schema.
+- `--migrate-config --output` validates version 1 and atomically publishes a
+  deterministic, non-overwriting copy while preserving lexical paths,
+  optional-key presence, array order, and the untouched source.
+- Version 2 and live reload remain intentionally unsupported. Configuration,
+  environment, selection, and service settings are captured at startup;
+  graceful stop-and-restart is the supported change boundary.
 
 ### Incremental delivery order
 
@@ -412,7 +418,8 @@ Status: **Next**
    no-counter collision policies.
 5. Completed: Stage 5 portable service templates, bounded draining, runtime
    probes and metrics, log-policy validation, and cross-platform operations.
-6. Next: publish the schema and migration foundation from Stage 6.
+6. Completed: Stage 6 published schema, precise path-expansion contract,
+   deterministic migration foundation, restart rollout, and reload deferral.
 
-After every increment, update this roadmap with what is **Completed**, what is
-**In progress**, and the single next implementation step.
+The planned increments are complete. Any version-2 or live-reload proposal
+must add a new reviewed roadmap before implementation.

@@ -91,6 +91,7 @@ flowchart LR
 | Learn command workflows end-to-end | [Usage Guide](usage.md) |
 | Standardize filenames before analysis or organization | [Rename File](rename-file.md) |
 | Automate incoming-file renaming | [Rename Watch](rename-watch.md) |
+| Validate and migrate Rename Watch configuration | [Rename Watch Configuration](rename-watch-configuration.md) |
 | Run Rename Watch under WinSW, systemd, or launchd | [Rename Watch Service Operation](rename-watch-service-operation.md) |
 | Remove stale search results without deleting files | [Clear Search Results Safely](clear-search.md) |
 | Diagnose search, cache, analysis DB, and integrity issues | [Indexly Doctor](indexly-doctor.md) |

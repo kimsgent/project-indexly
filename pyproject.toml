@@ -118,6 +118,7 @@ backup = [
 dependencies = [
   "pytest>=7.4.0",
   "pytest-cov>=4.1.0",
+  "jsonschema>=4.23.0,<5.0",
   "flake8>=6.1.0",
   "black>=23.9.1",
   "isort>=5.12.0",
@@ -146,6 +147,7 @@ include = [
   "src/indexly/assets/csv/*.csv",
   "src/indexly/ignore_defaults/presets/**",
   "src/indexly/rename_watch/templates/**",
+  "src/indexly/rename_watch/schemas/**",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -159,6 +161,7 @@ include = [
   "src/indexly/assets/csv/*.csv",
   "src/indexly/ignore_defaults/presets/**",
   "src/indexly/rename_watch/templates/**",
+  "src/indexly/rename_watch/schemas/**",
 ]
 
 [project.scripts]
