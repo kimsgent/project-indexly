@@ -93,7 +93,12 @@ def _natural_key(path: Path) -> tuple:
 
 
 def _safe_open(path: Path, *, dir_fd: Optional[int] = None) -> int:
-    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_BINARY", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
 
     def open_with_flags(value: int) -> int:
         if dir_fd is None:
@@ -211,6 +216,8 @@ def _read_log_lines(
     try:
         descriptor = _safe_open(path)
         opened = os.fstat(descriptor)
+        if os.name == "nt" and not _same_file(expected, opened):
+            expected = path.lstat()
         if (
             _is_link_or_reparse(opened)
             or not stat.S_ISREG(opened.st_mode)

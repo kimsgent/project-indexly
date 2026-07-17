@@ -291,7 +291,7 @@ def test_root_indexlyignore_is_opt_in_exact_local_read_only_and_loaded_once(tmp_
     parent_ignore.write_text("parent-blocked.txt\n", encoding="utf-8")
     job, watch = _load(tmp_path, respect_indexlyignore=True, recursive=True)
     local_ignore = watch / ".indexlyignore"
-    local_ignore.write_text("ignored.txt\nblocked/\n", encoding="utf-8")
+    local_ignore.write_bytes(b"ignored.txt\nblocked/\n")
     alias = watch / ".indexignore"
     ignored = watch / "ignored.txt"
     blocked = watch / "blocked" / "nested.txt"
@@ -304,7 +304,7 @@ def test_root_indexlyignore_is_opt_in_exact_local_read_only_and_loaded_once(tmp_
     service = _acquire(RenameWatchService([job], state_root=tmp_path / "state"))
     try:
         first = service._discover_candidates(job)
-        local_ignore.write_text("keep.txt\n", encoding="utf-8")
+        local_ignore.write_bytes(b"keep.txt\n")
         second = service._discover_candidates(job)
     finally:
         service._release_root_locks()
@@ -359,7 +359,11 @@ def test_indexlyignore_is_loaded_only_after_root_lock(tmp_path, monkeypatch):
     assert observations == [True]
 
 
-@pytest.mark.parametrize("payload", [b"\xff", b"x" * (MAX_INDEXLYIGNORE_BYTES + 1)])
+@pytest.mark.parametrize(
+    "payload",
+    [b"\xff", b"x" * (MAX_INDEXLYIGNORE_BYTES + 1)],
+    ids=["invalid_utf8", "oversized"],
+)
 def test_unsafe_indexlyignore_content_fails_closed(tmp_path, payload):
     job, watch = _load(tmp_path, respect_indexlyignore=True)
     ignore = watch / ".indexlyignore"
