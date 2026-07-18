@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  WinSW configuration for Indexly Rename Watch.
+
+  Render every template placeholder before installing this file. WinSW is an external
+  prerequisite and must be installed and verified separately. Keep the
+  rendered XML beside the WinSW executable, or pass it explicitly to WinSW.
+-->
+<service>
+  <id>IndexlyRenameWatch</id>
+  <name>Indexly Rename Watch</name>
+  <description>Safely processes files configured for Indexly Rename Watch.</description>
+
+  <executable>@@PYTHON_EXECUTABLE@@</executable>
+  <arguments>-m indexly rename-watch --config "@@CONFIG_PATH@@"</arguments>
+  <env name="INDEXLY_HOME" value="@@INDEXLY_HOME@@" />
+
+  <serviceaccount>
+    <username>@@SERVICE_USER@@</username>
+    <allowservicelogon>true</allowservicelogon>
+  </serviceaccount>
+
+  <startmode>Automatic</startmode>
+  <delayedAutoStart>true</delayedAutoStart>
+  <stoptimeout>@@MANAGER_STOP_TIMEOUT_SECONDS@@sec</stoptimeout>
+  <preshutdown>true</preshutdown>
+  <preshutdownTimeout>@@MANAGER_STOP_TIMEOUT_SECONDS@@sec</preshutdownTimeout>
+
+  <logpath>@@SERVICE_LOG_DIR@@</logpath>
+  <log mode="roll-by-size">
+    <sizeThreshold>10240</sizeThreshold>
+    <keepFiles>10</keepFiles>
+  </log>
+
+  <onfailure action="restart" delay="10 sec" />
+  <resetfailure>1 hour</resetfailure>
+</service>

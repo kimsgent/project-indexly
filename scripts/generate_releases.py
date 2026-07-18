@@ -1,8 +1,9 @@
 import json
 import os
 from pathlib import Path
-import re
 import shutil
+
+from release_versions import is_prerelease
 
 # Paths
 BASE_DIR = Path(__file__).parent.parent / "docs"
@@ -27,11 +28,6 @@ MAX_OLD_RELEASES = _read_keep_old()
 # Ensure releases dir exists
 RELEASES_DIR.mkdir(parents=True, exist_ok=True)
 ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
-
-
-def is_prerelease(version: str) -> bool:
-    """Return True if version string looks like a prerelease (alpha, beta, rc, test)."""
-    return bool(re.search(r"(alpha|beta|rc|test|-test)", version, re.IGNORECASE))
 
 
 def _release_filename(version: str) -> str:

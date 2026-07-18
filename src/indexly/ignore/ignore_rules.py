@@ -1,5 +1,6 @@
 from pathlib import Path
 import fnmatch
+from typing import List, Optional
 
 
 BUILTIN_BLOCKED_RULES = ("~$*",)
@@ -8,7 +9,7 @@ BUILTIN_BLOCKED_RULES = ("~$*",)
 class IgnoreRules:
     __slots__ = ("_rules",)
 
-    def __init__(self, rules: list[str]):
+    def __init__(self, rules: List[str]):
         # Store only non-empty, non-comment rules
         self._rules = [
             r.strip()
@@ -19,7 +20,7 @@ class IgnoreRules:
             if rule not in self._rules:
                 self._rules.append(rule)
 
-    def should_ignore(self, path: Path, root: Path | None = None) -> bool:
+    def should_ignore(self, path: Path, root: Optional[Path] = None) -> bool:
         """
         Determine if a file or folder should be ignored.
 

@@ -1,0 +1,123 @@
+name: Rename Watch Portability
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - ".github/workflows/rename-watch-portability.yml"
+      - "requirements-rename-watch-ci.txt"
+      - "pyproject.toml"
+      - "src/indexly/**"
+      - "tests/conftest.py"
+      - "tests/test_rename_watch.py"
+      - "tests/test_rename_watch_configuration_evolution.py"
+      - "tests/test_rename_watch_selection.py"
+      - "tests/test_rename_watch_counters.py"
+      - "tests/test_rename_watch_errors.py"
+      - "tests/test_rename_watch_failures.py"
+      - "tests/test_rename_watch_status.py"
+      - "tests/test_rename_watch_service_operation.py"
+      - "tests/test_rename_module.py"
+  pull_request:
+    paths:
+      - ".github/workflows/rename-watch-portability.yml"
+      - "requirements-rename-watch-ci.txt"
+      - "pyproject.toml"
+      - "src/indexly/**"
+      - "tests/conftest.py"
+      - "tests/test_rename_watch.py"
+      - "tests/test_rename_watch_configuration_evolution.py"
+      - "tests/test_rename_watch_selection.py"
+      - "tests/test_rename_watch_counters.py"
+      - "tests/test_rename_watch_errors.py"
+      - "tests/test_rename_watch_failures.py"
+      - "tests/test_rename_watch_status.py"
+      - "tests/test_rename_watch_service_operation.py"
+      - "tests/test_rename_module.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rename-watch-portability-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  portability:
+    name: ${{ matrix.os }} / Python 3.11
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+
+    env:
+      PYTHONUTF8: "1"
+      PYTHONUNBUFFERED: "1"
+
+    steps:
+      - name: Checkout repository
+        id: checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        id: setup
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            requirements-rename-watch-ci.txt
+            pyproject.toml
+
+      - name: Install focused test dependencies
+        id: dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-rename-watch-ci.txt
+          python -m pip install -e .
+
+      - name: Verify focused imports
+        id: imports
+        run: >-
+          python -c "import jsonschema, pytest, watchdog;
+          from indexly.rename_watch.service import RenameWatchService;
+          from indexly.rename_watch.planner import PlanMoveLog;
+          print('rename-watch test dependencies available')"
+
+      - name: Run focused portability tests
+        id: tests
+        run: >-
+          python -m pytest
+          tests/test_rename_watch.py
+          tests/test_rename_watch_configuration_evolution.py
+          tests/test_rename_watch_selection.py
+          tests/test_rename_watch_counters.py
+          tests/test_rename_watch_errors.py
+          tests/test_rename_watch_failures.py
+          tests/test_rename_watch_status.py
+          tests/test_rename_watch_service_operation.py
+          tests/test_rename_module.py
+          -q
+          --junitxml=rename-watch-test-results.xml
+
+      - name: Upload focused test report
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: rename-watch-${{ runner.os }}-python-3.11-pytest
+          path: rename-watch-test-results.xml
+          if-no-files-found: ignore
+
+      - name: Report portability failure
+        if: >-
+          always() &&
+          (steps.checkout.outcome == 'failure' ||
+           steps.setup.outcome == 'failure' ||
+           steps.dependencies.outcome == 'failure' ||
+           steps.imports.outcome == 'failure' ||
+           steps.tests.outcome == 'failure')
+        run: |
+          echo "::error::Rename-watch portability checks failed on ${{ runner.os }} with Python 3.11."
