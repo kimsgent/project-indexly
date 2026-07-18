@@ -4,7 +4,8 @@ import sys
 from pathlib import Path
 import subprocess
 import shutil
-import re
+
+from release_versions import is_prerelease
 
 
 def release_exists(version: str) -> bool:
@@ -21,7 +22,7 @@ def release_exists(version: str) -> bool:
 
 def is_special_version(version: str) -> bool:
     """Return True if version is dry-run or pre-release."""
-    return bool(re.search(r"-(test|alpha|beta|rc)", version, re.IGNORECASE))
+    return is_prerelease(version)
 
 
 def main():

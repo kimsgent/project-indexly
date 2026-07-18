@@ -1,0 +1,1077 @@
+"""Independent Watchdog and reconciliation service for rename-watch."""
+from __future__ import annotations
+import math, os, signal, stat, sys, threading, time
+from pathlib import Path
+from watchdog.events import FileSystemEventHandler
+from watchdog.observers import Observer
+from .config import (
+    RenameWatchConfigError,
+    RenameWatchJob,
+    RenameWatchServiceSettings,
+    ensure_watch_directory,
+    initialize_settings,
+    load_settings,
+)
+from .logging import log_failure, log_failure_record, log_move, validate_log_policy
+from .locking import WatchRootLock
+from .planner import PlanMoveLog
+from .identity import canonical_root_identity, state_namespace
+from .error_contract import RenameWatchUsageError
+from .selection import load_selection_policy
+from .failure_store import FailureStore
+from .planner import ExactNameCollision
+from .runtime_snapshot import METRIC_NAMES, RuntimeSnapshotWriter
+
+_IDENTITY_UNAVAILABLE = object()
+
+def _temporary(path: Path) -> bool:
+    return path.name.startswith(("~$", ".~")) or path.name.lower().endswith((".tmp", ".lock"))
+
+def _inside(path: Path, parent: Path) -> bool:
+    try: path.resolve().relative_to(parent.resolve()); return True
+    except (ValueError, OSError): return False
+
+class RenameWatchService:
+    def __init__(
+        self,
+        jobs,
+        state_root=None,
+        clock=time.monotonic,
+        sleeper=time.sleep,
+        service_settings=None,
+    ):
+        self.jobs = jobs; self.clock = clock; self.sleeper = sleeper; self.stop_event = threading.Event()
+        self.service_settings = service_settings or RenameWatchServiceSettings()
+        self.state_root = state_root
+        self._state_lock = threading.Lock()
+        self._shutdown_requests = 0
+        self._shutdown_interrupted = False
+        self._shutdown_deadline = None
+        self._accepting_events = True
+        self.metrics = {name: 0 for name in METRIC_NAMES}
+        self._runtime_writer = RuntimeSnapshotWriter(jobs, state_root)
+        self._once_keys = None
+        self._once_identities = None
+        self._once_capture = False
+        self._once_discovered_identities = {}
+        self.selection_policies = {
+            job.job_id: load_selection_policy(job)
+            for job in jobs
+            if not job.respect_indexlyignore
+        }
+        self.pending = {}; self.snapshots = {}; self.next_scan = {j.job_id: 0.0 for j in jobs}
+        self.movers = {j.job_id: PlanMoveLog(j, state_root) for j in jobs}; self.observers = []; self.root_locks = []
+        self.failure_stores = {
+            job.job_id: FailureStore(job, state_root) for job in jobs
+        }
+        self._protected_subtrees = tuple(
+            path
+            for configured_job in jobs
+            for path in (configured_job.destination_path, configured_job.quarantine_path)
+            if path is not None
+        )
+        self._blocked_failure_sources = {}
+    def _selection_policy(self, job):
+        policy = self.selection_policies.get(job.job_id)
+        if policy is None:
+            raise RenameWatchConfigError(
+                "job '{0}' selection policy was not loaded under its root lock".format(
+                    job.job_id
+                )
+            )
+        return policy
+    def _load_selection_policies(self):
+        loaded = []
+        try:
+            for job in self.jobs:
+                if job.job_id not in self.selection_policies:
+                    self.selection_policies[job.job_id] = load_selection_policy(job)
+                    loaded.append(job.job_id)
+        except BaseException:
+            for job_id in loaded:
+                self.selection_policies.pop(job_id, None)
+            raise
+    def _eligible(self, job, path):
+        path = Path(path)
+        try:
+            file_stat = path.lstat()
+        except OSError:
+            return False
+        is_reparse = bool(
+            getattr(file_stat, "st_file_attributes", 0) & 0x400
+        )
+        if (
+            not stat.S_ISREG(file_stat.st_mode)
+            or stat.S_ISLNK(file_stat.st_mode)
+            or is_reparse
+            or _temporary(path)
+            or not _inside(path, job.watch_path)
+            or any(_inside(path, protected) for protected in self._protected_subtrees)
+        ):
+            return False
+        blocked = self._blocked_failure_sources.get(
+            (job.job_id, os.path.normcase(os.path.abspath(os.fspath(path))))
+        )
+        if blocked is not None and blocked == {
+            "device": int(file_stat.st_dev),
+            "inode": int(file_stat.st_ino),
+            "size": int(file_stat.st_size),
+            "mtime_ns": int(file_stat.st_mtime_ns),
+        }:
+            return False
+        return self._selection_policy(job).accepts_file(path, file_stat.st_size)
+    def schedule(self, job, path, attempts=0, delay=0.0, reset_settle=False, required_delay=False, assume_eligible=False, accept_during_drain=False):
+        path = Path(path)
+        if not assume_eligible and not self._eligible(job, path): return
+        resolved = path.resolve(); key = (job.job_id, str(resolved)); now = self.clock(); due = now + delay
+        with self._state_lock:
+            if not self._accepting_events and not accept_during_drain:
+                return
+            capture_identity = self._once_capture
+        discovered_identity = None
+        if capture_identity:
+            try:
+                discovered_identity = self._capture_once_identity(resolved)
+            except OSError:
+                discovered_identity = _IDENTITY_UNAVAILABLE
+        with self._state_lock:
+            if not self._accepting_events and not accept_during_drain:
+                return
+            if self._once_keys is not None and key not in self._once_keys:
+                return
+            if self._once_capture and capture_identity:
+                self._once_discovered_identities.setdefault(key, discovered_identity)
+            old = self.pending.get(key)
+            previous_attempts = old[3] if old is not None else 0
+            if reset_settle and key in self.snapshots:
+                due = now + job.settle_seconds
+                required_delay = True
+            if old is not None:
+                attempts = max(attempts, old[3])
+                old_required = old[4]
+                if old_required and required_delay:
+                    due = max(due, old[2])
+                elif old_required:
+                    due = old[2]
+                elif not required_delay:
+                    due = min(due, old[2])
+                required_delay = required_delay or old_required
+            self.pending[key] = (job, resolved, due, attempts, required_delay)
+            if old is None:
+                self.metrics["scheduled"] += 1
+            if attempts > previous_attempts:
+                self.metrics["retries"] += 1
+    def _claim_one_due(self, now):
+        with self._state_lock:
+            for key, value in self.pending.items():
+                if value[2] <= now:
+                    del self.pending[key]
+                    return key, value
+        return None
+    def _claim_due(self, now):
+        """Atomically claim a due batch for compatibility with batch callers."""
+        claimed = []
+        with self._state_lock:
+            for key, value in list(self.pending.items()):
+                if value[2] <= now:
+                    claimed.append((key, value))
+                    del self.pending[key]
+        return claimed
+    def _has_pending(self):
+        with self._state_lock:
+            return bool(self.pending)
+    def _discard_snapshot(self, key):
+        with self._state_lock:
+            self.snapshots.pop(key, None)
+    def _prepare_watch_paths(self):
+        for job in self.jobs:
+            ensure_watch_directory(job.watch_path, "job '{0}' watch_path".format(job.job_id))
+    def _discover_candidates(self, job):
+        ensure_watch_directory(job.watch_path, "job '{0}' watch_path".format(job.job_id))
+        if job.recursive:
+            eligible = self._discover_recursive_candidates(job)
+        else:
+            try:
+                paths = list(job.watch_path.iterdir())
+            except OSError as exc:
+                raise RenameWatchConfigError(
+                    "job '{0}' watch_path could not be scanned: {1} ({2})".format(
+                        job.job_id, job.watch_path, exc
+                    )
+                ) from exc
+            eligible = [path.resolve() for path in paths if self._eligible(job, path)]
+        return sorted(
+            eligible,
+            key=lambda path: os.path.normcase(os.path.abspath(os.fspath(path))),
+        )
+    def _discover_recursive_candidates(self, job):
+        policy = self._selection_policy(job)
+        eligible = []
+
+        def scan_error(exc):
+            raise RenameWatchConfigError(
+                "job '{0}' watch_path could not be scanned: {1} ({2})".format(
+                    job.job_id, job.watch_path, exc
+                )
+            ) from exc
+
+        try:
+            walker = os.walk(
+                job.watch_path,
+                topdown=True,
+                onerror=scan_error,
+                followlinks=False,
+            )
+            for directory, names, filenames in walker:
+                current = Path(directory)
+                try:
+                    current_stat = current.lstat()
+                except OSError:
+                    names[:] = []
+                    continue
+                if (
+                    not stat.S_ISDIR(current_stat.st_mode)
+                    or stat.S_ISLNK(current_stat.st_mode)
+                    or bool(
+                        getattr(current_stat, "st_file_attributes", 0) & 0x400
+                    )
+                    or not _inside(current, job.watch_path)
+                    or _inside(current, job.destination_path)
+                ):
+                    names[:] = []
+                    continue
+                kept = []
+                for name in names:
+                    candidate = current / name
+                    try:
+                        linked = candidate.is_symlink() or bool(
+                            getattr(candidate.lstat(), "st_file_attributes", 0)
+                            & 0x400
+                        )
+                    except OSError:
+                        linked = True
+                    if linked or any(
+                        _inside(candidate, protected)
+                        for protected in self._protected_subtrees
+                    ):
+                        continue
+                    if policy.excludes_directory(candidate):
+                        continue
+                    kept.append(name)
+                names[:] = sorted(
+                    kept,
+                    key=lambda value: os.path.normcase(
+                        os.path.abspath(os.fspath(current / value))
+                    ),
+                )
+                for filename in sorted(
+                    filenames,
+                    key=lambda value: os.path.normcase(
+                        os.path.abspath(os.fspath(current / value))
+                    ),
+                ):
+                    candidate = current / filename
+                    if self._eligible(job, candidate):
+                        eligible.append(candidate.resolve())
+        except RenameWatchConfigError:
+            raise
+        except OSError as exc:
+            scan_error(exc)
+        return eligible
+    def _audit_move(self, job, result):
+        self._audit(
+            lambda: log_move(
+                job.job_id,
+                result.source,
+                result.destination,
+                result.pattern,
+                result.attempts,
+                operation_id=result.operation_id,
+                recovered=result.recovered,
+                job_namespace=state_namespace(job.watch_path, job.job_id),
+            )
+        )
+        self._resolve_failure_for_source(job, result.source)
+        self.movers[job.job_id].complete(result.operation_id)
+        self._increment_metric("moved")
+        if result.recovered:
+            self._increment_metric("recovered_moves")
+
+    def _resolve_failure_for_source(self, job, source):
+        source_key = os.path.normcase(os.path.abspath(os.fspath(source)))
+        store = self.failure_stores[job.job_id]
+        for record in store.records():
+            if os.path.normcase(os.path.abspath(record["current_path"])) == source_key:
+                store.resolve(record)
+    def _recover_job(self, job):
+        for result in self.movers[job.job_id].recover_pending():
+            self._audit_move(job, result)
+    def _recover_pending_moves(self):
+        for job in self.jobs:
+            # A retry uses the normal move journal. Recover it before validating
+            # the failure payload because a completed retry legitimately removes
+            # that payload before its audit and failure cleanup finish.
+            self._recover_job(job)
+            self.failure_stores[job.job_id].recover()
+            for record in self.failure_stores[job.job_id].records():
+                if not record["audited"]:
+                    self._audit(lambda: log_failure_record(job, record))
+                    self.failure_stores[job.job_id].mark_audited(record)
+            self._load_failure_blocks(job)
+
+    def _load_failure_blocks(self, job):
+        for key in [key for key in self._blocked_failure_sources if key[0] == job.job_id]:
+            self._blocked_failure_sources.pop(key, None)
+        for record in self.failure_stores[job.job_id].records():
+            if record["state"] != "active":
+                continue
+            key = (
+                job.job_id,
+                os.path.normcase(os.path.abspath(record["original_source_path"])),
+            )
+            self._blocked_failure_sources[key] = record["source_identity"]
+
+    def _validate_failure_state(self):
+        for job in self.jobs:
+            records = self.failure_stores[job.job_id].records()
+            if any(record["state"] not in {"active", "quarantined"} for record in records):
+                raise RenameWatchConfigError(
+                    "job '{0}' has an unfinished failure transition".format(job.job_id)
+                )
+            self._load_failure_blocks(job)
+    def _acquire_root_locks(self):
+        locks = []
+        covered_keys = set()
+        for job in self.jobs:
+            lock = WatchRootLock(job.watch_path)
+            if covered_keys.intersection(lock.keys):
+                continue
+            covered_keys.update(lock.keys)
+            locks.append(lock)
+        locks.sort(key=lambda item: item.key)
+        acquired = []
+        try:
+            for lock in locks:
+                lock.acquire(); acquired.append(lock)
+        except BaseException:
+            self.root_locks = acquired
+            try:
+                self._release_root_locks()
+            except BaseException:
+                pass
+            raise
+        self.root_locks = locks
+        try:
+            self._load_selection_policies()
+        except BaseException:
+            self._release_root_locks()
+            raise
+    def _release_root_locks(self):
+        first_error = None
+        for lock in reversed(self.root_locks):
+            try:
+                lock.release()
+            except BaseException as exc:
+                if first_error is None: first_error = exc
+        self.root_locks = []
+        if first_error is not None: raise first_error
+    def _release_root_locks_preserving_primary(self, primary_error):
+        try:
+            self._release_root_locks()
+        except BaseException:
+            if primary_error is None:
+                raise
+    def _stop_and_release(self):
+        first_error = None
+        try:
+            self._stop_observers()
+        except BaseException as exc:
+            first_error = exc
+        try:
+            self._release_root_locks()
+        except BaseException as exc:
+            if first_error is None: first_error = exc
+        if first_error is not None: raise first_error
+    def reconcile(self, job):
+        self._increment_metric("scans")
+        for path in self._discover_candidates(job): self.schedule(job, path)
+
+    def _increment_metric(self, name, value=1):
+        with self._state_lock:
+            self.metrics[name] += value
+
+    def _metric_snapshot(self):
+        with self._state_lock:
+            metrics = dict(self.metrics)
+            metrics["pending"] = len(self.pending)
+        return metrics
+
+    def _write_runtime_snapshot(self, state):
+        if not self.jobs:
+            return
+        self._runtime_writer.write(state, self._metric_snapshot())
+
+    def _audit(self, action):
+        try:
+            action()
+        except Exception:
+            self._increment_metric("audit_write_failures")
+            raise
+    def _commit_terminal_failure(
+        self,
+        job,
+        source,
+        attempts,
+        error,
+        *,
+        reason,
+        attempted_destination,
+        disposition_override=None,
+    ):
+        disposition = disposition_override or (
+            error.policy
+            if isinstance(error, ExactNameCollision)
+            and error.policy in {"quarantine", "leave-source"}
+            else ("quarantine" if job.quarantine_path is not None else "leave-source")
+        )
+        record = self.failure_stores[job.job_id].record_terminal(
+            source,
+            attempted_destination,
+            error,
+            attempts,
+            reason=reason,
+            disposition=disposition,
+        )
+        if record["state"] == "active":
+            self._blocked_failure_sources[
+                (
+                    job.job_id,
+                    os.path.normcase(os.path.abspath(record["original_source_path"])),
+                )
+            ] = record["source_identity"]
+        self._audit(
+            lambda: log_failure(
+                job.job_id,
+                source,
+                attempted_destination or source,
+                job.pattern,
+                attempts,
+                error,
+                None,
+                state_namespace(job.watch_path, job.job_id),
+                record["failure_id"],
+                record["reason"],
+                record["disposition"],
+                Path(record["current_path"]),
+            )
+        )
+        result = self.failure_stores[job.job_id].mark_audited(record)
+        self._increment_metric("terminal_failures")
+        return result
+
+    def _handle_processing_error(self, job, source, key, attempts, error, force_retry=False):
+        self._discard_snapshot(key)
+        source_available = force_retry or source.exists()
+        immediate_collision = isinstance(error, ExactNameCollision) and error.policy in {
+            "quarantine", "leave-source"
+        }
+        if not immediate_collision and attempts + 1 < job.retry.max_attempts and source_available:
+            delay = min(job.retry.initial_delay_seconds * (2 ** attempts), job.retry.max_delay_seconds)
+            self.schedule(
+                job,
+                source,
+                attempts + 1,
+                delay,
+                required_delay=True,
+                assume_eligible=force_retry,
+                accept_during_drain=True,
+            )
+        elif source_available:
+            finalized = self.movers[job.job_id].finalized_operation(source)
+            if finalized is not None:
+                operation_id, target = finalized
+                self._commit_terminal_failure(
+                    job,
+                    source,
+                    attempts + 1,
+                    error,
+                    reason="recovery_pending",
+                    attempted_destination=target,
+                    disposition_override="leave-source",
+                )
+                return
+            if not self.movers[job.job_id].abort_unstarted(source):
+                raise RenameWatchConfigError(
+                    "job '{0}' reached its retry limit with an unresolved recovery operation".format(
+                        job.job_id
+                    )
+                )
+            target = (
+                error.target
+                if isinstance(error, ExactNameCollision)
+                else None
+            )
+            self._commit_terminal_failure(
+                job,
+                source,
+                attempts + 1,
+                error,
+                reason=(
+                    "no_counter_collision"
+                    if isinstance(error, ExactNameCollision)
+                    else "processing_error"
+                ),
+                attempted_destination=target,
+            )
+    def _process(self, job, source, attempts):
+        key = (job.job_id, str(source))
+        try:
+            source_replaced = self._once_source_replaced(key, source)
+        except OSError as error:
+            self._handle_processing_error(
+                job, source, key, attempts, error, force_retry=True
+            )
+            return
+        if source_replaced:
+            if not self.movers[job.job_id].abort_unstarted(
+                source, allow_source_replaced=True
+            ):
+                raise RenameWatchConfigError(
+                    "job '{0}' has an unresolved operation after its frozen source was replaced".format(
+                        job.job_id
+                    )
+                )
+            self._discard_snapshot(key)
+            return
+        try:
+            recovered = self.movers[job.job_id].recover_pending(source, attempts + 1)
+        except (PermissionError, OSError) as error:
+            self._handle_processing_error(job, source, key, attempts, error)
+            return
+        for recovered_result in recovered:
+            self._audit_move(job, recovered_result)
+        if not self._eligible(job, source): self._discard_snapshot(key); return
+        try:
+            stat = source.stat(); fingerprint = (stat.st_size, stat.st_mtime_ns)
+            with self._state_lock:
+                previous = self.snapshots.get(key)
+                if previous != fingerprint:
+                    self.snapshots[key] = fingerprint
+                replacement = self.pending.get(key)
+                rescheduled = replacement is not None
+                if replacement is not None and replacement[3] < attempts:
+                    self.pending[key] = (
+                        replacement[0], replacement[1], replacement[2], attempts, replacement[4]
+                    )
+            if previous != fingerprint:
+                self.schedule(
+                    job,
+                    source,
+                    attempts,
+                    job.settle_seconds,
+                    required_delay=True,
+                    accept_during_drain=True,
+                ); return
+            if rescheduled:
+                return
+            if not self._eligible(job, source):
+                self._discard_snapshot(key)
+                return
+            with self._state_lock:
+                expected_identity = (
+                    self._once_identities.get(key)
+                    if self._once_identities is not None
+                    else None
+                )
+            result = self.movers[job.job_id].plan_and_move_operation(
+                source, attempts + 1, expected_identity
+            )
+        except (PermissionError, OSError) as error:
+            self._handle_processing_error(job, source, key, attempts, error)
+        else:
+            self._discard_snapshot(key)
+            self._audit_move(job, result)
+    def tick(self, reconcile=True):
+        now = self.clock()
+        if reconcile:
+            for job in self.jobs:
+                if job.mode in ("interval", "hybrid") and now >= self.next_scan[job.job_id]:
+                    self.reconcile(job); self.next_scan[job.job_id] = now + job.scan_interval_seconds
+        while True:
+            with self._state_lock:
+                deadline = self._shutdown_deadline
+                force_immediate = self._shutdown_requests >= 2
+            now = self.clock()
+            if force_immediate or (deadline is not None and now >= deadline):
+                break
+            claimed = self._claim_one_due(now)
+            if claimed is None:
+                break
+            _, (job, path, _, attempts, _) = claimed
+            self._increment_metric("processed")
+            self._process(job, path, attempts)
+    @staticmethod
+    def _safe_duration_product(value, count):
+        try:
+            result = value * count
+        except OverflowError:
+            return sys.float_info.max
+        return result if math.isfinite(result) else sys.float_info.max
+    @staticmethod
+    def _retry_delay_total(job, start_attempt=0):
+        remaining = max(0, job.retry.max_attempts - 1 - start_attempt)
+        delay = job.retry.initial_delay_seconds
+        skipped = start_attempt
+        while skipped and delay < job.retry.max_delay_seconds:
+            delay = min(delay * 2.0, job.retry.max_delay_seconds)
+            skipped -= 1
+        total = 0.0
+        while remaining and delay < job.retry.max_delay_seconds:
+            total += delay
+            if not math.isfinite(total):
+                return sys.float_info.max
+            remaining -= 1
+            delay = min(delay * 2.0, job.retry.max_delay_seconds)
+        if remaining:
+            capped = RenameWatchService._safe_duration_product(
+                job.retry.max_delay_seconds, remaining
+            )
+            if not math.isfinite(capped) or total > sys.float_info.max - capped:
+                return sys.float_info.max
+            total += capped
+        return total
+    @classmethod
+    def _once_budget(cls, job):
+        settling = cls._safe_duration_product(
+            job.settle_seconds, job.retry.max_attempts
+        )
+        retries = cls._retry_delay_total(job)
+        budget = settling + retries + 0.1
+        return budget if math.isfinite(budget) else sys.float_info.max
+    def _freeze_once_work(self):
+        started = self.clock()
+        with self._state_lock:
+            self._once_capture = False
+            self._once_keys = set(self.pending)
+            values = dict(self.pending)
+            deadlines = {
+                key: started + self._once_budget(value[0])
+                for key, value in values.items()
+            }
+        with self._state_lock:
+            self._once_identities = {
+                key: self._once_discovered_identities.get(
+                    key, _IDENTITY_UNAVAILABLE
+                )
+                for key in values
+            }
+        return deadlines, {key: 0 for key in deadlines}
+    @staticmethod
+    def _capture_once_identity(source):
+        stat = source.stat()
+        if not stat.st_ino:
+            raise OSError(
+                "stable filesystem identity is unavailable for --once: {0}".format(
+                    source
+                )
+            )
+        return stat.st_dev, stat.st_ino
+    def _once_source_replaced(self, key, source):
+        with self._state_lock:
+            if self._once_identities is None or key not in self._once_identities:
+                return False
+            expected = self._once_identities[key]
+        if expected is _IDENTITY_UNAVAILABLE:
+            raise OSError(
+                "initial filesystem identity is unavailable for --once: {0}".format(
+                    source
+                )
+            )
+        try:
+            stat = source.stat()
+        except FileNotFoundError:
+            return True
+        return not stat.st_ino or (stat.st_dev, stat.st_ino) != expected
+    def _refresh_once_deadlines(self, deadlines, retry_versions, now):
+        with self._state_lock:
+            values = {
+                key: value
+                for key, value in self.pending.items()
+                if key in deadlines
+            }
+        for key, value in values.items():
+            attempts = value[3]
+            if attempts <= retry_versions[key]:
+                continue
+            retry_versions[key] = attempts
+            job = value[0]
+            remaining_settles = self._safe_duration_product(
+                job.settle_seconds, job.retry.max_attempts - attempts
+            )
+            remaining = (
+                max(0.0, value[2] - now)
+                + remaining_settles
+                + self._retry_delay_total(job, attempts)
+                + 0.1
+            )
+            deadlines[key] = max(deadlines[key], now + remaining)
+    def _expire_once_work(self, deadlines, now):
+        expired = []
+        with self._state_lock:
+            for key, deadline in deadlines.items():
+                value = self.pending.get(key)
+                if value is None or now < deadline:
+                    continue
+                expired.append(value)
+                del self.pending[key]
+                self.snapshots.pop(key, None)
+        for job, source, _, attempts, _ in expired:
+            if not source.exists():
+                continue
+            error = TimeoutError(
+                "file did not settle or complete retries within the bounded --once window"
+            )
+            self._commit_terminal_failure(
+                job,
+                source,
+                max(1, attempts + 1),
+                error,
+                reason="settle_timeout",
+                attempted_destination=None,
+            )
+    def _next_once_delay(self, deadlines, now):
+        with self._state_lock:
+            wake_times = [
+                min(value[2], deadlines[key])
+                for key, value in self.pending.items()
+                if key in deadlines
+            ]
+        if not wake_times:
+            return 0.0
+        return max(0.0, min(wake_times) - now)
+    def run_once(self):
+        self._prepare_watch_paths(); self._acquire_root_locks()
+        primary_error = None
+        try:
+            self._recover_pending_moves()
+            with self._state_lock:
+                self._once_capture = True
+                self._once_discovered_identities = {}
+            for job in self.jobs: self.reconcile(job)
+            deadlines, retry_versions = self._freeze_once_work()
+            while self._has_pending():
+                tick_started = self.clock()
+                self.tick(reconcile=False)
+                now = self.clock()
+                processing_time = max(0.0, now - tick_started)
+                if processing_time:
+                    for key in deadlines:
+                        deadlines[key] += processing_time
+                self._refresh_once_deadlines(deadlines, retry_versions, now)
+                self._expire_once_work(deadlines, now)
+                if self._has_pending():
+                    delay = self._next_once_delay(deadlines, now)
+                    before_sleep = self.clock()
+                    self.sleeper(delay)
+                    if delay > 0 and self.clock() <= before_sleep:
+                        self._expire_once_work(deadlines, float("inf"))
+        except BaseException as error:
+            primary_error = error
+            raise
+        finally:
+            with self._state_lock:
+                self._once_keys = None
+                self._once_identities = None
+                self._once_capture = False
+                self._once_discovered_identities = {}
+            self._release_root_locks_preserving_primary(primary_error)
+    def check_config(self):
+        self._prepare_watch_paths(); self._acquire_root_locks()
+        primary_error = None
+        try:
+            validate_log_policy()
+            self._validate_failure_state()
+            for job in self.jobs:
+                self._discover_candidates(job)
+                self.movers[job.job_id].validate_check_access()
+                self.failure_stores[job.job_id].validate_check_access()
+        except BaseException as error:
+            primary_error = error
+            raise
+        finally:
+            self._release_root_locks_preserving_primary(primary_error)
+    def dry_run_once(self):
+        self._prepare_watch_paths(); self._acquire_root_locks()
+        primary_error = None
+        try:
+            self._validate_failure_state()
+            frozen = [
+                (job, self._discover_candidates(job)) for job in self.jobs
+            ]
+            reservations = set()
+            source_reservations = set()
+            plans = []
+            for job, sources in frozen:
+                unique_sources = []
+                for source in sources:
+                    source_key = canonical_root_identity(source)
+                    if source_key in source_reservations:
+                        continue
+                    source_reservations.add(source_key)
+                    unique_sources.append(source)
+                plans.extend(
+                    self.movers[job.job_id].preview(
+                        unique_sources, reservations
+                    )
+                )
+            return plans
+        except BaseException as error:
+            primary_error = error
+            raise
+        finally:
+            self._release_root_locks_preserving_primary(primary_error)
+    def _start_observers(self):
+        service = self
+        class Handler(FileSystemEventHandler):
+            def __init__(self, job): self.job = job
+            def on_created(self, event):
+                if event.is_directory:
+                    if self.job.recursive: service.reconcile(self.job)
+                else:
+                    service.schedule(self.job, event.src_path, reset_settle=True)
+            def on_modified(self, event):
+                if not event.is_directory: service.schedule(self.job, event.src_path, reset_settle=True)
+            def on_moved(self, event):
+                if event.is_directory:
+                    if self.job.recursive: service.reconcile(self.job)
+                else:
+                    service.schedule(self.job, event.dest_path, reset_settle=True)
+        for job in self.jobs:
+            if job.mode not in ("event", "hybrid"): continue
+            ensure_watch_directory(job.watch_path, "job '{0}' watch_path".format(job.job_id))
+            observer = Observer()
+            self.observers.append(observer)
+            try:
+                observer.schedule(
+                    Handler(job),
+                    str(job.watch_path),
+                    recursive=job.recursive,
+                )
+                observer.start()
+            except Exception as exc:
+                raise RenameWatchConfigError(
+                    "job '{0}' watch_path could not be watched: {1} ({2})".format(
+                        job.job_id, job.watch_path, exc
+                    )
+                ) from exc
+    def request_shutdown(self, interrupted=False):
+        with self._state_lock:
+            self._shutdown_requests += 1
+            self._shutdown_interrupted = self._shutdown_interrupted or interrupted
+            self._accepting_events = False
+            if self._shutdown_requests == 1:
+                self._shutdown_deadline = (
+                    self.clock()
+                    + self.service_settings.shutdown_drain_timeout_seconds
+                )
+            else:
+                self._shutdown_deadline = self.clock()
+        self.stop_event.set()
+
+    def _stop_observers(self, publish_draining=False):
+        observers = self.observers
+        self.observers = []
+        first_error = None
+        for observer in observers:
+            try:
+                observer.stop()
+            except BaseException as exc:
+                if first_error is None:
+                    first_error = exc
+        next_snapshot = self.clock() + self.service_settings.health_interval_seconds
+        for observer in observers:
+            try:
+                while observer.is_alive():
+                    with self._state_lock:
+                        deadline = self._shutdown_deadline
+                        force_immediate = self._shutdown_requests >= 2
+                    if force_immediate:
+                        break
+                    now = self.clock()
+                    timeout = (
+                        0.1
+                        if deadline is None
+                        else min(0.1, max(0.0, deadline - now))
+                    )
+                    if timeout <= 0:
+                        break
+                    observer.join(timeout=timeout)
+                    after = self.clock()
+                    if publish_draining and after >= next_snapshot:
+                        self._write_runtime_snapshot("draining")
+                        next_snapshot = after + self.service_settings.health_interval_seconds
+                    if after <= now and observer.is_alive():
+                        break
+            except BaseException as exc:
+                if first_error is None:
+                    first_error = exc
+        if first_error is not None:
+            raise first_error
+
+    def _drain_pending(self):
+        next_snapshot = self.clock() + self.service_settings.health_interval_seconds
+        while self._has_pending():
+            with self._state_lock:
+                force_immediate = self._shutdown_requests >= 2
+                deadline = self._shutdown_deadline
+            now = self.clock()
+            if force_immediate or deadline is None or now >= deadline:
+                break
+            self.tick(reconcile=False)
+            if not self._has_pending():
+                break
+            now = self.clock()
+            if now >= next_snapshot:
+                self._write_runtime_snapshot("draining")
+                next_snapshot = now + self.service_settings.health_interval_seconds
+            delay = min(0.1, max(0.0, deadline - now))
+            if delay:
+                self.sleeper(delay)
+        with self._state_lock:
+            abandoned = len(self.pending)
+            self.pending.clear()
+            self.snapshots.clear()
+            self.metrics["shutdown_abandoned_pending"] += abandoned
+
+    def _write_failed_preserving_primary(self):
+        try:
+            self._write_runtime_snapshot("failed")
+        except BaseException:
+            pass
+
+    def run_forever(self):
+        primary_error = None
+        finalized = False
+        previous_handlers = {}
+        try:
+            self._prepare_watch_paths(); self._acquire_root_locks()
+            self._write_runtime_snapshot("starting")
+            self._recover_pending_moves()
+            self._start_observers()
+            self._write_runtime_snapshot("ready")
+            next_snapshot = self.clock() + self.service_settings.health_interval_seconds
+            if threading.current_thread() is threading.main_thread():
+                for signum, interrupted in (
+                    (getattr(signal, "SIGTERM", None), False),
+                    (getattr(signal, "SIGINT", None), True),
+                ):
+                    if signum is None:
+                        continue
+                    previous_handlers[signum] = signal.getsignal(signum)
+                    signal.signal(
+                        signum,
+                        lambda _signum, _frame, interrupted=interrupted: self.request_shutdown(interrupted),
+                    )
+            while not self.stop_event.is_set():
+                self.tick()
+                now = self.clock()
+                if now >= next_snapshot:
+                    self._write_runtime_snapshot("ready")
+                    next_snapshot = now + self.service_settings.health_interval_seconds
+                self.stop_event.wait(0.1)
+            with self._state_lock:
+                has_shutdown_request = self._shutdown_requests > 0
+            if not has_shutdown_request:
+                self.request_shutdown()
+            self._write_runtime_snapshot("draining")
+            self._stop_observers(publish_draining=True)
+            self._drain_pending()
+            self._write_runtime_snapshot("stopped")
+            finalized = True
+            with self._state_lock:
+                interrupted = self._shutdown_interrupted
+            if interrupted:
+                raise KeyboardInterrupt
+        except KeyboardInterrupt as error:
+            primary_error = error
+            if not finalized and self.root_locks:
+                self.request_shutdown(interrupted=True)
+                try:
+                    self._write_runtime_snapshot("draining")
+                    self._stop_observers(publish_draining=True)
+                    self._drain_pending()
+                    self._write_runtime_snapshot("stopped")
+                except BaseException:
+                    self._write_failed_preserving_primary()
+            raise
+        except BaseException as error:
+            primary_error = error
+            if self.root_locks:
+                self._write_failed_preserving_primary()
+            raise
+        finally:
+            cleanup_error = None
+            for signum, handler in previous_handlers.items():
+                try:
+                    signal.signal(signum, handler)
+                except BaseException as error:
+                    if cleanup_error is None:
+                        cleanup_error = error
+            try:
+                self._stop_and_release()
+            except BaseException as error:
+                if cleanup_error is None:
+                    cleanup_error = error
+            if primary_error is None and cleanup_error is not None:
+                raise cleanup_error
+    def stop(self):
+        self.request_shutdown()
+
+def handle_rename_watch(args):
+    initialize = getattr(args, "init", False)
+    check_config = getattr(args, "check_config", False)
+    once = getattr(args, "once", False)
+    dry_run = getattr(args, "dry_run", False)
+    mode = getattr(args, "mode", None)
+    if dry_run and not once:
+        raise RenameWatchUsageError("--dry-run requires --once")
+    if initialize and (once or dry_run or mode or check_config):
+        raise RenameWatchUsageError("--init cannot be combined with --once, --dry-run, --mode, or --check-config")
+    if check_config and (once or dry_run or mode or initialize):
+        raise RenameWatchUsageError("--check-config cannot be combined with --once, --dry-run, --mode, or --init")
+    if dry_run and mode:
+        raise RenameWatchUsageError("--dry-run cannot be combined with --mode")
+    if initialize:
+        path = initialize_settings(args.config)
+        print("Created rename-watch configuration: {0}".format(path))
+        print("Created default watch folder: {0}".format(path.parent / "inbox"))
+        return
+    settings = load_settings(args.config)
+    jobs = settings.jobs
+    if mode:
+        jobs = [type(job)(**dict(job.__dict__, mode=mode)) for job in jobs]
+    service = RenameWatchService(jobs)
+    service.service_settings = settings.service
+    if check_config:
+        service.check_config()
+        print("Rename-watch configuration is valid: {0}".format(settings.config_path))
+    elif dry_run:
+        for plan in service.dry_run_once():
+            print(
+                "DRY-RUN job={0} source={1} destination={2}{3}".format(
+                    plan.job_id,
+                    plan.source,
+                    plan.destination,
+                        (
+                            " disposition={0}".format(
+                                getattr(plan, "disposition", "move")
+                            )
+                            if getattr(plan, "disposition", "move") != "move"
+                        else ""
+                    ),
+                )
+            )
+    elif once:
+        service.run_once()
+    else:
+        service.run_forever()

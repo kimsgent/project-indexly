@@ -1,13 +1,13 @@
 ---
-title: "FAQ"
+title: "Indexly FAQ"
 linkTitle: "FAQ"
-description: "Frequently asked questions for installing, using, troubleshooting, and maintaining Indexly across supported platforms."
-summary: "Quick answers for installation, runtime file locations, supported file types, troubleshooting, and performance guidance."
+description: "Frequently asked questions for installing, using, automating file renames, troubleshooting, and maintaining Indexly across supported platforms."
+summary: "Quick answers for installation, rename automation, runtime file locations, supported file types, troubleshooting, and performance guidance."
 type: docs
 slug: "faq"
 weight: 240
 date: "2026-04-22"
-lastmod: "2026-04-22"
+lastmod: "2026-07-16"
 draft: false
 toc: true
 aliases:
@@ -18,6 +18,8 @@ keywords:
   - indexly install help
   - indexly file locations
   - indexly supported file types
+  - indexly rename-watch
+  - automatic file renaming
 tags:
   - faq
   - support
@@ -47,6 +49,7 @@ If you are working with structured datasets, AutoDoctor artifacts, or SQLite dat
 
 - [Install Indexly](indexly-installation.md)
 - [Usage Guide](usage.md)
+- [Rename Watch](/en/documentation/rename-watch/)
 - [Data Analysis Overview](data-analysis-overview.md)
 - [Analyze AutoDoctor Artifacts](analyze-autodoctor-artifacts.md)
 - [Indexly Doctor](indexly-doctor.md)

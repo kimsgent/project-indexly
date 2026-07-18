@@ -76,8 +76,8 @@ if ($CheckOnly) {
             $major = [int]$matches[1]
             $minor = [int]$matches[2]
 
-            if ($major -lt 3 -or ($major -eq 3 -and $minor -lt 9)) {
-                Write-Host "⚠️ Warning: Python 3.9+ is recommended."
+            if ($major -lt 3 -or ($major -eq 3 -and $minor -lt 11)) {
+                Write-Host "⚠️ Warning: Python 3.11+ is required."
             } else {
                 Write-Host "✅ Python version is sufficient."
                 $pythonOk = $true
@@ -113,7 +113,7 @@ if ($CheckOnly) {
                     & $pip install -r $requirementsDev --dry-run
                 }
             } else {
-                Write-Host "⚠️ Skipping pip checks due to Python version < 3.9"
+                Write-Host "⚠️ Skipping pip checks due to Python version < 3.11"
             }
         } else {
             Write-Host "⚠️ pip not found in .venv"
@@ -149,8 +149,8 @@ try {
         $major = [int]$matches[1]
         $minor = [int]$matches[2]
     }
-    if ($major -lt 3 -or ($major -eq 3 -and $minor -lt 9)) {
-        Write-Host "❌ Python 3.9+ is required to create virtual environment. Aborting setup."
+    if ($major -lt 3 -or ($major -eq 3 -and $minor -lt 11)) {
+        Write-Host "❌ Python 3.11+ is required to create virtual environment. Aborting setup."
         exit 1
     }
 } catch {

@@ -1,13 +1,20 @@
 {
   "project": "FTS5 File Search Tool",
   "latest": {
-    "version": "2.1.5",
-    "date": "2026-07-11",
-    "link": "/en/releases/v2.1.5/",
-    "summary": "feat(indexing): add safe incremental indexing with stat fingerprints, log-based scope, and read-only plan previews | fix(indexing): preserve exact cross-platform paths when index logs define incremental scope",
+    "version": "2.1.6",
+    "date": "2026-07-18",
+    "link": "/en/releases/v2.1.6/",
+    "summary": "feat(rename-watch): add configured, settling-aware file intake with dry-run previews, cross-process locking, counters, and interrupted-move recovery | feat(rename-watch): add selection controls, failure quarantine and retry, durable status, health/readiness/metrics probes, and reviewable service templates",
     "prerelease": false
   },
   "recent": [
+    {
+      "version": "2.1.5",
+      "date": "2026-07-11",
+      "link": "/en/releases/v2.1.5/",
+      "summary": "feat(indexing): add safe incremental indexing with stat fingerprints, log-based scope, and read-only plan previews | fix(indexing): preserve exact cross-platform paths when index logs define incremental scope",
+      "prerelease": false
+    },
     {
       "version": "2.1.4",
       "date": "2026-06-27",
@@ -34,18 +41,18 @@
       "date": "2026-05-16",
       "link": "/en/releases/v2.1.1/",
       "summary": "feat(backup): add local backup verification and dry-run restore workflows | fix(backup): harden restore safety checks, incremental base selection, temp-root registry handling, and cryptography dependency coverage",
-      "prerelease": false
-    },
-    {
-      "version": "2.1.0",
-      "date": "2026-05-09",
-      "link": "/en/releases/v2.1.0/",
-      "summary": "feat(search): add clear-search for safe deletion from fts_index.db by path, tag, or the full search index | feat(search): add dry-run previews, confirmation prompts, --yes automation, operation IDs, and per-table deletion summaries",
       "prerelease": false
     }
   ],
   "archive": [
     {
+      "version": "2.1.5",
+      "date": "2026-07-11",
+      "link": "/en/releases/v2.1.5/",
+      "summary": "feat(indexing): add safe incremental indexing with stat fingerprints, log-based scope, and read-only plan previews | fix(indexing): preserve exact cross-platform paths when index logs define incremental scope",
+      "prerelease": false
+    },
+    {
       "version": "2.1.4",
       "date": "2026-06-27",
       "link": "/en/releases/v2.1.4/",
@@ -72,17 +79,10 @@
       "link": "/en/releases/v2.1.1/",
       "summary": "feat(backup): add local backup verification and dry-run restore workflows | fix(backup): harden restore safety checks, incremental base selection, temp-root registry handling, and cryptography dependency coverage",
       "prerelease": false
-    },
-    {
-      "version": "2.1.0",
-      "date": "2026-05-09",
-      "link": "/en/releases/v2.1.0/",
-      "summary": "feat(search): add clear-search for safe deletion from fts_index.db by path, tag, or the full search index | feat(search): add dry-run previews, confirmation prompts, --yes automation, operation IDs, and per-table deletion summaries",
-      "prerelease": false
     }
   ],
   "archived": {
-    "count": 35,
+    "count": 36,
     "link": "/en/releases/Archive/"
   },
   "retention": {

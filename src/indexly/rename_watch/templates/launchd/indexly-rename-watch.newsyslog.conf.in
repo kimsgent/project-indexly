@@ -1,0 +1,4 @@
+# Rotate launchd stdout/stderr separately from Indexly's audit NDJSON.
+# Keep this path free of spaces because newsyslog fields are whitespace-delimited.
+@@SERVICE_LOG_DIR@@/rename-watch.stdout.log @@SERVICE_USER@@:@@SERVICE_GROUP@@ 640 10 10240 * JN
+@@SERVICE_LOG_DIR@@/rename-watch.stderr.log @@SERVICE_USER@@:@@SERVICE_GROUP@@ 640 10 10240 * JN

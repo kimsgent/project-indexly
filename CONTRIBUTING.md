@@ -16,7 +16,7 @@ Thank you for considering contributing! Your help improves the tool for everyone
    cd project-indexly
     ```
 
-3. **Create a virtual environment** (Python 3.9+ recommended) and install dependencies:
+3. **Create a virtual environment** (Python 3.11+ required) and install dependencies:
 
    ```bash
    python3 -m venv venv

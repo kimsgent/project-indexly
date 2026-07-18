@@ -5,7 +5,7 @@ icon: "mdi:play-circle"
 weight: 20
 type: docs
 date: 2026-04-01
-lastmod: 2026-05-31
+lastmod: 2026-07-16
 summary: "Learn the day-to-day Indexly workflow: install, index, search, tag, analyze, compare, and back up with practical command examples."
 description: "Practical Indexly usage guide for Windows, macOS, and Linux. Covers indexing, search, regex, tagging, analysis, organizing, backup/restore, and common troubleshooting."
 keywords: [
@@ -247,7 +247,7 @@ See [Clear Search Results Safely](clear-search.md).
 
 ---
 
-## 4) Rename, Tag, And Organize
+## 4) Rename, Automate, Tag, And Organize
 
 Use `rename-file` before organizing or analyzing files when names are inconsistent, duplicated, or missing useful context:
 
@@ -255,6 +255,31 @@ Use `rename-file` before organizing or analyzing files when names are inconsiste
 indexly rename-file /path/to/incoming --pattern "{date}-{title}" --dry-run
 indexly rename-file /path/to/incoming --pattern "{date}-{title}" --recursive
 ```
+
+To turn an intake folder into a repeatable rename pipeline, create and preview
+a Rename Watch configuration:
+
+```console
+indexly rename-watch --config "./rename-watch.json" --init
+indexly rename-watch --config "./rename-watch.json" --check-config
+indexly rename-watch --config "./rename-watch.json" --once --dry-run
+```
+
+After reviewing the preview, process one batch or continue watching for new
+files:
+
+```console
+indexly rename-watch --config "./rename-watch.json" --once
+indexly rename-watch --config "./rename-watch.json"
+```
+
+Rename Watch adds document filters, `.indexlyignore` exclusions, settling,
+bounded retries, durable counters, quarantine, operator retry, and crash-safe
+recovery. See the [Rename Watch guide](/en/documentation/rename-watch/) for the
+complete operator command reference. Use
+[Rename Watch Configuration](/en/documentation/rename-watch-configuration/)
+for its published JSON Schema, portable path expansion, and non-overwriting
+configuration migration workflow.
 
 For business folders, `rename-file` can pass its planned names directly into profile-based organization:
 
@@ -291,7 +316,9 @@ indexly lister /path/to/logs --ext .pdf
 indexly lister /path/to/logs --duplicates
 ```
 
-See [Rename File](rename-file.md), [Organizer](organizer.md), [Organizer Profiler](organizer-profiler.md), and [Lister](lister.md).
+See [Rename File](rename-file.md), [Rename Watch](/en/documentation/rename-watch/),
+[Organizer](organizer.md), [Organizer Profiler](organizer-profiler.md), and
+[Lister](lister.md).
 
 ---
 
@@ -463,5 +490,6 @@ This lets core commands like `indexly --help` and `indexly --version` remain usa
 - [Clear Search Results Safely](clear-search.md)
 - [Tagging](tagging.md)
 - [Rename File](rename-file.md)
+- [Rename Watch](/en/documentation/rename-watch/)
 - [Organizer](organizer.md)
 - [Developer Guide](developer.md)

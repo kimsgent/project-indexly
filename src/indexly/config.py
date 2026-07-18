@@ -21,32 +21,14 @@ with importlib.resources.path("indexly.assets", "DejaVuSans.ttf") as font_path:
 """
 
 import os
-import sys
 from pathlib import Path
+
+from .runtime_paths import resolve_base_dir
 
 
 def _resolve_base_dir() -> str:
     """Return a user-writable runtime directory for Indexly state files."""
-    explicit = os.environ.get("INDEXLY_HOME")
-    if explicit:
-        return str(Path(explicit).expanduser())
-
-    home = Path.home()
-
-    if sys.platform == "darwin":
-        return str(home / "Library" / "Application Support" / "indexly")
-
-    if os.name == "nt":
-        appdata = os.environ.get("APPDATA")
-        if appdata:
-            return str(Path(appdata) / "indexly")
-        return str(home / "AppData" / "Roaming" / "indexly")
-
-    xdg_data_home = os.environ.get("XDG_DATA_HOME")
-    if xdg_data_home:
-        return str(Path(xdg_data_home) / "indexly")
-
-    return str(home / ".local" / "share" / "indexly")
+    return str(resolve_base_dir())
 
 
 # User data root (db/profile/cache/log files)

@@ -16,7 +16,7 @@ weight: 1
 type: docs
 toc: true
 date: "2026-04-22"
-lastmod: "2026-07-11"
+lastmod: "2026-07-17"
 draft: false
 categories:
   - Overview
@@ -47,10 +47,10 @@ This documentation works best when you enter through the path that matches your 
 <div class="p-3 rounded" style="background:#ffffff; color:#1f2937;">
   <h4 class="mb-2" style="color:#0f172a;">What changed recently</h4>
   <ul class="mb-3">
+    <li>`v2.1.6` adds safe Rename Watch automation and requires Python 3.11 or newer.</li>
     <li>`v2.1.5` adds safe incremental indexing, log-based scope, plan previews, and quieter Excel processing.</li>
     <li>`v2.1.4` hardens universal loading, structured-data persistence, time-series visualization, and FTS cache generation.</li>
     <li>`v2.1.3` adds analytical dataset routing, backend-aware inference, and safer optional dependency loading.</li>
-    <li>`v2.1.2` strengthens CSV, JSON, NDJSON, SQLite, and Office-lock-file handling.</li>
   </ul>
   <a href="/en/releases/" class="btn btn-primary btn-sm me-2">View Release Notes</a>
   <a href="/en/documentation/data-analysis-pipeline/" class="btn btn-outline-secondary btn-sm">Open Analysis Guide</a>
@@ -90,6 +90,9 @@ flowchart LR
 | Prepare the maintained contributor workstation | [Windows Development Environment Setup](windows-terminal-setup.md), [Linux Development Environment Setup](linux-development-environment.md) |
 | Learn command workflows end-to-end | [Usage Guide](usage.md) |
 | Standardize filenames before analysis or organization | [Rename File](rename-file.md) |
+| Automate incoming-file renaming | [Rename Watch](rename-watch.md) |
+| Validate and migrate Rename Watch configuration | [Rename Watch Configuration](rename-watch-configuration.md) |
+| Run Rename Watch under WinSW, systemd, or launchd | [Rename Watch Service Operation](rename-watch-service-operation.md) |
 | Remove stale search results without deleting files | [Clear Search Results Safely](clear-search.md) |
 | Diagnose search, cache, analysis DB, and integrity issues | [Indexly Doctor](indexly-doctor.md) |
 | Get short answers for setup, paths, file support, and troubleshooting | [FAQ](faq.md) |

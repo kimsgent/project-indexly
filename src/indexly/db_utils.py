@@ -12,6 +12,8 @@ Usage:
     Used during indexing, searching, and tagging operations.
 """
 
+from __future__ import annotations
+
 import os
 import re
 import signal

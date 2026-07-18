@@ -6,7 +6,7 @@ aliases:
   - "/documentation/renaming-file/"
   - "/en/documentation/renaming-file/"
 date: "2025-10-10"
-lastmod: "2026-05-16"
+lastmod: "2026-07-16"
 weight: 80
 type: docs
 toc: true
@@ -23,6 +23,8 @@ keywords:
   - organize files
   - csv analysis preparation
   - profile based organization
+  - automatic file renaming
+  - indexly rename-watch
 tags:
   - rename-file
   - file preparation
@@ -39,6 +41,12 @@ categories:
 
 The `rename-file` command in **Indexly** introduces a powerful way to rename files using customizable naming patterns.
 Use it when file names need to become consistent before indexing, analysis, comparison, or [profile-based organization](organizer-profiler.md).
+
+Use `rename-file` for a file or batch that already exists. If files arrive over
+time and should be renamed automatically, continue with
+[Rename Watch](/en/documentation/rename-watch/). It uses the same core naming
+rules while adding watch-folder modes, settling, selection filters, durable
+counters, quarantine, retry, and crash recovery.
 
 It now also supports:
 
@@ -269,6 +277,7 @@ It is now part of a structured organization pipeline.
 
 ## Next Steps
 
+- [Automate Safe File Renaming with Rename Watch](/en/documentation/rename-watch/)
 - [Organizer](organizer.md)
 - [Profile-Based Organization](organizer-profiler.md)
 - [Cleaning CSV Data](clean-csv-data.md)

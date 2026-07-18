@@ -275,6 +275,12 @@ def _lazy_handle_observe_audit(args):
     return handle_observe_audit(patient_id=args.patient_id)
 
 
+def _lazy_handle_rename_watch(args):
+    from indexly.rename_watch import handle_rename_watch
+
+    return handle_rename_watch(args)
+
+
 def build_parser():
     from .indexly import (
         handle_index,
@@ -567,6 +573,12 @@ def build_parser():
     )
     watch_parser.add_argument("folder", help="Folder to watch")
     watch_parser.set_defaults(func=run_watch)
+
+    rename_watch_parser = subparsers.add_parser("rename-watch", help="Watch configured folders and rename/move files")
+    from indexly.rename_watch.cli_arguments import add_rename_watch_arguments
+
+    add_rename_watch_arguments(rename_watch_parser)
+    rename_watch_parser.set_defaults(func=_lazy_handle_rename_watch)
 
     # -------------------------------
     # Analyze CSV (and all files via orchestrator)

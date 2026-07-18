@@ -7,16 +7,13 @@ from pathlib import Path
 import re
 
 import yaml
+from release_versions import is_prerelease
 
 ROOT = Path(__file__).resolve().parent.parent
 CHANGELOG_FILE = ROOT / "docs" / "data" / "changelog.json"
 RELEASES_DIR = ROOT / "docs" / "content" / "releases"
 DOCUMENTATION_INDEX = ROOT / "docs" / "content" / "documentation" / "_index.en.md"
 MAX_DOCUMENTATION_RELEASE_HIGHLIGHTS = 4
-
-
-def is_prerelease(version):
-    return bool(re.search(r"(alpha|beta|rc|test|-test)", version, re.IGNORECASE))
 
 
 def front_matter(filepath):
