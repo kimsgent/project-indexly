@@ -1,6 +1,6 @@
 import json
 import os
-from importlib import resources
+import pkgutil
 from pathlib import Path
 
 import pytest
@@ -30,11 +30,11 @@ def _write_config(path: Path, document=None):
 
 
 def _schema_bytes():
-    return (
-        resources.files("indexly.rename_watch")
-        .joinpath("schemas/rename-watch-config-v1.schema.json")
-        .read_bytes()
+    packaged = pkgutil.get_data(
+        "indexly.rename_watch", "schemas/rename-watch-config-v1.schema.json"
     )
+    assert packaged is not None
+    return packaged
 
 
 def test_published_schema_is_valid_packaged_and_identical_to_hugo_asset():

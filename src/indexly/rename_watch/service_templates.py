@@ -5,9 +5,9 @@ from __future__ import annotations
 import html
 import math
 import os
+import pkgutil
 import re
 import sys
-from importlib import resources
 from pathlib import Path
 
 from indexly.runtime_paths import resolve_base_dir
@@ -118,8 +118,14 @@ def render_service_template(
             int(math.ceil(settings.service.shutdown_drain_timeout_seconds + 10.0))
         ),
     }
-    package_root = resources.files("indexly.rename_watch")
-    template = package_root.joinpath(_RESOURCES[platform]).read_text(encoding="utf-8")
+    template_bytes = pkgutil.get_data("indexly.rename_watch", _RESOURCES[platform])
+    if template_bytes is None:
+        raise RenameWatchConfigError(
+            "packaged service template is unavailable: {0}".format(
+                _RESOURCES[platform]
+            )
+        )
+    template = template_bytes.decode("utf-8")
     rendered = template
     for token, value in values.items():
         if token in rendered:

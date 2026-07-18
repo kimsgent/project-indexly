@@ -13,7 +13,11 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 from indexly.rename_utils import generate_new_filename
 
-from .config import RenameWatchConfigError, RenameWatchJob
+from .config import (
+    RenameWatchConfigError,
+    RenameWatchJob,
+    validate_portable_filename,
+)
 from .counter_state import CounterState
 from .identity import canonical_root_identity
 from .journal import MoveJournal
@@ -63,23 +67,28 @@ def _slug(value: str) -> str:
 
 def render_name(source: Path, pattern: str, date_format: str, counter_format: str, title_format: str, counter: int) -> str:
     if title_format == "standard":
-        return generate_new_filename(
+        rendered = generate_new_filename(
             source,
             pattern=pattern,
             counter=counter,
             date_format=date_format,
             counter_format=counter_format,
         )
-    date = datetime.fromtimestamp(source.stat().st_mtime).strftime(date_format)
-    title = _slug(source.stem)
-    if title_format == "camel-case":
-        parts = title.split("-")
-        title = parts[0] + "".join(part.capitalize() for part in parts[1:])
-    values = {"date": date, "title": title, "counter": format(counter, counter_format) if "{counter}" in pattern else "", "prefix": ""}
-    name = pattern
-    for key, value in values.items():
-        name = name.replace("{" + key + "}", value)
-    return re.sub(r"-+", "-", name).strip("- ") + source.suffix
+    else:
+        date = datetime.fromtimestamp(source.stat().st_mtime).strftime(date_format)
+        title = _slug(source.stem)
+        if title_format == "camel-case":
+            parts = title.split("-")
+            title = parts[0] + "".join(part.capitalize() for part in parts[1:])
+        values = {"date": date, "title": title, "counter": format(counter, counter_format) if "{counter}" in pattern else "", "prefix": ""}
+        name = pattern
+        for key, value in values.items():
+            name = name.replace("{" + key + "}", value)
+        rendered = re.sub(r"-+", "-", name).strip("- ") + source.suffix
+    try:
+        return validate_portable_filename(rendered, "rendered rename-watch filename")
+    except RenameWatchConfigError as exc:
+        raise OSError(str(exc)) from exc
 
 
 def _stat_fingerprint(value) -> tuple:

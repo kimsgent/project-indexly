@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from pathlib import Path
 from indexly.organize.profiles.base_rules import get_destination as base_destination
 

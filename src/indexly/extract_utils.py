@@ -14,6 +14,8 @@ Usage:
     Called by `filetype_utils.py -> extract_text_from_file()` during indexing.
 """
 
+from __future__ import annotations
+
 # --- stdlib (safe) ---
 import io
 import re

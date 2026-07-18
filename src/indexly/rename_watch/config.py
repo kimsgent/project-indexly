@@ -32,6 +32,12 @@ _DOLLAR_ENVIRONMENT_REFERENCE = re.compile(
     r"\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))"
 )
 _WINDOWS_ENVIRONMENT_REFERENCE = re.compile(r"%([A-Za-z_][A-Za-z0-9_]*)%")
+_PORTABLE_INVALID_FILENAME_CHARACTERS = frozenset('<>:"/\\|?*')
+_WINDOWS_RESERVED_FILENAME_STEMS = frozenset(
+    {"con", "prn", "aux", "nul"}
+    | {"com{0}".format(index) for index in range(1, 10)}
+    | {"lpt{0}".format(index) for index in range(1, 10)}
+)
 
 
 class RenameWatchConfigError(ValueError):
@@ -315,7 +321,36 @@ def _validate_pattern(pattern: Any, context: str) -> str:
     unknown = set(tokens) - supported
     if unknown:
         raise RenameWatchConfigError("{0}.pattern has unsupported placeholder(s): {1}".format(context, ", ".join(sorted(unknown))))
+    sample = pattern
+    for token in supported:
+        sample = sample.replace("{" + token + "}", "x")
+    validate_portable_filename(sample, context + ".pattern")
     return pattern
+
+
+def validate_portable_filename(value: str, context: str = "filename") -> str:
+    """Reject names that cannot be represented safely on every supported platform."""
+    if not value or value in {".", ".."}:
+        raise RenameWatchConfigError("{0} must render one non-empty filename".format(context))
+    if any(
+        character in _PORTABLE_INVALID_FILENAME_CHARACTERS or ord(character) < 32
+        for character in value
+    ):
+        raise RenameWatchConfigError(
+            "{0} contains a character that is invalid in a portable filename".format(
+                context
+            )
+        )
+    if value.endswith((".", " ")):
+        raise RenameWatchConfigError(
+            "{0} cannot end with a dot or space on Windows".format(context)
+        )
+    stem = value.split(".", 1)[0].rstrip(" .").casefold()
+    if stem in _WINDOWS_RESERVED_FILENAME_STEMS:
+        raise RenameWatchConfigError(
+            "{0} uses a reserved Windows filename: {1}".format(context, value)
+        )
+    return value
 
 
 def _parse_job(raw_value: Any, index: int, config_directory: Path) -> RenameWatchJob:
@@ -454,6 +489,19 @@ def parse_settings_document(raw: Any, path: Path) -> RenameWatchSettings:
     ids = [job.job_id for job in jobs]
     if len(ids) != len(set(ids)):
         raise RenameWatchConfigError("configuration.jobs contains duplicate id values")
+    for job in jobs:
+        for other in jobs:
+            if other is job:
+                continue
+            for protected in (other.destination_path, other.quarantine_path):
+                if protected is not None and _portable_is_relative_to(
+                    job.watch_path, protected
+                ):
+                    raise RenameWatchConfigError(
+                        "job '{0}' watch_path overlaps job '{1}' protected subtree".format(
+                            job.job_id, other.job_id
+                        )
+                    )
     for job in jobs:
         if job.quarantine_path is None:
             continue

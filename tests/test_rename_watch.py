@@ -1315,6 +1315,80 @@ def test_counter_format_is_required_only_when_counter_is_used(tmp_path):
         raise AssertionError("counter format without {counter} must be rejected")
 
 
+@pytest.mark.parametrize(
+    "pattern",
+    ["sub/{title}", "sub\\{title}", "bad:name-{title}", "CON", "NUL.txt", "trailing."],
+)
+def test_config_rejects_nonportable_filename_patterns(tmp_path, pattern):
+    path, _ = _config(tmp_path, pattern=pattern, counter_format="")
+    with pytest.raises(RenameWatchConfigError, match="portable filename|Windows"):
+        load_settings(str(path))
+
+
+def test_config_rejects_watch_root_inside_another_jobs_protected_subtree(tmp_path):
+    watch = tmp_path / "watch"
+    nested = watch / "processed"
+    nested.mkdir(parents=True)
+    path = tmp_path / "rename-watch.json"
+    path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "jobs": [
+                    {
+                        "id": "outer",
+                        "watch_path": str(watch),
+                        "destination_subfolder": "processed",
+                    },
+                    {
+                        "id": "inner",
+                        "watch_path": str(nested),
+                        "destination_subfolder": "done",
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RenameWatchConfigError, match="protected subtree"):
+        load_settings(str(path))
+
+
+def test_dynamic_nonportable_name_fails_one_file_without_stopping_service(
+    tmp_path, monkeypatch
+):
+    path, incoming = _config(
+        tmp_path,
+        pattern="{title}",
+        counter_format="",
+        retry={
+            "max_attempts": 1,
+            "initial_delay_seconds": 0.01,
+            "max_delay_seconds": 0.01,
+        },
+    )
+    bad = incoming / "bad.txt"
+    good = incoming / "good.txt"
+    bad.write_text("bad", encoding="utf-8")
+    good.write_text("good", encoding="utf-8")
+    real_validate = planner_module.validate_portable_filename
+
+    def reject_bad(rendered, context):
+        if rendered == "bad.txt":
+            raise RenameWatchConfigError("simulated nonportable filename")
+        return real_validate(rendered, context)
+
+    monkeypatch.setattr(planner_module, "validate_portable_filename", reject_bad)
+    job = load_settings(str(path)).jobs[0]
+
+    RenameWatchService([job], state_root=tmp_path / "state").run_once()
+
+    assert bad.exists()
+    assert not good.exists()
+    assert (job.destination_path / "good.txt").read_text(encoding="utf-8") == "good"
+
+
 def test_title_format_controls_rendering(tmp_path):
     path, incoming = _config(tmp_path, pattern="{title}", title_format="camel-case")
     source = incoming / "Monthly Report.txt"
