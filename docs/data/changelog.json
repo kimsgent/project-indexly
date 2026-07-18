@@ -2,6 +2,22 @@
   "project": "FTS5 File Search Tool",
   "versions": [
     {
+      "version": "2.1.6",
+      "date": "2026-07-18",
+      "contributors": [
+        "N. K. Franklin-Gent",
+        "OpenAI Codex"
+      ],
+      "changes": [
+        "feat(rename-watch): add configured, settling-aware file intake with dry-run previews, cross-process locking, counters, and interrupted-move recovery",
+        "feat(rename-watch): add selection controls, failure quarantine and retry, durable status, health/readiness/metrics probes, and reviewable service templates",
+        "feat(docs): improve documentation search filtering and presentation with Pagefind 1.5.2",
+        "fix(release): make release-version handling and workflow checks portable across supported environments",
+        "breaking(python): require Python 3.11 or newer; Python 3.8, 3.9, and 3.10 are no longer supported"
+      ]
+    },
+
+    {
       "version": "2.1.5",
       "date": "2026-07-11",
       "contributors": [

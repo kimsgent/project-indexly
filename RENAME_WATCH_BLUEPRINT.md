@@ -186,8 +186,8 @@ docs/content/documentation/
   are the portable behavior, not an OS-specific lock probe.
 - Watchdog can coalesce or miss events on some filesystems; hybrid
   reconciliation is therefore a correctness feature, not merely a fallback.
-- The local virtual environment currently reports Indexly 2.1.4 while the
-  project declares 2.1.5; realign it before final validation.
+- The local development install and project metadata must agree before final
+  release validation.
 
 ## Professional extension roadmap
 
