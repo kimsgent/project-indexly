@@ -1,4 +1,4 @@
-name: Rename Watch Portability (Advisory)
+name: Rename Watch Portability
 
 on:
   push:
@@ -16,6 +16,7 @@ on:
       - "tests/test_rename_watch_errors.py"
       - "tests/test_rename_watch_failures.py"
       - "tests/test_rename_watch_status.py"
+      - "tests/test_rename_watch_service_operation.py"
       - "tests/test_rename_module.py"
   pull_request:
     paths:
@@ -31,6 +32,7 @@ on:
       - "tests/test_rename_watch_errors.py"
       - "tests/test_rename_watch_failures.py"
       - "tests/test_rename_watch_status.py"
+      - "tests/test_rename_watch_service_operation.py"
       - "tests/test_rename_module.py"
   workflow_dispatch:
 
@@ -43,13 +45,24 @@ concurrency:
 
 jobs:
   portability:
-    name: ${{ matrix.os }} / Python 3.11 (advisory)
+    name: ${{ matrix.os }} / Python ${{ matrix.python-version }}
     runs-on: ${{ matrix.os }}
-    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
+        include:
+          - os: ubuntu-latest
+            python-version: "3.8"
+          - os: windows-latest
+            python-version: "3.8"
+          - os: macos-15-intel
+            python-version: "3.8"
+          - os: ubuntu-latest
+            python-version: "3.13"
+          - os: windows-latest
+            python-version: "3.13"
+          - os: macos-latest
+            python-version: "3.13"
 
     env:
       PYTHONUTF8: "1"
@@ -58,15 +71,13 @@ jobs:
     steps:
       - name: Checkout repository
         id: checkout
-        continue-on-error: true
         uses: actions/checkout@v4
 
       - name: Set up Python
         id: setup
-        continue-on-error: true
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python-version }}
           cache: pip
           cache-dependency-path: |
             requirements-rename-watch-ci.txt
@@ -74,7 +85,6 @@ jobs:
 
       - name: Install focused test dependencies
         id: dependencies
-        continue-on-error: true
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements-rename-watch-ci.txt
@@ -82,7 +92,6 @@ jobs:
 
       - name: Verify focused imports
         id: imports
-        continue-on-error: true
         run: >-
           python -c "import jsonschema, pytest, watchdog;
           from indexly.rename_watch.service import RenameWatchService;
@@ -91,7 +100,6 @@ jobs:
 
       - name: Run focused portability tests
         id: tests
-        continue-on-error: true
         run: >-
           python -m pytest
           tests/test_rename_watch.py
@@ -101,6 +109,7 @@ jobs:
           tests/test_rename_watch_errors.py
           tests/test_rename_watch_failures.py
           tests/test_rename_watch_status.py
+          tests/test_rename_watch_service_operation.py
           tests/test_rename_module.py
           -q
           --junitxml=rename-watch-test-results.xml
@@ -110,11 +119,11 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
-          name: rename-watch-${{ runner.os }}-pytest
+          name: rename-watch-${{ runner.os }}-python-${{ matrix.python-version }}-pytest
           path: rename-watch-test-results.xml
           if-no-files-found: ignore
 
-      - name: Report advisory failure
+      - name: Report portability failure
         if: >-
           always() &&
           (steps.checkout.outcome == 'failure' ||
@@ -122,6 +131,5 @@ jobs:
            steps.dependencies.outcome == 'failure' ||
            steps.imports.outcome == 'failure' ||
            steps.tests.outcome == 'failure')
-        continue-on-error: true
         run: |
-          echo "::warning::Rename-watch portability checks found an issue on ${{ runner.os }}. This advisory workflow does not block releases or Homebrew packaging."
+          echo "::error::Rename-watch portability checks failed on ${{ runner.os }} with Python ${{ matrix.python-version }}."

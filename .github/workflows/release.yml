@@ -33,7 +33,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install hatch
-          pip install pyyaml
+          pip install pyyaml packaging
 
       - name: Set version variable
         id: version
@@ -47,12 +47,8 @@ jobs:
       - name: Determine prerelease and dry-run
         id: prerelease
         run: |
-          # prerelease detection
-          if [[ "${VERSION}" =~ (alpha|beta|rc|test|-test) ]]; then
-            echo "prerelease=true" >> $GITHUB_OUTPUT
-          else
-            echo "prerelease=false" >> $GITHUB_OUTPUT
-          fi
+          PRERELEASE="$(python scripts/release_versions.py "${VERSION}")"
+          echo "prerelease=${PRERELEASE}" >> "$GITHUB_OUTPUT"
 
           # dry-run detection
           if [[ "${VERSION}" == "v0.0.0-test" ]]; then

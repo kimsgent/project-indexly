@@ -1,9 +1,12 @@
 -r requirements.txt   # install all runtime deps first
 
 # Testing
-pytest>=8.4.2
+pytest>=8.3.0,<8.4; python_version < "3.9"
+pytest>=8.4.2,<9.0; python_version >= "3.9"
 pytest-cov>=4.1.0
+pytest-asyncio>=0.23.0,<2.0
 jsonschema>=4.23.0,<5.0
+packaging>=23.2,<27.0
 
 # Linting & formatting
 flake8>=6.1.0

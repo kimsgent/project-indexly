@@ -39,8 +39,18 @@ jobs:
             --dry-run \
             --out Formula/indexly.rb
 
-      - name: Homebrew audit (macOS only)
-        if: runner.os == 'macOS'
+  homebrew-audit:
+    name: Homebrew Formula Audit
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check formula syntax
+        run: ruby -c Formula/indexly.rb
+
+      - name: Audit formula in an isolated tap
         run: |
           brew update
-          brew audit --strict indexly || true
+          brew tap-new --no-git indexly/ci
+          cp Formula/indexly.rb "$(brew --repository indexly/ci)/Formula/indexly.rb"
+          brew audit --strict indexly/ci/indexly
