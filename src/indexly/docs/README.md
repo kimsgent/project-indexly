@@ -148,7 +148,7 @@ search results.
 
 ## Development
 
-* Python ≥ 3.8
+* Python ≥ 3.11
 * Dependencies managed through `pyproject.toml`
 * Modular codebase:
   `analysis_orchestrator.py`, `csv_analyzer.py`, `search_core.py`,

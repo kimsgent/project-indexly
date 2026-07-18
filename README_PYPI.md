@@ -22,6 +22,8 @@ Indexly is a local-first command line tool for indexing, searching, and analyzin
 
 ### pip (Windows, macOS, Linux)
 
+Requires Python 3.11 or newer.
+
 ```bash
 python -m pip install --upgrade pip
 python -m pip install indexly

@@ -2,6 +2,5 @@
 # Project runtime dependencies come from the editable package installation.
 # Keep test tooling out of runtime package metadata and Homebrew resources.
 
-pytest>=8.3.0,<8.4; python_version < "3.9"
-pytest>=8.4.2,<9.0; python_version >= "3.9"
+pytest>=8.4.2,<9.0
 jsonschema>=4.23.0,<5.0

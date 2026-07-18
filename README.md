@@ -25,6 +25,8 @@ Indexly helps you work with large local folders without sending your data to ext
 
 ### Option 1: pip (Windows, macOS, Linux)
 
+Requires Python 3.11 or newer.
+
 ```bash
 python -m pip install --upgrade pip
 python -m pip install indexly

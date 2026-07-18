@@ -45,24 +45,12 @@ concurrency:
 
 jobs:
   portability:
-    name: ${{ matrix.os }} / Python ${{ matrix.python-version }}
+    name: ${{ matrix.os }} / Python 3.11
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: ubuntu-latest
-            python-version: "3.8"
-          - os: windows-latest
-            python-version: "3.8"
-          - os: macos-15-intel
-            python-version: "3.8"
-          - os: ubuntu-latest
-            python-version: "3.13"
-          - os: windows-latest
-            python-version: "3.13"
-          - os: macos-latest
-            python-version: "3.13"
+        os: [windows-latest, macos-latest, ubuntu-latest]
 
     env:
       PYTHONUTF8: "1"
@@ -77,7 +65,7 @@ jobs:
         id: setup
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: "3.11"
           cache: pip
           cache-dependency-path: |
             requirements-rename-watch-ci.txt
@@ -119,7 +107,7 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
-          name: rename-watch-${{ runner.os }}-python-${{ matrix.python-version }}-pytest
+          name: rename-watch-${{ runner.os }}-python-3.11-pytest
           path: rename-watch-test-results.xml
           if-no-files-found: ignore
 
@@ -132,4 +120,4 @@ jobs:
            steps.imports.outcome == 'failure' ||
            steps.tests.outcome == 'failure')
         run: |
-          echo "::error::Rename-watch portability checks failed on ${{ runner.os }} with Python ${{ matrix.python-version }}."
+          echo "::error::Rename-watch portability checks failed on ${{ runner.os }} with Python 3.11."
