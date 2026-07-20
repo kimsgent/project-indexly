@@ -7,7 +7,7 @@ type: docs
 slug: "faq"
 weight: 240
 date: "2026-04-22"
-lastmod: "2026-07-16"
+lastmod: "2026-07-20"
 draft: false
 toc: true
 aliases:

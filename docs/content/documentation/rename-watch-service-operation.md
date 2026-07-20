@@ -5,7 +5,7 @@ slug: "rename-watch-service-operation"
 aliases:
   - "/documentation/rename-watch-service-operation/"
 date: "2026-07-17"
-lastmod: "2026-07-17"
+lastmod: "2026-07-20"
 weight: 33
 type: docs
 toc: true
@@ -163,8 +163,12 @@ process, and status for durable investigation.
 Complete these steps on every platform before installing a manager template:
 
 1. Install Indexly in a dedicated, versioned virtual environment. Record the
-   absolute Python executable; templates do not depend on an interactive
-   `PATH`.
+   absolute Python executable and make the complete Python runtime readable by
+   the service identity; templates do not depend on an interactive `PATH`.
+   A virtual environment created from a Python installation in a user profile
+   can still depend on that base installation at runtime. For a durable Windows
+   service, keep both the environment and its base Python outside a personal
+   profile whenever possible.
 2. Put the configuration in an administrator-managed location. The service
    account needs read access but should not own or modify it.
 3. Create a dedicated `INDEXLY_HOME`. File-based manager output is kept below
@@ -249,9 +253,19 @@ Indexly does not download or bundle WinSW.
    Account (gMSA) when managed network identity is required. Grant it the
    required ACLs and service-logon rights. The rendered XML never contains a
    password; an ordinary dedicated user is therefore not supported by this
-   password-free template.
+   password-free template. Give the identity read and execute access to the
+   complete Python runtime as well as the virtual environment; granting access
+   only to `Scripts\python.exe` is not sufficient.
 3. Download a pinned WinSW release from its official release page and verify
-   its published checksum according to your software-supply policy.
+   its published checksum according to your software-supply policy. For
+   example, record the local hash before renaming the executable:
+
+   ```powershell
+   Get-FileHash .\WinSW-x64.exe -Algorithm SHA256
+   ```
+
+   Compare the result with the checksum for the exact release you downloaded;
+   do not treat a filename or a matching file size as verification.
 4. Set the service's runtime root and export the Windows template from the
    versioned Indexly environment:
 
@@ -264,15 +278,41 @@ Indexly does not download or bundle WinSW.
    ```
 5. Place the verified WinSW executable beside the XML and rename it
    `indexly-rename-watch.exe`.
-6. In an elevated PowerShell terminal, install and start it:
+6. In an elevated PowerShell terminal, install it and verify its registered
+   account before starting it:
 
    ```powershell
    .\indexly-rename-watch.exe install
+   sc.exe qc IndexlyRenameWatch
+   ```
+
+{{< alert title="Important: verify the registered Windows account" color="warning" >}}
+The rendered XML names the requested account, but the final authority is the
+Windows Service Control Manager entry. Before the first start and after every
+reinstall or upgrade, `sc.exe qc IndexlyRenameWatch` must show
+`SERVICE_START_NAME : NT AUTHORITY\LocalService` for a local-path deployment.
+
+If it instead shows `LocalSystem`, correct it in the elevated terminal, then
+run `sc.exe qc IndexlyRenameWatch` again. `cmd.exe` preserves the intentionally
+empty password argument when PowerShell would otherwise omit it:
+
+```powershell
+cmd.exe /d /c 'sc.exe config IndexlyRenameWatch obj= "NT AUTHORITY\LocalService" password= ""'
+```
+
+Do not leave Rename Watch running as LocalSystem. After starting the service,
+confirm that its `python.exe` child also runs as LocalService, for example in
+Task Manager's **Details** view with the **User name** column enabled.
+{{< /alert >}}
+
+7. Start the verified service and check its wrapper status:
+
+   ```powershell
    .\indexly-rename-watch.exe start
    .\indexly-rename-watch.exe status
    ```
 
-7. Run `--health`, then `--readiness`, using the service's `INDEXLY_HOME`.
+8. Run `--health`, then `--readiness`, using the service's `INDEXLY_HOME`.
 
 WinSW sends Ctrl+C to the console child and waits for the rendered
 `<stoptimeout>` before forced termination. The template uses delayed automatic
@@ -395,6 +435,17 @@ For Windows startup failures, inspect the WinSW wrapper log, its rolled child
 output, and Windows Event Log. For systemd use `journalctl -u`. For launchd use
 `launchctl print`, the configured stdout/stderr files, and the macOS unified
 log.
+
+### Windows startup troubleshooting
+
+On Windows, a service that exits with code `1067` and records an error such as
+`did not find executable ... Access is denied` usually means the selected
+service identity cannot read the Python runtime. Stop the service, grant that
+identity read and execute access to the complete versioned environment and its
+base Python installation, then run `--check-config` and `--once --dry-run`
+with the same identity before starting it again. Prefer moving the runtime to
+an administrator-managed location over broadly exposing a user-profile Python
+installation.
 
 ## Upgrade safely
 

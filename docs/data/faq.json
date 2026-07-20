@@ -109,6 +109,22 @@
           { "label": "Rename File", "href": "/en/documentation/rename-file/" },
           { "label": "Indexing", "href": "/en/documentation/index-files-and-folders/" }
         ]
+      },
+      {
+        "question": "How do I run Rename Watch continuously as a Windows service?",
+        "answer": "Use the supported WinSW workflow with a dedicated Indexly environment, a separate `INDEXLY_HOME`, and `NT AUTHORITY\\LocalService` for local folders. After installing the wrapper, always run `sc.exe qc IndexlyRenameWatch` before the first start and after an upgrade. It must report `NT AUTHORITY\\LocalService`, not `LocalSystem`; the service guide includes the safe correction command and health checks.",
+        "links": [
+          { "label": "Rename Watch Service", "href": "/en/documentation/rename-watch-service-operation/" },
+          { "label": "Rename Watch", "href": "/en/documentation/rename-watch/" }
+        ]
+      },
+      {
+        "question": "Why does my Windows Rename Watch service exit with code 1067?",
+        "answer": "First inspect the WinSW wrapper and child error logs. An access-denied message for `python.exe` means the service account can reach the wrapper but not the complete Python runtime. Stop the service, grant its identity read and execute access to both the versioned environment and its base Python installation, then repeat `--check-config` and `--once --dry-run` before starting it again. A dedicated runtime outside a personal user profile is the safer long-term layout.",
+        "links": [
+          { "label": "Rename Watch Service Troubleshooting", "href": "/en/documentation/rename-watch-service-operation/#windows-startup-troubleshooting" },
+          { "label": "Rename Watch", "href": "/en/documentation/rename-watch/" }
+        ]
       }
     ]
   },
