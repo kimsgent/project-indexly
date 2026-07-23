@@ -230,11 +230,29 @@ def _check_expected_columns(conn):
 
 def _optional_dependency_report() -> dict[str, Any]:
     groups = {
-        "analysis": ["pandas", "numpy"],
-        "documents": ["bs4", "docx", "PyPDF2"],
-        "visualization": ["matplotlib", "plotly"],
-        "pdf_export": ["fpdf"],
-        "ocr": ["pytesseract"],
+        "documents": [
+            "fitz",
+            "pytesseract",
+            "PIL",
+            "docx",
+            "openpyxl",
+            "extract_msg",
+            "eml_parser",
+            "pptx",
+            "ebooklib",
+            "odf",
+        ],
+        "analysis": [
+            "pandas",
+            "numpy",
+            "scipy",
+            "statsmodels",
+            "tabulate",
+            "pyarrow",
+        ],
+        "visualization": ["matplotlib", "plotly", "seaborn", "plotext"],
+        "pdf_export": ["reportlab", "fpdf"],
+        "backup": ["cryptography"],
     }
     report: dict[str, Any] = {}
     for group, modules in groups.items():
@@ -244,6 +262,57 @@ def _optional_dependency_report() -> dict[str, Any]:
             "missing": missing,
         }
     return report
+
+
+def _extras_overlay_report(
+    base_dir: str | Path,
+    optional_report: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Return managed-overlay health without creating or modifying paths."""
+
+    from indexly.extras_manager import (
+        ExtrasError,
+        list_extras,
+        list_stale_overlays,
+        overlay_root,
+    )
+
+    runtime_root = Path(base_dir)
+    try:
+        groups = {
+            status.group: status.as_dict()
+            for status in list_extras(base_dir=runtime_root)
+        }
+        stale = [item.as_dict() for item in list_stale_overlays(base_dir=runtime_root)]
+        invalid = [
+            name for name, status in groups.items() if status["state"] == "invalid"
+        ]
+        incomplete = [
+            name
+            for name, status in groups.items()
+            if status["state"] == "installed"
+            and optional_report
+            and optional_report.get(name, {}).get("missing")
+        ]
+        return {
+            "status": "warning" if invalid or incomplete or stale else "ok",
+            "root": str(overlay_root(base_dir=runtime_root)),
+            "groups": groups,
+            "invalid_groups": invalid,
+            "incomplete_groups": incomplete,
+            "stale": stale,
+            "error": None,
+        }
+    except ExtrasError as exc:
+        return {
+            "status": "warning",
+            "root": str(runtime_root / "extras"),
+            "groups": {},
+            "invalid_groups": [],
+            "incomplete_groups": [],
+            "stale": [],
+            "error": str(exc),
+        }
 
 
 def _cache_report(cache_file: str, *, clear_cache: bool = False) -> dict[str, Any]:
@@ -518,6 +587,7 @@ def _recommendations(report: dict[str, Any]) -> list[str]:
     recs: list[str] = []
     search = report.get("search_database", {})
     analysis = report.get("analysis_database", {})
+    extras = report.get("dependencies", {}).get("extras_overlay", {})
     cache = report.get("cache", {})
     local = report.get("local_index_db", {})
     has_errors = bool(report.get("errors"))
@@ -553,6 +623,31 @@ def _recommendations(report: dict[str, Any]) -> list[str]:
         recs.append("Search cache contains stale paths. Consider `indexly doctor --clear-cache`.")
     if analysis.get("exists") and "analysis_invalid_json" in analysis.get("warnings", []):
         recs.append("Analysis database has invalid JSON payloads. Re-run affected analysis with --no-persist first if investigating.")
+    if extras.get("invalid_groups"):
+        groups = ", ".join(extras["invalid_groups"])
+        recs.append(
+            "Invalid optional-pack overlays detected for "
+            f"{groups}. Run `indexly extras status --json`, then "
+            "`indexly extras reset` and reinstall the packs you need."
+        )
+    if extras.get("incomplete_groups"):
+        groups = ", ".join(extras["incomplete_groups"])
+        recs.append(
+            "Managed optional packs are present but their imports are "
+            f"incomplete for {groups}. Reinstall each affected pack with "
+            "`indexly extras install <pack>`."
+        )
+    if extras.get("stale"):
+        recs.append(
+            "Optional packs from an older Indexly version or Python runtime "
+            "were found. Reinstall needed packs with "
+            "`indexly extras install <pack>`; stale overlays are not loaded."
+        )
+    if extras.get("error"):
+        recs.append(
+            "The optional-pack overlay could not be inspected safely. Run "
+            "`indexly extras status --json` for details."
+        )
     if has_errors and not recs:
         recs.append("Doctor found blocking errors. Resolve reported errors and re-run `indexly doctor --json`.")
     if not recs and not has_errors:
@@ -774,6 +869,11 @@ def run_doctor(
         )
         return exit_code
 
+    optional_dependencies = _optional_dependency_report()
+    extras_overlay = _extras_overlay_report(
+        BASE_DIR,
+        optional_report=optional_dependencies,
+    )
     report: Dict[str, Any] = {
         "environment": {
             "python": sys.version.split()[0],
@@ -782,7 +882,8 @@ def run_doctor(
         },
         "dependencies": {
             "core": "ok",
-            "optional": _optional_dependency_report(),
+            "optional": optional_dependencies,
+            "extras_overlay": extras_overlay,
         },
         "external_tools": {},
         "paths": {},
@@ -841,6 +942,15 @@ def run_doctor(
         report["warnings"].append(f"cache:{report['cache']['status']}")
     if clear_cache and report["cache"].get("cleared"):
         report["warnings"].append("cache:cleared")
+    extras_overlay = report["dependencies"]["extras_overlay"]
+    if extras_overlay.get("invalid_groups"):
+        report["warnings"].append("extras:invalid")
+    if extras_overlay.get("incomplete_groups"):
+        report["warnings"].append("extras:incomplete")
+    if extras_overlay.get("stale"):
+        report["warnings"].append("extras:stale")
+    if extras_overlay.get("error"):
+        report["warnings"].append("extras:inspection")
 
     report["recommendations"] = _recommendations(report)
 
@@ -884,6 +994,42 @@ def run_doctor(
             for name, data in report["dependencies"]["optional"].items()
         ]
         _render_table("Optional Feature Packs", dep_rows)
+        overlay = report["dependencies"]["extras_overlay"]
+        overlay_rows = [
+            (
+                name,
+                (
+                    "installed (imports missing)"
+                    if name in overlay.get("incomplete_groups", [])
+                    else data["state"]
+                ),
+                (
+                    "warn"
+                    if name in overlay.get("incomplete_groups", [])
+                    else (
+                        "ok"
+                        if data["state"] == "installed"
+                        else ("warn" if data["state"] == "invalid" else "ok")
+                    )
+                ),
+            )
+            for name, data in overlay.get("groups", {}).items()
+        ]
+        overlay_rows.extend(
+            (
+                (
+                    "stale:"
+                    f"{item['indexly_version']}/{item['python_abi']}/"
+                    f"{item['platform_tag']}"
+                ),
+                ", ".join(item["groups"]) or "no recognized packs",
+                "warn",
+            )
+            for item in overlay.get("stale", [])
+        )
+        if overlay.get("error"):
+            overlay_rows.append(("inspection", overlay["error"], "warn"))
+        _render_table("Managed Extras Overlay", overlay_rows)
         console.print("[bold cyan]Recommendations[/bold cyan]")
         for rec in report["recommendations"]:
             console.print(f"  - {rec}")

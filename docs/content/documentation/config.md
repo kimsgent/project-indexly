@@ -28,7 +28,7 @@ categories:
 weight: 30
 type: docs
 date: 2025-10-12
-lastmod: 2026-05-31
+lastmod: 2026-07-23
 draft: false
 toc: true
 ---
@@ -43,6 +43,7 @@ Indexly stores search runtime state outside the source tree by default. The main
 | `profiles.json` | Saved search profiles |
 | `search_cache.json` | Cached search results |
 | `log/` | Structured indexing log artifacts and runtime logs |
+| `extras/<indexly-version>/<python-abi>/<platform>/environment/` | User-owned optional-dependency environment managed by `indexly extras` |
 
 Default runtime directories:
 
@@ -60,6 +61,8 @@ indexly stats
 ```
 
 On PowerShell, use `$env:INDEXLY_HOME = "D:\indexly-state"` for the current session.
+Use only a trusted, user-owned location. If `INDEXLY_HOME` is a symbolic link,
+Indexly intentionally follows it as the configured runtime root.
 
 {{% alert title="Separate persistence stores" color="info" %}}
 `INDEXLY_HOME` controls the search runtime directory. Persisted analysis results currently use a separate SQLite database at `~/.indexly/indexly.db`.
@@ -148,8 +151,22 @@ indexly index ./docs --no-ocr
 Install document extras before indexing PDFs, Word documents, Outlook messages, or other rich document formats:
 
 ```bash
+# Homebrew install
+indexly extras install documents
+indexly extras status
+
+# pip or virtual-environment install
 python -m pip install "indexly[documents]"
 ```
+
+The managed command also works for pip installations. Homebrew users must use
+it: their extras live in a user-owned overlay scoped by Indexly version, Python
+ABI, and platform architecture outside the Cellar. Do not replace it with
+generic `pip`, `pip --user`, `sudo pip`, or a `PYTHONPATH` workaround.
+
+The `documents` group supplies ordinary PDF extraction dependencies and the
+Python OCR integration. OCR itself also requires Tesseract on `PATH`; install
+it separately with `brew install tesseract` on Homebrew systems.
 
 ## Maintenance Commands
 

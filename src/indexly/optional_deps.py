@@ -7,6 +7,16 @@ from __future__ import annotations
 import importlib
 
 
+def extra_install_hint(extra: str) -> str:
+    """Return the supported, runtime-independent extras install command."""
+
+    return (
+        f"Install with: indexly extras install {extra}. "
+        "For a pip/virtualenv installation only, you may also run: "
+        f'python -m pip install "indexly[{extra}]"'
+    )
+
+
 def require_extra_dependency(module_name: str, package_name: str, extra: str):
     """
     Import an optional dependency or raise a clear installation hint.
@@ -16,7 +26,5 @@ def require_extra_dependency(module_name: str, package_name: str, extra: str):
     except ModuleNotFoundError as exc:
         raise RuntimeError(
             f"Feature requires optional dependency '{package_name}'. "
-            f"Install with: pip install {package_name} "
-            f"(or install extras group '{extra}' via "
-            f'pip install "indexly[{extra}]").'
+            f"{extra_install_hint(extra)}."
         ) from exc

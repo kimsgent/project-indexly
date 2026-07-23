@@ -26,7 +26,7 @@ tags:
   - cli
   - search
   - file-management
-lastmod: 2026-07-11
+lastmod: 2026-07-23
 ---
 
 
@@ -53,15 +53,30 @@ Search can filter multiple file types later with `--filetype .pdf .docx`.
 
 ### Advanced Extraction
 
-For more detailed content extraction, install the document extras and choose the PDF OCR behavior intentionally.
+For more detailed content extraction, install the `documents` group and choose
+the PDF OCR behavior intentionally.
 
 ```bash
+# Homebrew install
+indexly extras install documents
+
+# pip or virtual-environment install
 python -m pip install "indexly[documents]"
+
 indexly index ./docs --ocr
 indexly index ./docs --no-ocr
 ```
 
-`--ocr` forces OCR for PDFs. `--no-ocr` disables OCR for PDFs. Without either flag, Indexly uses the default PDF extraction policy.
+Use only the installation command that matches your Indexly executable. For a
+Homebrew install, do not substitute generic `pip`, `pip --user`, `sudo pip`, or
+`PYTHONPATH`; `indexly extras` manages a user-owned overlay outside the
+Homebrew Cellar.
+
+The `documents` group installs the dependencies for ordinary PDF extraction.
+`--ocr` additionally requires the external Tesseract executable
+(`brew install tesseract` on Homebrew systems). `--ocr` forces OCR for PDFs;
+`--no-ocr` disables it. Without either flag, Indexly uses the default PDF
+extraction policy.
 
 You can also enable extended MTW extraction when working with Minitab archives or complex MTW inputs.
 

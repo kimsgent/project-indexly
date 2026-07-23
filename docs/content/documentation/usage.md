@@ -5,7 +5,7 @@ icon: "mdi:play-circle"
 weight: 20
 type: docs
 date: 2026-04-01
-lastmod: 2026-07-16
+lastmod: 2026-07-23
 summary: "Learn the day-to-day Indexly workflow: install, index, search, tag, analyze, compare, and back up with practical command examples."
 description: "Practical Indexly usage guide for Windows, macOS, and Linux. Covers indexing, search, regex, tagging, analysis, organizing, backup/restore, and common troubleshooting."
 keywords: [
@@ -71,7 +71,27 @@ Use `indexly show-help` for a compact overview of all commands.
 
 For full platform-specific setup, use [Install Indexly](indexly-installation.md).
 
-Indexly has a lightweight core install. Optional capability packs are installed only when needed:
+Homebrew users install optional groups through Indexly's managed, user-owned
+overlay:
+
+```bash
+command -v indexly
+indexly extras list
+indexly extras install documents
+indexly extras status
+indexly extras uninstall documents
+```
+
+The groups are `documents`, `analysis`, `visualization`, `pdf_export`, and
+`backup`. The overlay is scoped to the brewed Indexly version, Python ABI, and
+platform architecture and is not installed in the Homebrew Cellar. After a
+Homebrew upgrade, run
+`indexly extras status` and reinstall a needed group if it is `not-installed`
+or `invalid` for the current runtime.
+
+The managed `indexly extras install <group>` command also works for pip
+installations. If you prefer to manage optional packages directly in a pip
+installation or virtual environment, use that environment's Python:
 
 ```bash
 python -m pip install "indexly[documents]"
@@ -86,6 +106,11 @@ Install all optional packs at once:
 ```bash
 python -m pip install "indexly[documents,analysis,visualization,pdf_export,backup]"
 ```
+
+Do not use generic `pip`, `pip --user`, `sudo pip`, or `PYTHONPATH` to extend a
+Homebrew installation. The `documents` group provides ordinary PDF extraction
+dependencies, but OCR also needs the external Tesseract executable
+(`brew install tesseract` on Homebrew systems).
 
 ---
 
@@ -459,15 +484,17 @@ See [Indexly Doctor](indexly-doctor.md), [DB Migration Utility](db-migration-uti
 
 ## Friendly Missing-Dependency Messages
 
-When a feature needs an optional package group, Indexly prints a direct install hint.
+When a feature needs an optional package group, Indexly identifies the group
+and suggests `indexly extras install <group>`.
 
-Examples:
+Choose the installation path that matches your environment:
 
-- Analysis features: `Feature requires: pip install indexly[analysis]`
-- Document parsing features: `Feature requires: pip install indexly[documents]`
-- Visualization features: `Feature requires: pip install indexly[visualization]`
-- PDF export features: `Feature requires: pip install indexly[pdf_export]`
-- Encrypted backup/restore features: `Feature requires: pip install indexly[backup]`
+- Homebrew installs: run `indexly extras status`, then
+  `indexly extras install <group>` for a needed group that is not installed
+  for the current runtime.
+- pip/virtualenv installs: install `indexly[analysis]`, `indexly[documents]`,
+  `indexly[visualization]`, `indexly[pdf_export]`, or `indexly[backup]` with
+  `python -m pip`.
 
 This lets core commands like `indexly --help` and `indexly --version` remain usable even when optional packs are not installed.
 

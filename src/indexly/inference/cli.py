@@ -19,6 +19,7 @@ from .confidence_intervals import (
     ci_mean_difference_independent,
     ci_proportion,
 )
+from indexly.optional_deps import extra_install_hint
 from rich.table import Table
 from rich.console import Console
 
@@ -37,7 +38,7 @@ def _run_boxplot_if_available(args, routed_df=None):
     except ModuleNotFoundError as exc:
         raise RuntimeError(
             "Boxplot rendering requires optional visualization dependencies. "
-            "Install with: pip install indexly[visualization]."
+            f"{extra_install_hint('visualization')}."
         ) from exc
     return run_boxplot(args, routed_df=routed_df)
 
@@ -48,7 +49,7 @@ def _export_report_if_available(result, fmt: str):
     except ModuleNotFoundError as exc:
         raise RuntimeError(
             "Inference report export requires optional dependencies. "
-            "Install with: pip install indexly[pdf_export]."
+            f"{extra_install_hint('pdf_export')}."
         ) from exc
     return export_report(result, fmt)
 

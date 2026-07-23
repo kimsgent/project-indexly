@@ -48,9 +48,46 @@ Verify:
 indexly --version
 ```
 
-## Optional Extras
+Homebrew installs the lightweight Indexly core. Manage optional groups with the
+brewed executable:
 
-Indexly uses a lightweight core install. Optional feature groups can be added as needed.
+```bash
+command -v indexly
+indexly extras list
+indexly extras install documents
+indexly extras status
+```
+
+Available groups are `documents`, `analysis`, `visualization`, `pdf_export`,
+and `backup`. Remove a group with `indexly extras uninstall <group>`.
+Homebrew extras are installed into a user-owned overlay scoped to the installed
+Indexly version, Python ABI, and platform architecture, outside the Homebrew
+Cellar. After
+`brew upgrade indexly`, check `indexly extras status` and reinstall any group
+that the new version needs.
+
+If `command -v indexly` resolves to a pip or pyenv installation, target
+Homebrew explicitly with
+`"$(brew --prefix indexly)/bin/indexly" extras install <group>`.
+
+Selected groups share one managed environment so common dependencies resolve
+to compatible versions. Adding or removing a group rebuilds that environment
+atomically and may download packages; the previous working environment remains
+available if resolution fails.
+
+If `indexly extras status` reports an invalid managed environment, run
+`indexly extras reset`, then reinstall the groups you need.
+
+Upgrade-created stale overlays are reported but never loaded. They remain after
+`brew uninstall` and can consume substantial space; inspect
+`indexly extras status --json` and remove only an obsolete stale
+`environment` path after confirming it is no longer needed.
+
+## Optional Extras for pip and virtual environments
+
+`indexly extras install <group>` is also safe for pip installations. If you
+prefer to manage optional packages directly in a pip installation or virtual
+environment, use that environment's Python explicitly:
 
 ```bash
 python -m pip install "indexly[documents]"
@@ -65,6 +102,14 @@ Install all optional groups:
 ```bash
 python -m pip install "indexly[documents,analysis,visualization,pdf_export,backup]"
 ```
+
+Do not use generic `pip`, `pip --user`, `sudo pip`, or `PYTHONPATH` to add
+dependencies to a Homebrew installation. If pip and Homebrew installations
+coexist, use `command -v indexly` to identify the executable you are managing.
+
+The `documents` group installs Python dependencies for ordinary PDF extraction
+and OCR integration. OCR additionally requires the separate Tesseract
+executable; on Homebrew systems, install it with `brew install tesseract`.
 
 ## Quick Start
 

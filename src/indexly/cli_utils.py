@@ -22,6 +22,7 @@ from .path_utils import normalize_path
 from .migration_manager import run_migrations
 from .rename_utils import SUPPORTED_DATE_FORMATS
 from .log_utils import handle_log_clean
+from .optional_deps import extra_install_hint
 
 # CLI display configurations here
 command_titles = {
@@ -110,11 +111,107 @@ def _missing_dependency_message(exc: ModuleNotFoundError, default_extra: str) ->
     extra, package = _MISSING_MODULE_HINTS.get(
         module_name, (default_extra, module_name or default_extra)
     )
-    return (
-        f"Missing optional dependency '{package}'. "
-        f"Install with: pip install {package} "
-        f"(or install extras group '{extra}' via pip install indexly[{extra}])."
+    return f"Missing optional dependency '{package}'. " f"{extra_install_hint(extra)}."
+
+
+def _extra_status_payload(status) -> dict:
+    return status.as_dict()
+
+
+def _handle_extras(args):
+    from .extras_manager import (
+        ExtrasError,
+        external_tools_status,
+        extra_status,
+        install_extra,
+        list_extras,
+        list_stale_overlays,
+        reset_extras,
+        uninstall_extra,
     )
+
+    action = getattr(args, "extras_action", None)
+    try:
+        if action == "install":
+            group = args.group
+            print(
+                f"📦 Installing the '{group}' feature pack for this Indexly "
+                "version and Python runtime..."
+            )
+            status = install_extra(group)
+            print(f"✅ Installed '{group}' extras in: {status.path}")
+            if group == "documents" and not external_tools_status()["tesseract"]:
+                print(
+                    "ℹ️ Tesseract was not found. Regular document extraction is "
+                    "available; OCR also requires the Tesseract system package "
+                    "(Homebrew: brew install tesseract; other systems: use the "
+                    "platform package manager)."
+                )
+            return
+
+        if action == "uninstall":
+            removed = uninstall_extra(args.group)
+            if removed:
+                print(f"✅ Removed the '{args.group}' extras for this runtime.")
+            else:
+                print(f"ℹ️ The '{args.group}' extras are not installed.")
+            return
+
+        if action == "reset":
+            removed = reset_extras()
+            if removed:
+                print(
+                    "✅ Removed all managed extras for this runtime. "
+                    "Install needed packs again with: "
+                    "indexly extras install <pack>"
+                )
+            else:
+                print("ℹ️ No managed extras environment exists for this runtime.")
+            return
+
+        statuses = (
+            (extra_status(args.group),)
+            if action == "status" and getattr(args, "group", None)
+            else list_extras()
+        )
+        stale_overlays = list_stale_overlays()
+        if getattr(args, "json", False):
+            print(
+                json.dumps(
+                    {
+                        "current": [
+                            _extra_status_payload(status) for status in statuses
+                        ],
+                        "stale": [stale.as_dict() for stale in stale_overlays],
+                    },
+                    indent=2,
+                    sort_keys=True,
+                )
+            )
+            return
+
+        print("Optional feature packs:")
+        for status in statuses:
+            marker = "✅" if status.installed else "⚠️" if status.error else "○"
+            detail = f" — {status.error}" if status.error else ""
+            print(f"  {marker} {status.group}: {status.state}{detail}")
+            if status.installed:
+                print(f"     {status.path}")
+        if stale_overlays:
+            print(
+                "\nOlder extras were found for another Indexly version or "
+                "Python runtime:"
+            )
+            for stale in stale_overlays:
+                groups = ", ".join(stale.groups) or "no recognized packs"
+                print(
+                    f"  ⚠️ {stale.indexly_version}/{stale.python_abi}/"
+                    f"{stale.platform_tag}: "
+                    f"{groups} ({stale.reason})"
+                )
+            print("  Reinstall needed packs with: indexly extras install <pack>")
+    except ExtrasError as exc:
+        raise ValueError(str(exc)) from exc
 
 
 def _lazy_analyze_file(args):
@@ -2012,6 +2109,60 @@ def build_parser():
     )
 
     update_db.set_defaults(func=lambda args: handle_update_db(args))
+
+    # -------------------------------------------------------------------
+    # optional feature packs
+    # -------------------------------------------------------------------
+    extras = subparsers.add_parser(
+        "extras",
+        help="Install and manage optional feature packs without modifying Indexly core.",
+    )
+    extras_sub = extras.add_subparsers(dest="extras_action", required=True)
+    extras_groups = [
+        "documents",
+        "analysis",
+        "visualization",
+        "pdf_export",
+        "backup",
+    ]
+
+    extras_install = extras_sub.add_parser(
+        "install",
+        help="Install a feature pack into Indexly's user-owned runtime overlay.",
+    )
+    extras_install.add_argument("group", choices=extras_groups)
+    extras_install.set_defaults(func=_handle_extras)
+
+    extras_list = extras_sub.add_parser(
+        "list",
+        help="List supported feature packs and their state for this runtime.",
+    )
+    extras_list.add_argument("--json", action="store_true", help="Output JSON.")
+    extras_list.set_defaults(func=_handle_extras)
+
+    extras_status = extras_sub.add_parser(
+        "status",
+        help="Show feature-pack status for this runtime.",
+    )
+    extras_status.add_argument("group", nargs="?", choices=extras_groups)
+    extras_status.add_argument("--json", action="store_true", help="Output JSON.")
+    extras_status.set_defaults(func=_handle_extras)
+
+    extras_uninstall = extras_sub.add_parser(
+        "uninstall",
+        help="Remove a feature pack from this runtime's user-owned overlay.",
+    )
+    extras_uninstall.add_argument("group", choices=extras_groups)
+    extras_uninstall.set_defaults(func=_handle_extras)
+
+    extras_reset = extras_sub.add_parser(
+        "reset",
+        help=(
+            "Remove all managed feature packs for this runtime, including an "
+            "invalid environment."
+        ),
+    )
+    extras_reset.set_defaults(func=_handle_extras)
 
     # -------------------------------------------------------------------
     # doctor command

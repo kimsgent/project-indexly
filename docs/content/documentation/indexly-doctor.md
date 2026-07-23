@@ -30,7 +30,7 @@ categories:
 weight: 180
 type: docs
 date: "2025-10-15"
-lastmod: "2026-05-09"
+lastmod: "2026-07-23"
 draft: false
 toc: true
 params:
@@ -69,6 +69,7 @@ State-changing behavior requires explicit flags such as `--clear-cache`, `--fix-
 | Profile search database schema and relations | `indexly doctor --profile-db` |
 | Apply non-FTS schema fixes | `indexly doctor --fix-db` |
 | Allow a risky FTS5 rebuild during repair | `indexly doctor --fix-db --rebuild-fts` |
+| Inspect Homebrew-managed optional groups | `indexly extras status` |
 
 ## Syntax
 
@@ -91,6 +92,38 @@ Doctor reports these sections in Rich tables or JSON:
 | Cache | `search_cache.json` size, parseability, stale path sample, explicit clearing |
 | Optional feature packs | analysis, documents, visualization, PDF export, OCR import availability |
 | Recommendations | Plain-language next steps based on warnings |
+
+For Homebrew installations, use `indexly extras status` alongside Doctor when
+an optional feature is missing. Doctor reports whether optional dependencies
+can be imported; `indexly extras` manages their lifecycle in the user-owned,
+Indexly-version, Python-ABI, and platform-scoped overlay outside the Homebrew
+Cellar.
+
+```bash
+command -v indexly
+indexly extras list
+indexly extras status
+indexly extras install documents
+indexly extras uninstall documents
+indexly extras reset
+```
+
+Use `reset` only when status reports an invalid current environment. It removes
+all managed packs for that Indexly/Python/platform runtime so you can reinstall
+the groups you need.
+
+After `brew upgrade indexly`, status may indicate that a group must be
+installed again for the new Indexly version, Python ABI, or platform. Do not
+repair a brewed installation with generic `pip`, `pip --user`, `sudo pip`, or
+`PYTHONPATH`. The managed command also works for pip installations; pip and
+virtual-environment users may instead use
+`python -m pip install "indexly[<group>]"` with the same interpreter that runs
+Indexly.
+
+Tesseract remains a separate external tool: the `documents` group installs
+ordinary PDF extraction and OCR integration dependencies, while OCR requires
+the Tesseract executable on `PATH` (`brew install tesseract` on Homebrew
+systems).
 
 ## Database Locations
 

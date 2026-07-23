@@ -8,6 +8,10 @@ def main():
     if result is not None:
         return result
 
+    from indexly.extras_manager import activate_installed_extras
+
+    activate_installed_extras()
+
     from indexly.indexly import main as application_main
 
     return application_main()

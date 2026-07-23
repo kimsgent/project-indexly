@@ -1,5 +1,6 @@
 from datetime import datetime
 
+from indexly.optional_deps import extra_install_hint
 
 # -------------------------------------------------
 # Public Dispatcher
@@ -73,8 +74,7 @@ def export_pdf(result, filename):
     except ModuleNotFoundError as exc:
         raise RuntimeError(
             "PDF export requires optional dependency 'reportlab'. "
-            "Install with: pip install reportlab "
-            "(or install Indexly with extras group 'pdf_export')."
+            f"{extra_install_hint('pdf_export')}."
         ) from exc
 
     doc = SimpleDocTemplate(filename)
