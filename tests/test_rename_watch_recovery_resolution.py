@@ -1,4 +1,5 @@
 import json
+import os
 import stat
 from types import SimpleNamespace
 from pathlib import Path
@@ -128,6 +129,64 @@ def test_externally_handled_resolution_preserves_renamed_payload_and_unblocks_ru
     assert (job.destination_path / "renamed.txt").read_text(
         encoding="utf-8"
     ) == "payload"
+
+
+@pytest.mark.skipif(
+    os.name != "nt",
+    reason="requires Windows delete-sharing semantics",
+)
+def test_windows_open_handle_conflict_is_resolved_without_payload_mutation(
+    tmp_path, monkeypatch
+):
+    config, job, watch = _job(tmp_path)
+    state = tmp_path / "state"
+    source = watch / "word-save-as.docx"
+    source.write_bytes(b"simulated Word payload")
+    identity = source.stat()
+    mover = PlanMoveLog(job, state)
+
+    with source.open("rb"):
+        with pytest.raises(PermissionError):
+            mover.plan_and_move_operation(
+                source,
+                expected_source_identity=(identity.st_dev, identity.st_ino),
+            )
+        journal = mover.journal.pending()[0]
+        destination = Path(journal["destination_path"])
+        assert source.exists()
+        assert destination.exists()
+        assert os.path.samefile(source, destination)
+
+    destination.unlink()
+    renamed = source.with_name("word-save-as-renamed.docx")
+    source.rename(renamed)
+    before = renamed.read_bytes()
+
+    result = resolve_recovery(
+        str(config),
+        job_id=job.job_id,
+        operation_id=journal["operation_id"],
+        yes=True,
+        state_root=state,
+    )
+
+    assert result["filesystem_payload_mutations"] == 0
+    assert renamed.read_bytes() == before
+    assert mover.journal.pending() == []
+
+    monkeypatch.setattr(
+        "indexly.rename_watch.service.log_move", lambda *args, **kwargs: None
+    )
+    current = [0.0]
+    service = RenameWatchService(
+        [job],
+        state_root=state,
+        clock=lambda: current[0],
+        sleeper=lambda delay: current.__setitem__(0, current[0] + delay),
+    )
+    service.run_once()
+    assert not renamed.exists()
+    assert (job.destination_path / "word-save-as-renamed.docx").read_bytes() == before
 
 
 @pytest.mark.parametrize("existing", ["source", "destination"])
