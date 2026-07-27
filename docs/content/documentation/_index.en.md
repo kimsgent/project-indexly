@@ -68,7 +68,8 @@ This documentation works best when you enter through the path that matches your 
 - CSV analysis: [Analyze CSV](data-analysis.md)
 - CSV cleaning: [Clean CSV Data](clean-csv-data.md)
 - Configuration and filtering: [Configuration](config.md)
-- Local performance evidence: [Performance Diagnostics and Optimization](performance-guide.md)
+- Local performance evidence and guarded action-specific maintenance:
+  [Performance Diagnostics and Optimization](performance-guide.md)
 - Engineering and contributions: [Developer Guide](developer.md)
 
 ## Quick Workflow
@@ -96,7 +97,7 @@ flowchart LR
 | Run Rename Watch under WinSW, systemd, or launchd | [Rename Watch Service Operation](rename-watch-service-operation.md) |
 | Remove stale search results without deleting files | [Clear Search Results Safely](clear-search.md) |
 | Diagnose search, cache, analysis DB, and integrity issues | [Indexly Doctor](indexly-doctor.md) |
-| Measure search-database performance against local evidence | [Performance Diagnostics and Optimization](performance-guide.md) |
+| Measure search-database performance and apply an eligible backed-up action | [Performance Diagnostics and Optimization](performance-guide.md) |
 | Get short answers for setup, paths, file support, and troubleshooting | [FAQ](faq.md) |
 | Choose the right analysis command and pipeline | [Data Analysis Overview](data-analysis-overview.md) |
 | Analyze JSON, NDJSON, search cache JSON, or Socrata-style JSON | [Analyze JSON And NDJSON Files](analyze-json-files.md) |

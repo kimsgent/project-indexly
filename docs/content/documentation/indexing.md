@@ -240,6 +240,19 @@ records. Paths and raw log events are not copied into the performance record.
 Throughput varies with file types, extraction work, OCR, storage, and system
 activity, so it is not a cross-machine benchmark. See
 [Performance Diagnostics and Optimization](performance-guide.md).
+
+The performance planner can recommend a bounded 500-page FTS merge only after
+three comparable observations have strictly advancing
+`search_index_generation` values and the latest two FTS p95 measurements both
+exceed the local degradation boundary. Frequent indexing or a large database
+alone is not enough. The action never rebuilds FTS or re-indexes source files;
+schema and integrity problems remain Doctor repair concerns.
+
+The planner also requires measured canonical Indexly FTS5 inspection state
+`match`. Measured readiness `0` for schema drift, external-content FTS, or a
+missing/uninspectable definition returns `repair_required`, regardless of
+timing or generation evidence. Missing legacy readiness requests a fresh
+`perf --show`; unavailable readiness does not establish schema damage.
 ---
 ## Next Steps
 

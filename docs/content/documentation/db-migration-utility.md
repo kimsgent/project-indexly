@@ -193,6 +193,25 @@ fails, it reports the verified snapshot and recovery direction rather than
 claiming success. Stop writers, preserve the failed database for investigation,
 and recover from the reported snapshot or re-index the source folders.
 
+### Performance maintenance is not migration
+
+`indexly perf --opti` plans only two bounded, evidence-specific operations:
+SQLite 3.46+ planner-stat refresh and one 500-page FTS merge. A guarded apply
+requires a current matching report, a verified SQLite backup, free-space and
+writer-lock checks, and confirmation. It does not migrate schema, rebuild FTS,
+change tokenizer or prefix options, change journal mode, run `VACUUM`, or
+re-index source files.
+
+Use this page's Doctor and migration workflows for integrity or schema drift.
+Both performance actions require measured canonical FTS inspection state
+`match`. Measured readiness `0` for missing, drifted, external-content,
+malformed, unsupported, or uninspectable definitions produces
+`repair_required`. Missing legacy or unavailable readiness instead requests
+fresh evidence or reports unavailable; it does not establish schema damage.
+Do not use a performance status, database size, or a failed readiness probe as
+authorization for repair. See
+[Performance Diagnostics and Optimization](performance-guide.md).
+
 ----
 
 ## 🧩 migrate_db Utility

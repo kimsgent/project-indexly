@@ -282,7 +282,9 @@ Exit codes:
 
 Doctor consumes one narrow, conservative status from the performance module.
 It does not run performance probes, calculate baselines, display detailed
-metrics, invoke an optimization plan, or infer corruption from a slow result.
+metrics, invoke an optimization plan, apply `planner-optimize` or `fts-merge`,
+or infer corruption from a slow result. Doctor never performs performance
+maintenance.
 
 | Status | Meaning |
 | --- | --- |
@@ -300,9 +302,24 @@ When Doctor reports performance pressure, collect the detailed report:
 indexly perf --show
 ```
 
+The live performance probe fails closed before opening a WAL-mode database,
+because even a nominally read-only SQLite connection can create or update
+shared-memory state. `indexly perf --read` can still inspect an existing
+validated record, and `indexly perf --opti` can still produce its non-mutating
+record-based plan. Neither Doctor nor `perf` checkpoints WAL or changes journal
+mode.
+
 The performance report is advisory. Use `indexly doctor --full-integrity` when
 you need a read-only corruption check, and keep repair behind its explicit
 flags. See [Performance Diagnostics and Optimization](performance-guide.md).
+
+If the performance plan reports `repair_required`, canonical Indexly FTS5
+schema readiness was measured as `0`. Missing, drifted, external-content,
+malformed, unsupported, or uninspectable FTS definitions are not performance
+actions; review Doctor's schema and integrity findings before any explicit
+repair. A missing legacy readiness metric instead reports `collect_evidence`,
+and unavailable readiness reports `unavailable`; neither state alone is
+evidence of schema damage.
 
 ## Repair Modes
 

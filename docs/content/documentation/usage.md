@@ -466,11 +466,44 @@ indexly perf --read
 indexly perf --opti
 ```
 
-`perf --show` opens SQLite read-only and refreshes only the private local
-performance record. `perf --read` reads that validated record without opening
-SQLite or writing files. `perf --opti` is a non-mutating plan. Applied
-performance actions are not enabled in this build; action requests are refused
-without changing a database or backup.
+`perf --show` opens non-WAL SQLite read-only and refreshes only the private
+local performance record. It refuses a WAL-mode database before opening
+SQLite, preventing shared-memory side effects; it never checkpoints WAL or
+changes journal mode. `perf --read` reads the validated record without opening
+SQLite or writing files. `perf --opti` is a non-mutating, action-specific plan.
+
+Only a recommended `planner-optimize` or `fts-merge` action can be applied.
+Apply requires a current primary report, an existing non-symlink backup
+directory separate from the live database directory, exact live-database
+precondition matches, sufficient free space, an immediate writer reservation,
+a verified SQLite backup, and exact terminal confirmation or `--yes`:
+
+```bash
+indexly perf --opti --action planner-optimize --apply \
+  --backup-dir /path/to/indexly-backups
+```
+
+Both actions require measured canonical Indexly FTS5 inspection state `match`.
+A legacy record missing the readiness metric returns `collect_evidence`; run a
+fresh `perf --show`. Unmeasured or budget-unavailable readiness returns
+`unavailable` without inferring schema damage. Measured readiness `0` for an
+actually inspected noncanonical, missing, drifted, external-content, malformed,
+unsupported, or uninspectable FTS definition returns `repair_required`; use
+Doctor. Apply also binds the report to SQLite's observed database change
+counter. A backup is not reported as complete and the action does not run
+unless both the backup file and its directory entry synchronize successfully.
+
+If backup failure also leaves cleanup incomplete, the named file is an
+unverified candidate, not a recovery backup. Inspect and remove that filename
+from the configured backup directory before retrying.
+
+Applied-action automation must distinguish exit `2` from exit `3`. Exit `2`
+means no database mutation committed, including a transaction that rolled back
+while retaining its verified backup or follow-up failure after a `no_op`.
+Exit `3` means a mutation was applied but audit persistence or the post-action
+report failed; preserve the reported backup and inspect state before retrying.
+A same-database size-bucket transition preserves the action audit but makes
+the post-action comparison non-comparable.
 
 Performance grades are baseline-relative and advisory. They do not establish
 database corruption, and a large index is not unhealthy merely because it is

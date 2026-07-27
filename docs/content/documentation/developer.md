@@ -347,18 +347,93 @@ The `src/indexly/perf/` package separates:
 - `probe.py`: bounded read-only SQLite, file-size, and indexing-log probes
 - `baseline.py`: pure calculations and conservative status classification
 - `state.py`: strict validation, atomic replacement, and previous-record recovery
+- `evidence.py`: pure action-specific eligibility from validated records
+- `actions.py`: live preconditions, verified backup, bounded SQLite actions,
+  postconditions, and numeric audit
 - `cli.py`: early command routing and text/JSON rendering
 - `__init__.py`: the narrow status API consumed by Doctor
 
 `perf --show` may write only the performance-record files. `perf --read` must
 not open SQLite or create a directory, temporary file, lock, cache, database,
-or record. `perf --opti` is non-mutating. Applied action names are parser
-reservations only in this build and must fail without changing the database,
-backup directory, or record.
+or record. A live `--show` rejects WAL mode before opening SQLite so the
+read-only contract cannot create or update a shared-memory sidecar.
+Plan-only `perf --opti` is non-mutating.
 
-Doctor does not import probe, baseline, state-write, CLI, or optimization
-behavior. It consumes only the conservative status API and never calculates
-performance metrics or invokes a maintenance action.
+Doctor invokes only the performance package's conservative status API. It
+never calls probe, baseline, state-write, CLI, evidence, or action behavior,
+calculates performance metrics, or invokes a maintenance action.
+
+### Optimization and Apply Boundary
+
+`evidence.plan_optimizations()` does no I/O. It evaluates
+`planner-optimize` from SQLite 3.46+ dry-run evidence using mask `0x10013`.
+If that debug-only pragma returns `SQLITE_READONLY` on an FTS database, the
+probe reports an Indexly-derived count of known relational tables whose
+indexes lack `sqlite_stat1` coverage; it never inspects FTS shadow tables.
+It evaluates `fts-merge` only from three latest comparable FTS p95/generation
+observations with strictly advancing generations and two latest
+baseline-relative degradations. Status, database size, and generic capacity
+metrics never establish action eligibility.
+
+Before either action-specific branch, evidence evaluates
+`fts_schema_action_ready` conservatively:
+
+- absent legacy metric → `collect_evidence`
+- present but non-measured, unavailable, or invalid evidence → `unavailable`
+- measured `0` → `repair_required`
+- measured `1` → continue with action-specific evidence
+
+Only measured `0` establishes an inspected noncanonical, missing, drifted,
+external-content, malformed, unsupported, or uninspectable definition and
+routes the operator to Doctor. Unavailable readiness does not infer schema
+damage. The action layer repeats the structured `match` inspection under its
+writer reservation.
+
+Applied actions require a validated primary report no older than 24 hours.
+`actions.execute_action()` then matches database identity, schema fingerprint,
+Indexly and SQLite versions, journal mode, page size, page count, main-file
+bytes, the observed big-endian SQLite header change counter at offset 24,
+document count, size bucket, and search index generation. It refuses WAL mode
+or a `-wal` sidecar, validates a free-space-qualified existing non-symlink
+backup directory distinct from the live database directory, acquires
+`BEGIN IMMEDIATE`, and creates a verified generic SQLite backup.
+
+`planner-optimize` applies mask `0x10012`; `fts-merge` issues one positive
+500-page merge. Source, backup, and post-action verification use SQLite-side
+`quick_check` plus bounded logical invariants. The FTS action additionally
+runs FTS5 `integrity-check` against the completed backup and the post-action
+live database before commit. The CLI appends a numeric-only audit, retains at
+most 30 outcomes, refreshes the report, and returns a before/after/delta
+comparison. It never implements `VACUUM`, FTS rebuild, schema or tag
+migration, cache deletion, journal-mode changes, or automatic re-indexing.
+
+The backup becomes reportable only after file `fsync`, atomic rename, and
+backup-directory `fsync` all succeed. A directory synchronization failure
+triggers candidate cleanup, raises a backup failure, and prevents action
+execution.
+
+If candidate cleanup itself fails, `ActionBackupError` carries only the
+candidate path internally. The CLI emits `indexly.performance-error/v1` with
+`mutation_applied: false`, `backup_verified: false`,
+`cleanup_incomplete: true`, and `backup_filename`; it never exposes the
+directory path. The operator must resolve that filename within the configured
+backup directory and remove it before retrying.
+
+`baseline.build_record()` preserves action outcomes across a reset when the
+database identity is unchanged, including version, schema, journal, page-size,
+or size-bucket transitions. It clears outcomes only when identity changes.
+The CLI's post-action comparability check includes size bucket, so a bucket
+transition retains the audit but fails the comparison rather than publishing
+misleading deltas.
+
+Failure output preserves transaction state. Preflight failures and rolled-back
+actions exit `2`. A rollback with a retained verified backup uses
+`indexly.performance-action/v1`, sets `mutation_applied: false` and
+`rolled_back: true`, and exposes only the backup filename. If the action
+applies a mutation but audit persistence or the post-action report fails, the
+CLI sets `mutation_applied: true` and exits `3`; failed follow-up after a
+`no_op` remains exit `2`. Callers must not treat exit `3` as safe to retry
+blindly.
 
 ### Evidence and Privacy Rules
 
@@ -384,8 +459,18 @@ Performance changes require focused coverage for:
 - record checksum/schema rejection, atomic replacement, and previous-copy recovery
 - absence of sensitive values in text, JSON, and local records
 - Doctor's status-only consumption and inability to invoke an optimizer
-- rejection of reserved applied-action requests without database, backup, or
-  record changes
+- action-specific planner and FTS eligibility, including unavailable evidence
+- legacy/unavailable/measured-zero FTS readiness disposition boundaries
+- exact stale/identity/schema/journal/page/size/generation precondition failures
+- exact SQLite database-header change-counter binding
+- WAL/header/sidecar refusal without checkpoint or journal-mode change
+- backup, free-space, writer-lock, rollback, audit-retention, and post-action
+  comparison behavior
+- backup-directory synchronization failure before action execution
+- sanitized cleanup-incomplete reporting for an unverified backup candidate
+- same-identity audit retention and size-bucket postcheck rejection
+- backup and live FTS5 integrity verification for `fts-merge`
+- exit `2` rollback versus exit `3` committed partial-success output
 
 See [Performance Diagnostics and Optimization](performance-guide.md) for the
 public contract.

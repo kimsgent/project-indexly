@@ -308,6 +308,27 @@ user-provided backup directory, sufficient free space, exclusive-writer
 preflight, terminal confirmation or yes, numeric action audit, and a
 post-action show comparison.
 
+Both action paths require the canonical Indexly FTS5 definition to inspect as
+`match`. Missing, drifted, malformed, uninspectable, or external-content FTS5
+definitions are `repair_required` Doctor concerns and are never performance
+eligible. Apply repeats this structured check under the writer reservation.
+
+The current report and locked database must also match on SQLite's privacy-safe
+big-endian database change counter at header offset 24, in addition to
+identity, schema fingerprint, versions, journal mode, page size/count, file
+bytes, document count, size bucket, and search generation. WAL remains
+ineligible because its transaction visibility is not represented by this
+header counter.
+
+A backup is accepted only after SQLite verification, file synchronization,
+atomic rename, and successful synchronization of the backup directory. A
+directory synchronization failure prevents action execution and attempts to
+remove the unverified candidate. If removal also fails, output reports only
+the candidate filename with `cleanup_incomplete`, never its full path. Numeric
+action outcomes survive same-database baseline resets, while a size-bucket
+transition makes the post-action report non-comparable and is reported as
+such.
+
 Initial actions are deliberately limited:
 
 - planner-optimize: explicit PRAGMA optimize;

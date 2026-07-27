@@ -125,8 +125,10 @@ The performance record is not stored in `fts_index.db` or the analysis
 database. It lives under the configured runtime directory in
 `perf/performance-v1.json`, with a previous validated copy for recovery.
 
-`indexly perf --show` opens the search database read-only and writes only the
-performance record. `indexly perf --read` does not open SQLite or write files.
+`indexly perf --show` opens a non-WAL search database read-only and writes only
+the performance record. It refuses WAL mode before opening SQLite so a
+read-only connection cannot create or update a shared-memory sidecar.
+`indexly perf --read` does not open SQLite or write files.
 The record keeps bounded numeric evidence and a non-reversible local database
 identity; it excludes paths, filenames, content, query terms, raw logs, and
 network telemetry.
@@ -134,6 +136,29 @@ network telemetry.
 Theoretical capacity or free-page values are modelled descriptions, not
 evidence that schema changes, `VACUUM`, or a new database are required. See
 [Performance Diagnostics and Optimization](performance-guide.md).
+
+The separate guarded apply path currently supports only an evidence-backed
+SQLite 3.46+ planner-stat refresh or one 500-page FTS merge. It matches the
+recorded database identity, FTS/schema fingerprint, Indexly and SQLite
+versions, journal mode, page size, page count, file bytes, SQLite header change
+counter, document count, size bucket, and search-index generation under an
+immediate writer reservation. It creates and verifies a generic SQLite backup
+before mutation and preserves schema, indexed-row count, page size, and search
+generation invariants.
+Verification uses SQLite-side `quick_check` and compact invariants. A guarded
+FTS merge also requires FTS5 `integrity-check` to pass on both the completed
+backup and the post-action live database before commit.
+
+Both actions require measured semantic FTS inspection state `match`. An absent
+legacy readiness metric returns `collect_evidence`; unavailable or unmeasured
+readiness returns `unavailable` without asserting schema damage. Measured
+readiness `0` for drift, external-content FTS, a missing table, or a malformed,
+unsupported, or uninspectable definition returns `repair_required` and remains
+a Doctor concern. The performance path does not normalize schema.
+
+Action outcomes belong to the stable database identity, not to one baseline.
+They survive a same-database size-bucket reset, while a post-action report
+crossing buckets is rejected as non-comparable.
 
 ----
 
