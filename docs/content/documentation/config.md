@@ -28,7 +28,7 @@ categories:
 weight: 30
 type: docs
 date: 2025-10-12
-lastmod: 2026-07-23
+lastmod: 2026-07-27
 draft: false
 toc: true
 ---
@@ -43,6 +43,8 @@ Indexly stores search runtime state outside the source tree by default. The main
 | `profiles.json` | Saved search profiles |
 | `search_cache.json` | Cached search results |
 | `log/` | Structured indexing log artifacts and runtime logs |
+| `perf/performance-v1.json` | Current checksummed local performance record |
+| `perf/performance-v1.previous.json` | Previous validated record used for read-only recovery |
 | `extras/<indexly-version>/<python-abi>/<platform>/environment/` | User-owned optional-dependency environment managed by `indexly extras` |
 
 Default runtime directories:
@@ -122,6 +124,24 @@ indexly search "policy" --no-cache
 
 Use `--no-cache` when validating fresh behavior without reading from or writing to `search_cache.json`. Full-text search cache keys include the current search index generation, so normal searches refresh automatically after an indexing run changes or prunes indexed rows.
 
+## Performance Record
+
+`indexly perf --show` opens the selected search database read-only, collects
+bounded evidence, and atomically refreshes the files under `perf/`.
+`indexly perf --read` validates the current record and then the previous copy,
+without opening SQLite or creating or changing files.
+
+The record contains numeric measurements, calculation context, timestamps, a
+non-reversible local database identity, a checksum, and a reserved
+action-outcomes field that is empty in this build. It does not contain paths,
+source roots, filenames, indexed content, metadata JSON, query terms,
+usernames, hostnames, raw logs, or network telemetry.
+
+If the primary record is invalid and the previous copy validates, `--read`
+reports recovery from the previous file without promoting or rewriting it.
+See [Performance Diagnostics and Optimization](performance-guide.md) before
+removing either record or applying database maintenance.
+
 ## Tags
 
 Tags are stored separately from extracted file content and can be used as search filters.
@@ -176,6 +196,8 @@ Use these commands when behavior differs between machines or after upgrades:
 indexly stats
 indexly doctor
 indexly doctor --analysis-db
+indexly perf --show
+indexly perf --read
 indexly update-db
 indexly migrate check
 ```
@@ -188,6 +210,7 @@ indexly migrate check
 - [Index Files and Folders](indexing.md)
 - [Indexly Logging System](indexly-logging-system.md)
 - [Indexly Doctor](indexly-doctor.md)
+- [Performance Diagnostics and Optimization](performance-guide.md)
 - [Database Design](database-design.md)
 - [Ignore Rules and Index Hygiene](ignore-rules-index-hygiene.md)
 - [DB Migration Utility](db-migration-utility.md)

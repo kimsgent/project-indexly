@@ -20,12 +20,14 @@ from rich.table import Table
 from indexly import __version__
 from indexly.config import BASE_DIR, CACHE_FILE, LOG_DIR, DB_FILE
 from indexly.extract_utils import check_exiftool_available, check_tesseract_available
+from indexly.perf import read_conservative_status
 from indexly.db_schema_utils import load_schemas, summarize_schema
 from .db_update import (
     EXPECTED_SCHEMA,
     _extract_columns_from_sql,
-    check_schema,
     apply_migrations,
+    check_schema,
+    inspect_fts5_definition,
 )
 
 
@@ -438,10 +440,23 @@ def _inspect_search_db(
         cur.execute(
             "SELECT name, sql FROM sqlite_master WHERE type='table' AND sql IS NOT NULL"
         )
+        table_sql = {row[0]: row[1] for row in cur.fetchall()}
         fts_tables = [
-            row[0] for row in cur.fetchall() if "fts5" in (row[1] or "").lower()
+            name for name, sql in table_sql.items() if "fts5" in (sql or "").lower()
         ]
         report["fts_tables"] = sorted(fts_tables)
+        file_index_sql = table_sql.get("file_index")
+        if file_index_sql is None:
+            report["schema"]["fts5"] = {
+                "state": "missing",
+                "reason": "file_index table is missing",
+            }
+        else:
+            fts_inspection = inspect_fts5_definition(file_index_sql)
+            report["schema"]["fts5"] = {
+                "state": fts_inspection.state,
+                "reason": fts_inspection.reason,
+            }
         expected_present = {tbl: tbl in set(table_names) for tbl in EXPECTED_SCHEMA}
         report["is_indexly"] = any(expected_present.values())
         report["integrity"] = _check_db_integrity(conn, full=full_integrity)
@@ -506,6 +521,11 @@ def _inspect_search_db(
             report["warnings"].append("empty_vocab")
         if any(v.get("missing") for v in report["schema"]["columns"].values()):
             report["warnings"].append("schema_missing_columns")
+        fts_state = report["schema"]["fts5"]["state"]
+        if fts_state == "drift":
+            report["warnings"].append("fts_schema_drift")
+        elif fts_state == "uninspectable":
+            report["warnings"].append("fts_schema_uninspectable")
 
         report["performance"] = {
             "db_size_bytes": db_size,
@@ -590,6 +610,7 @@ def _recommendations(report: dict[str, Any]) -> list[str]:
     extras = report.get("dependencies", {}).get("extras_overlay", {})
     cache = report.get("cache", {})
     local = report.get("local_index_db", {})
+    performance = report.get("performance", {})
     has_errors = bool(report.get("errors"))
 
     if "db_missing" in search.get("errors", []):
@@ -615,6 +636,17 @@ def _recommendations(report: dict[str, Any]) -> list[str]:
         recs.append("FTS vocabulary is empty. Re-index files or restore a known-good database backup.")
     if "schema_missing_columns" in search.get("warnings", []):
         recs.append("Schema drift detected. Run `indexly doctor --profile-db` to inspect, then `indexly doctor --fix-db` for non-FTS fixes.")
+    if "fts_schema_drift" in search.get("warnings", []):
+        recs.append(
+            "Semantic FTS5 definition drift detected. Prefer a fresh index or "
+            "verified restore for valuable data; an explicit repair requires "
+            "`indexly doctor --fix-db --rebuild-fts`."
+        )
+    if "fts_schema_uninspectable" in search.get("warnings", []):
+        recs.append(
+            "The file_index definition is uninspectable and will not be rebuilt "
+            "automatically. Restore a verified backup or create a fresh index."
+        )
     if cache.get("status") == "invalid_json":
         recs.append("Search cache JSON is invalid. Run `indexly doctor --clear-cache`.")
     if cache.get("status") == "large_cache_not_scanned":
@@ -647,6 +679,20 @@ def _recommendations(report: dict[str, Any]) -> list[str]:
         recs.append(
             "The optional-pack overlay could not be inspected safely. Run "
             "`indexly extras status --json` for details."
+        )
+    if performance.get("grade") in {"Elevated", "Constrained"}:
+        recs.append(
+            "Review the bounded local performance evidence with `indexly perf --show`."
+        )
+    elif performance.get("grade") is None and performance.get("evidence") in {
+        "not_assessed",
+        "collecting_baseline",
+        "baseline_stale",
+        "record_unavailable",
+        "inconclusive",
+    }:
+        recs.append(
+            "Performance is not currently graded. Run `indexly perf --show` to collect current evidence."
         )
     if has_errors and not recs:
         recs.append("Doctor found blocking errors. Resolve reported errors and re-run `indexly doctor --json`.")
@@ -813,6 +859,15 @@ def _render_search_db_report(report: dict[str, Any]) -> None:
     rows = [
         ("Path", report.get("path"), "ok" if report.get("exists") else "error"),
         ("Indexly schema", report.get("is_indexly"), "ok" if report.get("is_indexly") else "warn"),
+        (
+            "FTS5 definition",
+            report.get("schema", {}).get("fts5", {}).get("state", "not inspected"),
+            (
+                "ok"
+                if report.get("schema", {}).get("fts5", {}).get("state") == "match"
+                else "warn"
+            ),
+        ),
         ("Documents", file_index_rows, documents_status),
         ("Vocabulary terms", vocab_rows, vocab_status),
         ("Sample MATCH rows", sample_match_rows, sample_match_status),
@@ -891,6 +946,7 @@ def run_doctor(
         "analysis_database": {},
         "cache": {},
         "local_index_db": {},
+        "performance": read_conservative_status(Path(BASE_DIR) / "perf").to_dict(),
         "recommendations": [],
         "warnings": [],
         "errors": [],
@@ -980,6 +1036,17 @@ def run_doctor(
         )
         _render_search_db_report(report["search_database"])
         _render_analysis_report(report["analysis_database"])
+        performance = report["performance"]
+        if performance["grade"] is None:
+            console.print(
+                "Performance evidence: "
+                f"{performance['evidence']} — {performance['reason']}"
+            )
+        else:
+            console.print(
+                f"Performance: {performance['grade']} — {performance['reason']}"
+            )
+        console.print("Run: indexly perf --show")
         _render_table(
             "Cache",
             [

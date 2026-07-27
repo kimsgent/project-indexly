@@ -5,9 +5,9 @@ icon: "mdi:play-circle"
 weight: 20
 type: docs
 date: 2026-04-01
-lastmod: 2026-07-23
-summary: "Learn the day-to-day Indexly workflow: install, index, search, tag, analyze, compare, and back up with practical command examples."
-description: "Practical Indexly usage guide for Windows, macOS, and Linux. Covers indexing, search, regex, tagging, analysis, organizing, backup/restore, and common troubleshooting."
+lastmod: 2026-07-27
+summary: "Learn the day-to-day Indexly workflow: install, index, search, tag, analyze, compare, measure performance, and back up with practical command examples."
+description: "Practical Indexly usage guide for Windows, macOS, and Linux. Covers indexing, search, regex, tagging, analysis, performance diagnostics, organizing, backup/restore, and common troubleshooting."
 keywords: [
   "Indexly usage guide",
   "Indexly search",
@@ -47,6 +47,7 @@ You will learn the most common workflows:
 - Rename, tag, and organize content
 - Analyze CSV and other structured files
 - Compare, back up, and restore safely
+- Measure search-database performance against a local baseline
 
 If you have not installed Indexly yet, start with [Install Indexly](indexly-installation.md).
 
@@ -58,6 +59,7 @@ If you have not installed Indexly yet, start with [Install Indexly](indexly-inst
 indexly --help
 indexly index /path/to/folder
 indexly search "invoice"
+indexly perf --show
 indexly clear-search --path /path/to/old-folder --dry-run
 indexly rename-file /path/to/incoming --pattern "{date}-{title}" --dry-run
 indexly regex "[A-Z]{3}-\\d{4}"
@@ -456,6 +458,25 @@ indexly migrate check
 
 `indexly stats` gives a quick database summary: indexed files, tagged files, untagged files, tag coverage, database size, unique tags, total tag assignments, and top tags.
 
+Collect bounded performance evidence without changing the search database:
+
+```bash
+indexly perf --show
+indexly perf --read
+indexly perf --opti
+```
+
+`perf --show` opens SQLite read-only and refreshes only the private local
+performance record. `perf --read` reads that validated record without opening
+SQLite or writing files. `perf --opti` is a non-mutating plan. Applied
+performance actions are not enabled in this build; action requests are refused
+without changing a database or backup.
+
+Performance grades are baseline-relative and advisory. They do not establish
+database corruption, and a large index is not unhealthy merely because it is
+large. See [Performance Diagnostics and Optimization](performance-guide.md)
+for formulas, record recovery, privacy limits, and guarded maintenance.
+
 Semantic observers:
 
 ```bash
@@ -478,7 +499,9 @@ Live indexing:
 indexly watch /path/to/folder
 ```
 
-See [Indexly Doctor](indexly-doctor.md), [DB Migration Utility](db-migration-utility.md), and [Observers](observers.md).
+See [Indexly Doctor](indexly-doctor.md),
+[Performance Diagnostics and Optimization](performance-guide.md),
+[DB Migration Utility](db-migration-utility.md), and [Observers](observers.md).
 
 ---
 
@@ -515,6 +538,7 @@ This lets core commands like `indexly --help` and `indexly --version` remain usa
 - [Configuration](config.md)
 - [Search](/searching/)
 - [Clear Search Results Safely](clear-search.md)
+- [Performance Diagnostics and Optimization](performance-guide.md)
 - [Tagging](tagging.md)
 - [Rename File](rename-file.md)
 - [Rename Watch](/en/documentation/rename-watch/)

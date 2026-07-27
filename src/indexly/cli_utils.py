@@ -390,6 +390,7 @@ def build_parser():
         handle_rename_file,
         handle_update_db,
         handle_doctor,
+        handle_perf,
         handle_show_help,
         handle_ignore_init,
         handle_ignore_show,
@@ -2219,6 +2220,66 @@ def build_parser():
     )
 
     doctor.set_defaults(func=lambda args: handle_doctor(args))
+
+    # -------------------------------------------------------------------
+    # performance diagnostics (normally handled by the early CLI route)
+    # -------------------------------------------------------------------
+    perf = subparsers.add_parser(
+        "perf",
+        help="Collect or read bounded local performance evidence.",
+        description=(
+            "Collect, read, or plan from local Indexly performance evidence. "
+            "Optimization is plan-first and never mutates the database unless "
+            "an explicit supported action is combined with --apply."
+        ),
+    )
+    perf_mode = perf.add_mutually_exclusive_group(required=True)
+    perf_mode.add_argument(
+        "--show",
+        action="store_true",
+        help="Run bounded read-only probes and refresh the local performance record.",
+    )
+    perf_mode.add_argument(
+        "--read",
+        action="store_true",
+        help="Read the latest validated performance record without opening SQLite.",
+    )
+    perf_mode.add_argument(
+        "--opti",
+        action="store_true",
+        help="Produce a non-mutating evidence-based optimization plan.",
+    )
+    perf.add_argument(
+        "--db",
+        default=None,
+        help="Use a specific search database path instead of the runtime database.",
+    )
+    perf.add_argument(
+        "--json",
+        action="store_true",
+        help="Output one JSON document.",
+    )
+    perf.add_argument(
+        "--action",
+        choices=("planner-optimize", "fts-merge"),
+        help="Select an explicitly supported maintenance action for --opti.",
+    )
+    perf.add_argument(
+        "--apply",
+        action="store_true",
+        help="Apply the selected action after all safety preflights.",
+    )
+    perf.add_argument(
+        "--backup-dir",
+        default=None,
+        help="Directory for the required verified SQLite backup before an action.",
+    )
+    perf.add_argument(
+        "--yes",
+        action="store_true",
+        help="Confirm an applied action non-interactively; valid only with --apply.",
+    )
+    perf.set_defaults(func=lambda args: handle_perf(args))
 
     # ------------------------------------------------------------
     # LOG-CLEAN SUBCOMMAND

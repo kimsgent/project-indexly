@@ -2,7 +2,7 @@
 title: "Database Design"
 weight: 190
 type: docs
-lastmod: "2026-05-09"
+lastmod: "2026-07-27"
 ---
 
 ## Database responsibilities by design
@@ -104,7 +104,36 @@ This separation matters for maintenance:
 - `indexly doctor --full-integrity` runs a read-only SQLite integrity check when a deeper scan is needed.
 
 FTS5 virtual tables are also different from ordinary SQLite tables.
-Schema repairs can add normal-table columns safely, but FTS5 rebuilds require explicit operator intent because damaged virtual tables may not preserve enough information to reconstruct path values safely.
+Schema repairs can add normal-table columns safely, but FTS5 rebuilds require
+explicit operator intent. Indexly compares the module, ordered user columns,
+optional `UNINDEXED` markers, tokenizer, prefix sequence, and supported options
+semantically and refuses to automatically rebuild malformed or unsupported
+definitions.
+
+An authorized rebuild uses a verified SQLite-consistent snapshot, keeps data
+movement inside SQLite, verifies logical rows and FTS behavior before the
+transactional table swap, and increments the search-index generation with the
+swap. A failed preflight or transaction leaves the original database intact.
+A post-commit verification failure reports the snapshot recovery path instead
+of claiming success.
+
+----
+
+## Performance evidence is separate
+
+The performance record is not stored in `fts_index.db` or the analysis
+database. It lives under the configured runtime directory in
+`perf/performance-v1.json`, with a previous validated copy for recovery.
+
+`indexly perf --show` opens the search database read-only and writes only the
+performance record. `indexly perf --read` does not open SQLite or write files.
+The record keeps bounded numeric evidence and a non-reversible local database
+identity; it excludes paths, filenames, content, query terms, raw logs, and
+network telemetry.
+
+Theoretical capacity or free-page values are modelled descriptions, not
+evidence that schema changes, `VACUUM`, or a new database are required. See
+[Performance Diagnostics and Optimization](performance-guide.md).
 
 ----
 
@@ -113,3 +142,4 @@ Schema repairs can add normal-table columns safely, but FTS5 rebuilds require ex
 * [Semantic Indexing & Vocabulary Quality](semantic-indexing-vocab.md) The technical model, measured results, and why a database update is required.
 * [CSV Inference](inference.md)
 * [Indexly Doctor](indexly-doctor.md)
+* [Performance Diagnostics and Optimization](performance-guide.md)

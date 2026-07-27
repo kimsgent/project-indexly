@@ -26,7 +26,7 @@ tags:
   - cli
   - search
   - file-management
-lastmod: 2026-07-23
+lastmod: 2026-07-27
 ---
 
 
@@ -227,11 +227,25 @@ In addition to basic indexing, you can view database statistics to get a quick o
 ```bash
 indexly stats
 ```
+
+For bounded timing and size evidence, compare the current search database with
+its own local baseline:
+
+```bash
+indexly perf --show
+```
+
+Recent indexing throughput is derived only from bounded `INDEX_SUMMARY`
+records. Paths and raw log events are not copied into the performance record.
+Throughput varies with file types, extraction work, OCR, storage, and system
+activity, so it is not a cross-machine benchmark. See
+[Performance Diagnostics and Optimization](performance-guide.md).
 ---
 ## Next Steps
 
 * [Search](/searching/) and [tag](tagging.md) with Indexly.
 * Review [Ignore Rules & Index Hygiene](ignore-rules-index-hygiene.md) before automating large refreshes.
 * Learn how [Indexly logs](indexly-logging-system.md) support scoped incremental runs.
+* Measure local [performance against a bounded baseline](performance-guide.md).
 
 For a deeper dive into how this process works, check out [Semantic Indexing](semantic-indexing-vocab.md).

@@ -2,7 +2,7 @@
 title: "Database Update & Migration Utilities"
 slug: "update-db-migration-utilities"
 date: 2025-10-14
-lastmod: 2026-05-09
+lastmod: 2026-07-27
 type: docs
 description: "Learn how to safely update, migrate, and manage your Indexly database schema and FTS5 tables without losing data. Includes full CLI examples and explanations of key differences between normal and FTS5 tables."
 summary: "A comprehensive guide to Indexly’s database management tools — update-db, migrate-db, and migration manager — explaining when and how to use them effectively."
@@ -22,7 +22,9 @@ This guide explains how to **update, migrate, and manage** your Indexly database
 - `migrate-db`
 - `migration-manager`
 
-Together, these tools let you modify schema definitions, rebuild FTS5 indexes when needed, merge data between database files, and track schema evolution — all without losing your content.
+Together, these tools let you inspect schema definitions, direct explicitly
+authorized FTS5 repair through Doctor, merge data between database files, and
+track schema evolution without silently discarding indexed content.
 
 ----
 
@@ -41,8 +43,9 @@ Together, these tools let you modify schema definitions, rebuild FTS5 indexes wh
 - **Schema auto-alignment:** Adds missing columns automatically.
 - **Dry-run mode:** Preview all changes without applying them.
 - **Migration history tracking:** Each migration is recorded with a timestamp.
-- **Guarded FTS5 rebuilds:** Detects prefix/tokenizer mismatches, but repair commands require explicit FTS rebuild intent.
-- **Safe backups:** Creates versioned `.bak_YYYYMMDD_HHMMSS` copies before modifying any DB.
+- **Semantic FTS5 inspection:** Detects module, ordered-column, tokenizer, prefix, and supported-option drift.
+- **Guarded FTS5 rebuilds:** Requires explicit rebuild intent and refuses malformed or unsupported definitions.
+- **SQLite-consistent snapshots:** Uses SQLite's backup API and verifies the snapshot before an FTS rebuild.
 - **Interactive confirmation:** Prompts you before irreversible operations.
 - **Path normalization & data validation:** Ensures consistent entries across tables.
 - **Cross-database merging:** Import or update specific tables without full re-indexing.
@@ -63,7 +66,9 @@ SQLite’s FTS5 tables behave differently from regular tables — updating them 
 {{< alert title="FTS5 repair is explicit" color="warning" >}}
 FTS5 virtual tables can contain path and content state that cannot always be reconstructed safely from the table definition alone.
 Use `indexly doctor --fix-db` for ordinary schema fixes.
-Use `indexly doctor --fix-db --rebuild-fts` only after backup or when you are prepared to re-index source folders.
+Use `indexly doctor --fix-db --rebuild-fts` only during an offline maintenance
+window. The rebuild creates and verifies a SQLite-consistent snapshot, but you
+still need enough free space and a recovery window.
 {{< /alert >}}
 
 ### CLI Usage
@@ -137,7 +142,56 @@ After confirming the actions:
 indexly migrate run --db /path/to/custom.db
 ```
 
-This rebuilds and aligns all tables as needed, while recording the migration in `schema_migrations`.
+This aligns tables as needed while recording the migration in
+`schema_migrations`. An FTS5 rebuild still requires the command's explicit
+rebuild authorization; a check or ordinary migration must not silently rebuild
+the virtual table.
+
+### FTS5 definition states
+
+Indexly classifies the authoritative `file_index` definition as:
+
+| State | Meaning | Automatic action |
+| --- | --- | --- |
+| `match` | Module, ordered columns and `UNINDEXED` markers, tokenizer, prefix, and supported options are semantically equivalent | None |
+| `drift` | One or more semantic fields differ | Report rebuild required; wait for explicit authorization |
+| `uninspectable` | Definition is malformed, unsupported, or not FTS5 | Refuse automatic rebuild |
+
+Case, whitespace, quote style, and option ordering alone are equivalent.
+Indexly uses structured, quote- and parenthesis-aware inspection instead of
+comma splitting or a loose regular expression.
+
+### Verified rebuild and recovery
+
+The FTS5 rebuild is offline maintenance:
+
+1. Stop other database writers.
+2. Run `indexly doctor --full-integrity` and review the result.
+3. Start the explicitly authorized rebuild:
+
+   ```bash
+   indexly doctor --fix-db --rebuild-fts
+   ```
+
+4. Keep the reported verified snapshot until search and indexing smoke tests
+   pass.
+
+Before mutation, Indexly checks full integrity, the FTS definition, writable
+storage, conservative free space, snapshot validity, and the writer lock. A
+preflight failure leaves the original database unchanged.
+
+Data moves through SQLite in a transaction rather than through an unbounded
+Python row list. Before swap, Indexly verifies logical row counts, null or
+empty paths, duplicate paths, a fixed-batch digest, the replacement
+definition, vocabulary access, and representative `MATCH` behavior. The table
+swap, vocabulary recreation, and search-cache generation bump are committed
+together. Transfer, verification, or swap failure rolls back. The rebuild does
+not run `VACUUM`.
+
+Indexly reopens and checks the committed database. If post-commit verification
+fails, it reports the verified snapshot and recovery direction rather than
+claiming success. Stop writers, preserve the failed database for investigation,
+and recover from the reported snapshot or re-index the source folders.
 
 ----
 
@@ -204,7 +258,7 @@ Answer `y` to continue or `N` to abort.
 | **Use Case**       | Full-text search indexing          | Metadata, tags, and structured data      |
 | **Performance**    | Optimized for search queries       | Optimized for relational lookups         |
 | **Schema Changes** | Costly and must be recreated       | Fast and additive                        |
-| **Backup Needs**   | Critical before rebuild            | Optional but recommended                 |
+| **Backup Needs**   | Verified SQLite snapshot required   | Backup recommended before mutation       |
 | **Rebuild Tool**   | `migration_manager.rebuild_fts5()` | `update-db` or `migrate-db`              |
 
 ----
@@ -214,7 +268,7 @@ Answer `y` to continue or `N` to abort.
 | **Situation**                                                 | **Recommended Tool**  | **Notes**                              |
 | ------------------------------------------------------------- | --------------------- | -------------------------------------- |
 | You changed metadata or tags schema                           | **update-db**         | Safely adds or adjusts columns         |
-| You updated FTS5 prefix or tokenizer                          | **doctor / migration-manager** | Rebuilds are guarded; backup or prepare to re-index first |
+| You updated the FTS5 module, columns, prefix, tokenizer, or supported options | **doctor / migration-manager** | Semantic drift is reported; rebuilds require explicit authorization |
 | You want to merge data from another DB                        | **migrate-db**        | Safely imports data without reindexing |
 | You just upgraded Indexly and need to sync DB structure       | **update-db**         | Aligns schema automatically            |
 | You want to backfill missing migrations or ensure consistency | **migration-manager** | Maintains historical schema records    |

@@ -2,6 +2,12 @@
 
 
 def main():
+    from indexly.perf.cli import maybe_run_perf
+
+    result = maybe_run_perf()
+    if result is not None:
+        return result
+
     from indexly.rename_watch.status_cli import maybe_run_status
 
     result = maybe_run_status()

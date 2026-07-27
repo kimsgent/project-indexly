@@ -236,6 +236,23 @@
     "description": "Use these suggestions when data volume grows and you want Indexly to stay responsive.",
     "items": [
       {
+        "question": "How do I measure Indexly performance without changing the search database?",
+        "answer": "Run `indexly perf --show`. It opens SQLite read-only, runs bounded local probes, and refreshes only the checksummed performance record. Use `indexly perf --read` to read the latest validated record without opening SQLite or writing files. Values are labelled Observed, Indexly-derived, or Theoretical and compare this installation with its own baseline; they are not a hardware benchmark or a direct comparison with another machine.",
+        "links": [
+          { "label": "Performance Guide", "href": "/en/documentation/performance-guide/" },
+          { "label": "Indexly Doctor", "href": "/en/documentation/indexly-doctor/" }
+        ]
+      },
+      {
+        "question": "Does a large database or an Elevated performance status mean the index is corrupt?",
+        "answer": "No. Database size, document count, vocabulary size, and theoretical capacity values are not corruption findings. `Elevated` means repeated baseline-relative degradation was observed, while ungraded states such as `collecting_baseline` or `inconclusive` mean there is not enough comparable evidence. Review `indexly perf --show`; use the separate read-only `indexly doctor --full-integrity` check only when integrity is in question.",
+        "links": [
+          { "label": "Performance Guide", "href": "/en/documentation/performance-guide/" },
+          { "label": "Indexly Doctor", "href": "/en/documentation/indexly-doctor/" },
+          { "label": "Database Design", "href": "/en/documentation/database-design/" }
+        ]
+      },
+      {
         "question": "How can I keep indexing and analysis fast on large datasets?",
         "answer": "Scope the work intentionally. Index only the folders you actually need, apply ignore rules for generated or temporary files, and use file-type filters when your workflow targets a known subset. On the analysis side, prefer routes that stream or summarize instead of flattening everything into one big in-memory table.",
         "links": [

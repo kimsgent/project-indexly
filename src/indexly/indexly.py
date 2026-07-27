@@ -22,6 +22,12 @@ Usage:
 if __name__ == "__main__":
     import sys as _early_sys
 
+    from .perf.cli import maybe_run_perf as _maybe_run_perf
+
+    _perf_result = _maybe_run_perf(_early_sys.argv[1:])
+    if _perf_result is not None:
+        raise SystemExit(_perf_result)
+
     from .rename_watch.status_cli import maybe_run_status as _maybe_run_status
 
     _status_result = _maybe_run_status(_early_sys.argv[1:])
@@ -1146,6 +1152,18 @@ def handle_doctor(args):
     sys.exit(exit_code)
 
 
+def handle_perf(args):
+    """Lazy fallback for parser-driven perf dispatch.
+
+    Supported executable entry points route perf before this full application
+    module is imported. Keeping this handler preserves parser and help
+    consistency for callers that invoke ``build_parser()`` directly.
+    """
+    from indexly.perf.cli import run_namespace
+
+    raise SystemExit(run_namespace(args))
+
+
 def handle_extract_mtw(args):
     from .mtw_extractor import _extract_mtw
 
@@ -1352,6 +1370,7 @@ def handle_show_help(args):
             "ignore",
             "observe",
             "doctor",
+            "perf",
             "update-db",
             "migrate",
             "stats",
@@ -1369,6 +1388,7 @@ def handle_show_help(args):
         "extract-mtw": "Requires optional extras: analysis",
         "extras": "User-owned optional-pack environment; core stays immutable",
         "doctor": "Core diagnostics; --analysis-db inspects persisted analysis state",
+        "perf": "Local, bounded performance evidence and non-mutating plans",
         "update-db": "Critical schema maintenance; use after backup",
         "migrate": "Critical schema maintenance; backups recommended",
     }
@@ -1632,10 +1652,12 @@ def main():
     extras_read_only = getattr(args, "command", None) == "extras" and getattr(
         args, "extras_action", None
     ) in {"list", "status"}
+    perf_early_route = getattr(args, "command", None) == "perf"
     if (
         not getattr(args, "no_update_check", False)
         and not rename_watch_status
         and not extras_read_only
+        and not perf_early_route
     ):
         try:
             from .update_utils import check_for_updates

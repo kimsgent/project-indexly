@@ -264,8 +264,9 @@ SQLite/Indexly version, journal mode, page size, and size bucket:
     0–128 MiB | 128–512 MiB | 512 MiB–2 GiB | 2–10 GiB | >10 GiB
 
 A changed bucket or fingerprint starts a baseline. Require three successful
-show sessions before classification. Retain at most 30 sessions and use the
-latest 15 valid comparable sessions.
+prior show sessions with measured values for a metric; classification begins
+on the fourth comparable session. Retain at most 30 sessions and use the latest
+15 valid comparable sessions.
 
 For each timed metric:
 
