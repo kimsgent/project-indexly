@@ -9,6 +9,9 @@ from typing import Any, Mapping
 SCHEMA_VERSION = 1
 MAX_SESSIONS = 30
 MAX_ACTION_OUTCOMES = 30
+SUPPORTED_ACTIONS = frozenset({"planner-optimize", "fts-merge"})
+ACTION_RESULTS = frozenset({"applied", "no_op"})
+MAX_ACTION_NUMERIC_FIELDS = 24
 
 OBSERVED = "Observed"
 DERIVED = "Indexly-derived"
@@ -156,7 +159,7 @@ class PerformanceStatus:
 
 @dataclass(frozen=True)
 class ActionOutcome:
-    """Privacy-safe numeric audit data for a future explicitly approved action."""
+    """Privacy-safe numeric audit data for an explicitly approved action."""
 
     action: str
     timestamp: str

@@ -8,17 +8,21 @@ import math
 import os
 import secrets
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from .model import (
+    ACTION_RESULTS,
+    ActionOutcome,
     DERIVED,
+    MAX_ACTION_NUMERIC_FIELDS,
     MAX_ACTION_OUTCOMES,
     MAX_SESSIONS,
     OBSERVED,
     SCHEMA_VERSION,
+    SUPPORTED_ACTIONS,
     THEORETICAL,
     PerformanceRecord,
     PerformanceStatus,
@@ -44,6 +48,18 @@ class LoadedRecord:
 
 def new_identity_salt() -> bytes:
     return secrets.token_bytes(32)
+
+
+def append_action_outcome(
+    record: PerformanceRecord,
+    outcome: ActionOutcome,
+) -> PerformanceRecord:
+    """Return a record with one validated, retention-bounded action audit."""
+    serialized = outcome.to_dict()
+    _validate_outcome(serialized)
+    _validate_finite(serialized)
+    outcomes = (record.action_outcomes + (outcome,))[-MAX_ACTION_OUTCOMES:]
+    return replace(record, action_outcomes=outcomes)
 
 
 def record_paths(state_dir: Path) -> tuple[Path, Path]:
@@ -347,11 +363,26 @@ def _validate_outcome(value: Any) -> None:
         isinstance(value[key], str) for key in ("action", "timestamp", "result")
     ):
         raise RecordValidationError("invalid action outcome strings")
-    if not _is_number(value["duration_seconds"]):
-        raise RecordValidationError("invalid action duration")
-    if not isinstance(value["numeric"], dict) or not all(
-        isinstance(key, str) and _is_number(item)
-        for key, item in value["numeric"].items()
+    if value["action"] not in SUPPORTED_ACTIONS:
+        raise RecordValidationError("unsupported action outcome")
+    if value["result"] not in ACTION_RESULTS:
+        raise RecordValidationError("invalid action result")
+    if not _is_number(value["duration_seconds"]) or value["duration_seconds"] < 0:
+        raise RecordValidationError("action duration must be non-negative")
+    numeric = value["numeric"]
+    if (
+        not isinstance(numeric, dict)
+        or len(numeric) > MAX_ACTION_NUMERIC_FIELDS
+        or not all(
+            isinstance(key, str)
+            and 0 < len(key) <= 64
+            and key.replace("_", "").isalnum()
+            and key[0].isalpha()
+            and key.isascii()
+            and key == key.lower()
+            and _is_number(item)
+            for key, item in numeric.items()
+        )
     ):
         raise RecordValidationError("action outcome must contain numeric data only")
 

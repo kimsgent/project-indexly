@@ -10,6 +10,7 @@ from typing import Iterable, Sequence
 
 from .model import (
     MAX_SESSIONS,
+    ActionOutcome,
     BaselineMetric,
     MetricSample,
     PerformanceRecord,
@@ -271,7 +272,22 @@ def build_record(
         or prior.database_identity != snapshot.database_identity
         or not comparable(prior.sessions[-1], snapshot)
     )
-    sessions = (snapshot,) if reset else (prior.sessions + (snapshot,))[-MAX_SESSIONS:]
+    sessions: tuple[ProbeSnapshot, ...]
+    action_outcomes: tuple[ActionOutcome, ...]
+    if reset:
+        sessions = (snapshot,)
+        created_at = now
+        action_outcomes = (
+            prior.action_outcomes
+            if prior is not None
+            and prior.database_identity == snapshot.database_identity
+            else ()
+        )
+    else:
+        assert prior is not None
+        sessions = (prior.sessions + (snapshot,))[-MAX_SESSIONS:]
+        created_at = prior.created_at
+        action_outcomes = prior.action_outcomes
     status = classify_sessions(sessions)
     history = [session for session in sessions[:-1] if comparable(session, snapshot)][
         -15:
@@ -280,7 +296,7 @@ def build_record(
     baselines = calculate_baselines(baseline_sessions, reference=snapshot)
     return PerformanceRecord(
         schema_version=SCHEMA_VERSION,
-        created_at=now if reset else prior.created_at,
+        created_at=created_at,
         updated_at=snapshot.timestamp,
         identity_salt=identity_salt or (prior.identity_salt if prior else ""),
         database_identity=snapshot.database_identity,
@@ -289,7 +305,7 @@ def build_record(
         sessions=sessions,
         baselines=baselines,
         status=status,
-        action_outcomes=() if reset else prior.action_outcomes,
+        action_outcomes=action_outcomes,
     )
 
 
@@ -325,9 +341,13 @@ def _with_growth_rate(
     if comparison is None:
         return snapshot
     previous_sample, days = comparison
+    current_value = current_sample.value
+    previous_value = previous_sample.value
+    assert current_value is not None
+    assert previous_value is not None
     rate = growth_rate(
-        int(current_sample.value),
-        int(previous_sample.value),
+        int(current_value),
+        int(previous_value),
         days,
     )
     assert rate is not None

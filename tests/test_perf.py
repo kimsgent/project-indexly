@@ -95,6 +95,9 @@ def test_collect_snapshot_is_read_only_bounded_and_private(tmp_path: Path) -> No
     assert db.stat().st_mtime_ns == before
     assert snapshot.metrics["document_count"].value == 1
     assert snapshot.metrics["fts_readiness_p50_ms"].value is not None
+    assert snapshot.metrics["database_change_counter"].status == "measured"
+    assert type(snapshot.metrics["database_change_counter"].value) is int
+    assert snapshot.metrics["fts_schema_action_ready"].value == 1
     assert snapshot.database_identity != str(db)
     rendered = json.dumps(snapshot.to_dict())
     assert "sensitive-name" not in rendered

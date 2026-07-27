@@ -20,6 +20,15 @@ from .model import (
     PerformanceStatus,
     ProbeSnapshot,
 )
+from .evidence import (
+    ActionRecommendation,
+    EvidenceError,
+    EvidenceSignal,
+    OptimizationPlan,
+    PLANNER_OPTIMIZE_APPLY_MASK,
+    PLANNER_OPTIMIZE_DRY_RUN_MASK,
+    plan_optimizations,
+)
 from .probe import (
     ProbeBudget,
     ProbeBudgetExceeded,
@@ -72,9 +81,15 @@ def prepare_live_record(
 
 __all__ = [
     "ActionOutcome",
+    "ActionRecommendation",
     "BaselineMetric",
+    "EvidenceError",
+    "EvidenceSignal",
     "LoadedRecord",
     "MetricSample",
+    "OptimizationPlan",
+    "PLANNER_OPTIMIZE_APPLY_MASK",
+    "PLANNER_OPTIMIZE_DRY_RUN_MASK",
     "PerformanceRecord",
     "PerformanceStatus",
     "ProbeBudget",
@@ -91,6 +106,7 @@ __all__ = [
     "median",
     "nearest_rank_p95",
     "new_identity_salt",
+    "plan_optimizations",
     "prepare_live_record",
     "read_conservative_status",
     "read_validated_record",
