@@ -370,6 +370,18 @@ Status: **Completed**
 - Finalized normal moves that still need source deletion remain
   `recovery_pending` with their original journal, target, and counter; they are
   never quarantined or replanned.
+- A narrowly controlled operator escape hatch is available only when an
+  administrator has independently established that one finalized hard-link
+  operation was handled outside Indexly and both recorded paths are now absent:
+  `indexly rename-watch --config <path> --resolve-recovery --job <id>
+  --operation-id <uuid>`. The confirmation text is
+  `RESOLVE <operation-id>` (or use `--yes`) and the disposition is explicitly
+  **EXTERNALLY HANDLED**. The command never scans for an inode, rebinds a
+  renamed source, or creates, deletes, or moves payload files. It first writes
+  an immutable, versioned evidence receipt, then retires only the exact journal
+  and at most one exactly matching active `recovery_pending` failure. JSON
+  output and JSON errors require `--yes`; a receipt makes interrupted cleanup
+  safely resumable.
 
 ### Stage 5: Service operation
 

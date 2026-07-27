@@ -642,6 +642,36 @@ class PlanMoveLog:
                 record = self.journal.mark_audited(record)
             self.journal.delete(record)
 
+    def _retire_externally_handled_locked(
+        self, evidence: Dict[str, object]
+    ) -> None:
+        records = [
+            record
+            for record in self.journal.pending()
+            if record["operation_id"] == evidence.get("operation_id")
+        ]
+        if not records:
+            return
+        if len(records) != 1 or records[0] != evidence:
+            raise RenameWatchConfigError(
+                "rename-watch recovery journal changed after resolution receipt"
+            )
+        record = records[0]
+        self._guard_record(record)
+        if (
+            record["state"] != "destination_finalized"
+            or record.get("transfer_kind") != "hard_link"
+        ):
+            raise RenameWatchConfigError(
+                "rename-watch recovery journal is not eligible for external resolution"
+            )
+        self.journal.delete(record)
+
+    def retire_externally_handled(self, evidence: Dict[str, object]) -> None:
+        """Delete only the exact journal record proven by a resolution receipt."""
+        with self.state.lock:
+            self._retire_externally_handled_locked(evidence)
+
     def abort_unstarted(
         self, source: Path, allow_source_replaced: bool = False
     ) -> bool:

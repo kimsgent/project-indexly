@@ -504,6 +504,22 @@ class FailureStore:
         """Remove canonical active state while retaining immutable sidecar evidence."""
         self._delete(record)
 
+    def resolve_externally_handled(self, evidence: dict) -> None:
+        """Retire only an unchanged active recovery failure named by a receipt."""
+        path = self._path(evidence.get("failure_id", ""))
+        if not path.exists():
+            return
+        current = self._read(path)
+        if current != evidence:
+            raise RenameWatchConfigError(
+                "rename-watch recovery failure changed after resolution receipt"
+            )
+        if current["state"] != "active" or current["reason"] != "recovery_pending":
+            raise RenameWatchConfigError(
+                "rename-watch failure is not eligible for external resolution"
+            )
+        self._delete(current)
+
     def mark_audited(self, record: dict) -> dict:
         if record.get("audited"):
             return record
