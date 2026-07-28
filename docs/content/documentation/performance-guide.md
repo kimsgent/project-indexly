@@ -24,7 +24,7 @@ categories:
 weight: 185
 type: docs
 date: "2026-07-27"
-lastmod: "2026-07-27"
+lastmod: "2026-07-28"
 draft: false
 toc: true
 ---
@@ -216,6 +216,51 @@ evidence state is `collecting_baseline`. The record retains at most 30 sessions,
 and calculations use the latest 15 valid, comparable sessions.
 Each classified timed metric also needs three measured prior values; sparse or
 budget-exhausted metric history remains `inconclusive`.
+
+### Collect representative observations
+
+The four-observation requirement is a minimum classification gate, not an
+instruction to run `indexly perf --show` four times immediately. Indexly does
+not enforce a time interval between comparable sessions, so back-to-back runs
+can technically satisfy the count. They are nevertheless weak baseline
+evidence because they repeatedly sample nearly the same operating moment.
+
+Successive runs are strongly correlated: the operating-system and SQLite
+caches are likely to remain warm, the indexed corpus and workload have barely
+changed, and CPU, storage, and background activity are similar. This can bias
+the baseline in either direction:
+
+- repeated warm-cache timings can understate normal latency and produce an
+  artificially narrow boundary, making later ordinary variation look degraded;
+- repeated runs during one transient busy period can establish an
+  unrepresentatively slow baseline and hide later degradation;
+- either pattern misses the variation that occurs across normal indexing,
+  searching, storage, and host activity.
+
+Use observations from distinct, representative operating periods:
+
+1. Run `indexly perf --show` once after the normal corpus is available.
+2. Collect each subsequent observation after another typical period of
+   indexing and searching, rather than immediately after the preceding run.
+3. As a practical default for a regularly used installation, collect one
+   observation per normal operating day until four comparable observations
+   exist. For weekly or batch-oriented installations, collect after each
+   representative workload cycle instead.
+4. Prefer a repeatable point in the workflow, such as after the normal indexing
+   batch has completed and the installation has returned to its usual state.
+   Avoid one-off backups, upgrades, antivirus scans, or unusual host load unless
+   those conditions are part of normal operation.
+
+There is no mandatory one-day interval for baseline classification. The
+one-day requirement applies only to the separate database-growth calculation.
+The goal is representative separation, not an arbitrary delay or deliberately
+manufactured variation.
+
+`planner-optimize` can use current action-specific planner evidence without a
+complete timed baseline. `fts-merge` is intentionally stricter: it requires a
+local FTS-readiness baseline, comparable observations, sustained degradation,
+and advancing search-index generations. Do not collect immediate duplicate
+sessions merely to make an action appear eligible.
 
 For a timed metric, Indexly calculates:
 
