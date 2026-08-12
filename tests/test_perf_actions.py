@@ -11,6 +11,15 @@ import pytest
 import indexly.perf.actions as actions
 from indexly.perf import ProbeBudget, build_record, collect_live_snapshot
 
+_PLANNER_OPTIMIZE = pytest.param(
+    "planner-optimize",
+    marks=pytest.mark.skipif(
+        sqlite3.sqlite_version_info < (3, 46, 0),
+        reason="planner-optimize requires SQLite 3.46 or newer",
+    ),
+)
+_SUPPORTED_ACTIONS = (_PLANNER_OPTIMIZE, "fts-merge")
+
 
 def _create_db(path: Path, *, documents: int = 24) -> None:
     connection = sqlite3.connect(path)
@@ -77,7 +86,7 @@ def _current_report(db: Path):
     return build_record(snapshot, None, identity_salt=salt.hex())
 
 
-@pytest.mark.parametrize("action", ["planner-optimize", "fts-merge"])
+@pytest.mark.parametrize("action", _SUPPORTED_ACTIONS)
 def test_actions_create_verified_backup_and_numeric_audit(
     tmp_path: Path, action: str
 ) -> None:
@@ -127,14 +136,14 @@ def test_stale_or_wrong_database_report_fails_before_backup(tmp_path: Path) -> N
 
     with pytest.raises(actions.ActionPreconditionError, match="stale"):
         actions.execute_action(
-            "planner-optimize",
+            "fts-merge",
             db_path=database,
             backup_dir=backup_dir,
             report=stale,
         )
     with pytest.raises(actions.ActionPreconditionError, match="does not identify"):
         actions.execute_action(
-            "planner-optimize",
+            "fts-merge",
             db_path=other,
             backup_dir=backup_dir,
             report=report,
@@ -163,7 +172,7 @@ def test_wal_is_rejected_without_checkpoint_or_sidecar_change(tmp_path: Path) ->
 
     with pytest.raises(actions.ActionPreconditionError, match="WAL"):
         actions.execute_action(
-            "planner-optimize",
+            "fts-merge",
             db_path=database,
             backup_dir=backup_dir,
             report=report,
@@ -217,7 +226,7 @@ def test_insufficient_space_fails_before_backup(
 
     with pytest.raises(actions.ActionPreconditionError, match="insufficient"):
         actions.execute_action(
-            "planner-optimize",
+            "fts-merge",
             db_path=database,
             backup_dir=backup_dir,
             report=report,
@@ -271,7 +280,7 @@ def test_backup_verification_failure_removes_partial_and_preserves_database(
 
     with pytest.raises(actions.ActionBackupError, match="injected"):
         actions.execute_action(
-            "planner-optimize",
+            "fts-merge",
             db_path=database,
             backup_dir=backup_dir,
             report=report,
@@ -305,7 +314,7 @@ def test_backup_directory_fsync_failure_aborts_before_action(
 
     with pytest.raises(actions.ActionBackupError, match="could not be created"):
         actions.execute_action(
-            "planner-optimize",
+            "fts-merge",
             db_path=database,
             backup_dir=backup_dir,
             report=report,
@@ -342,7 +351,7 @@ def test_backup_cleanup_failure_is_sanitized_and_reports_candidate_filename(
 
     with pytest.raises(actions.ActionBackupError) as raised:
         actions.execute_action(
-            "planner-optimize",
+            "fts-merge",
             db_path=database,
             backup_dir=backup_dir,
             report=report,
@@ -406,14 +415,14 @@ def test_unsupported_action_and_missing_backup_fail_closed(tmp_path: Path) -> No
         )
     with pytest.raises(actions.ActionPreconditionError, match="already exist"):
         actions.execute_action(
-            "planner-optimize",
+            "fts-merge",
             db_path=database,
             backup_dir=tmp_path / "missing",
             report=report,
         )
     with pytest.raises(actions.ActionPreconditionError, match="must differ"):
         actions.execute_action(
-            "planner-optimize",
+            "fts-merge",
             db_path=database,
             backup_dir=live_dir,
             report=report,
@@ -425,7 +434,7 @@ def test_unsupported_action_and_missing_backup_fail_closed(tmp_path: Path) -> No
         pytest.skip("directory symlinks are unavailable on this platform")
     with pytest.raises(actions.ActionPreconditionError, match="symbolic link"):
         actions.execute_action(
-            "planner-optimize",
+            "fts-merge",
             db_path=database,
             backup_dir=backup_link,
             report=report,
@@ -460,7 +469,7 @@ def test_action_requires_exact_measured_report_state(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("external_content", [False, True])
-@pytest.mark.parametrize("action", ["planner-optimize", "fts-merge"])
+@pytest.mark.parametrize("action", _SUPPORTED_ACTIONS)
 def test_noncanonical_fts_schema_is_never_action_eligible(
     tmp_path: Path,
     action: str,
@@ -515,7 +524,7 @@ def test_same_shape_in_place_write_invalidates_report_change_counter(
 
     with pytest.raises(actions.ActionPreconditionError, match="change counter"):
         actions.execute_action(
-            "planner-optimize",
+            "fts-merge",
             db_path=database,
             backup_dir=backup_dir,
             report=report,
