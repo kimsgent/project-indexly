@@ -236,6 +236,38 @@
     "description": "Use these suggestions when data volume grows and you want Indexly to stay responsive.",
     "items": [
       {
+        "question": "How do I measure Indexly performance without changing the search database?",
+        "answer": "Run `indexly perf --show`. For a non-WAL database it opens SQLite read-only, runs bounded local probes, and refreshes only the checksummed performance record. It refuses WAL mode before opening SQLite so a read-only connection cannot create or update shared-memory state; it never checkpoints WAL or changes journal mode. Use `indexly perf --read` to read the latest validated record without opening SQLite or writing files. Values are labelled Observed, Indexly-derived, or Theoretical and compare this installation with its own baseline; they are not a hardware benchmark or a direct comparison with another machine.",
+        "links": [
+          { "label": "Performance Guide", "href": "/en/documentation/performance-guide/" },
+          { "label": "Indexly Doctor", "href": "/en/documentation/indexly-doctor/" }
+        ]
+      },
+      {
+        "question": "When can Indexly apply a performance action?",
+        "answer": "Only action-specific evidence can qualify `planner-optimize` or `fts-merge`; database size, page count, and a generic performance grade are not enough. Both actions require measured canonical Indexly FTS5 readiness `1` (`match`). A legacy record missing the readiness metric returns `collect_evidence`; run a fresh `perf --show`. Unmeasured or budget-unavailable readiness returns `unavailable` without inferring schema damage. Measured readiness `0` for an actually inspected noncanonical, missing, drifted, external-content, malformed, unsupported, or uninspectable definition returns `repair_required` and routes to Doctor. Apply also requires a current report, exact database bindings, WAL refusal, free space, a writer reservation, a verified synchronized backup, and confirmation. The result omits the private identity salt and indexed paths or content.",
+        "links": [
+          { "label": "Performance Guide", "href": "/en/documentation/performance-guide/" },
+          { "label": "Database Design", "href": "/en/documentation/database-design/" }
+        ]
+      },
+      {
+        "question": "What do performance action exit codes 2 and 3 mean?",
+        "answer": "Exit `2` means no database mutation committed: preflight or backup failed, the action transaction rolled back, or follow-up failed after a `no_op`. If backup cleanup is incomplete, `indexly.performance-error/v1` reports `mutation_applied: false`, `backup_verified: false`, `cleanup_incomplete: true`, and only the unverified candidate filename. Inspect and remove that named candidate in the configured backup directory before retrying; do not use it for recovery. A rollback after verified backup creation instead uses `indexly.performance-action/v1`. Exit `3` means a mutation was applied but audit persistence or the post-action report failed; treat it as partial success and do not retry blindly.",
+        "links": [
+          { "label": "Performance Guide", "href": "/en/documentation/performance-guide/" }
+        ]
+      },
+      {
+        "question": "Does a large database or an Elevated performance status mean the index is corrupt?",
+        "answer": "No. Database size, document count, vocabulary size, and theoretical capacity values are not corruption findings. `Elevated` means repeated baseline-relative degradation was observed, while ungraded states such as `collecting_baseline` or `inconclusive` mean there is not enough comparable evidence. Review `indexly perf --show`; use the separate read-only `indexly doctor --full-integrity` check only when integrity is in question.",
+        "links": [
+          { "label": "Performance Guide", "href": "/en/documentation/performance-guide/" },
+          { "label": "Indexly Doctor", "href": "/en/documentation/indexly-doctor/" },
+          { "label": "Database Design", "href": "/en/documentation/database-design/" }
+        ]
+      },
+      {
         "question": "How can I keep indexing and analysis fast on large datasets?",
         "answer": "Scope the work intentionally. Index only the folders you actually need, apply ignore rules for generated or temporary files, and use file-type filters when your workflow targets a known subset. On the analysis side, prefer routes that stream or summarize instead of flattening everything into one big in-memory table.",
         "links": [

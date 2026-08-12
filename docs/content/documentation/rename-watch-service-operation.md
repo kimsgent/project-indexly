@@ -436,6 +436,34 @@ output, and Windows Event Log. For systemd use `journalctl -u`. For launchd use
 `launchctl print`, the configured stdout/stderr files, and the macOS unified
 log.
 
+### Resolve one externally handled hard-link conflict
+
+Use this command only after stopping the service and independently verifying
+that one `recovery_pending` operation was handled outside Indexly:
+
+```console
+indexly rename-watch --config "./rename-watch.json" --resolve-recovery --job inbox --operation-id 3f7bbf87-842b-4a68-a3a8-1450d36f47f5
+```
+
+The command accepts only an exact job and operation UUID whose journal says
+`destination_finalized` with transfer kind `hard_link`, and only when both the
+recorded source and recorded destination are absent. It does not search for the
+inode, associate a renamed source, or create, delete, or move any payload.
+Confirmation requires `RESOLVE <operation-id>`; non-interactive use, `--json`,
+and `--json-errors` require `--yes`. The reported disposition is
+**EXTERNALLY HANDLED**, not a claim that Indexly completed the move.
+
+Before retiring state, Indexly writes a durable versioned receipt containing
+the complete journal and relevant matching failure evidence under
+`INDEXLY_HOME/rename-watch/recovery-resolutions/<job-namespace>/<operation-id>.json`.
+It then removes only that exact journal and at most one exactly matching active
+`recovery_pending` failure. Keep the receipt with other durable operational
+state. If cleanup is interrupted after the receipt is written, rerun the same
+command; it validates the unchanged receipt and any surviving evidence before
+finishing cleanup. Any existing recorded path, changed evidence, wrong transfer
+kind or phase, or ambiguous matching failures is refused and normal startup
+continues to fail closed.
+
 ### Windows startup troubleshooting
 
 On Windows, a service that exits with code `1067` and records an error such as

@@ -22,11 +22,21 @@ Usage:
 if __name__ == "__main__":
     import sys as _early_sys
 
+    from .perf.cli import maybe_run_perf as _maybe_run_perf
+
+    _perf_result = _maybe_run_perf(_early_sys.argv[1:])
+    if _perf_result is not None:
+        raise SystemExit(_perf_result)
+
     from .rename_watch.status_cli import maybe_run_status as _maybe_run_status
 
     _status_result = _maybe_run_status(_early_sys.argv[1:])
     if _status_result is not None:
         raise SystemExit(_status_result)
+
+    from .extras_manager import activate_installed_extras as _activate_extras
+
+    _activate_extras()
 
 import os
 import re
@@ -83,6 +93,7 @@ from .incremental_indexing import (
     filter_incremental_candidates,
     validate_month,
 )
+from .optional_deps import extra_install_hint
 from indexly.pipeline.rename_plan import RenameEntry
 
 # Force UTF-8 output encoding (Recommended for Python 3.7+)
@@ -574,7 +585,7 @@ async def scan_and_index_files(
         raise ValueError(
             "Missing optional document dependencies for detected files: "
             + ", ".join(missing_doc_packages)
-            + ". Install once and retry with: pip install indexly[documents]"
+            + f". {extra_install_hint('documents')} and retry."
         )
 
     removed_count = _prune_missing_index_rows(root_path, current_file_paths)
@@ -1141,6 +1152,18 @@ def handle_doctor(args):
     sys.exit(exit_code)
 
 
+def handle_perf(args):
+    """Lazy fallback for parser-driven perf dispatch.
+
+    Supported executable entry points route perf before this full application
+    module is imported. Keeping this handler preserves parser and help
+    consistency for callers that invoke ``build_parser()`` directly.
+    """
+    from indexly.perf.cli import run_namespace
+
+    raise SystemExit(run_namespace(args))
+
+
 def handle_extract_mtw(args):
     from .mtw_extractor import _extract_mtw
 
@@ -1347,12 +1370,13 @@ def handle_show_help(args):
             "ignore",
             "observe",
             "doctor",
+            "perf",
             "update-db",
             "migrate",
             "stats",
             "log-clean",
         ],
-        "Help & Meta": ["show-help"],
+        "Help & Meta": ["extras", "show-help"],
     }
 
     scope_hints = {
@@ -1362,7 +1386,9 @@ def handle_show_help(args):
         "analyze-file": "Core command; extras depend on input file type",
         "analyze-db": "Requires optional extras: analysis",
         "extract-mtw": "Requires optional extras: analysis",
+        "extras": "User-owned optional-pack environment; core stays immutable",
         "doctor": "Core diagnostics; --analysis-db inspects persisted analysis state",
+        "perf": "Local, bounded performance evidence and non-mutating plans",
         "update-db": "Critical schema maintenance; use after backup",
         "migrate": "Critical schema maintenance; backups recommended",
     }
@@ -1463,9 +1489,9 @@ def handle_show_help(args):
         print("Categorized command overview generated from the current CLI parser.\n")
         print(
             "_Tip: install optional packs as needed: "
-            "`indexly[documents]`, `indexly[analysis]`, "
-            "`indexly[visualization]`, `indexly[pdf_export]`, "
-            "`indexly[backup]`._\n"
+            "`indexly extras install <pack>`. For a pip/virtualenv "
+            "installation, use `python -m pip install "
+            '"indexly[<pack>]"`._\n'
         )
 
         for category, commands in _iter_category_commands():
@@ -1569,11 +1595,12 @@ def handle_show_help(args):
     if getattr(args, "details", False):
         packs = Text()
         packs.append("Optional packs:\n", style="bold")
-        packs.append("• indexly[documents]  (PDF/DOCX/OCR/media parsing)\n")
-        packs.append("• indexly[analysis]   (CSV/statistics/data profiling)\n")
-        packs.append("• indexly[visualization] (matplotlib/plotly charts)\n")
-        packs.append("• indexly[pdf_export] (report PDF generation)\n")
-        packs.append("• indexly[backup]     (encrypted backup/restore support)")
+        packs.append("• documents  (PDF/DOCX/OCR/media parsing)\n")
+        packs.append("• analysis   (CSV/statistics/data profiling)\n")
+        packs.append("• visualization (matplotlib/plotly charts)\n")
+        packs.append("• pdf_export (report PDF generation)\n")
+        packs.append("• backup     (encrypted backup/restore support)\n\n")
+        packs.append("Install with: indexly extras install <pack>")
         console.print(
             Panel.fit(
                 packs,
@@ -1622,7 +1649,16 @@ def main():
             )
         )
     )
-    if not getattr(args, "no_update_check", False) and not rename_watch_status:
+    extras_read_only = getattr(args, "command", None) == "extras" and getattr(
+        args, "extras_action", None
+    ) in {"list", "status"}
+    perf_early_route = getattr(args, "command", None) == "perf"
+    if (
+        not getattr(args, "no_update_check", False)
+        and not rename_watch_status
+        and not extras_read_only
+        and not perf_early_route
+    ):
         try:
             from .update_utils import check_for_updates
 

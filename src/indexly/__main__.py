@@ -2,11 +2,21 @@
 
 
 def main():
+    from indexly.perf.cli import maybe_run_perf
+
+    result = maybe_run_perf()
+    if result is not None:
+        return result
+
     from indexly.rename_watch.status_cli import maybe_run_status
 
     result = maybe_run_status()
     if result is not None:
         return result
+
+    from indexly.extras_manager import activate_installed_extras
+
+    activate_installed_extras()
 
     from indexly.indexly import main as application_main
 

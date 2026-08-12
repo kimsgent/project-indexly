@@ -26,7 +26,7 @@ tags:
   - cli
   - search
   - file-management
-lastmod: 2026-07-11
+lastmod: 2026-07-27
 ---
 
 
@@ -53,15 +53,30 @@ Search can filter multiple file types later with `--filetype .pdf .docx`.
 
 ### Advanced Extraction
 
-For more detailed content extraction, install the document extras and choose the PDF OCR behavior intentionally.
+For more detailed content extraction, install the `documents` group and choose
+the PDF OCR behavior intentionally.
 
 ```bash
+# Homebrew install
+indexly extras install documents
+
+# pip or virtual-environment install
 python -m pip install "indexly[documents]"
+
 indexly index ./docs --ocr
 indexly index ./docs --no-ocr
 ```
 
-`--ocr` forces OCR for PDFs. `--no-ocr` disables OCR for PDFs. Without either flag, Indexly uses the default PDF extraction policy.
+Use only the installation command that matches your Indexly executable. For a
+Homebrew install, do not substitute generic `pip`, `pip --user`, `sudo pip`, or
+`PYTHONPATH`; `indexly extras` manages a user-owned overlay outside the
+Homebrew Cellar.
+
+The `documents` group installs the dependencies for ordinary PDF extraction.
+`--ocr` additionally requires the external Tesseract executable
+(`brew install tesseract` on Homebrew systems). `--ocr` forces OCR for PDFs;
+`--no-ocr` disables it. Without either flag, Indexly uses the default PDF
+extraction policy.
 
 You can also enable extended MTW extraction when working with Minitab archives or complex MTW inputs.
 
@@ -212,11 +227,38 @@ In addition to basic indexing, you can view database statistics to get a quick o
 ```bash
 indexly stats
 ```
+
+For bounded timing and size evidence, compare the current search database with
+its own local baseline:
+
+```bash
+indexly perf --show
+```
+
+Recent indexing throughput is derived only from bounded `INDEX_SUMMARY`
+records. Paths and raw log events are not copied into the performance record.
+Throughput varies with file types, extraction work, OCR, storage, and system
+activity, so it is not a cross-machine benchmark. See
+[Performance Diagnostics and Optimization](performance-guide.md).
+
+The performance planner can recommend a bounded 500-page FTS merge only after
+three comparable observations have strictly advancing
+`search_index_generation` values and the latest two FTS p95 measurements both
+exceed the local degradation boundary. Frequent indexing or a large database
+alone is not enough. The action never rebuilds FTS or re-indexes source files;
+schema and integrity problems remain Doctor repair concerns.
+
+The planner also requires measured canonical Indexly FTS5 inspection state
+`match`. Measured readiness `0` for schema drift, external-content FTS, or a
+missing/uninspectable definition returns `repair_required`, regardless of
+timing or generation evidence. Missing legacy readiness requests a fresh
+`perf --show`; unavailable readiness does not establish schema damage.
 ---
 ## Next Steps
 
 * [Search](/searching/) and [tag](tagging.md) with Indexly.
 * Review [Ignore Rules & Index Hygiene](ignore-rules-index-hygiene.md) before automating large refreshes.
 * Learn how [Indexly logs](indexly-logging-system.md) support scoped incremental runs.
+* Measure local [performance against a bounded baseline](performance-guide.md).
 
 For a deeper dive into how this process works, check out [Semantic Indexing](semantic-indexing-vocab.md).

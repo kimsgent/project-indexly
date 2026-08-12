@@ -28,7 +28,7 @@ categories:
 weight: 30
 type: docs
 date: 2025-10-12
-lastmod: 2026-05-31
+lastmod: 2026-07-27
 draft: false
 toc: true
 ---
@@ -43,6 +43,9 @@ Indexly stores search runtime state outside the source tree by default. The main
 | `profiles.json` | Saved search profiles |
 | `search_cache.json` | Cached search results |
 | `log/` | Structured indexing log artifacts and runtime logs |
+| `perf/performance-v1.json` | Current checksummed local performance record |
+| `perf/performance-v1.previous.json` | Previous validated record used for read-only recovery |
+| `extras/<indexly-version>/<python-abi>/<platform>/environment/` | User-owned optional-dependency environment managed by `indexly extras` |
 
 Default runtime directories:
 
@@ -60,6 +63,8 @@ indexly stats
 ```
 
 On PowerShell, use `$env:INDEXLY_HOME = "D:\indexly-state"` for the current session.
+Use only a trusted, user-owned location. If `INDEXLY_HOME` is a symbolic link,
+Indexly intentionally follows it as the configured runtime root.
 
 {{% alert title="Separate persistence stores" color="info" %}}
 `INDEXLY_HOME` controls the search runtime directory. Persisted analysis results currently use a separate SQLite database at `~/.indexly/indexly.db`.
@@ -119,6 +124,45 @@ indexly search "policy" --no-cache
 
 Use `--no-cache` when validating fresh behavior without reading from or writing to `search_cache.json`. Full-text search cache keys include the current search index generation, so normal searches refresh automatically after an indexing run changes or prunes indexed rows.
 
+## Performance Record
+
+For a non-WAL search database, `indexly perf --show` opens SQLite read-only,
+collects bounded evidence, and atomically refreshes the files under `perf/`.
+`indexly perf --read` validates the current record and then the previous copy,
+without opening SQLite or creating or changing files.
+
+The record contains numeric measurements, calculation context, timestamps, a
+non-reversible local database identity, a checksum, and up to 30 numeric-only
+action outcomes. An outcome stores its action, timestamp, `applied` or `no_op`
+result, duration, and bounded before/after/delta values. It does not contain
+paths, source roots, filenames, indexed content, metadata JSON, query terms,
+usernames, hostnames, raw logs, or network telemetry.
+
+The numeric measurements include SQLite's observed database change counter
+from header offset 24. This counter contains no path or content and lets a
+guarded apply reject a database file changed since `--show`. Completed action
+outcomes survive same-database baseline resets, including a transition to a
+new size bucket; they reset when database identity changes.
+
+If the primary record is invalid and the previous copy validates, `--read`
+reports recovery from the previous file without promoting or rewriting it.
+Applied performance maintenance does not accept that recovered copy: it
+requires a validated current primary record and an explicit, existing,
+non-symlink `--backup-dir` that differs from the live database directory. The
+verified generic SQLite backup is retained in that separate, user-selected
+directory rather than in the performance record. Its filename is accepted as
+complete only after backup-directory synchronization succeeds.
+
+If backup creation fails and candidate cleanup is incomplete, the reported
+filename is unverified. Resolve it only inside the configured `--backup-dir`,
+inspect and remove it, and do not treat it as a recovery snapshot.
+
+`--show` refuses WAL mode before opening SQLite; `--read` and plan-only
+`--opti` remain record-only. Indexly never checkpoints WAL or changes journal
+mode through the performance command.
+See [Performance Diagnostics and Optimization](performance-guide.md) before
+removing either record or applying database maintenance.
+
 ## Tags
 
 Tags are stored separately from extracted file content and can be used as search filters.
@@ -148,8 +192,22 @@ indexly index ./docs --no-ocr
 Install document extras before indexing PDFs, Word documents, Outlook messages, or other rich document formats:
 
 ```bash
+# Homebrew install
+indexly extras install documents
+indexly extras status
+
+# pip or virtual-environment install
 python -m pip install "indexly[documents]"
 ```
+
+The managed command also works for pip installations. Homebrew users must use
+it: their extras live in a user-owned overlay scoped by Indexly version, Python
+ABI, and platform architecture outside the Cellar. Do not replace it with
+generic `pip`, `pip --user`, `sudo pip`, or a `PYTHONPATH` workaround.
+
+The `documents` group supplies ordinary PDF extraction dependencies and the
+Python OCR integration. OCR itself also requires Tesseract on `PATH`; install
+it separately with `brew install tesseract` on Homebrew systems.
 
 ## Maintenance Commands
 
@@ -159,6 +217,8 @@ Use these commands when behavior differs between machines or after upgrades:
 indexly stats
 indexly doctor
 indexly doctor --analysis-db
+indexly perf --show
+indexly perf --read
 indexly update-db
 indexly migrate check
 ```
@@ -171,6 +231,7 @@ indexly migrate check
 - [Index Files and Folders](indexing.md)
 - [Indexly Logging System](indexly-logging-system.md)
 - [Indexly Doctor](indexly-doctor.md)
+- [Performance Diagnostics and Optimization](performance-guide.md)
 - [Database Design](database-design.md)
 - [Ignore Rules and Index Hygiene](ignore-rules-index-hygiene.md)
 - [DB Migration Utility](db-migration-utility.md)
