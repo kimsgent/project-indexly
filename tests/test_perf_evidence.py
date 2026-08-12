@@ -350,8 +350,13 @@ def test_live_probe_exposes_generation_without_fts_shadow_introspection(
 
     assert db.stat().st_mtime_ns == before
     assert snapshot.metrics["search_index_generation"].value == 9
-    assert snapshot.metrics["planner_optimize_actions"].value == 1
-    assert snapshot.metrics["planner_optimize_actions"].label == "Indexly-derived"
+    planner = snapshot.metrics["planner_optimize_actions"]
+    if sqlite3.sqlite_version_info < (3, 46, 0):
+        assert planner.value is None
+        assert planner.status == "not_measured_unsupported"
+    else:
+        assert planner.value == 1
+        assert planner.label == "Indexly-derived"
     assert snapshot.metrics["fts_segment_count"].value is None
     assert snapshot.metrics["fts_segment_count"].status == "not_measured_unsupported"
     assert "private/path" not in json.dumps(snapshot.to_dict())
@@ -385,5 +390,9 @@ def test_live_planner_fallback_reports_no_candidate_after_analyze(
     )
 
     planner = snapshot.metrics["planner_optimize_actions"]
-    assert planner.value == 0
-    assert planner.label == "Indexly-derived"
+    if sqlite3.sqlite_version_info < (3, 46, 0):
+        assert planner.value is None
+        assert planner.status == "not_measured_unsupported"
+    else:
+        assert planner.value == 0
+        assert planner.label == "Indexly-derived"

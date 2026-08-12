@@ -512,6 +512,10 @@ def test_applied_action_persists_audit_and_publishes_post_show_comparison(
     assert loaded.record.action_outcomes[-1] == result_value.outcome
 
 
+@pytest.mark.skipif(
+    sqlite3.sqlite_version_info < (3, 46, 0),
+    reason="planner-optimize requires SQLite 3.46 or newer",
+)
 def test_planner_action_end_to_end_from_live_indexly_evidence(
     tmp_path,
     monkeypatch,
