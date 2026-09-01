@@ -1,199 +1,117 @@
-# Indexly Local Web UI: Product and Integration Consideration
+# Indexly local web UI — investigation v2
 
-## Objective
+> **State:** v2 investigation, not an approved implementation blueprint.
+> **Scope:** a local, single-user browser experience for the existing Indexly
+> engine. No web framework, server, or CLI behavior is introduced here.
 
-This document defines a viable future direction for exposing Indexly through a professional local web interface while preserving the existing CLI-first architecture.
+## Purpose and correction to v1
 
-The goal is not to replace the terminal workflow, but to make the application accessible to a broader user base: users who are not comfortable with CLI commands but still need the same indexing, search, analysis, and configuration power.
+Version 1 established that a local web UI is credible. This revision makes that
+direction reviewable: it separates verified repository evidence from proposed
+architecture, identifies implementation gaps and safety invariants, and links
+the future blueprint to the source it must preserve.
 
----
+The core conclusion remains: **the UI must be another client of Indexly
+application services, never a second implementation of Indexly behavior.**
 
-## Executive Summary
+There is one material correction. Indexly has reusable modules, but it does
+**not** yet have the `SearchService` / `IndexService` boundary imagined in v1.
+The parser in [`cli_utils.py`](../../cli_utils.py) dispatches to handlers in
+[`indexly.py`](../../indexly.py); several handlers expect an
+`argparse.Namespace` and render terminal output. A web API must first gain a
+small, tested application-service layer. It must not shell out to `indexly` and
+scrape Rich or terminal text.
 
-Indexly is already structured around a strong core of modular capabilities:
+## Evidence labels
 
-- file indexing and scanning
-- FTS5 search and regex search
-- metadata extraction
-- workspace tagging
-- CSV/JSON/XML analysis
-- export workflows
-- watcher and organizer processes
-- saved profile configuration
+| Label | Meaning |
+| --- | --- |
+| **Verified** | Directly evidenced by current repository code, tests, or published documentation. |
+| **Required** | A non-negotiable property for a safe local UI implementation. |
+| **Proposed** | A direction for the later blueprint, not current code or public API. |
+| **Decision needed** | An intentionally unresolved choice that the blueprint must settle. |
 
-This makes the product a strong candidate for a local web UI, provided that the UI remains a thin presentation layer over the same engine that powers the current CLI.
+## Verified present state
 
-The recommended principle is:
+- The public executable enters via [`__main__.py`](../../__main__.py), then
+  [`indexly.main`](../../indexly.py); command grammar is in
+  [`cli_utils.py`](../../cli_utils.py).
+- FTS and regex search are in [`search_core.py`](../../search_core.py). Search
+  cache validity uses `search_index_generation` in
+  [`db_utils.py`](../../db_utils.py), which indexing updates after effective
+  changes or pruning.
+- `scan_and_index_files` is asynchronous internally, but
+  `handle_index` is a synchronous CLI handler in
+  [`indexly.py`](../../indexly.py).
+- Profiles are JSON-backed through [`profiles.py`](../../profiles.py); exports
+  write files through [`export_utils.py`](../../export_utils.py).
+- The FTS database, cache, profiles, and logs are local runtime files defined
+  by [`config.py`](../../config.py) and [`runtime_paths.py`](../../runtime_paths.py).
+- Optional capabilities are lazy and supply user-actionable missing-extra
+  guidance; see [`optional_deps.py`](../../optional_deps.py),
+  [`cli_utils.py`](../../cli_utils.py), and [`pyproject.toml`](../../../../pyproject.toml).
+- `watch` and `rename-watch` are separate families. The latter owns locking and
+  durable recovery logic under [`rename_watch/`](../../rename_watch/) and is
+  not a simple start/stop feature.
 
-- CLI remains the canonical automation and power-user interface
-- Web UI becomes the guided, human-friendly interface for local use
-- both surfaces share the same services and validation logic
-
----
-
-## Why this direction is realistic
-
-The repo already contains a clean separation between:
-
-- command parsing and user entry via [src/indexly/cli_utils.py](../../cli_utils.py)
-- orchestration and feature execution via [src/indexly/indexly.py](../../indexly.py)
-- underlying search, indexing, analysis, and metadata modules under [src/indexly](../../)
-
-This is a classic pattern for exposing the same functionality through multiple interfaces without reimplementing the product logic.
-
-In practical terms, the web UI can be added as a service layer instead of a rewrite.
-
----
-
-## Goals
-
-### Product goals
-
-1. Provide a professional local web experience for users who do not want to work in a terminal.
-2. Preserve the current CLI as the primary automation and advanced control surface.
-3. Give users a guided configuration experience for broad feature coverage.
-4. Keep all operations local-first and avoid any cloud dependency.
-5. Support large and complex configuration without overwhelming the user.
-
-### Technical goals
-
-1. Expose the current core logic via a stable API layer.
-2. Run long-running tasks asynchronously with visible status and progress.
-3. Centralize validation and defaults so CLI and UI remain consistent.
-4. Make profiles, tags, searches, and exports reusable across surfaces.
-5. Ensure the UI is additive and backward compatible.
-
----
-
-## Constraints
-
-- keep the current CLI behavior unchanged
-- avoid cloud or remote services for core use cases
-- maintain local data residency and privacy
-- do not duplicate business logic in the UI
-- support advanced configuration without exposing a flat, unusable flood of flags
-
----
-
-## Proposed solution
-
-Implement a local web application that wraps the existing Indexly engine through a structured service layer and API.
+## Proposed layering
 
 ```mermaid
 flowchart LR
-    Browser[Local Browser UI] --> API[Local API Layer]
-    API --> Service[Shared Application Services]
-    Service --> Core[Indexly Core Logic]
-    Core --> DB[(SQLite + FTS5)]
-    Core --> FS[Filesystem Content]
-    CLI[Current CLI] --> Service
+    B[Local browser] -->|same-origin HTTP| W[Local web host]
+    W --> A[Proposed API adapters\nvalidation + response schemas]
+    A --> S[Proposed application services\noperation contracts]
+    S --> E[Existing Indexly engine]
+    C[Existing CLI] --> S
+    E --> D[(SQLite FTS index)]
+    E --> R[Runtime files\nprofiles, cache, logs]
+    E --> F[User-selected filesystem]
 ```
 
----
+The browser owns rendering and interaction state. API adapters own
+HTTP-specific input limits, local access protection, and error envelopes.
+Application services own normalized requests, operation policy, structured
+results, and calls to the engine. Existing modules retain domain behavior.
 
-## What the UI should deliver
+## Product boundary
 
-### Core capabilities
+The first product is a **loopback-only companion**, not a LAN service,
+multi-user product, remote filesystem gateway, or cloud synchronization client.
+"Local" is not authorization: local processes and hostile browser origins can
+still attempt requests. Filesystem paths, result content, metadata, and tags
+are untrusted input; validation and output encoding belong at the service/API
+boundary, not only in forms.
 
-- index a folder with guided settings
-- search full text and regex content
-- filter by tag, date, path, file type
-- view metadata and snippets in a readable layout
-- export results in standard formats
-- manage saved profiles and reusable searches
-- configure watch tasks and status panels
-- run analysis on CSV/JSON/XML and other supported files
+The implementation must preserve a strict distinction between read-only,
+index-state writing, new-file writing, and filesystem-mutating operations.
+The latter (organize, rename, restore, recovery) are out of the initial UI
+scope pending explicit plan/confirmation/rollback and audit contracts.
 
-### Advanced capabilities
+## How to use this investigation
 
-- deep configuration sections for indexing and analysis
-- grouped settings by domain instead of a single giant form
-- job tracking for long operations
-- saved configuration templates
-- diagnostic pages for database and status inspection
-- optional local desktop packaging later, if desired
+1. Approve the operating envelope and invariants in
+   [architecture.md](architecture.md).
+2. Use [reference-map.md](reference-map.md) to write an adapter backlog around
+   current source and tests without drifting from CLI behavior.
+3. Select a stack only after recording the web-host topology, local access
+   model, static asset delivery, packaging, and lifecycle decision.
+4. Agree the release boundary in [feature-parity.md](feature-parity.md).
+5. Use [roadmap.md](roadmap.md) as evidence gates rather than calendar promises.
 
----
+## Document set
 
-## Scope of first release
+- [architecture.md](architecture.md) — boundaries, contracts, state, safety,
+  concurrency, and open decisions.
+- [feature-parity.md](feature-parity.md) — command inventory, release scope,
+  write classification, and parity acceptance criteria.
+- [reference-map.md](reference-map.md) — code, tests, existing user docs, and
+  external engineering references.
+- [roadmap.md](roadmap.md) — phased delivery gates and completion evidence.
 
-The first viable release should focus on a narrow but highly useful set of actions:
+## Deliberately undecided
 
-1. Search dashboard
-2. Indexing dashboard
-3. Results export
-4. Saved profiles
-5. Background task status
-6. Analysis page for CSV/JSON/XML
-
-This creates immediate value without overreaching beyond the project’s current architecture.
-
----
-
-## Scope of long-term release
-
-The long-term product can include:
-
-- richer watch management
-- more advanced analysis visualizations
-- deep configuration panels for niche workflows
-- local desktop packaging or embedded browser shell
-- operational dashboards for DB health and indexing state
-
----
-
-## Recommended architecture
-
-The web layer should be intentionally thin:
-
-- presentation layer: local browser UI
-- API layer: JSON routes for search/index/analyze/export operations
-- service layer: adapters around existing logic
-- core engine: current indexing/search/analysis modules
-
-This keeps the architecture maintainable and preserves the proven behavior of the CLI.
-
----
-
-## Delivery Recommendation
-
-### Phase 1 — foundation
-
-- local API exposed on localhost
-- status and job handling
-- basic search and index pages
-
-### Phase 2 — parity
-
-- profile management
-- regex/fuzzy controls
-- file/tag filters
-- exports
-
-### Phase 3 — analysis and operations
-
-- CSV/JSON/XML analysis workspace
-- watch controls
-- diagnostics and status views
-
-### Phase 4 — product polish
-
-- improve usability for large result sets
-- add advanced grouped configuration panels
-- improve task progress and diagnostics
-
----
-
-## Conclusion
-
-This direction is both realistic and strategically sound. Indexly already has the right core architecture to support a professional local web experience without abandoning the CLI-first design.
-
-The key to success is not to rewrite the app around the UI, but to expose the current engine behind a clean, local web interface.
-
----
-
-## Related design files
-
-- [architecture.md](architecture.md)
-- [feature-parity.md](feature-parity.md)
-- [roadmap.md](roadmap.md)
+This investigation does not choose a web/frontend framework or desktop wrapper,
+the job persistence model, profile migration/versioning, destructive-utility
+admission, release packaging, or public compatibility guarantee. The later
+blueprint must make those decisions with alternatives, tests, migration and
+rollback behavior, and explicit owners.

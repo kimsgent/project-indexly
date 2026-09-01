@@ -1,119 +1,127 @@
-# Local Web UI Delivery Roadmap
+# Local web UI delivery roadmap — evidence gates
 
-## Phase 1 — Foundation
+This is a sequencing and risk-control roadmap, not a delivery-date forecast.
+Every gate requires a small approved blueprint slice, focused tests, review of
+the linked source, and a rollback/compatibility statement.
 
-### Objective
+## Gate 0 — Architecture decision record
 
-Create a working local web entry point that leverages the existing Indexly engine without rewriting the core logic.
+**Outcome:** a reviewed decision record closes the unknowns called out in
+[architecture.md](architecture.md).
 
-### Deliverables
+- Select process topology, framework/static asset model, packaging, startup and
+  shutdown behaviour.
+- Define loopback binding, local-launch protection, Host/origin/CORS rules,
+  CSP, privacy/logging, and an explicit non-loopback policy.
+- Define supported platform/Python/runtime versions, development dependency
+  impact, optional extras, and upgrade/uninstall behaviour.
+- Define application-service DTO/error versions, job persistence/lifecycle,
+  root/path policy, writer coordination, and cancellation semantics.
 
-- local API service on localhost
-- index and search endpoints
-- simple browser shell
-- job status endpoint
-- basic result rendering
+**Exit evidence:** threat model, alternatives/trade-offs, service API sketch,
+runtime lifecycle sequence, error taxonomy, test plan, and no changes to the
+CLI contract without a migration plan.
 
-### Success criteria
+## Gate 1 — Service extraction with CLI parity
 
-- user can start the app locally
-- user can index a folder and monitor activity
-- user can run a search and see result metadata
-- user can export results in a standard format
+**Outcome:** tested application services exist before any full UI feature.
 
----
+- Extract one read operation and one controlled write/plan operation from
+  direct CLI handlers without parsing terminal output.
+- Make result data, warnings, and errors structured; keep CLI rendering as an
+  adapter until behavior is demonstrably preserved.
+- Provide a deliberate read-only SQLite route/helper. Regular `connect_db`
+  behavior currently initializes state, so it cannot substantiate no-write
+  claims by itself.
+- Establish a single-writer coordination policy and immutable operation IDs.
 
-## Phase 2 — Search and Profiles
+**Exit evidence:** service-to-CLI equivalence tests, result/error DTO tests,
+no-write state snapshots for read/plan calls, cache-generation regression tests,
+and compatibility review against [reference-map.md](reference-map.md).
 
-### Objective
+## Gate 2 — Secure local host and job substrate
 
-Make the UI useful for actual daily search and configuration reuse.
+**Outcome:** the local web host is safe to start and operationally observable.
 
-### Deliverables
+- Bind loopback by default; serve same-origin assets/API; enforce the approved
+  local-access policy and request/body/page limits.
+- Implement stable envelopes, correlation IDs, safe logs, health/readiness,
+  graceful shutdown, and explicit startup failure messages.
+- Implement job registration, state transitions, safe cancellation requests,
+  retention, and UI reconnect/reload behavior.
+- Add hostile-input tests: origin/Host/CORS, invalid schema, traversal/link
+  policy, malformed persisted state, large payload/page, and error redaction.
 
-- FTS and regex search mode
-- optional fuzzy mode controls
-- filetype/date/path/tag filters
-- profile save/load behavior
-- advanced settings groups
+**Exit evidence:** process-lifecycle integration tests, security tests,
+accessibility smoke path, job race/cancel/restart tests, and local manual
+verification on each supported OS.
 
-### Success criteria
+## Gate 3 — P0 vertical slice: search, plan, index, export
 
-- core search workflows are available without CLI knowledge
-- saved profiles work consistently across sessions
-- filter settings are visible and understandable
+**Outcome:** one useful workflow with no false parity promise.
 
----
+- FTS search and regex search expose their distinct schemas/capabilities.
+- Search is paginated/bounded and safely renders untrusted snippets/metadata.
+- Index plan shows scope/ignore/skip/prune evidence without mutation.
+- Index run is job-backed, preserves cache-generation freshness, and reports
+  partial/failed/cancelled states honestly.
+- Export has exact-result selection and destination/collision/optional-pack
+  handling.
 
-## Phase 3 — Analysis and Export
+**Exit evidence:** browser end-to-end tests, CLI/service parity matrix,
+incremental/prune and stale-cache regression coverage, cross-platform path
+tests, performance budgets for large result sets, and keyboard/screen-reader
+journey checks.
 
-### Objective
+## Gate 4 — Controlled state features
 
-Support the most common analysis workflows in the web UI.
+**Outcome:** tags, profiles, and diagnostics gain explicit data contracts.
 
-### Deliverables
+- Add tag operations with clear bulk scope, conflict behavior, and search
+  refresh.
+- Decide whether saved search profiles are migrated/versioned or deliberately
+  constrained; handle atomic writes and concurrent tabs.
+- Add diagnostics only for documented read-only status. Do not surface repair,
+  optimization, migration, or deletion actions by convenience.
+- Expose capability preflight for extras/external tools; package mutation stays
+  out of ordinary UI operation.
 
-- CSV/JSON/XML analysis page
-- summary and table rendering
-- chart and export actions
-- structured output formatting
+**Exit evidence:** concurrent-edit/recovery tests, tag/cache equivalence tests,
+capability-error DTO tests, data redaction review, and user-doc updates.
 
-### Success criteria
+## Gate 5 — Analysis and operations, separately admitted
 
-- a non-technical user can run a common analysis without shell commands
-- outputs are exportable and readable
-- advanced options remain available in grouped panels
+**Outcome:** each complex family earns inclusion through a bounded blueprint.
 
----
+- Start one analysis vertical slice with explicit persisted versus ephemeral
+  output, artifact location, dependency, and export contracts.
+- Create separate plans for basic watcher lifecycle and rename-watch; the latter
+  must retain its current locking, journal, recovery, and failure semantics.
+- Assess every filesystem-mutating family (organize, rename, restore, clear,
+  migrate, repair/perf apply) independently with plan/dry-run, confirmation,
+  audit, backup, recovery, and support expectations.
 
-## Phase 4 — Monitoring and Ops
+**Exit evidence:** family-specific risk review, fault/cancel/recovery tests,
+documentation updates, and no regression of existing command safety behavior.
 
-### Objective
+## Gate 6 — Release hardening
 
-Improve the UI beyond simple search to include operational visibility.
+**Outcome:** a supported local product, not merely a working demo.
 
-### Deliverables
+- Exercise upgrades/downgrades/uninstall, first run, missing extras, corrupt
+  cache/profile/job data, locked DB, large corpus, and network-disabled use.
+- Test offline/local-only claims, privacy/log retention, startup conflicts,
+  two-process contention, and release packaging on all supported platforms.
+- Publish support boundaries, troubleshooting, data locations, backup guidance,
+  accessibility statement, known limitations, and rollback/migration steps.
 
-- watch configuration page
-- database and index status view
-- diagnostics and health summary
-- job history and error logging
+**Exit evidence:** release checklist, reproducible build/install evidence,
+security review, performance/accessibility report, and explicit go/no-go risks.
 
-### Success criteria
+## Scope-control rule
 
-- the app can show what is running and what has happened
-- users understand whether indexing/search is healthy
-- operational tasks have clear states and feedback
-
----
-
-## Phase 5 — Product Hardening
-
-### Objective
-
-Mature the product into a polished local-tool experience.
-
-### Deliverables
-
-- usability refinements for large result sets
-- advanced grouped settings for every major domain
-- pagination and result caching controls
-- local desktop packaging option, if desired
-
-### Success criteria
-
-- no obvious “beta” friction for everyday usage
-- advanced options are accessible but not overwhelming
-- the CLI remains fully supported and unchanged
-
----
-
-## Implementation decision
-
-The roadmap should be considered additive and incremental. The project should not wait for a full product rewrite before exposing a useful local web UI. A disciplined phased rollout is the safest path.
-
----
-
-## Final assessment
-
-This is a credible, future-ready direction for the project. It preserves the current CLI-first value while expanding access to a broader set of users who need a professional, local, guided UI.
+No phase is complete because a screen exists. It is complete only when its
+approved contract, CLI compatibility, state ownership, write safety, failure and
+recovery behavior, observability, tests, and documentation are evidenced. This
+rule prevents a local UI from weakening the careful safety properties already
+present in Indexly's CLI and operational modules.

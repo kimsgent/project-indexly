@@ -1,125 +1,90 @@
-# Feature Parity Model: CLI to Local Web UI
+# CLI-to-web UI parity and scope model
 
-## Purpose
+Parity means preserving a defined operation contract, validation, side effects,
+and failure semantics—not copying each command or flag into a form. The parser
+in [`cli_utils.py`](../../cli_utils.py) is the authoritative command inventory;
+this table makes the intended product boundary explicit.
 
-This document maps the current Indexly commands and operations into a professional local web UI experience while preserving the same functionality and semantics.
+## Capability disposition
 
----
-
-## Feature mapping table
-
-| Existing CLI capability | UI surface | Priority | Notes |
+| Current CLI family | Verified source | Proposed UI disposition | Rationale / prerequisite |
 | --- | --- | --- | --- |
-| full-text search | Search dashboard | P0 | core user workflow |
-| regex search | Search dashboard advanced panel | P0 | important for power users |
-| fuzzy search | Search dashboard advanced panel | P1 | should be optional |
-| tag management | Data panel / file detail panel | P1 | essential for workflow organization |
-| file indexing | Indexing dashboard | P0 | core operation |
-| folder watching | Monitoring page | P2 | later-phase feature |
-| database stats | Diagnostics page | P1 | useful operational visibility |
-| CSV analysis | Analysis workspace | P0 | broad value to users |
-| JSON analysis | Analysis workspace | P1 | support common structured data |
-| XML analysis | Analysis workspace | P1 | useful for document and config parsing |
-| profile save/load | Profiles page | P0 | important for reuse |
-| export to text/markdown/json/pdf | Export panel | P0 | high user value |
-| ignore configuration | Settings / config panel | P1 | required for indexing control |
-| organizer utilities | Utilities page | P2 | advanced but valuable |
-| rename helpers | Utilities page | P2 | optional in early phases |
+| FTS search | [`search_core.py`](../../search_core.py) `search_fts5` | **P0** | Bounded DTO, server pagination, cache-generation preservation, safe snippet rendering. |
+| Regex search | [`search_core.py`](../../search_core.py) `search_regex` | **P0** | Separate schema/controls from FTS; compile/error results and resource limits. |
+| Index and index plan | [`indexly.py`](../../indexly.py) | **P0** | Plan first, job state, single-writer policy, safe progress, cancellation boundary, freshness tests. |
+| Search export | [`export_utils.py`](../../export_utils.py) | **P0** | Explicit destination/collision policy, optional-PDF capability status. |
+| Tags | [`indexly.py`](../../indexly.py), [`db_utils.py`](../../db_utils.py) | **P1** | Structured CRUD service, confirmation for bulk changes, search refresh semantics. |
+| Saved search profiles | [`profiles.py`](../../profiles.py) | **P1** | Existing JSON format is not safe concurrent CRUD; decide migration/locking/version contract. |
+| Read-only stats/doctor | [`indexly.py`](../../indexly.py), [`doctor.py`](../../doctor.py) | **P1** | Read-only guarantee; do not call state-initializing DB helpers from status route. |
+| One bounded analysis flow | [`analysis_orchestrator.py`](../../analysis_orchestrator.py) | **P2** | Choose CSV *or* structured file view after persisted/ephemeral/artifact decision. |
+| Basic index watch | [`watcher.py`](../../watcher.py) | **Deferred** | No lifecycle/status/stop API, duplicate-root policy, or durable job model. |
+| Rename watch | [`rename_watch/`](../../rename_watch/) | **Deferred, separate plan** | Locking, journaling, recovery, failures, and actual filesystem moves. |
+| Organize / rename / restore / backup | dedicated modules | **Out of initial scope** | Filesystem-mutating; needs plan, confirmations, audit, rollback/backup. |
+| Clear data / clear search | parser + deletion modules | **Out of initial scope** | Exact target selection and confirmation token semantics required. |
+| Migrate / update DB / doctor repair | migration/doctor modules | **Out of initial scope** | Schema and recovery safety. |
+| Perf optimization/apply | [`perf/`](../../perf/) | **Out of initial scope** | Existing evidence, backup, writer reservation, and apply authorization must remain stronger than a button. |
+| Extras install/uninstall/reset | [`extras_manager.py`](../../extras_manager.py) | **Status only initially** | Page load must never change Python environments; mutation is separate future decision. |
 
----
+## P0 user journeys and acceptance conditions
 
-## UI page plan
+### Search
 
-### Search page
+1. User chooses FTS or regex before entering advanced controls.
+2. Service validates that mode's supported parameters and returns a versioned,
+   paginated result page containing safe display fields and opaque navigation
+   data.
+3. User can request a no-cache/fresh behavior only when its semantic matches the
+   CLI; the UI never adds a cache that bypasses index generation.
+4. Invalid syntax, missing database, unavailable capability, and no-result
+   outcomes are distinct, accessible responses.
 
-User actions:
+**Acceptance:** the equivalent CLI/service cases agree on normalized inputs,
+result ordering/content, filters, cache freshness, and errors. Test current
+search/tag/delete controls before accepting an indexing/search change; see
+[reference-map.md](reference-map.md).
 
-- enter a search term
-- choose FTS, regex, or fuzzy mode
-- apply filetype/date/path/tag filters
-- sort results and view snippets
-- open result context
-- export selected results
+### Index plan and run
 
-### Index page
+1. User registers/selects a permitted root and sees normalized scope: root,
+   file type, ignore source, incremental/full mode, OCR choice, and constraints.
+2. `plan` returns count/scope/skip/prune evidence and proves no database or
+   file-index state changed.
+3. Starting a run creates a job with immutable submitted options. UI reports
+   phase/counts when observable, warnings/failures, and a final summary.
+4. A cancellation request is not shown as cancellation until the worker reaches
+   its safe boundary. Conflicting mutations are rejected or queued per the
+   approved writer policy.
 
-User actions:
+**Acceptance:** change/prune updates `search_index_generation`; a repeat query
+cannot show the stale result that Codmem records as a prior defect. Partial,
+failed, and cancelled outcomes remain distinguishable in job history.
 
-- pick a root folder
-- choose indexing mode: full or incremental
-- apply filetype and ignore configuration
-- choose OCR options if relevant
-- start job and monitor progress
-- review summary statistics after completion
+### Export
 
-### Analysis page
+The UI exports the selected, identified search result set—not a re-run with
+implicit changed filters. It shows format/capability, output directory and exact
+file name, collision behavior, whether existing data will be overwritten, and a
+completion receipt. File paths returned to browser code are display data, not
+permission to access arbitrary local paths.
 
-User actions:
+## Configuration and representation rules
 
-- select local file
-- choose analysis type
-- adjust relevant analysis options
-- view summary table or chart
-- export generated result
+| Domain | UI representation rule |
+| --- | --- |
+| Search | FTS and regex have separate request models. Show only supported sort, NEAR, fuzzy, and metadata controls for the chosen mode. |
+| Index | Group basic scope, ignore rules, incremental scope, and OCR/options. Preserve existing defaults and precedence rather than making new form defaults authoritative. |
+| Profiles | Label initial support "saved search profiles". Do not conflate it with organize profiles or rename-watch configuration. |
+| Analysis | Label persisted output and artifact writes clearly. Do not call every analysis page read-only. |
+| Diagnostics | Lead with safe read-only facts; mutation/repair controls remain outside P0/P1. |
+| Capability | Show installed/missing extras and external tool state as preflight information with a documented remediation path. |
 
-### Profiles page
+## Non-negotiable parity checks
 
-User actions:
-
-- save current search/index settings
-- manage reusable presets
-- rename or delete profiles
-- load profile into current form
-
-### Diagnostics page
-
-User actions:
-
-- view database and index status
-- inspect local health state
-- review job history
-- monitor watch tasks
-
----
-
-## Configuration grouping strategy
-
-The UI should avoid exposing every flag as a flat list. Instead, group configuration by domain:
-
-- Search settings
-- Index settings
-- Analysis settings
-- Export settings
-- Profiles and preferences
-- Operational status
-
-This allows broad feature coverage without reducing usability.
-
----
-
-## Parity principle
-
-The UI must not be considered separate from the CLI product. It is a user interface for the same underlying application capabilities.
-
-That means any feature introduced in the CLI should be representable in the UI eventually, especially in the major domains of:
-
-- search
-- indexing
-- analysis
-- export
-- profile management
-
----
-
-## Recommended initial launch set
-
-To be practical, the first launch should cover:
-
-1. search
-2. index
-3. analysis for CSV/JSON/XML
-4. export
-5. saved profiles
-6. status and job tracking
-
-This is the minimum set that makes the UI feel professional and useful while staying aligned with the repo’s current architecture.
+- Same request validation/defaulting in CLI and UI service calls.
+- Same path normalization and allowed-root policy at the trusted service edge.
+- Same index-to-search cache invalidation semantics.
+- Same missing-extra and external-tool guidance, without automatic installation.
+- Same explicit confirmation/safety requirements for writes; no "helpful"
+  browser shortcut may weaken them.
+- Stable, documented UI DTO/error schema, separate from Rich/terminal wording.
+- No claim of parity for a command that remains deferred or out of scope.
