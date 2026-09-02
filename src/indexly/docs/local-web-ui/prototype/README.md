@@ -7,6 +7,8 @@ search-first direction from the parent investigation and uses only static data.
 Open `index.html` directly in a browser. The prototype demonstrates:
 
 - a dominant, scan-friendly results canvas with restrained file-type markers;
+- proposed **Activity** and **Index health** pages, each using clearly labelled
+  illustrative states rather than fabricated live telemetry;
 - workspace-specific enabled views and startup selection via **Manage views**;
 - an inspector that can be closed and reopened, and resized with pointer or
   keyboard (arrow keys; Home/End); and

@@ -30,10 +30,33 @@
     result.addEventListener('click', select);
     result.addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); select(); } });
   });
-  const closeInspector = () => { inspector.classList.remove('open'); workspace.classList.remove('inspector-visible'); workspace.classList.add('inspector-collapsed'); $('#show-preview').hidden = false; $('#show-preview').focus(); };
+  const closeInspector = (returnFocus = true) => { inspector.classList.remove('open'); workspace.classList.remove('inspector-visible'); workspace.classList.add('inspector-collapsed'); $('#show-preview').hidden = false; if (returnFocus) $('#show-preview').focus(); };
   $('#collapse-preview').addEventListener('click', closeInspector);
   $('#show-preview').addEventListener('click', () => { workspace.classList.remove('inspector-collapsed'); workspace.classList.add('inspector-visible'); inspector.classList.add('open'); $('#show-preview').hidden = true; });
   $('#open-original').addEventListener('click', () => showToast('Prototype only — opening originals needs the future local service.'));
+
+  const workspaceViews = [...document.querySelectorAll('#workspace-navigation [data-view]')];
+  const viewPages = [...document.querySelectorAll('.view-page')];
+  const showWorkspaceView = (view) => {
+    viewPages.forEach((page) => { page.hidden = page.id !== `${view}-page`; });
+    workspaceViews.forEach((button) => {
+      const active = button.dataset.view === view;
+      button.classList.toggle('active', active);
+      button.toggleAttribute('aria-current', active);
+    });
+    const isSearch = view === 'search';
+    if (!isSearch) {
+      closeInspector(false);
+      $('#show-preview').hidden = true;
+    } else if (workspace.classList.contains('inspector-collapsed')) {
+      $('#show-preview').hidden = false;
+    }
+    closeNavigation();
+    document.title = `Indexly — ${isSearch ? 'Search workspace' : view === 'activity' ? 'Activity' : 'Index health'} prototype`;
+    $('#main-content').focus({ preventScroll: true });
+  };
+  workspaceViews.forEach((button) => button.addEventListener('click', () => showWorkspaceView(button.dataset.view)));
+  document.querySelectorAll('[data-prototype-action]').forEach((button) => button.addEventListener('click', () => showToast(button.dataset.prototypeAction)));
 
   const resize = (width) => { const clamped = Math.max(270, Math.min(540, width)); workspace.style.setProperty('--inspector-width', `${clamped}px`); splitter.setAttribute('aria-valuenow', String(Math.round(clamped))); };
   splitter.addEventListener('pointerdown', (event) => { splitter.setPointerCapture(event.pointerId); const move = (moveEvent) => resize(window.innerWidth - moveEvent.clientX); const stop = () => { splitter.removeEventListener('pointermove', move); splitter.removeEventListener('pointerup', stop); }; splitter.addEventListener('pointermove', move); splitter.addEventListener('pointerup', stop); });
@@ -79,7 +102,13 @@
       event.target.checked = true;
       showToast(`${name} is this workspace's startup view and must remain enabled.`);
     } else if (!event.target.checked) {
+      const button = document.querySelector(`#workspace-navigation [data-view="${row.dataset.view}"]`);
+      if (button) button.hidden = true;
+      if (!document.querySelector(`#${row.dataset.view}-page`).hidden) showWorkspaceView('search');
       showToast(`${name} disabled — it will no longer appear in workspace navigation.`);
+    } else {
+      const button = document.querySelector(`#workspace-navigation [data-view="${row.dataset.view}"]`);
+      if (button) button.hidden = false;
     }
   });
   updateViewControls();
