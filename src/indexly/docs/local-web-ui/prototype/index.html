@@ -16,37 +16,48 @@
       .move-button:disabled { opacity: .35; cursor: not-allowed; }
       .move-button:focus-visible { outline: 2px solid #3159c9; outline-offset: 1px; }
       .workspace-nav-toggle, .drawer-close { display: none; }
+      .prototype-state { color: #c6cad0; font-size: 11px; }
       .view-page[hidden] { display: none; }
       .view-page { animation: settle .16s ease-out both; }
       @keyframes settle { from { opacity: .55; transform: translateY(4px); } to { opacity: 1; transform: none; } }
       @media (prefers-reduced-motion: reduce) { .view-page, .toast { animation: none; transition: none; } }
       .page-heading { display: flex; justify-content: space-between; align-items: start; gap: 24px; margin-bottom: 26px; }
       .page-heading h1 { font-size: 24px; line-height: 1.2; letter-spacing: -.045em; margin: 5px 0 0; }
-      .prototype-note { max-width: 310px; margin: 0; color: #6b737b; font-size: 12px; line-height: 1.45; }
+      .prototype-note { max-width: 310px; margin: 0; color: #555f67; font-size: 12px; line-height: 1.45; }
       .page-tools { display: flex; gap: 7px; margin-bottom: 20px; }
       .section-block { margin: 27px 0 0; }
       .section-title { display: flex; justify-content: space-between; gap: 12px; padding-bottom: 9px; border-bottom: 1px solid var(--line); }
       .section-title h2 { margin: 0; font-size: 13px; letter-spacing: -.01em; }
-      .section-title p { margin: 0; color: var(--muted); font-size: 11px; }
+      .section-title p { margin: 0; color: #626a72; font-size: 11px; }
       .activity-list { list-style: none; margin: 0; padding: 0; }
       .activity-entry { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 12px; padding: 16px 4px; border-bottom: 1px solid #e2e4e2; }
       .activity-marker { width: 10px; height: 10px; margin: 5px 0 0 5px; border-radius: 50%; background: #7b838a; box-shadow: 0 0 0 3px #e7e9e7; }
       .activity-marker.good { background: #4b9660; }
       .activity-marker.review { background: #bf852e; }
+      .activity-marker.failure { background: #ad5145; }
+      .activity-marker.cancelled { background: #6179a3; }
       .activity-entry h3 { margin: 0 0 3px; font-size: 13px; }
       .activity-entry p { margin: 0; color: #5d656d; font-size: 12px; }
-      .activity-time { color: #7c848b; font-size: 11px; white-space: nowrap; }
+      .activity-time { color: #59636b; font-size: 11px; white-space: nowrap; }
+      .activity-status { display: inline-block; margin: 0 6px 0 0; padding: 1px 5px; border: 1px solid currentColor; border-radius: 3px; color: #4a5560; font-size: 10px; font-weight: 700; letter-spacing: .02em; }
+      .activity-status.good { color: #287041; }
+      .activity-status.warning { color: #8b5e16; }
+      .activity-status.failure { color: #9b463c; }
+      .activity-status.cancelled { color: #566b8e; }
       .health-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: 8px; background: #fff; }
       .health-summary div { padding: 16px; border-right: 1px solid var(--line); }
       .health-summary div:last-child { border: 0; }
       .health-summary strong { display: block; font-size: 18px; letter-spacing: -.04em; }
-      .health-summary span { display: block; margin-top: 2px; color: var(--muted); font-size: 11px; }
+      .health-summary span { display: block; margin-top: 2px; color: #626a72; font-size: 11px; }
       .source-row { display: grid; grid-template-columns: minmax(0, 1fr) 120px auto; gap: 16px; align-items: center; padding: 15px 4px; border-bottom: 1px solid #e2e4e2; }
       .source-row h3 { margin: 0 0 2px; font-size: 13px; }
       .source-row p { margin: 0; color: #6c747b; font-size: 11px; }
       .source-row > span { color: #5c656d; font-size: 12px; }
       .source-state { color: #287041 !important; font-size: 11px !important; font-weight: 700; }
       .health-footnote { margin: 20px 0 0; padding: 12px 13px; border-left: 2px solid var(--blue); color: #5b646c; background: #f0f3fd; font-size: 12px; }
+      .source-review-note { margin: 8px 0 0; color: #59636b; font-size: 12px; }
+      .view-page:not(#search-page) { max-width: 980px; }
+      .chip[aria-pressed="true"] { border-color: #3159c9; background: #e8edff; color: #284fae; }
       @media (max-width: 1050px) and (min-width: 801px) {
         .workspace { position: relative; grid-template-columns: minmax(0, 1fr) 0 0; }
         .workspace.inspector-collapsed { grid-template-columns: minmax(0, 1fr) 0 0; }
@@ -71,17 +82,18 @@
         .activity-entry { grid-template-columns: 20px minmax(0, 1fr); }
         .activity-time { grid-column: 2; }
       }
+      @media (max-width: 800px) { .quiet-button.manage-views { display: block; } }
     </style>
   </head>
   <body>
-    <a class="skip-link" href="#results">Skip to results</a>
-    <main class="app-shell" aria-label="Indexly search workspace prototype">
+    <a class="skip-link" href="#main-content">Skip to workspace content</a>
+    <main class="app-shell" aria-label="Indexly local web UI prototype">
       <header class="topbar">
         <button class="brand" aria-label="Indexly home"><span class="brand-mark">I</span><span>indexly</span></button>
-        <div class="workspace-identity"><span class="eyebrow">WORKSPACE</span><strong>Product research</strong><span class="sync-state"><i></i> Index current</span></div>
+        <div class="workspace-identity"><span class="eyebrow">WORKSPACE</span><strong>Product research</strong><span class="prototype-state">Static prototype</span></div>
         <div class="topbar-actions">
           <button class="workspace-nav-toggle" id="workspace-nav-toggle" aria-controls="workspace-navigation" aria-expanded="false">Workspace <span aria-hidden="true">☰</span></button>
-          <button class="quiet-button" id="workspace-manager" aria-haspopup="dialog">Manage views</button>
+          <button class="quiet-button manage-views" id="workspace-manager" aria-haspopup="dialog">Manage views</button>
           <button class="avatar" aria-label="Open account menu">FK</button>
         </div>
       </header>
@@ -113,7 +125,7 @@
           <div class="search-head">
             <div>
               <p class="eyebrow">LOCAL KNOWLEDGE SEARCH</p>
-              <h1>Find the decision, not just the file.</h1>
+              <h1 id="search-title" tabindex="-1">Find the decision, not just the file.</h1>
             </div>
             <button class="filter-button" id="filters-toggle" aria-expanded="false" aria-controls="filters">Filter <span>3</span></button>
           </div>
@@ -144,17 +156,16 @@
           </section>
 
           <section class="view-page" id="activity-page" aria-labelledby="activity-title" hidden>
-            <header class="page-heading"><div><p class="eyebrow">WORKSPACE ACTIVITY</p><h1 id="activity-title">The work around the index.</h1></div><p class="prototype-note">Illustrative events for this prototype—not a live job feed or a promise of an existing service.</p></header>
-            <div class="page-tools"><button class="chip" type="button" data-prototype-action="Activity filters are a static prototype state.">All activity <span>⌄</span></button><button class="chip" type="button" data-prototype-action="Only the visual state changes in this prototype.">Last 7 days <span>⌄</span></button></div>
-            <section class="section-block" aria-labelledby="today-heading"><header class="section-title"><h2 id="today-heading">Today</h2><p>3 illustrative events</p></header><ol class="activity-list"><li class="activity-entry"><span class="activity-marker good" aria-hidden="true"></span><div><h3>Research sources refreshed</h3><p>Illustrative run: changed documents were made available to this workspace.</p></div><time class="activity-time">12:42</time></li><li class="activity-entry"><span class="activity-marker" aria-hidden="true"></span><div><h3>Saved search updated</h3><p>“Release planning” now uses the Product research scope.</p></div><time class="activity-time">10:18</time></li><li class="activity-entry"><span class="activity-marker review" aria-hidden="true"></span><div><h3>One source needs attention</h3><p>Its source policy should be reviewed before the next illustrative run.</p></div><time class="activity-time">09:06</time></li></ol></section>
-            <section class="section-block" aria-labelledby="earlier-heading"><header class="section-title"><h2 id="earlier-heading">Earlier this week</h2><p>Kept intentionally compact</p></header><ol class="activity-list"><li class="activity-entry"><span class="activity-marker good" aria-hidden="true"></span><div><h3>Search index updated</h3><p>Illustrative change note: a new source was included in the workspace.</p></div><time class="activity-time">Mon</time></li></ol></section>
+            <header class="page-heading"><div><p class="eyebrow">WORKSPACE ACTIVITY</p><h1 id="activity-title" tabindex="-1">Recent activity</h1></div><p class="prototype-note">Illustrative outcome states for this prototype—not a live job feed or a promise of an existing service.</p></header>
+            <div class="page-tools"><button class="chip" type="button" data-activity-filter="all" aria-pressed="true">All activity <span>⌄</span></button><button class="chip" type="button" data-activity-filter="week" aria-pressed="false">Last 7 days <span>⌄</span></button></div>
+            <section class="section-block" aria-labelledby="today-heading"><header class="section-title"><h2 id="today-heading">Illustrative outcomes</h2><p>Four distinct states</p></header><ol class="activity-list"><li class="activity-entry"><span class="activity-marker good" aria-hidden="true"></span><div><h3>Sample: completed</h3><p><span class="activity-status good">Succeeded</span>A source refresh finished in this illustrated workspace.</p></div><time class="activity-time">12:42</time></li><li class="activity-entry"><span class="activity-marker review" aria-hidden="true"></span><div><h3>Sample: completed with warnings</h3><p><span class="activity-status warning">Warning</span>Two files were skipped by an illustrative source policy.</p></div><time class="activity-time">10:18</time></li><li class="activity-entry"><span class="activity-marker failure" aria-hidden="true"></span><div><h3>Sample: failed</h3><p><span class="activity-status failure">Failed</span>One illustrative source could not be reached.</p></div><time class="activity-time">09:06</time></li><li class="activity-entry"><span class="activity-marker cancelled" aria-hidden="true"></span><div><h3>Sample: cancellation requested</h3><p><span class="activity-status cancelled">Requested</span>The illustrated run is stopping at a safe boundary.</p></div><time class="activity-time">08:51</time></li></ol></section>
           </section>
 
           <section class="view-page" id="index-health-page" aria-labelledby="index-health-title" hidden>
-            <header class="page-heading"><div><p class="eyebrow">INDEX HEALTH</p><h1 id="index-health-title">Coverage, made legible.</h1></div><p class="prototype-note">All figures and states are synthetic. A future product needs explicit freshness and job-status contracts before showing live values.</p></header>
+            <header class="page-heading"><div><p class="eyebrow">INDEX HEALTH</p><h1 id="index-health-title" tabindex="-1">Index overview</h1></div><p class="prototype-note">All figures and states are synthetic. A future product needs explicit freshness and job-status contracts before showing live values.</p></header>
             <div class="health-summary" aria-label="Illustrative index summary"><div><strong>2</strong><span>configured sources</span></div><div><strong>18,420</strong><span>illustrative indexed files</span></div><div><strong>1</strong><span>source to review</span></div></div>
-            <section class="section-block" aria-labelledby="sources-heading"><header class="section-title"><h2 id="sources-heading">Sources</h2><p>Illustrative workspace coverage</p></header><div class="source-row"><div><h3>Product research</h3><p>Recursive source · Markdown, PDF, text</p></div><span>12,806 files</span><span class="source-state">Available</span></div><div class="source-row"><div><h3>Shared references</h3><p>Recursive source · PDF, slides, spreadsheets</p></div><span>5,614 files</span><span class="source-state">Available</span></div></section>
-            <section class="section-block" aria-labelledby="review-heading"><header class="section-title"><h2 id="review-heading">Review next</h2><p>One intentionally visible exception</p></header><div class="source-row"><div><h3>Archive intake</h3><p>Source policy has not been confirmed for this illustrative workspace.</p></div><span>Not included</span><button class="pin-button" type="button" data-prototype-action="Source review is intentionally not connected in this prototype.">Review source</button></div></section>
+            <section class="section-block" aria-labelledby="sources-heading"><header class="section-title"><h2 id="sources-heading">Sources</h2><p>Illustrative workspace coverage</p></header><div class="source-row"><div><h3>Product research</h3><p>Recursive source · Markdown, PDF, text</p></div><span>12,806 files</span><span class="source-state">Illustrative · available</span></div><div class="source-row"><div><h3>Shared references</h3><p>Recursive source · PDF, slides, spreadsheets</p></div><span>5,614 files</span><span class="source-state">Illustrative · available</span></div></section>
+            <section class="section-block" aria-labelledby="review-heading"><header class="section-title"><h2 id="review-heading">Review next</h2><p>One intentionally visible exception</p></header><div class="source-row"><div><h3>Archive intake</h3><p>Source policy has not been confirmed for this illustrative workspace.</p></div><span>Not included</span><button class="pin-button" type="button" id="review-source" aria-expanded="false" aria-controls="source-review-note">Review source</button></div><p class="source-review-note" id="source-review-note" hidden>Illustrative review state: the source remains excluded until its policy is confirmed.</p></section>
             <p class="health-footnote">Freshness is not inferred from this screen. The eventual UI should only report it from a tested generation and job-state contract.</p>
           </section>
         </section>

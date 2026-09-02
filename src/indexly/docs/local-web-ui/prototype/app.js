@@ -7,10 +7,25 @@
   const toast = $('#toast');
   const showToast = (message) => { toast.textContent = message; toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 2600); };
   const navToggle = $('#workspace-nav-toggle');
-  const closeNavigation = () => { workspace.classList.remove('nav-open'); navToggle.setAttribute('aria-expanded', 'false'); };
-  navToggle.addEventListener('click', () => { const open = workspace.classList.toggle('nav-open'); navToggle.setAttribute('aria-expanded', String(open)); if (open) $('#workspace-nav-close').focus(); });
+  const navigation = $('#workspace-navigation');
+  const mainContent = $('#main-content');
+  const isTabletDrawer = () => window.matchMedia('(max-width: 1050px) and (min-width: 801px)').matches;
+  const setDrawerState = (open) => {
+    const active = open && isTabletDrawer();
+    [mainContent, splitter, inspector, $('#show-preview')].forEach((element) => { element.inert = active; });
+  };
+  const closeNavigation = () => { workspace.classList.remove('nav-open'); navToggle.setAttribute('aria-expanded', 'false'); setDrawerState(false); };
+  navToggle.addEventListener('click', () => { const open = workspace.classList.toggle('nav-open'); navToggle.setAttribute('aria-expanded', String(open)); setDrawerState(open); if (open) $('#workspace-nav-close').focus(); });
   $('#workspace-nav-close').addEventListener('click', () => { closeNavigation(); navToggle.focus(); });
   document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && workspace.classList.contains('nav-open')) { closeNavigation(); navToggle.focus(); } });
+  navigation.addEventListener('keydown', (event) => {
+    if (event.key !== 'Tab' || !workspace.classList.contains('nav-open') || !isTabletDrawer()) return;
+    const focusable = [...navigation.querySelectorAll('button:not([disabled]), a[href]')].filter((element) => !element.hidden);
+    const first = focusable[0]; const last = focusable.at(-1);
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+    if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+  });
+  window.addEventListener('resize', () => { if (!isTabletDrawer()) closeNavigation(); });
 
   document.querySelectorAll('.result').forEach((result) => {
     const select = () => {
@@ -38,11 +53,12 @@
   const workspaceViews = [...document.querySelectorAll('#workspace-navigation [data-view]')];
   const viewPages = [...document.querySelectorAll('.view-page')];
   const showWorkspaceView = (view) => {
-    viewPages.forEach((page) => { page.hidden = page.id !== `${view}-page`; });
+    const activePage = $(`#${view}-page`);
+    viewPages.forEach((page) => { page.hidden = page !== activePage; });
     workspaceViews.forEach((button) => {
       const active = button.dataset.view === view;
       button.classList.toggle('active', active);
-      button.toggleAttribute('aria-current', active);
+      if (active) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current');
     });
     const isSearch = view === 'search';
     if (!isSearch) {
@@ -53,10 +69,19 @@
     }
     closeNavigation();
     document.title = `Indexly — ${isSearch ? 'Search workspace' : view === 'activity' ? 'Activity' : 'Index health'} prototype`;
-    $('#main-content').focus({ preventScroll: true });
+    activePage.querySelector('h1, h2')?.focus({ preventScroll: true });
   };
   workspaceViews.forEach((button) => button.addEventListener('click', () => showWorkspaceView(button.dataset.view)));
-  document.querySelectorAll('[data-prototype-action]').forEach((button) => button.addEventListener('click', () => showToast(button.dataset.prototypeAction)));
+  document.querySelectorAll('[data-activity-filter]').forEach((button) => button.addEventListener('click', () => {
+    document.querySelectorAll('[data-activity-filter]').forEach((filter) => filter.setAttribute('aria-pressed', String(filter === button)));
+    showToast(`${button.textContent.trim()} selected for the static activity sample.`);
+  }));
+  $('#review-source').addEventListener('click', (event) => {
+    const note = $('#source-review-note');
+    note.hidden = !note.hidden;
+    event.currentTarget.setAttribute('aria-expanded', String(!note.hidden));
+    event.currentTarget.textContent = note.hidden ? 'Review source' : 'Hide review';
+  });
 
   const resize = (width) => { const clamped = Math.max(270, Math.min(540, width)); workspace.style.setProperty('--inspector-width', `${clamped}px`); splitter.setAttribute('aria-valuenow', String(Math.round(clamped))); };
   splitter.addEventListener('pointerdown', (event) => { splitter.setPointerCapture(event.pointerId); const move = (moveEvent) => resize(window.innerWidth - moveEvent.clientX); const stop = () => { splitter.removeEventListener('pointermove', move); splitter.removeEventListener('pointerup', stop); }; splitter.addEventListener('pointermove', move); splitter.addEventListener('pointerup', stop); });
@@ -90,6 +115,12 @@
     const sibling = button.dataset.direction === 'up' ? row.previousElementSibling : row.nextElementSibling;
     if (!sibling) return;
     viewList.insertBefore(button.dataset.direction === 'up' ? row : sibling, button.dataset.direction === 'up' ? sibling : row);
+    const navSection = workspaceViews[0]?.parentElement;
+    const navButton = navigation.querySelector(`[data-view="${row.dataset.view}"]`);
+    const siblingButton = navigation.querySelector(`[data-view="${sibling.dataset.view}"]`);
+    if (navSection && navButton && siblingButton) {
+      navSection.insertBefore(button.dataset.direction === 'up' ? navButton : siblingButton, button.dataset.direction === 'up' ? siblingButton : navButton);
+    }
     updateViewControls();
     row.querySelector(`[data-direction="${button.dataset.direction}"]`).focus();
     showToast(`${row.querySelector('strong').textContent} moved ${button.dataset.direction}.`);
