@@ -52,11 +52,17 @@
 
   const workspaceViews = [...document.querySelectorAll('#workspace-navigation [data-view]')];
   const viewPages = [...document.querySelectorAll('.view-page')];
+  const settingsControls = [$('#settings-button'), $('#settings-link')];
   const showWorkspaceView = (view) => {
     const activePage = $(`#${view}-page`);
     viewPages.forEach((page) => { page.hidden = page !== activePage; });
     workspaceViews.forEach((button) => {
       const active = button.dataset.view === view;
+      button.classList.toggle('active', active);
+      if (active) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current');
+    });
+    settingsControls.forEach((button) => {
+      const active = view === 'settings';
       button.classList.toggle('active', active);
       if (active) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current');
     });
@@ -68,19 +74,42 @@
       $('#show-preview').hidden = false;
     }
     closeNavigation();
-    document.title = `Indexly — ${isSearch ? 'Search workspace' : view === 'activity' ? 'Activity' : 'Index health'} prototype`;
+    document.title = `Indexly — ${isSearch ? 'Search workspace' : view === 'activity' ? 'Activity' : 'Settings'} prototype`;
     activePage.querySelector('h1, h2')?.focus({ preventScroll: true });
   };
   workspaceViews.forEach((button) => button.addEventListener('click', () => showWorkspaceView(button.dataset.view)));
+  settingsControls.forEach((button) => button.addEventListener('click', () => showWorkspaceView('settings')));
   document.querySelectorAll('[data-activity-filter]').forEach((button) => button.addEventListener('click', () => {
     document.querySelectorAll('[data-activity-filter]').forEach((filter) => filter.setAttribute('aria-pressed', String(filter === button)));
     showToast(`${button.textContent.trim()} selected for the static activity sample.`);
   }));
-  $('#review-source').addEventListener('click', (event) => {
-    const note = $('#source-review-note');
-    note.hidden = !note.hidden;
-    event.currentTarget.setAttribute('aria-expanded', String(!note.hidden));
-    event.currentTarget.textContent = note.hidden ? 'Review source' : 'Hide review';
+  $('#add-source').addEventListener('click', () => {
+    const input = $('#source-path'); const value = input.value.trim();
+    if (!value) { input.focus(); showToast('Enter an illustrative source path first.'); return; }
+    const row = document.createElement('div'); row.className = 'source-row';
+    const details = document.createElement('div'); const title = document.createElement('h3'); const note = document.createElement('p');
+    title.textContent = 'Added illustrative source'; note.textContent = value; details.append(title, note);
+    const scope = document.createElement('span'); scope.textContent = 'Not indexed';
+    const state = document.createElement('span'); state.className = 'source-state'; state.textContent = 'Prototype only';
+    row.append(details, scope, state); $('#added-sources').append(row); input.value = '';
+    showToast('Illustrative source added locally; no filesystem scope changed.');
+  });
+  $('#run-index').addEventListener('click', () => {
+    $('#index-action-status').textContent = 'Illustrative index intent recorded. No plan, filesystem operation, or database write was started.';
+    showToast('Prototype only — a real index run requires a reviewed plan.');
+  });
+  const addManualTag = () => {
+    const nameInput = $('#new-tag'); const name = nameInput.value.trim().replace(/^#/, '');
+    if (!name) { nameInput.focus(); return; }
+    const tag = document.createElement('span'); tag.className = 'tag-chip'; tag.style.setProperty('--tag-color', $('#tag-colour').value); tag.textContent = name;
+    $('#manual-tags').append(tag); nameInput.value = ''; nameInput.focus();
+    showToast(`“${name}” added to the local prototype tag list.`);
+  };
+  $('#add-tag').addEventListener('click', addManualTag);
+  $('#new-tag').addEventListener('keydown', (event) => { if (event.key === 'Enter') { event.preventDefault(); addManualTag(); } });
+  $('#collect-virtual-tags').addEventListener('change', (event) => {
+    $('#virtual-tags').hidden = !event.target.checked;
+    showToast(event.target.checked ? 'Illustrative virtual tags shown.' : 'Illustrative virtual tags hidden.');
   });
 
   const resize = (width) => { const clamped = Math.max(270, Math.min(540, width)); workspace.style.setProperty('--inspector-width', `${clamped}px`); splitter.setAttribute('aria-valuenow', String(Math.round(clamped))); };
@@ -90,8 +119,7 @@
   $('#filters-toggle').addEventListener('click', (event) => { const filters = $('#filters'); filters.hidden = !filters.hidden; event.currentTarget.setAttribute('aria-expanded', String(!filters.hidden)); });
   $('.search-form').addEventListener('submit', (event) => { event.preventDefault(); showToast(`Showing static prototype results for “${$('#query').value}”.`); });
   const dialog = $('#view-dialog');
-  $('#workspace-manager').addEventListener('click', () => dialog.showModal());
-  $('#settings-button').addEventListener('click', () => dialog.showModal());
+  $('#open-workspace-views').addEventListener('click', () => dialog.showModal());
   const viewList = $('.view-list');
   const updateViewControls = () => {
     [...viewList.querySelectorAll('.view-row')].forEach((row, index, rows) => {

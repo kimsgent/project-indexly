@@ -58,6 +58,33 @@
       .source-review-note { margin: 8px 0 0; color: #59636b; font-size: 12px; }
       .view-page:not(#search-page) { max-width: 980px; }
       .chip[aria-pressed="true"] { border-color: #3159c9; background: #e8edff; color: #284fae; }
+      .settings-shell { display: grid; grid-template-columns: 178px minmax(0, 1fr); gap: 34px; }
+      .settings-nav { border-right: 1px solid var(--line); padding-right: 16px; }
+      .settings-nav p { margin: 0 0 8px; color: #68717a; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+      .settings-nav a { display: block; padding: 7px 8px; border-radius: 5px; color: #4f5861; font-size: 12px; text-decoration: none; }
+      .settings-nav a:hover, .settings-nav a:focus-visible { background: #e8edff; color: #284fae; }
+      .settings-section { margin: 0 0 35px; scroll-margin-top: 24px; }
+      .settings-section > h2 { margin: 0 0 5px; font-size: 15px; letter-spacing: -.02em; }
+      .settings-section > p { max-width: 620px; margin: 0 0 14px; color: #5b656d; font-size: 12px; }
+      .settings-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 14px 0; border-top: 1px solid #e2e4e2; }
+      .settings-row strong { display: block; font-size: 13px; }
+      .settings-row small { display: block; margin-top: 2px; color: #606971; font-size: 11px; }
+      .field-label { display: block; margin: 0 0 5px; color: #4d5760; font-size: 11px; font-weight: 700; }
+      .path-composer, .tag-composer { display: flex; gap: 7px; align-items: end; }
+      .path-composer input, .tag-composer input[type="text"] { min-width: 0; flex: 1; border: 1px solid #c7ccca; border-radius: 6px; background: #fff; padding: 8px 9px; color: var(--text); font: inherit; font-size: 12px; }
+      .tag-composer input[type="color"] { width: 36px; height: 34px; padding: 2px; border: 1px solid #c7ccca; border-radius: 6px; background: #fff; }
+      .secondary-button { border: 1px solid #c7ccca; border-radius: 6px; background: #fff; color: #3c4750; padding: 8px 10px; font-size: 12px; font-weight: 650; white-space: nowrap; }
+      .settings-checks { display: grid; gap: 8px; padding: 12px 0 2px; }
+      .settings-checks label { display: flex; gap: 8px; align-items: center; color: #47515a; font-size: 12px; }
+      .settings-checks input { accent-color: var(--blue); }
+      .tag-group + .tag-group { margin-top: 15px; }
+      .tag-group h3 { margin: 0 0 7px; color: #535d65; font-size: 11px; letter-spacing: .05em; text-transform: uppercase; }
+      .tag-list { display: flex; flex-wrap: wrap; gap: 7px; min-height: 25px; }
+      .tag-chip { display: inline-flex; align-items: center; gap: 5px; border: 1px solid color-mix(in srgb, var(--tag-color) 45%, #c7ccca); border-radius: 99px; background: color-mix(in srgb, var(--tag-color) 12%, #fff); color: #3c4750; padding: 4px 8px; font-size: 11px; }
+      .tag-chip::before { width: 6px; height: 6px; border-radius: 50%; background: var(--tag-color); content: ""; }
+      .index-action { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 14px; padding: 13px; border: 1px solid #cbd2e7; border-radius: 7px; background: #f0f3fd; }
+      .index-action p { margin: 0; color: #56616a; font-size: 11px; }
+      .index-action .primary-button { margin: 0; white-space: nowrap; }
       @media (max-width: 1050px) and (min-width: 801px) {
         .workspace { position: relative; grid-template-columns: minmax(0, 1fr) 0 0; }
         .workspace.inspector-collapsed { grid-template-columns: minmax(0, 1fr) 0 0; }
@@ -81,6 +108,14 @@
         .source-row > span { grid-column: 1; }
         .activity-entry { grid-template-columns: 20px minmax(0, 1fr); }
         .activity-time { grid-column: 2; }
+        .settings-shell { display: block; }
+        .settings-nav { display: flex; gap: 3px; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); margin-bottom: 22px; padding: 0 0 10px; }
+        .settings-nav p { display: none; }
+        .settings-nav a { white-space: nowrap; }
+        .path-composer, .tag-composer { align-items: stretch; flex-wrap: wrap; }
+        .path-composer input, .tag-composer input[type="text"] { min-height: 36px; }
+        .settings-row { grid-template-columns: 1fr; }
+        .index-action { align-items: start; flex-direction: column; }
       }
       @media (max-width: 800px) { .quiet-button.manage-views { display: block; } }
     </style>
@@ -93,7 +128,7 @@
         <div class="workspace-identity"><span class="eyebrow">WORKSPACE</span><strong>Product research</strong><span class="prototype-state">Static prototype</span></div>
         <div class="topbar-actions">
           <button class="workspace-nav-toggle" id="workspace-nav-toggle" aria-controls="workspace-navigation" aria-expanded="false">Workspace <span aria-hidden="true">☰</span></button>
-          <button class="quiet-button manage-views" id="workspace-manager" aria-haspopup="dialog">Manage views</button>
+          <button class="quiet-button manage-views" id="settings-button">Settings</button>
           <button class="avatar" aria-label="Open account menu">FK</button>
         </div>
       </header>
@@ -106,7 +141,6 @@
             <p class="nav-label">Workspace views</p>
             <button class="nav-item active" type="button" data-view="search" aria-controls="search-page" aria-current="page"><span class="nav-icon search-icon">⌕</span> Search</button>
             <button class="nav-item" type="button" data-view="activity" aria-controls="activity-page"><span class="nav-icon">◷</span> Activity <span class="nav-badge">3</span></button>
-            <button class="nav-item" type="button" data-view="index-health" aria-controls="index-health-page"><span class="nav-icon">◫</span> Index health</button>
           </section>
           <section class="collections">
             <p class="nav-label">Saved searches</p>
@@ -116,7 +150,7 @@
           </section>
           <div class="sidebar-foot">
             <button class="workspace-switcher" aria-label="Switch workspace"><span class="workspace-dot"></span> Product research <span>⌄</span></button>
-            <button class="settings-link" id="settings-button">Workspace settings <span>›</span></button>
+            <button class="settings-link" id="settings-link">Settings <span>›</span></button>
           </div>
         </nav>
 
@@ -143,8 +177,8 @@
             <article class="result selected" tabindex="0" data-title="Local web UI — workspace views" data-type="MD" data-path="docs/local-web-ui/architecture.md" data-date="Modified yesterday" data-body="A workspace owns the enabled views, their order, and its startup view. Search is the default for research workspaces; the reader remembers its width and can be closed without losing context.">
               <div class="file-mark md">MD</div><div class="result-copy"><h2>Local web UI — workspace views</h2><p>A workspace owns the enabled views, their order, and its <mark>startup view</mark>. Search is the default for research workspaces.</p><footer><span>docs/local-web-ui/architecture.md</span><time>Yesterday</time></footer></div><span class="result-arrow" aria-hidden="true">↗</span>
             </article>
-            <article class="result" tabindex="0" data-title="Search workspace acceptance criteria" data-type="MD" data-path="docs/local-web-ui/feature-parity.md" data-date="Modified Aug 28" data-body="Search results own the main canvas. The reader, Activity, and Index are secondary contextual views which can be enabled per workspace.">
-              <div class="file-mark md">MD</div><div class="result-copy"><h2>Search workspace acceptance criteria</h2><p>Search results own the main canvas. Reader, Activity, and Index stay available as contextual <mark>workspace views</mark>.</p><footer><span>docs/local-web-ui/feature-parity.md</span><time>Aug 28</time></footer></div><span class="result-arrow" aria-hidden="true">↗</span>
+            <article class="result" tabindex="0" data-title="Search workspace acceptance criteria" data-type="MD" data-path="docs/local-web-ui/feature-parity.md" data-date="Modified Aug 28" data-body="Search results own the main canvas. Activity is workspace-owned; paths, tags, and index actions live under Settings.">
+              <div class="file-mark md">MD</div><div class="result-copy"><h2>Search workspace acceptance criteria</h2><p>Search results own the main canvas. Activity is contextual; paths, tags, and index actions live in <mark>Settings</mark>.</p><footer><span>docs/local-web-ui/feature-parity.md</span><time>Aug 28</time></footer></div><span class="result-arrow" aria-hidden="true">↗</span>
             </article>
             <article class="result" tabindex="0" data-title="Interview synthesis: navigation" data-type="TXT" data-path="research/interviews/navigation-synthesis.txt" data-date="Modified Aug 21" data-body="Participants wanted their last useful view to open immediately. Startup preference should be scoped to the workspace, not a global product setting.">
               <div class="file-mark txt">TXT</div><div class="result-copy"><h2>Interview synthesis: navigation</h2><p>Participants wanted their last useful view to open immediately. Startup preference should be scoped to the <mark>workspace</mark>.</p><footer><span>research/interviews/navigation-synthesis.txt</span><time>Aug 21</time></footer></div><span class="result-arrow" aria-hidden="true">↗</span>
@@ -161,12 +195,13 @@
             <section class="section-block" aria-labelledby="today-heading"><header class="section-title"><h2 id="today-heading">Illustrative outcomes</h2><p>Four distinct states</p></header><ol class="activity-list"><li class="activity-entry"><span class="activity-marker good" aria-hidden="true"></span><div><h3>Sample: completed</h3><p><span class="activity-status good">Succeeded</span>A source refresh finished in this illustrated workspace.</p></div><time class="activity-time">12:42</time></li><li class="activity-entry"><span class="activity-marker review" aria-hidden="true"></span><div><h3>Sample: completed with warnings</h3><p><span class="activity-status warning">Warning</span>Two files were skipped by an illustrative source policy.</p></div><time class="activity-time">10:18</time></li><li class="activity-entry"><span class="activity-marker failure" aria-hidden="true"></span><div><h3>Sample: failed</h3><p><span class="activity-status failure">Failed</span>One illustrative source could not be reached.</p></div><time class="activity-time">09:06</time></li><li class="activity-entry"><span class="activity-marker cancelled" aria-hidden="true"></span><div><h3>Sample: cancellation requested</h3><p><span class="activity-status cancelled">Requested</span>The illustrated run is stopping at a safe boundary.</p></div><time class="activity-time">08:51</time></li></ol></section>
           </section>
 
-          <section class="view-page" id="index-health-page" aria-labelledby="index-health-title" hidden>
-            <header class="page-heading"><div><p class="eyebrow">INDEX HEALTH</p><h1 id="index-health-title" tabindex="-1">Index overview</h1></div><p class="prototype-note">All figures and states are synthetic. A future product needs explicit freshness and job-status contracts before showing live values.</p></header>
-            <div class="health-summary" aria-label="Illustrative index summary"><div><strong>2</strong><span>configured sources</span></div><div><strong>18,420</strong><span>illustrative indexed files</span></div><div><strong>1</strong><span>source to review</span></div></div>
-            <section class="section-block" aria-labelledby="sources-heading"><header class="section-title"><h2 id="sources-heading">Sources</h2><p>Illustrative workspace coverage</p></header><div class="source-row"><div><h3>Product research</h3><p>Recursive source · Markdown, PDF, text</p></div><span>12,806 files</span><span class="source-state">Illustrative · available</span></div><div class="source-row"><div><h3>Shared references</h3><p>Recursive source · PDF, slides, spreadsheets</p></div><span>5,614 files</span><span class="source-state">Illustrative · available</span></div></section>
-            <section class="section-block" aria-labelledby="review-heading"><header class="section-title"><h2 id="review-heading">Review next</h2><p>One intentionally visible exception</p></header><div class="source-row"><div><h3>Archive intake</h3><p>Source policy has not been confirmed for this illustrative workspace.</p></div><span>Not included</span><button class="pin-button" type="button" id="review-source" aria-expanded="false" aria-controls="source-review-note">Review source</button></div><p class="source-review-note" id="source-review-note" hidden>Illustrative review state: the source remains excluded until its policy is confirmed.</p></section>
-            <p class="health-footnote">Freshness is not inferred from this screen. The eventual UI should only report it from a tested generation and job-state contract.</p>
+          <section class="view-page" id="settings-page" aria-labelledby="settings-title" hidden>
+            <header class="page-heading"><div><p class="eyebrow">SETTINGS</p><h1 id="settings-title" tabindex="-1">Configure the workspace, then index.</h1></div><p class="prototype-note">A static V2-oriented concept. Source, tag, and indexing controls need future local-service contracts before they affect any files or database state.</p></header>
+            <div class="settings-shell"><nav class="settings-nav" aria-label="Settings sections"><p>Settings</p><a href="#settings-workspace">Workspace</a><a href="#settings-indexing">Indexing</a><a href="#settings-tags">Tags</a></nav><div>
+              <section class="settings-section" id="settings-workspace" aria-labelledby="settings-workspace-title"><h2 id="settings-workspace-title">Workspace</h2><p>Search remains the startup and primary working surface. Workspace views decide which secondary surfaces are available here.</p><div class="settings-row"><div><strong>Workspace views</strong><small>Enable, order, and choose the startup view for Product research.</small></div><button class="secondary-button" type="button" id="open-workspace-views">Manage views</button></div></section>
+              <section class="settings-section" id="settings-indexing" aria-labelledby="settings-indexing-title"><h2 id="settings-indexing-title">Indexing</h2><p>Paths, policies, and capabilities are configured here so they do not compete with search. Values below are illustrative only.</p><div class="settings-row"><div><strong>Allowed source paths</strong><small>Future validation resolves, normalizes, and checks every local path at the service edge.</small></div></div><div class="source-row"><div><h3>Product research</h3><p>Illustrative allowed root · recursive</p></div><span>12,806 files</span><span class="source-state">Illustrative · available</span></div><div class="source-row"><div><h3>Shared references</h3><p>Illustrative allowed root · recursive</p></div><span>5,614 files</span><span class="source-state">Illustrative · available</span></div><div id="added-sources"></div><div class="path-composer"><div style="flex:1"><label class="field-label" for="source-path">Add a local source path</label><input id="source-path" type="text" placeholder="Illustrative local path"></div><button class="secondary-button" type="button" id="add-source">Add path</button></div><div class="settings-row"><div><strong>Indexing features</strong><small>Keep existing defaults and precedence authoritative until a service contract is designed.</small></div></div><div class="settings-checks"><label><input type="checkbox" checked> Incremental scope</label><label><input type="checkbox" checked> Respect ignore rules</label><label><input type="checkbox"> OCR when capability is available</label><label><input id="collect-virtual-tags" type="checkbox" checked> Collect virtual tags from indexed metadata</label></div><div class="index-action"><p id="index-action-status">Prototype action only. Production requires a reviewed index plan, a single-writer policy, and a job-backed outcome.</p><button class="primary-button" type="button" id="run-index">Index now</button></div><p class="health-footnote">Freshness is never inferred from this screen. A real UI reports it only from a tested generation and job-state contract.</p></section>
+              <section class="settings-section" id="settings-tags" aria-labelledby="settings-tags-title"><h2 id="settings-tags-title">Tags</h2><p>Virtual tags can be collected automatically during indexing; manually added tags remain distinguishable and can use any chosen colour.</p><div class="tag-group"><h3>Illustrative virtual tags</h3><div class="tag-list" id="virtual-tags"><span class="tag-chip" style="--tag-color:#496ac4">research</span><span class="tag-chip" style="--tag-color:#2f8b65">decision</span><span class="tag-chip" style="--tag-color:#ad6a36">release</span></div></div><div class="tag-group"><h3>Manual tags</h3><div class="tag-list" id="manual-tags"><span class="tag-chip" style="--tag-color:#8e5a9f">needs-review</span></div><div class="tag-composer"><div style="flex:1"><label class="field-label" for="new-tag">Add a tag</label><input id="new-tag" type="text" maxlength="40" placeholder="e.g. customer-interview"></div><div><label class="field-label" for="tag-colour">Colour</label><input id="tag-colour" type="color" value="#3159c9"></div><button class="secondary-button" type="button" id="add-tag">Add tag</button></div></div></section>
+            </div></div>
           </section>
         </section>
 
@@ -179,7 +214,7 @@
       </div>
     </main>
 
-    <dialog id="view-dialog" aria-labelledby="view-dialog-title"><form method="dialog"><header><div><p class="eyebrow">PRODUCT RESEARCH</p><h2 id="view-dialog-title">Workspace views</h2><p>Choose what this workspace needs. Disabled views disappear from navigation.</p></div><button class="icon-button" value="cancel" aria-label="Close view manager">×</button></header><div class="view-list"><div class="view-row" data-view="search"><div class="move-controls" aria-label="Reorder Search"><button type="button" class="move-button" data-direction="up" aria-label="Move Search up" disabled>↑</button><button type="button" class="move-button" data-direction="down" aria-label="Move Search down">↓</button></div><label><input type="checkbox" checked> <strong>Search</strong><small>Find and compare indexed files</small></label><span class="startup-tag">Startup</span></div><div class="view-row" data-view="activity"><div class="move-controls" aria-label="Reorder Activity"><button type="button" class="move-button" data-direction="up" aria-label="Move Activity up">↑</button><button type="button" class="move-button" data-direction="down" aria-label="Move Activity down">↓</button></div><label><input type="checkbox" checked> <strong>Activity</strong><small>Review proposed activity states</small></label><button class="pin-button" type="button">Make startup</button></div><div class="view-row" data-view="index-health"><div class="move-controls" aria-label="Reorder Index health"><button type="button" class="move-button" data-direction="up" aria-label="Move Index health up">↑</button><button type="button" class="move-button" data-direction="down" aria-label="Move Index health down" disabled>↓</button></div><label><input type="checkbox" checked> <strong>Index health</strong><small>Review proposed source and freshness states</small></label><button class="pin-button" type="button">Make startup</button></div></div><footer><p><strong>Startup view:</strong> <span id="startup-name">Search</span></p><button class="primary-button" value="default">Done</button></footer></form></dialog>
+    <dialog id="view-dialog" aria-labelledby="view-dialog-title"><form method="dialog"><header><div><p class="eyebrow">PRODUCT RESEARCH</p><h2 id="view-dialog-title">Workspace views</h2><p>Choose what this workspace needs. Disabled views disappear from navigation.</p></div><button class="icon-button" value="cancel" aria-label="Close view manager">×</button></header><div class="view-list"><div class="view-row" data-view="search"><div class="move-controls" aria-label="Reorder Search"><button type="button" class="move-button" data-direction="up" aria-label="Move Search up" disabled>↑</button><button type="button" class="move-button" data-direction="down" aria-label="Move Search down">↓</button></div><label><input type="checkbox" checked> <strong>Search</strong><small>Find and compare indexed files</small></label><span class="startup-tag">Startup</span></div><div class="view-row" data-view="activity"><div class="move-controls" aria-label="Reorder Activity"><button type="button" class="move-button" data-direction="up" aria-label="Move Activity up">↑</button><button type="button" class="move-button" data-direction="down" aria-label="Move Activity down" disabled>↓</button></div><label><input type="checkbox" checked> <strong>Activity</strong><small>Review proposed activity states</small></label><button class="pin-button" type="button">Make startup</button></div></div><footer><p><strong>Startup view:</strong> <span id="startup-name">Search</span></p><button class="primary-button" value="default">Done</button></footer></form></dialog>
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script src="app.js"></script>
   </body>
