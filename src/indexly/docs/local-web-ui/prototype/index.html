@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark light">
+    <title>Indexly — Search workspace prototype</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+      .workspace { --inspector-width: 390px; grid-template-columns: 252px minmax(500px, 1fr) 9px var(--inspector-width); }
+      .workspace.inspector-collapsed { grid-template-columns: 252px minmax(500px, 1fr) 0 0; }
+      .workspace.inspector-collapsed .splitter, .workspace.inspector-collapsed .inspector { overflow: hidden; visibility: hidden; }
+      .workspace.inspector-collapsed .show-inspector { display: block; }
+      .move-controls { display: grid; gap: 2px; }
+      .move-button { width: 23px; height: 18px; padding: 0; border: 1px solid #d6d9d7; border-radius: 3px; background: #fff; color: #45515a; line-height: 1; }
+      .move-button:disabled { opacity: .35; cursor: not-allowed; }
+      .move-button:focus-visible { outline: 2px solid #3159c9; outline-offset: 1px; }
+      .workspace-nav-toggle, .drawer-close { display: none; }
+      @media (max-width: 1050px) and (min-width: 801px) {
+        .workspace { position: relative; grid-template-columns: minmax(0, 1fr) 0 0; }
+        .workspace.inspector-collapsed { grid-template-columns: minmax(0, 1fr) 0 0; }
+        .workspace-nav-toggle { display: inline-flex; align-items: center; gap: 6px; border: 1px solid #444a4e; border-radius: 7px; background: transparent; color: #f3f4f4; padding: 7px 10px; font-size: 12px; }
+        .sidebar { display: none; position: absolute; z-index: 4; inset: 0 auto 0 0; width: 270px; box-shadow: 12px 0 28px #1118; }
+        .workspace.nav-open .sidebar { display: flex; }
+        .drawer-close { display: block; position: absolute; right: 12px; top: 16px; width: 28px; height: 28px; border: 1px solid #555b60; border-radius: 6px; background: transparent; color: #e4e6e7; font-size: 17px; }
+        .workspace:not(.inspector-collapsed) .splitter, .workspace:not(.inspector-collapsed) .inspector { visibility: hidden; overflow: hidden; }
+        .workspace:not(.inspector-collapsed) .show-inspector { display: block; }
+        .workspace.inspector-visible { grid-template-columns: minmax(0, 1fr) 9px var(--inspector-width); }
+        .workspace.inspector-visible .splitter, .workspace.inspector-visible .inspector { visibility: visible; overflow: auto; }
+        .workspace.inspector-visible .show-inspector { display: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <a class="skip-link" href="#results">Skip to results</a>
+    <main class="app-shell" aria-label="Indexly search workspace prototype">
+      <header class="topbar">
+        <button class="brand" aria-label="Indexly home"><span class="brand-mark">I</span><span>indexly</span></button>
+        <div class="workspace-identity"><span class="eyebrow">WORKSPACE</span><strong>Product research</strong><span class="sync-state"><i></i> Index current</span></div>
+        <div class="topbar-actions">
+          <button class="workspace-nav-toggle" id="workspace-nav-toggle" aria-controls="workspace-navigation" aria-expanded="false">Workspace <span aria-hidden="true">☰</span></button>
+          <button class="quiet-button" id="workspace-manager" aria-haspopup="dialog">Manage views</button>
+          <button class="avatar" aria-label="Open account menu">FK</button>
+        </div>
+      </header>
+
+      <div class="workspace">
+        <nav class="sidebar" id="workspace-navigation" aria-label="Workspace navigation">
+          <button class="drawer-close" id="workspace-nav-close" aria-label="Close workspace navigation">×</button>
+          <button class="new-search"><span>+</span> New search <kbd>⌘ K</kbd></button>
+          <section>
+            <p class="nav-label">Workspace views</p>
+            <a class="nav-item active" href="#search" aria-current="page"><span class="nav-icon search-icon">⌕</span> Search</a>
+            <a class="nav-item" href="#activity"><span class="nav-icon">◷</span> Activity <span class="nav-badge">3</span></a>
+            <a class="nav-item" href="#index"><span class="nav-icon">◫</span> Index health</a>
+          </section>
+          <section class="collections">
+            <p class="nav-label">Saved searches</p>
+            <a class="nav-item" href="#">Release planning</a>
+            <a class="nav-item" href="#">Research notes</a>
+            <button class="text-button">+ Save current search</button>
+          </section>
+          <div class="sidebar-foot">
+            <button class="workspace-switcher" aria-label="Switch workspace"><span class="workspace-dot"></span> Product research <span>⌄</span></button>
+            <button class="settings-link" id="settings-button">Workspace settings <span>›</span></button>
+          </div>
+        </nav>
+
+        <section class="search-pane" id="search" aria-label="Search">
+          <div class="search-head">
+            <div>
+              <p class="eyebrow">LOCAL KNOWLEDGE SEARCH</p>
+              <h1>Find the decision, not just the file.</h1>
+            </div>
+            <button class="filter-button" id="filters-toggle" aria-expanded="false" aria-controls="filters">Filter <span>3</span></button>
+          </div>
+          <form class="search-form" role="search">
+            <label class="sr-only" for="query">Search indexed files</label>
+            <span aria-hidden="true">⌕</span><input id="query" value="workspace startup view" autocomplete="off">
+            <button type="submit">Search</button>
+          </form>
+          <div class="filter-row" id="filters" hidden>
+            <button class="chip" type="button">All files <span>⌄</span></button><button class="chip" type="button">Last 12 months <span>⌄</span></button><button class="chip" type="button">Product research <span>×</span></button>
+          </div>
+          <div class="result-toolbar"><p><strong>24 results</strong> for “workspace startup view”</p><button class="sort-button">Relevance <span>⌄</span></button></div>
+
+          <div class="results" id="results" tabindex="-1" aria-live="polite">
+            <article class="result selected" tabindex="0" data-title="Local web UI — workspace views" data-type="MD" data-path="docs/local-web-ui/architecture.md" data-date="Modified yesterday" data-body="A workspace owns the enabled views, their order, and its startup view. Search is the default for research workspaces; the reader remembers its width and can be closed without losing context.">
+              <div class="file-mark md">MD</div><div class="result-copy"><h2>Local web UI — workspace views</h2><p>A workspace owns the enabled views, their order, and its <mark>startup view</mark>. Search is the default for research workspaces.</p><footer><span>docs/local-web-ui/architecture.md</span><time>Yesterday</time></footer></div><span class="result-arrow" aria-hidden="true">↗</span>
+            </article>
+            <article class="result" tabindex="0" data-title="Search workspace acceptance criteria" data-type="MD" data-path="docs/local-web-ui/feature-parity.md" data-date="Modified Aug 28" data-body="Search results own the main canvas. The reader, Activity, and Index are secondary contextual views which can be enabled per workspace.">
+              <div class="file-mark md">MD</div><div class="result-copy"><h2>Search workspace acceptance criteria</h2><p>Search results own the main canvas. Reader, Activity, and Index stay available as contextual <mark>workspace views</mark>.</p><footer><span>docs/local-web-ui/feature-parity.md</span><time>Aug 28</time></footer></div><span class="result-arrow" aria-hidden="true">↗</span>
+            </article>
+            <article class="result" tabindex="0" data-title="Interview synthesis: navigation" data-type="TXT" data-path="research/interviews/navigation-synthesis.txt" data-date="Modified Aug 21" data-body="Participants wanted their last useful view to open immediately. Startup preference should be scoped to the workspace, not a global product setting.">
+              <div class="file-mark txt">TXT</div><div class="result-copy"><h2>Interview synthesis: navigation</h2><p>Participants wanted their last useful view to open immediately. Startup preference should be scoped to the <mark>workspace</mark>.</p><footer><span>research/interviews/navigation-synthesis.txt</span><time>Aug 21</time></footer></div><span class="result-arrow" aria-hidden="true">↗</span>
+            </article>
+            <article class="result" tabindex="0" data-title="Workspace preferences research" data-type="PDF" data-path="references/workspace-preferences.pdf" data-date="Modified Aug 17" data-body="A compact view manager makes personalisation understandable: enable, reorder, pin, then choose the startup view. Disabled views should leave navigation entirely.">
+              <div class="file-mark pdf">PDF</div><div class="result-copy"><h2>Workspace preferences research</h2><p>A compact manager makes personalisation understandable: enable, reorder, pin, then choose the <mark>startup view</mark>.</p><footer><span>references/workspace-preferences.pdf</span><time>Aug 17</time></footer></div><span class="result-arrow" aria-hidden="true">↗</span>
+            </article>
+          </div>
+        </section>
+
+        <div class="splitter" id="splitter" role="separator" aria-orientation="vertical" aria-label="Resize inspector" aria-valuemin="270" aria-valuemax="540" aria-valuenow="390" tabindex="0"><span></span></div>
+        <aside class="inspector" id="inspector" aria-label="Document inspector">
+          <header class="inspector-head"><div><p class="eyebrow">INSPECTOR</p><strong id="preview-kind">Markdown document</strong></div><div><button class="icon-button" id="open-original" aria-label="Open original document">↗</button><button class="icon-button" id="collapse-preview" aria-label="Close inspector">×</button></div></header>
+          <div class="document"><div class="document-meta"><span id="preview-type" class="type-pill">MD</span><span id="preview-date">Modified yesterday</span></div><h2 id="preview-title">Local web UI — workspace views</h2><p id="preview-body">A workspace owns the enabled views, their order, and its startup view. Search is the default for research workspaces; the reader remembers its width and can be closed without losing context.</p><hr><h3>Workspace-specific defaults</h3><p>Views should be a calm, intentional arrangement—not a fixed dashboard. Search is dominant here because this workspace is used to retrieve and compare research.</p><blockquote>Startup choices are specific to the current workspace, so a writing workspace can open to a reader while research starts in search.</blockquote><p class="document-path" id="preview-path">docs/local-web-ui/architecture.md</p></div>
+        </aside>
+        <button class="show-inspector" id="show-preview" hidden aria-controls="inspector">Show inspector <span>›</span></button>
+      </div>
+    </main>
+
+    <dialog id="view-dialog" aria-labelledby="view-dialog-title"><form method="dialog"><header><div><p class="eyebrow">PRODUCT RESEARCH</p><h2 id="view-dialog-title">Workspace views</h2><p>Choose what this workspace needs. Disabled views disappear from navigation.</p></div><button class="icon-button" value="cancel" aria-label="Close view manager">×</button></header><div class="view-list"><div class="view-row"><div class="move-controls" aria-label="Reorder Search"><button type="button" class="move-button" data-direction="up" aria-label="Move Search up" disabled>↑</button><button type="button" class="move-button" data-direction="down" aria-label="Move Search down">↓</button></div><label><input type="checkbox" checked> <strong>Search</strong><small>Find and compare indexed files</small></label><span class="startup-tag">Startup</span></div><div class="view-row"><div class="move-controls" aria-label="Reorder Activity"><button type="button" class="move-button" data-direction="up" aria-label="Move Activity up">↑</button><button type="button" class="move-button" data-direction="down" aria-label="Move Activity down">↓</button></div><label><input type="checkbox" checked> <strong>Activity</strong><small>Review index jobs and recent changes</small></label><button class="pin-button" type="button">Make startup</button></div><div class="view-row"><div class="move-controls" aria-label="Reorder Index health"><button type="button" class="move-button" data-direction="up" aria-label="Move Index health up">↑</button><button type="button" class="move-button" data-direction="down" aria-label="Move Index health down" disabled>↓</button></div><label><input type="checkbox" checked> <strong>Index health</strong><small>See sources, freshness, and capacity</small></label><button class="pin-button" type="button">Make startup</button></div></div><footer><p><strong>Startup view:</strong> <span id="startup-name">Search</span></p><button class="primary-button" value="default">Done</button></footer></form></dialog>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="app.js"></script>
+  </body>
+</html>
