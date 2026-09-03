@@ -9,6 +9,12 @@
   const navToggle = $('#workspace-nav-toggle');
   const navigation = $('#workspace-navigation');
   const mainContent = $('#main-content');
+  const indexButton = $('#run-index');
+  const indexStatus = $('#index-action-status');
+  const invalidatePlan = () => {
+    indexButton.disabled = true;
+    indexStatus.textContent = 'Settings changed. Review a new no-write plan before the illustrative index action can be enabled.';
+  };
   const isTabletDrawer = () => window.matchMedia('(max-width: 1050px) and (min-width: 801px)').matches;
   const setDrawerState = (open) => {
     const active = open && isTabletDrawer();
@@ -92,12 +98,49 @@
     const scope = document.createElement('span'); scope.textContent = 'Not indexed';
     const state = document.createElement('span'); state.className = 'source-state'; state.textContent = 'Prototype only';
     row.append(details, scope, state); $('#added-sources').append(row); input.value = '';
+    invalidatePlan();
     showToast('Illustrative source added locally; no filesystem scope changed.');
   });
-  $('#run-index').addEventListener('click', () => {
-    $('#index-action-status').textContent = 'Illustrative index intent recorded. No plan, filesystem operation, or database write was started.';
-    showToast('Prototype only — a real index run requires a reviewed plan.');
+  $('#review-index-plan').addEventListener('click', () => {
+    indexButton.disabled = false;
+    indexStatus.textContent = 'Illustrative no-write plan reviewed: 18,420 candidates, 0 active writers. No filesystem or database state was inspected.';
+    showToast('Static plan reviewed — Start index is now enabled for this prototype state.');
   });
+  indexButton.addEventListener('click', () => {
+    indexStatus.textContent = 'Illustrative index job accepted. No filesystem operation or database write was started.';
+    indexButton.disabled = true;
+    showToast('Prototype only — recorded an accepted job state, not a successful index.');
+  });
+  document.querySelectorAll('#settings-indexing input').forEach((input) => input.addEventListener('change', invalidatePlan));
+
+  const useSystemTesseract = $('#use-system-tesseract');
+  const tesseractPath = $('#tesseract-path');
+  const tesseractStatus = $('#tesseract-status');
+  useSystemTesseract.addEventListener('change', () => {
+    tesseractPath.disabled = useSystemTesseract.checked;
+    tesseractStatus.textContent = useSystemTesseract.checked ? 'PATH selected · not checked' : 'Configured path · not checked';
+    if (!useSystemTesseract.checked) tesseractPath.focus();
+    invalidatePlan();
+  });
+  $('#check-tesseract').addEventListener('click', () => {
+    if (useSystemTesseract.checked) {
+      tesseractStatus.textContent = 'PATH check illustrated';
+      showToast('Prototype only — a real service would run a bounded direct version check.');
+      return;
+    }
+    if (!tesseractPath.value.trim()) {
+      tesseractPath.focus();
+      tesseractStatus.textContent = 'Executable path required';
+      showToast('Specify an absolute executable path; command arguments are not accepted.');
+      return;
+    }
+    tesseractStatus.textContent = 'Configured path check illustrated';
+    showToast('Prototype only — no executable was opened or validated.');
+  });
+  document.querySelectorAll('input[name="ocr-mode"]').forEach((input) => input.addEventListener('change', () => {
+    invalidatePlan();
+    showToast(`${input.parentElement.textContent.trim()} selected for the next illustrative plan.`);
+  }));
   const addManualTag = () => {
     const nameInput = $('#new-tag'); const name = nameInput.value.trim().replace(/^#/, '');
     if (!name) { nameInput.focus(); return; }
@@ -118,8 +161,52 @@
 
   $('#filters-toggle').addEventListener('click', (event) => { const filters = $('#filters'); filters.hidden = !filters.hidden; event.currentTarget.setAttribute('aria-expanded', String(!filters.hidden)); });
   $('.search-form').addEventListener('submit', (event) => { event.preventDefault(); showToast(`Showing static prototype results for “${$('#query').value}”.`); });
-  const dialog = $('#view-dialog');
-  $('#open-workspace-views').addEventListener('click', () => dialog.showModal());
+  document.querySelectorAll('[data-search-mode]').forEach((button) => button.addEventListener('click', () => {
+    document.querySelectorAll('[data-search-mode]').forEach((mode) => mode.setAttribute('aria-pressed', String(mode === button)));
+    const isFts = button.dataset.searchMode === 'fts';
+    $('#search-mode-help').textContent = isFts ? 'FTS supports relevance, fuzzy, NEAR, and metadata filters.' : 'Regex uses a smaller filter set and explicit scan, time, and result limits.';
+    $('#filter-count').textContent = isFts ? '3' : '2';
+    $('#search-sort').firstChild.textContent = `${isFts ? 'Relevance' : 'Path order'} `;
+    showToast(`${isFts ? 'Full text' : 'Regex'} mode selected; unsupported controls would be removed by the real schema.`);
+  }));
+  let illustrativePage = 1;
+  const renderPageState = () => {
+    $('#previous-page').disabled = illustrativePage === 1;
+    $('#next-page').disabled = illustrativePage === 6;
+    const start = ((illustrativePage - 1) * 4) + 1;
+    $('#page-status').textContent = `Illustrative page ${illustrativePage} of 6 · rows ${start}–${start + 3}`;
+  };
+  $('#previous-page').addEventListener('click', () => { illustrativePage -= 1; renderPageState(); showToast('Pagination state changed; sample result rows remain static.'); });
+  $('#next-page').addEventListener('click', () => { illustrativePage += 1; renderPageState(); showToast('Pagination state changed; sample result rows remain static.'); });
+
+  const exportDialog = $('#export-dialog');
+  const exportFormat = $('#export-format');
+  const exportPath = $('#export-path');
+  const extensions = { md: '.md', pdf: '.pdf', txt: '.txt', json: '.json' };
+  const updateExportFormat = () => {
+    const format = exportFormat.value;
+    const base = exportPath.value.replace(/\.[^./\\]+$/, '');
+    exportPath.value = `${base || 'exports/search-results'}${extensions[format]}`;
+    $('#export-capability').textContent = format === 'pdf'
+      ? 'PDF requires the optional pdf_export group. A real service checks it before accepting the job; existing files are not overwritten by default.'
+      : format === 'md'
+        ? 'Markdown is planned, but the current search dispatcher gap must be fixed and tested first. Existing files are not overwritten by default.'
+        : `${format === 'txt' ? 'Plain text' : 'JSON'} uses the base capability. Existing files are not overwritten by default.`;
+  };
+  $('#export-results').addEventListener('click', () => { $('#export-status').textContent = 'Review the scope, format, destination, and collision policy before a future export job is accepted.'; exportDialog.showModal(); });
+  exportFormat.addEventListener('change', updateExportFormat);
+  $('#close-export').addEventListener('click', () => exportDialog.close());
+  $('#cancel-export').addEventListener('click', () => exportDialog.close());
+  $('#export-form').addEventListener('submit', (event) => {
+    event.preventDefault();
+    if (!exportPath.value.trim()) { exportPath.focus(); showToast('Enter a relative output path.'); return; }
+    const scope = document.querySelector('input[name="export-scope"]:checked').value === 'all' ? 'all 24 illustrative results' : 'the selected illustrative result';
+    $('#export-status').textContent = `Illustrative receipt prepared for ${scope} as ${exportFormat.options[exportFormat.selectedIndex].text}. No file was written.`;
+    showToast('Export reviewed — no file was written by this static prototype.');
+  });
+
+  const viewDialog = $('#view-dialog');
+  $('#open-workspace-views').addEventListener('click', () => viewDialog.showModal());
   const viewList = $('.view-list');
   const updateViewControls = () => {
     [...viewList.querySelectorAll('.view-row')].forEach((row, index, rows) => {
@@ -171,4 +258,8 @@
     }
   });
   updateViewControls();
+  const previewParameters = new URLSearchParams(window.location.search);
+  const previewView = previewParameters.get('view');
+  if (['search', 'activity', 'settings'].includes(previewView)) showWorkspaceView(previewView);
+  if (previewParameters.get('dialog') === 'export') exportDialog.showModal();
 })();

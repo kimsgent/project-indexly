@@ -28,6 +28,7 @@ scope interpretation without a dated amendment and operator approval.
 | LUI-ADR-012 | Filesystem-mutating and environment-mutating operations remain excluded | Candidate |
 | LUI-ADR-013 | Additive packaging; CLI startup and default dependencies remain unchanged | Candidate |
 | LUI-ADR-014 | Accessibility, privacy, offline use, and rollback are release gates | Candidate |
+| LUI-ADR-015 | Tesseract uses PATH discovery by default with an explicitly validated executable override | Candidate |
 
 ## LUI-ADR-001 — local product boundary
 
@@ -263,6 +264,26 @@ usable; they are not polish to defer after functional screens exist.
 **Consequences.** The [validation strategy](../delivery/validation.md) defines
 required evidence. Release decisions must record exceptions explicitly rather
 than silently reducing the gate.
+
+## LUI-ADR-015 — Tesseract discovery and override
+
+**Decision.** OCR uses the existing `PATH` discovery behavior by default. The
+local web settings may store one explicit absolute Tesseract executable path as
+a machine-specific override. The override is external-tool configuration, not
+an indexed-content root, job argument, shell command, or bundled dependency.
+
+**Rationale.** Tesseract is a system executable and is not installed by
+Project-Indexly's Python `documents` extra. Windows and custom installations
+commonly do not place it on `PATH`, so a local operator needs an explicit
+configuration route without weakening execution safety.
+
+**Consequences.** The service accepts a path only through authenticated,
+same-origin, versioned Settings. It rejects arguments and non-file targets,
+canonicalizes the path, and validates it by direct process invocation—never a
+shell—with a fixed `--version` argument, bounded output, sanitized working
+directory/environment, and timeout. It reports source (`PATH` or configured),
+version, and unavailable/invalid state without installing software. Every OCR
+job snapshots and revalidates the selected executable identity before use.
 
 ## Amendment log
 

@@ -85,6 +85,36 @@
       .index-action { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 14px; padding: 13px; border: 1px solid #cbd2e7; border-radius: 7px; background: #f0f3fd; }
       .index-action p { margin: 0; color: #56616a; font-size: 11px; }
       .index-action .primary-button { margin: 0; white-space: nowrap; }
+      .primary-button:disabled { cursor: not-allowed; opacity: .5; }
+      .search-mode-bar { display: flex; align-items: center; gap: 7px; margin: 0 0 10px; color: #59636b; font-size: 11px; }
+      .search-mode-bar > span { font-weight: 700; }
+      .mode-button { border: 1px solid var(--line); border-radius: 99px; background: #fff; color: #4b555e; padding: 5px 9px; font-size: 11px; }
+      .mode-button[aria-pressed="true"] { border-color: #3159c9; background: var(--blue-soft); color: #284fae; font-weight: 700; }
+      .mode-help { margin-left: 3px; }
+      .toolbar-actions, .pagination { display: flex; align-items: center; gap: 7px; }
+      .pagination { justify-content: flex-end; padding: 12px 0 28px; color: #697078; font-size: 11px; }
+      .pagination button:disabled { cursor: not-allowed; opacity: .45; }
+      .status-pill { display: inline-block; border: 1px solid #9eb2a4; border-radius: 99px; background: #edf7ef; color: #287041; padding: 3px 7px; font-size: 10px; font-weight: 700; }
+      .tool-config { display: grid; gap: 12px; padding: 14px 0; border-top: 1px solid #e2e4e2; }
+      .path-field { min-width: 0; flex: 1; }
+      .path-field input { width: 100%; }
+      .tool-toggle { display: flex; align-items: center; gap: 7px; color: #47515a; font-size: 12px; }
+      .setting-fieldset { display: flex; flex-wrap: wrap; gap: 12px; border: 0; margin: 0; padding: 0; }
+      .setting-fieldset legend { width: 100%; margin-bottom: 3px; color: #4d5760; font-size: 11px; font-weight: 700; }
+      .setting-fieldset label { display: flex; align-items: center; gap: 6px; color: #47515a; font-size: 12px; }
+      .tool-help { margin: 0; color: #606971; font-size: 11px; }
+      .dialog-body { display: grid; gap: 16px; padding: 20px 25px; }
+      .dialog-body label, .dialog-body legend { color: #4d5760; font-size: 11px; font-weight: 700; }
+      .dialog-body input[type="text"], .dialog-body select { width: 100%; margin-top: 5px; border: 1px solid #c7ccca; border-radius: 6px; background: #fff; padding: 8px 9px; color: var(--text); font: inherit; font-size: 12px; }
+      .export-scope { display: grid; gap: 7px; border: 0; margin: 0; padding: 0; }
+      .export-scope label { display: flex; align-items: center; gap: 7px; font-weight: 500; }
+      .export-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+      .export-note { margin: 0; padding: 10px 11px; border-left: 2px solid var(--blue); background: #f0f3fd; color: #56616a; font-size: 11px; }
+      .dialog-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; background: #f5f6f4; padding: 14px 24px; }
+      dialog { background: #fff; }
+      .result-copy { min-width: 0; }
+      .result-copy footer span, .document-path { overflow-wrap: anywhere; }
+      .search-form input { background: #fff; }
       @media (max-width: 1050px) and (min-width: 801px) {
         .workspace { position: relative; grid-template-columns: minmax(0, 1fr) 0 0; }
         .workspace.inspector-collapsed { grid-template-columns: minmax(0, 1fr) 0 0; }
@@ -116,8 +146,35 @@
         .path-composer input, .tag-composer input[type="text"] { min-height: 36px; }
         .settings-row { grid-template-columns: 1fr; }
         .index-action { align-items: start; flex-direction: column; }
+        .search-mode-bar { align-items: flex-start; flex-wrap: wrap; }
+        .mode-help { width: 100%; }
+        .result-toolbar { align-items: flex-start; flex-wrap: wrap; }
+        .result-toolbar > p { margin-bottom: 0; }
+        .toolbar-actions { width: 100%; justify-content: space-between; }
+        .pagination { justify-content: space-between; }
+        .export-grid { grid-template-columns: 1fr; }
       }
       @media (max-width: 800px) { .quiet-button.manage-views { display: block; } }
+      @media (max-width: 800px) { .sidebar section.collections { display: none; } }
+      @media (max-width: 460px) { .topbar .avatar { display: none; } }
+      @media (max-width: 460px) {
+        body { overflow-x: hidden; }
+        .topbar { gap: 12px; }
+        .brand { flex: 0 0 auto; }
+        .topbar-actions { min-width: 0; }
+        .workspace-nav-toggle { padding-inline: 8px; }
+        .search-pane, .view-page, .results, .result-copy { min-width: 0; max-width: 100%; }
+        .search-form { min-width: 0; }
+        .search-form input { width: 0; }
+        .result { grid-template-columns: 29px minmax(0, 1fr); gap: 9px; }
+        .result-arrow { display: none; }
+        dialog { max-width: calc(100vw - 24px); overflow: hidden; }
+        dialog form, dialog header > div, .dialog-body > *, .export-grid > * { min-width: 0; }
+        dialog form > header, .dialog-body { padding-inline: 18px; }
+        .dialog-actions { padding-inline: 18px; }
+        .export-scope label { align-items: flex-start; }
+      }
+      button.show-inspector[hidden] { display: none !important; }
     </style>
   </head>
   <body>
@@ -161,7 +218,13 @@
               <p class="eyebrow">LOCAL KNOWLEDGE SEARCH</p>
               <h1 id="search-title" tabindex="-1">Find the decision, not just the file.</h1>
             </div>
-            <button class="filter-button" id="filters-toggle" aria-expanded="false" aria-controls="filters">Filter <span>3</span></button>
+            <button class="filter-button" id="filters-toggle" aria-expanded="false" aria-controls="filters">Filter <span id="filter-count">3</span></button>
+          </div>
+          <div class="search-mode-bar" role="group" aria-label="Search mode">
+            <span>Mode</span>
+            <button class="mode-button" type="button" data-search-mode="fts" aria-pressed="true">Full text</button>
+            <button class="mode-button" type="button" data-search-mode="regex" aria-pressed="false">Regex</button>
+            <span class="mode-help" id="search-mode-help">FTS supports relevance, fuzzy, NEAR, and metadata filters.</span>
           </div>
           <form class="search-form" role="search">
             <label class="sr-only" for="query">Search indexed files</label>
@@ -171,7 +234,7 @@
           <div class="filter-row" id="filters" hidden>
             <button class="chip" type="button">All files <span>⌄</span></button><button class="chip" type="button">Last 12 months <span>⌄</span></button><button class="chip" type="button">Product research <span>×</span></button>
           </div>
-          <div class="result-toolbar"><p><strong>24 results</strong> for “workspace startup view”</p><button class="sort-button">Relevance <span>⌄</span></button></div>
+          <div class="result-toolbar"><p><strong>24 illustrative results</strong> for “workspace startup view”</p><div class="toolbar-actions"><button class="secondary-button" type="button" id="export-results">Export results</button><button class="sort-button" id="search-sort" type="button">Relevance <span>⌄</span></button></div></div>
 
           <div class="results" id="results" tabindex="-1" aria-live="polite">
             <article class="result selected" tabindex="0" data-title="Local web UI — workspace views" data-type="MD" data-path="blueprints/local-web-ui/architecture/system-architecture.md" data-date="Modified yesterday" data-body="A workspace owns the enabled views, their order, and its startup view. Search is the default for research workspaces; the reader remembers its width and can be closed without losing context.">
@@ -187,6 +250,11 @@
               <div class="file-mark pdf">PDF</div><div class="result-copy"><h2>Workspace preferences research</h2><p>A compact manager makes personalisation understandable: enable, reorder, pin, then choose the <mark>startup view</mark>.</p><footer><span>references/workspace-preferences.pdf</span><time>Aug 17</time></footer></div><span class="result-arrow" aria-hidden="true">↗</span>
             </article>
           </div>
+          <nav class="pagination" aria-label="Illustrative search result pages">
+            <button class="secondary-button" type="button" id="previous-page" disabled>Previous</button>
+            <span id="page-status" aria-live="polite">Illustrative page 1 of 6 · rows 1–4</span>
+            <button class="secondary-button" type="button" id="next-page">Next</button>
+          </nav>
           </section>
 
           <section class="view-page" id="activity-page" aria-labelledby="activity-title" hidden>
@@ -197,9 +265,37 @@
 
           <section class="view-page" id="settings-page" aria-labelledby="settings-title" hidden>
             <header class="page-heading"><div><p class="eyebrow">SETTINGS</p><h1 id="settings-title" tabindex="-1">Configure the workspace, then index.</h1></div><p class="prototype-note">A static V2-oriented concept. Source, tag, and indexing controls need future local-service contracts before they affect any files or database state.</p></header>
-            <div class="settings-shell"><nav class="settings-nav" aria-label="Settings sections"><p>Settings</p><a href="#settings-workspace">Workspace</a><a href="#settings-indexing">Indexing</a><a href="#settings-tags">Tags</a></nav><div>
+            <div class="settings-shell"><nav class="settings-nav" aria-label="Settings sections"><p>Settings</p><a href="#settings-workspace">Workspace</a><a href="#settings-indexing">Indexing</a><a href="#settings-ocr">OCR &amp; tools</a><a href="#settings-tags">Tags</a></nav><div>
               <section class="settings-section" id="settings-workspace" aria-labelledby="settings-workspace-title"><h2 id="settings-workspace-title">Workspace</h2><p>Search remains the startup and primary working surface. Workspace views decide which secondary surfaces are available here.</p><div class="settings-row"><div><strong>Workspace views</strong><small>Enable, order, and choose the startup view for Product research.</small></div><button class="secondary-button" type="button" id="open-workspace-views">Manage views</button></div></section>
-              <section class="settings-section" id="settings-indexing" aria-labelledby="settings-indexing-title"><h2 id="settings-indexing-title">Indexing</h2><p>Paths, policies, and capabilities are configured here so they do not compete with search. Values below are illustrative only.</p><div class="settings-row"><div><strong>Allowed source paths</strong><small>Future validation resolves, normalizes, and checks every local path at the service edge.</small></div></div><div class="source-row"><div><h3>Product research</h3><p>Illustrative allowed root · recursive</p></div><span>12,806 files</span><span class="source-state">Illustrative · available</span></div><div class="source-row"><div><h3>Shared references</h3><p>Illustrative allowed root · recursive</p></div><span>5,614 files</span><span class="source-state">Illustrative · available</span></div><div id="added-sources"></div><div class="path-composer"><div style="flex:1"><label class="field-label" for="source-path">Add a local source path</label><input id="source-path" type="text" placeholder="Illustrative local path"></div><button class="secondary-button" type="button" id="add-source">Add path</button></div><div class="settings-row"><div><strong>Indexing features</strong><small>Keep existing defaults and precedence authoritative until a service contract is designed.</small></div></div><div class="settings-checks"><label><input type="checkbox" checked> Incremental scope</label><label><input type="checkbox" checked> Respect ignore rules</label><label><input type="checkbox"> OCR when capability is available</label><label><input id="collect-virtual-tags" type="checkbox" checked> Collect virtual tags from indexed metadata</label></div><div class="index-action"><p id="index-action-status">Prototype action only. Production requires a reviewed index plan, a single-writer policy, and a job-backed outcome.</p><button class="primary-button" type="button" id="run-index">Index now</button></div><p class="health-footnote">Freshness is never inferred from this screen. A real UI reports it only from a tested generation and job-state contract.</p></section>
+              <section class="settings-section" id="settings-indexing" aria-labelledby="settings-indexing-title">
+                <h2 id="settings-indexing-title">Indexing</h2>
+                <p>Paths, policies, and capabilities are configured here so they do not compete with search. Values below are illustrative only.</p>
+                <div class="health-summary" aria-label="Illustrative index health">
+                  <div><strong>18,420</strong><span>Illustrative indexed files</span></div>
+                  <div><strong>Current</strong><span>Illustrative generation state</span></div>
+                  <div><strong>None</strong><span>Active jobs in this sample</span></div>
+                </div>
+                <div class="settings-row"><div><strong>Allowed source paths</strong><small>Future validation resolves, normalizes, and checks every local path at the service edge.</small></div></div>
+                <div class="source-row"><div><h3>Product research</h3><p>Illustrative allowed root · recursive</p></div><span>12,806 files</span><span class="source-state">Illustrative · available</span></div>
+                <div class="source-row"><div><h3>Shared references</h3><p>Illustrative allowed root · recursive</p></div><span>5,614 files</span><span class="source-state">Illustrative · available</span></div>
+                <div id="added-sources"></div>
+                <div class="path-composer"><div class="path-field"><label class="field-label" for="source-path">Add a local source path</label><input id="source-path" type="text" placeholder="Illustrative local path"></div><button class="secondary-button" type="button" id="add-source">Add path</button></div>
+                <div class="settings-row"><div><strong>Indexing features</strong><small>Keep existing defaults and ignore precedence authoritative until shared services exist.</small></div></div>
+                <div class="settings-checks"><label><input type="checkbox" checked> Incremental scope</label><label><input type="checkbox" checked> Respect ignore rules</label><label><input id="collect-virtual-tags" type="checkbox" checked> Collect illustrative virtual tags from indexed metadata</label></div>
+                <div class="index-action"><p id="index-action-status" role="status" aria-live="polite">Review a no-write plan before the illustrative index action can be enabled.</p><div class="toolbar-actions"><button class="secondary-button" type="button" id="review-index-plan">Review plan</button><button class="primary-button" type="button" id="run-index" disabled>Start index</button></div></div>
+                <p class="health-footnote">Freshness is never inferred from this screen. A real UI reports it only from tested generation and job-state contracts.</p>
+              </section>
+              <section class="settings-section" id="settings-ocr" aria-labelledby="settings-ocr-title">
+                <h2 id="settings-ocr-title">OCR &amp; external tools</h2>
+                <p>Python document support and the external Tesseract executable are separate capabilities. Indexly does not install the system executable.</p>
+                <div class="settings-row"><div><strong>Tesseract capability</strong><small>Illustrative status only; a real service reports PATH or configured-path source and version.</small></div><span class="status-pill" id="tesseract-status">Not checked · prototype</span></div>
+                <div class="tool-config">
+                  <fieldset class="setting-fieldset"><legend>OCR mode</legend><label><input type="radio" name="ocr-mode" value="automatic" checked> Automatic fallback</label><label><input type="radio" name="ocr-mode" value="force"> Force OCR</label><label><input type="radio" name="ocr-mode" value="disabled"> Disabled</label></fieldset>
+                  <label class="tool-toggle"><input id="use-system-tesseract" type="checkbox" checked> Discover Tesseract from the host PATH</label>
+                  <div class="path-composer"><div class="path-field"><label class="field-label" for="tesseract-path">Tesseract executable path</label><input id="tesseract-path" type="text" placeholder="Absolute path to the Tesseract executable" disabled aria-describedby="tesseract-help"></div><button class="secondary-button" type="button" id="check-tesseract">Check path</button></div>
+                  <p class="tool-help" id="tesseract-help">A future service stores a path only, rejects command arguments, and validates the executable directly with a bounded no-shell version check.</p>
+                </div>
+              </section>
               <section class="settings-section" id="settings-tags" aria-labelledby="settings-tags-title"><h2 id="settings-tags-title">Tags</h2><p>Virtual tags can be collected automatically during indexing; manually added tags remain distinguishable and can use any chosen colour.</p><div class="tag-group"><h3>Illustrative virtual tags</h3><div class="tag-list" id="virtual-tags"><span class="tag-chip" style="--tag-color:#496ac4">research</span><span class="tag-chip" style="--tag-color:#2f8b65">decision</span><span class="tag-chip" style="--tag-color:#ad6a36">release</span></div></div><div class="tag-group"><h3>Manual tags</h3><div class="tag-list" id="manual-tags"><span class="tag-chip" style="--tag-color:#8e5a9f">needs-review</span></div><div class="tag-composer"><div style="flex:1"><label class="field-label" for="new-tag">Add a tag</label><input id="new-tag" type="text" maxlength="40" placeholder="e.g. customer-interview"></div><div><label class="field-label" for="tag-colour">Colour</label><input id="tag-colour" type="color" value="#3159c9"></div><button class="secondary-button" type="button" id="add-tag">Add tag</button></div></div></section>
             </div></div>
           </section>
@@ -215,6 +311,19 @@
     </main>
 
     <dialog id="view-dialog" aria-labelledby="view-dialog-title"><form method="dialog"><header><div><p class="eyebrow">PRODUCT RESEARCH</p><h2 id="view-dialog-title">Workspace views</h2><p>Choose what this workspace needs. Disabled views disappear from navigation.</p></div><button class="icon-button" value="cancel" aria-label="Close view manager">×</button></header><div class="view-list"><div class="view-row" data-view="search"><div class="move-controls" aria-label="Reorder Search"><button type="button" class="move-button" data-direction="up" aria-label="Move Search up" disabled>↑</button><button type="button" class="move-button" data-direction="down" aria-label="Move Search down">↓</button></div><label><input type="checkbox" checked> <strong>Search</strong><small>Find and compare indexed files</small></label><span class="startup-tag">Startup</span></div><div class="view-row" data-view="activity"><div class="move-controls" aria-label="Reorder Activity"><button type="button" class="move-button" data-direction="up" aria-label="Move Activity up">↑</button><button type="button" class="move-button" data-direction="down" aria-label="Move Activity down" disabled>↓</button></div><label><input type="checkbox" checked> <strong>Activity</strong><small>Review proposed activity states</small></label><button class="pin-button" type="button">Make startup</button></div></div><footer><p><strong>Startup view:</strong> <span id="startup-name">Search</span></p><button class="primary-button" value="default">Done</button></footer></form></dialog>
+    <dialog id="export-dialog" aria-labelledby="export-dialog-title">
+      <form id="export-form">
+        <header><div><p class="eyebrow">EXACT RESULT EXPORT</p><h2 id="export-dialog-title">Prepare an export</h2><p>This static review never writes a file.</p></div><button class="icon-button" type="button" id="close-export" aria-label="Close export dialog">×</button></header>
+        <div class="dialog-body">
+          <fieldset class="export-scope"><legend>Result scope</legend><label><input type="radio" name="export-scope" value="all" checked> All 24 results from this illustrative search receipt</label><label><input type="radio" name="export-scope" value="selected"> Selected result only</label></fieldset>
+          <div class="export-grid"><label for="export-format">Format<select id="export-format"><option value="md">Markdown (.md)</option><option value="pdf">PDF (.pdf)</option><option value="txt">Plain text (.txt)</option><option value="json">JSON (.json)</option></select></label><label for="export-root">Registered destination<select id="export-root"><option>Product research exports</option></select></label></div>
+          <label for="export-path">Relative output path<input id="export-path" type="text" value="exports/search-results.md"></label>
+          <p class="export-note" id="export-capability">Markdown is planned, but the current search dispatcher gap must be fixed first. PDF requires the optional pdf_export group. Existing files are never overwritten by default.</p>
+          <p class="export-note" id="export-status" role="status" aria-live="polite">Review the scope, format, destination, and collision policy before a future export job is accepted.</p>
+        </div>
+        <footer class="dialog-actions"><button class="secondary-button" type="button" id="cancel-export">Cancel</button><button class="primary-button" type="submit">Review export</button></footer>
+      </form>
+    </dialog>
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script src="app.js"></script>
   </body>

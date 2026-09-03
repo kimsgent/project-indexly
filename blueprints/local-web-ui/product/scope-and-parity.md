@@ -41,7 +41,7 @@ wording, or claiming that a screen exists because the static prototype shows it.
 | Current-session activity | No general current implementation | **P0** | Bounded in-memory job registry with honest restart/expiry behavior. |
 | Root registration and web settings | No current web model | **P0** | Versioned atomic web-only settings, canonical containment, optimistic concurrency. |
 | Capability/index health status | optional dependency, runtime, DB and doctor seams | **P0 read-only subset** | Side-effect-free facts only; no schema init, install, repair, or migration. |
-| Search export | `export_utils.py` and CLI helpers | **P0 late slice** | Search receipt, selected identities, registered destination, no-overwrite default, job receipt. |
+| Search export | `export_utils.py` and CLI helpers | **P0 late slice** | Markdown, PDF, text, and JSON; search receipt, selected identities, registered destination, no-overwrite default, capability check, job receipt. |
 | Tags | DB/tag handlers | **P1** | Structured CRUD/bulk scope, confirmation, conflict, and search/cache equivalence. |
 | Saved-search profiles | `profiles.py` JSON | **P1** | Schema, atomic migration, locking, optimistic concurrency, malformed-state recovery. |
 | Read-only doctor/statistics | doctor and handler seams | **P1, selected facts** | Per-fact no-write proof and privacy classification. Repair remains excluded. |
@@ -81,6 +81,10 @@ requests cannot read or mutate; the CLI still works without the web extra.
 3. On confirmation, a versioned registration is atomically stored under the
    Indexly runtime root.
 4. A stale tab cannot overwrite a newer root/settings version.
+5. OCR Settings separately reports Python document support and the external
+   Tesseract executable. The user can keep PATH discovery or specify and
+   validate an absolute executable path; that path is never an index root or a
+   per-job command.
 
 **Acceptance:** traversal and link/junction escape cases fail server-side;
 malformed settings do not get silently reset; unsupported network/device roots
@@ -123,8 +127,8 @@ host interruption leave recoverable engine state.
 
 1. User exports an identified current search set or explicit selected result
    identities; the server does not silently re-run a changed query.
-2. User selects format and a relative destination beneath a registered output
-   root and sees exact collision behavior.
+2. User selects Markdown, PDF, text, or JSON and a relative destination beneath
+   a registered output root, then sees exact capability and collision behavior.
 3. Export runs as a new-file job and returns a receipt.
 
 **Acceptance:** stale receipts, path escape, existing targets, missing PDF
@@ -140,7 +144,8 @@ outcomes. P0 never silently overwrites.
 | Result inspector and responsive full-width detail | Selection preserves context and keyboard focus. | P0 plain-text metadata/snippet only. |
 | Activity page | Current-session job state is visible. | P0; no fabricated durable history. |
 | Index health cards | Read-only readiness/capability facts are understandable. | P0 bounded facts only. |
-| Indexing Settings | Roots and safe admitted options live outside Search. | P0, subject to registered-root and parity rules. |
+| Indexing Settings | Roots, OCR mode, Tesseract discovery/validated executable override, and safe admitted options live outside Search. | P0, subject to registered-root, external-tool, and parity rules. |
+| Export dialog | Exact current result scope, Markdown/PDF/text/JSON format, destination, capability, and no-overwrite state are explicit. | P0 late slice; no file is written by the prototype. |
 | Manual color tags and virtual tags | Calm organization language and visual direction. | P2 candidate; not current Indexly semantics. |
 | Workspace switcher / Manage views / startup view | Future configurable information architecture. | P2 candidate; first release has one workspace. |
 | Open original | Clear user intent. | Deferred; current button stays illustrative. |
@@ -159,6 +164,7 @@ never used as requirements evidence.
 | Health | Lead with read-only facts and corrective guidance. Never attach repair/install/apply behavior to status loading. |
 | Analysis | Label persistence and artifact writes. “View” does not imply read-only. |
 | Capability | Explain installed/missing extra and external-tool state without automatically changing the environment. |
+| OCR | Separate Python `documents` support from the Tesseract system executable; PATH/default and validated configured-path sources are visible. |
 | Filesystem writes | Show scope, destination, collision, mutation class, and receipt. Deferred destructive actions stay absent. |
 
 ## Non-negotiable parity checks

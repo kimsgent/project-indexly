@@ -3,7 +3,7 @@
   "format": "indexly-blueprint-manifest",
   "blueprint_id": "IDX-LOCAL-WEB-UI",
   "title": "Indexly local web UI blueprint",
-  "blueprint_version": "1.0.0-draft",
+  "blueprint_version": "1.1.0-draft",
   "last_reviewed": "2026-09-03",
   "blueprint_state": "phase-1-documentation-ready-for-review",
   "implementation_state": "not-started",

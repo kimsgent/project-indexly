@@ -165,7 +165,7 @@ sufficient to steal a live writer lease.
 | FTS index, metadata, tags, generation | SQLite via Indexly DB modules | Read through deliberate read-only helpers; mutate only through services and writer lease. | Preserve current schema/migration and cache-coherence behavior. |
 | Search cache | JSON cache utilities plus FTS generation | Service-controlled only; HTTP/browser caches cannot bypass generation. | Existing semantics until a separately tested refactor. |
 | Saved-search profiles | `profiles.json` | P1 only after atomic/version/concurrency contract is implemented. | Never silently migrate on page load. |
-| Web roots/preferences | Not present | `web-ui.json` through root/settings services. | Versioned, atomic, no secrets, recover malformed file. |
+| Web roots/preferences/external-tool override | Not present | `web-ui.json` through root/settings services. | Versioned, atomic, no secrets/arguments, recover malformed file. |
 | Jobs and search receipts | Not present | In-memory coordinator. | Bounded by count/age; expire on restart; never claimed durable. |
 | Index logs | Existing log utilities | Correlation and bounded safe summaries; raw log exposure is not P0. | Existing rotation; web additions obey redaction contract. |
 | Analysis DB/datasets/artifacts | Separate analysis modules and paths | Deferred until one bounded analysis blueprint is admitted. | Never conflate with FTS state. |
@@ -240,7 +240,8 @@ The prototype establishes a direction, not persistence or endpoint names:
 - **Activity** represents current-session jobs and honest states. It does not
   invent historical telemetry, percentages, or durable recovery.
 - **Settings** contains registered paths, capability status, and indexing
-  choices. Settings do not become a universal mirror of CLI flags.
+  choices, including PATH versus configured Tesseract discovery. Settings do
+  not become a universal mirror of CLI flags or a shell-command editor.
 - **Index health** reports bounded read-only facts and corrective guidance. It
   does not run doctor repair, migration, clear, or performance apply.
 - **Manage views**, multiple workspaces, virtual tag collections, manual color

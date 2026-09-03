@@ -160,6 +160,7 @@ and write classes are normative.
 | `/api/v1/health/live` | GET | None | Process liveness only; no DB or filesystem initialization. |
 | `/api/v1/health/ready` | GET | None | Bounded capability/readiness facts; no repair or migration. |
 | `/api/v1/capabilities` | GET | None | Installed/missing extras and tools with remediation guidance; never installs. |
+| `/api/v1/capabilities/tesseract/validation` | POST | Process probe only | Validate the current/configured executable by fixed direct invocation; never accept command arguments. |
 | `/api/v1/roots` | GET/POST/DELETE | Web settings | List/register/remove explicit roots with optimistic state version. |
 | `/api/v1/search/fts` | POST | None, except existing search cache policy | FTS-only validated request and bounded page. |
 | `/api/v1/search/regex` | POST | None, except existing search cache policy | Regex-only validated request, scan budget, bounded page. |
@@ -214,6 +215,13 @@ warning; it does not present partial results as exhaustive.
 The normalized request records registered root identity and canonical root,
 file type, ignore source and effective precedence, full/incremental mode,
 date/log constraints, OCR/capability choices, and request schema version.
+
+OCR mode is one of `automatic`, `force`, or `disabled`, matching the current
+default/`--ocr`/`--no-ocr` behavior. OCR capability is the combination of the
+Python `documents` dependencies and an available Tesseract executable. The
+executable is resolved from the validated web setting or `PATH`; a job request
+cannot supply or override it. Missing or changed executable identity produces
+`unavailable_external_tool` before OCR work begins.
 
 `index.plan`:
 
@@ -286,11 +294,19 @@ view, protected by the session, requires the full display path.
 ## Settings and optimistic concurrency
 
 `web-ui.json` owns only schema version, registered-root records, UI preferences,
-and any later admitted single-workspace view configuration. Responses include
-an opaque state version. PATCH/DELETE requests supply the version they read; a
-conflict returns the latest safe representation for explicit retry. Writes use
-lock, temporary sibling, flush, atomic replace, and validation. Malformed state
-is quarantined or preserved for recovery; startup does not silently reset it.
+the optional absolute Tesseract executable override, and any later admitted
+single-workspace view configuration. Responses include an opaque state version.
+PATCH/DELETE requests supply the version they read; a conflict returns the
+latest safe representation for explicit retry. Writes use lock, temporary
+sibling, flush, atomic replace, and validation. Malformed state is quarantined
+or preserved for recovery; startup does not silently reset it.
+
+The Tesseract override is stored as a path only. It cannot contain arguments,
+environment substitutions, a URI, or shell syntax. Validation canonicalizes an
+absolute regular file, performs a fixed direct `--version` probe with bounded
+time/output, and records a safe executable identity/version. PATH discovery is
+reported separately. The browser cannot install Tesseract or add directories to
+the host process PATH.
 
 Saved-search profiles remain owned by `profiles.py`/`profiles.json` until the P1
 profile migration contract is approved. Tags remain in Indexly search state.
@@ -301,9 +317,21 @@ Export is a new-file write and runs as a job. The request references a current
 server-issued search receipt and explicit selected result identities. It also
 specifies registered destination root, relative output path, format, and one of
 `fail_if_exists` or a separately admitted collision behavior. P0 never silently
-overwrites. The response receipt includes output display path, format, item
-count, byte count when known, warnings, and completion time. PDF unavailability
-returns `missing_optional_dependency` with existing actionable guidance.
+overwrites.
+
+The initial UI exposes Markdown (`md`), PDF (`pdf`), plain text (`txt`), and JSON
+(`json`), with Markdown and PDF presented as primary human-readable choices.
+Markdown is a planned search-export contract: the current parser advertises it,
+but the current search export dispatcher does not implement it. The implementing
+stage must close that gap with focused tests before the UI option is connected
+to a live route.
+
+The service enforces the matching extension and media type rather than trusting
+a client suffix. Markdown/plain text/JSON use the base capability; PDF requires
+the optional `pdf_export` capability and returns
+`missing_optional_dependency` with existing actionable guidance when it is
+unavailable. The response receipt includes output display path, format, item
+count, byte count when known, warnings, and completion time.
 
 ## Security and browser contract
 
@@ -316,6 +344,9 @@ returns `missing_optional_dependency` with existing actionable guidance.
 - State-changing methods require the authenticated session and exact same
   origin; GET routes are side-effect-free under LUI-INV-007.
 - Apply request/body/field/page/rate limits before expensive work.
+- External executable probes and OCR invoke an argument array directly with no
+  shell, fixed permitted arguments, bounded environment/output/time, and a safe
+  working directory.
 - Use semantic HTML, visible focus, keyboard access, announced async states,
   focus restoration, reduced motion, non-color status, and no horizontal
   overflow at the supported narrow viewport.

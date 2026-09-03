@@ -9,6 +9,11 @@ the [local web UI blueprint](../README.md). Open `index.html` directly in a
 browser; no package install, server, account, database, or network connection is
 required.
 
+For direct visual review, append `?view=settings` or `?view=activity` to the
+local file URL, or append `?dialog=export` to open the export review state.
+These query parameters are prototype conveniences, not the production URL
+contract.
+
 ## What it demonstrates
 
 - a dominant, scan-friendly Search canvas with restrained file-type markers;
@@ -17,6 +22,11 @@ required.
   illustrative states rather than fabricated live telemetry;
 - an Indexing Settings concept that keeps source roots and index action outside
   the Search workspace;
+- OCR mode and external Tesseract setup that distinguish PATH discovery from a
+  future validated absolute executable override;
+- an exact-result export concept with Markdown, PDF, text, and JSON choices,
+  registered destination, PDF capability notice, and no-overwrite default;
+- explicit FTS/regex mode, bounded-page cues, and plan-before-index interaction;
 - proposed workspace-specific enabled views and startup selection through
   **Manage views**;
 - proposed virtual-tag collection and manual color-tag organization;
@@ -41,6 +51,10 @@ required.
 Every count, filename, timestamp, path, status, and action outcome in the page is
 sample data. Prototype controls must be removed, clearly labelled, or connected
 to an approved real contract before a production stage can be accepted.
+
+The Markdown export choice is deliberately shown as planned. Current source
+advertises `md` in the search parser but does not yet dispatch it to a Markdown
+exporter; the blueprint records that gap and its required regression test.
 
 ## Normative references
 

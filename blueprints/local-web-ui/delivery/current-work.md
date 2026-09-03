@@ -6,18 +6,21 @@
 
 ## Current objective
 
-Complete **Phase 1: preparation of the documentation** on branch
-`feature/local-web-ui-blueprint` as a documentation-only local commit.
+Complete the operator-authorized **Phase 1 prototype refinement** on branch
+`feature/local-web-ui-blueprint` as a documentation/prototype-only local commit.
 
 ## In scope now
 
-- Move the investigation and static prototype from the package source tree to
-  the root-level `blueprints/local-web-ui/` documentation set.
-- Apply the documentation architecture defined by the operator-provided
-  blueprint guide: explicit authority, volatility separation, autonomous agent
-  discovery, decisions, invariants, stage gates, status, and current work.
-- Verify current Project-Indexly source/test seams needed to make the blueprint
-  actionable.
+- Add explicit OCR mode and a planned validated Tesseract executable-path
+  setting, preserving the distinction between Python dependencies and the
+  external system tool.
+- Add Markdown and PDF export at minimum, plus current CLI text/JSON formats,
+  with exact-scope, destination, capability, and no-overwrite cues.
+- Incorporate prepared blueprint characteristics that materially improve the
+  prototype: FTS/regex mode, bounded pagination cues, index health, and
+  plan-before-run state.
+- Update authoritative blueprint documents where the prototype refinement
+  closes or clarifies an implementation contract.
 - Use the private Codmem checkout read-only and cite mapped identifiers only
   where they improve traceability.
 - Validate Markdown links, machine-readable JSON, moved-file references, and the
@@ -34,7 +37,8 @@ Complete **Phase 1: preparation of the documentation** on branch
 
 ## Reviewed baseline
 
-- Branch starting point: `f0da7f9d` (`docs: add indexing settings prototype`).
+- Prototype-refinement starting point: `f1a9ee11`
+  (`docs: add local web UI blueprint`).
 - Existing investigation evolution reviewed from `10f530cc` through
   `f0da7f9d`.
 - Project version observed in `pyproject.toml`: `2.1.7b`.
@@ -47,11 +51,12 @@ Complete **Phase 1: preparation of the documentation** on branch
 
 ## Current status
 
-Phase 1 content has been restructured and expanded. Manifest parsing, manifest
-path checks, local Markdown link resolution, code-fence balance,
-old-path/secret/machine-path scans, trailing-whitespace checks, staged-scope
-review, and `git diff --cached --check` pass. Remaining work is the requested
-Conventional Commit.
+OCR/export source and Codmem context have been reviewed, and the blueprint and
+static prototype now cover the approved refinement. The manifest, document
+paths, local Markdown links, code fences, trailing whitespace, HTML identifiers,
+label/control references, JavaScript syntax, narrow and desktop headless browser
+renders, path hygiene, and documentation-only diff validate. A new local
+Conventional Commit remains.
 
 ## Stop gate
 

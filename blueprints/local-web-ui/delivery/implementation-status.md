@@ -17,8 +17,9 @@ static prototype is evidence of interaction intent only.
 | LUI-DOC-001 | Root-level blueprint has an explicit authority and volatility model. | Current in Phase 1 change | [`../README.md`](../README.md), [`../blueprint.json`](../blueprint.json) |
 | LUI-DOC-002 | Durable architecture, decisions, and contracts are separated from evolving status and volatile current work. | Current in Phase 1 change | [`../architecture/`](../architecture/), [`current-work.md`](current-work.md) |
 | LUI-DOC-003 | Product scope, staged delivery, validation, evidence, and prototype are cross-linked. | Current in Phase 1 change | [`../product/scope-and-parity.md`](../product/scope-and-parity.md), [`implementation-plan.md`](implementation-plan.md), [`validation.md`](validation.md), [`../reference/evidence-map.md`](../reference/evidence-map.md), [`../prototype/README.md`](../prototype/README.md) |
-| LUI-DOC-004 | Codmem is used read-only and only mapped IDs cross into this repository. | Current in Phase 1 change | `IDX-03-DEF-001`, `IDX-RISK-002`, `IDX-RISK-003`, `IDX-RISK-006`, `IDX-RISK-007`, `IDX-RISK-008`, `IDX-RISK-013` in evidence/validation docs |
+| LUI-DOC-004 | Codmem is used read-only and only mapped IDs cross into this repository. | Current in Phase 1 change | `IDX-03-DEF-001`, `IDX-RISK-001`, `IDX-RISK-002`, `IDX-RISK-003`, `IDX-RISK-006`, `IDX-RISK-007`, `IDX-RISK-008`, `IDX-RISK-012`, `IDX-RISK-013` in evidence/validation docs |
 | LUI-DOC-005 | Documentation links and JSON manifest validate after relocation. | Current in Phase 1 change | PowerShell checks parse the manifest, verify unique document IDs and paths, resolve local Markdown links, check code-fence balance and trailing whitespace, and confirm the staged scope; `git diff --cached --check` passes. |
+| LUI-DOC-006 | Static prototype reflects the OCR, export, search-mode, pagination, health, and plan-first interaction contracts without claiming product implementation. | Current in Phase 1 change | [`../prototype/README.md`](../prototype/README.md), `prototype/index.html`, `prototype/app.js`; desktop and narrow headless browser renders plus JavaScript syntax and HTML relationship checks pass. |
 
 ## Verified current product baseline
 
@@ -34,6 +35,7 @@ static prototype is evidence of interaction intent only.
 | LUI-BASE-008 | Search state, analysis state, profiles, cache, and logs are distinct ownership domains. | Verified current | `config.py`, analysis/dataset modules, runtime path modules |
 | LUI-BASE-009 | Basic watch and rename-watch do not expose a general web-safe lifecycle contract. | Verified current | `watcher.py`, `rename_watch/` |
 | LUI-BASE-010 | A responsive static prototype exists but has no backend and uses illustrative data. | Verified current | [`../prototype/`](../prototype/) |
+| LUI-BASE-011 | Search parser advertises Markdown export, but the current search export dispatcher handles only PDF, text, and JSON. | Verified current gap | `src/indexly/cli_utils.py::_add_search_options`; `export_results_to_format`; no focused search-export implementation test found. |
 
 ## Architecture and host targets
 
@@ -56,6 +58,7 @@ static prototype is evidence of interaction intent only.
 | LUI-PATH-002 | Canonical post-resolution containment and revalidation. | Planned | Platform-aware path policy at service edge. | Traversal, symlink/junction/mount/drive/Unicode/case/TOCTOU matrix. |
 | LUI-STATE-001 | Versioned atomic `web-ui.json` separate from profiles. | Planned | Lock, temp/flush/replace, schema migration/recovery. | Concurrent tabs/processes, corruption, downgrade, crash injection. |
 | LUI-STATE-002 | Browser stores no indexed content, full paths, query history, or credentials in persistent web storage. | Planned | Explicit client state module and storage inventory. | Browser storage inspection and seeded-secret scan. |
+| LUI-OCR-001 | Tesseract PATH discovery and validated absolute executable override. | Planned | Web setting, capability DTO, fixed no-shell version probe, per-job identity revalidation. | Valid/missing/changed/path/shell-input/timeout/output-limit/concurrency matrix; `IDX-RISK-001` and `IDX-RISK-006` controls. |
 
 ## Search targets
 
@@ -83,7 +86,7 @@ static prototype is evidence of interaction intent only.
 
 | ID | Deliverable | State | Required implementation evidence | Required validation evidence |
 | --- | --- | --- | --- | --- |
-| LUI-EXPORT-001 | Exact-result export through current search receipt. | Planned | Receipt/selection validation and export service/job. | No implicit re-run; tamper/stale/changed result cases. |
+| LUI-EXPORT-001 | Exact-result Markdown, PDF, text, and JSON export through current search receipt. | Planned; current Markdown dispatcher gap | Implement/test Markdown dispatch, receipt/selection validation, format/media/extension enforcement, PDF capability preflight, and export service/job. | No implicit re-run; all four formats; capability/tamper/stale/changed result cases. |
 | LUI-EXPORT-002 | Registered destination and fail-if-exists atomic output. | Planned | Path policy, temp ownership, collision and receipt. | Escape/link swap/collision/disk/access/cancel/temp cleanup. |
 | LUI-P1-001 | Tag CRUD/bulk behavior. | Deferred to P1 | Separate accepted mini-blueprint. | Tag/cache/search/concurrency/confirmation coverage. |
 | LUI-P1-002 | Saved-search profile migration and CRUD. | Deferred to P1 | Versioned atomic profile contract and migration. | Backup/restore/concurrent/malformed/downgrade coverage. |

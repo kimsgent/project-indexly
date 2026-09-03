@@ -63,6 +63,8 @@ affected callers and tests rather than treating the list as exhaustive.
 | `IDX-RISK-002` | Index/search/tag state consistency. | Search, delete, tag, generation, and affected extraction controls pass for indexing-path changes. |
 | `IDX-RISK-003` | Ignore semantics across commands. | Shared fixtures prove service/CLI use the same precedence and indexed-root pruning behavior. |
 | `IDX-RISK-006` | Optional dependency availability/guidance. | Missing/available/broken extra and external-tool states are precise; page load never installs; extraction warnings stay scoped. |
+| `IDX-RISK-001` | Executable discovery/precedence can select the wrong installation. | Tesseract capability reports PATH versus configured source and safe identity/version; every OCR job revalidates it. |
+| `IDX-RISK-012` | Packaging/documentation metadata can drift. | Optional web/PDF dependency guidance, packaged prototype behavior, user docs, and release checks remain synchronized. |
 | `IDX-RISK-007` | Environment/filesystem mutation safety. | Dependency mutation remains absent; destructive cache/environment actions cannot be reached through generic web routes. |
 | `IDX-RISK-008` | Filesystem move/recovery integrity. | Organize/rename/restore routes remain absent until a separate plan/log/backup/recovery blueprint is accepted. |
 | `IDX-RISK-013` | Read-only diagnostics and evidence quality. | Health/status reads use proven read-only paths, bound work, label unavailable/incomplete evidence, and expose no apply/repair shortcut. |
@@ -149,6 +151,35 @@ to silently redefine the CLI.
   versus directory.
 - Browser-supplied display path or search result identity never bypasses the
   registered-root lookup.
+
+### OCR and external Tesseract
+
+- Distinguish missing Python `documents` support from missing/invalid external
+  Tesseract and from a valid capability.
+- Exercise PATH discovery and explicit absolute executable override on every
+  supported OS, including a path containing spaces.
+- Reject relative paths, directories, missing targets, URLs, arguments, quoted
+  command strings, environment expansion, and shell metacharacter payloads.
+- Invoke only the exact resolved executable with fixed `--version`, no shell, a
+  bounded environment/working directory, timeout, and output cap; seed output
+  with secrets/escape sequences to verify redaction and safe rendering.
+- Change or replace the executable between validation, plan, and job start; the
+  job must revalidate identity and fail closed.
+- Verify `automatic`, `force`, and `disabled` match current default/`--ocr`/
+  `--no-ocr` semantics and that disabled mode loads no OCR dependencies.
+
+### Export formats
+
+- Exercise Markdown, PDF, text, and JSON for all-results and explicit-selection
+  receipts, with Unicode, long paths/snippets, tags, and empty fields.
+- Add a focused regression proving the search parser's `md` choice reaches a
+  real Markdown exporter instead of the current unsupported-format error.
+- Enforce server-chosen extension/media type; reject mismatched or unknown
+  formats and client attempts to smuggle another suffix.
+- Verify PDF available/missing/broken optional capability while Markdown, text,
+  and JSON remain usable without `pdf_export`.
+- Retain collision, registered destination, path/link swap, stale/tampered
+  receipt, cancellation, partial/temp cleanup, and exact-no-rerun checks.
 
 ## Security acceptance
 

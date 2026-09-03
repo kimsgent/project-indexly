@@ -116,7 +116,9 @@ migration. New service modules are additive and contain no durable state.
 4. Add liveness, readiness, and capability routes with no-write proof.
 5. Implement versioned atomic `web-ui.json`, root registration, canonical path
    policy, optimistic concurrency, and malformed-state recovery.
-6. Split the prototype into packaged static modules while preserving responsive
+6. Implement Tesseract PATH discovery and explicit executable override
+   validation using fixed direct invocation, bounded output/time, and no shell.
+7. Split the prototype into packaged static modules while preserving responsive
    and accessibility behavior; do not wire fictional telemetry.
 
 ### Exit evidence
@@ -128,6 +130,9 @@ migration. New service modules are additive and contain no durable state.
   no external network request.
 - Path matrix covers traversal, casing, Unicode, links/junctions, mount/drive,
   unsupported UNC/device paths, inaccessible/missing/changing targets.
+- Tesseract path cases cover PATH discovery, explicit valid/missing/directory/
+  changed/non-executable targets, argument/shell-string rejection, timeout,
+  bounded output, settings concurrency, and safe redaction.
 - Wheel and sdist contain assets; base package remains web-independent.
 - Start, second-instance conflict, port conflict, browser-open failure, graceful
   shutdown, stale lease, downgrade, and uninstall paths are evidenced.
@@ -192,7 +197,8 @@ behavior. No search cursor or receipt is durable across host restart.
 3. Implement no-write index plan with normalized scope, ignore precedence,
    candidate/skip/prune evidence, warnings, fingerprint, and expiry.
 4. Implement index-run submission with immutable request, revalidation, lease,
-   safe progress phases, partial/failure outcomes, and cancellation boundaries.
+   OCR mode/capability snapshot, safe progress phases, partial/failure outcomes,
+   and cancellation boundaries.
 5. Implement Activity and Indexing Settings states from the prototype using real
    job/capability data only.
 
@@ -255,7 +261,10 @@ Web settings recovery/removal is documented and never automatic.
 ### Work
 
 1. Define selected-result identity and search-receipt expiry behavior.
-2. Add export request/service/job for initially approved formats.
+2. Add export request/service/job for Markdown, PDF, text, and JSON, with PDF
+   capability preflight and server-enforced extensions/media types.
+   Implement and test the currently missing Markdown branch in the search
+   export dispatcher rather than treating the parser choice as working parity.
 3. Require registered destination, relative output, and fail-if-exists default.
 4. Use owned temporary files and atomic completion where supported.
 5. Add UI preview of format, selected count, destination, collision rule,
