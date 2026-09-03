@@ -1,0 +1,113 @@
+{
+  "schema_version": "1",
+  "format": "indexly-blueprint-manifest",
+  "blueprint_id": "IDX-LOCAL-WEB-UI",
+  "title": "Indexly local web UI blueprint",
+  "blueprint_version": "1.0.0-draft",
+  "last_reviewed": "2026-09-03",
+  "blueprint_state": "phase-1-documentation-ready-for-review",
+  "implementation_state": "not-started",
+  "root": "blueprints/local-web-ui",
+  "authority_order": [
+    "architecture/decisions.md",
+    "architecture/system-architecture.md",
+    "architecture/contracts.md",
+    "product/scope-and-parity.md",
+    "delivery/implementation-status.md",
+    "delivery/current-work.md",
+    "delivery/implementation-plan.md",
+    "delivery/validation.md",
+    "reference/evidence-map.md",
+    "prototype/README.md"
+  ],
+  "documents": [
+    {
+      "id": "LUI-INDEX",
+      "path": "README.md",
+      "purpose": "Entry point, authority hierarchy, status vocabulary, and agent rules",
+      "authority": "navigation-and-governance",
+      "volatility": "low"
+    },
+    {
+      "id": "LUI-DECISIONS",
+      "path": "architecture/decisions.md",
+      "purpose": "Candidate decisions and future amendments",
+      "authority": "frozen-decisions-after-approval",
+      "volatility": "low"
+    },
+    {
+      "id": "LUI-ARCH",
+      "path": "architecture/system-architecture.md",
+      "purpose": "System boundaries, trust model, lifecycle, state, and concurrency",
+      "authority": "normative-architecture",
+      "volatility": "low"
+    },
+    {
+      "id": "LUI-CONTRACTS",
+      "path": "architecture/contracts.md",
+      "purpose": "Service, API, job, path, error, and compatibility contracts",
+      "authority": "normative-contracts",
+      "volatility": "low"
+    },
+    {
+      "id": "LUI-SCOPE",
+      "path": "product/scope-and-parity.md",
+      "purpose": "Capability admission and CLI parity boundary",
+      "authority": "normative-product-scope",
+      "volatility": "medium"
+    },
+    {
+      "id": "LUI-STATUS",
+      "path": "delivery/implementation-status.md",
+      "purpose": "Requirement-by-requirement implementation and evidence ledger",
+      "authority": "current-implementation-state",
+      "volatility": "medium"
+    },
+    {
+      "id": "LUI-CURRENT",
+      "path": "delivery/current-work.md",
+      "purpose": "Immediate objective, branch, blockers, stop gate, and next authorized action",
+      "authority": "current-work",
+      "volatility": "high"
+    },
+    {
+      "id": "LUI-PLAN",
+      "path": "delivery/implementation-plan.md",
+      "purpose": "Incremental delivery gates and rollback boundaries",
+      "authority": "normative-delivery-plan",
+      "volatility": "medium"
+    },
+    {
+      "id": "LUI-VALIDATION",
+      "path": "delivery/validation.md",
+      "purpose": "Required automated, security, browser, packaging, and operational evidence",
+      "authority": "normative-validation",
+      "volatility": "medium"
+    },
+    {
+      "id": "LUI-EVIDENCE",
+      "path": "reference/evidence-map.md",
+      "purpose": "Verified source, tests, public docs, mapped Codmem IDs, and references",
+      "authority": "informative-evidence",
+      "volatility": "medium"
+    },
+    {
+      "id": "LUI-PROTOTYPE",
+      "path": "prototype/README.md",
+      "purpose": "Static interaction reference and explicit non-contract boundary",
+      "authority": "informative-prototype",
+      "volatility": "medium"
+    }
+  ],
+  "current_work": {
+    "path": "delivery/current-work.md",
+    "phase": "phase-1-documentation",
+    "authorization_gate": "operator-confirmation-required-before-phase-2"
+  },
+  "frozen_after_approval": [
+    "architecture/decisions.md",
+    "architecture/system-architecture.md",
+    "architecture/contracts.md"
+  ],
+  "private_traceability_policy": "Cite Codmem identifiers only; do not copy private records into Project-Indexly release surfaces."
+}
