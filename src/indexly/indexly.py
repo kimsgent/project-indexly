@@ -400,6 +400,7 @@ async def scan_and_index_files(
     log_file: str | None = None,
     incremental_log_dir: str | Path | None = None,
     plan: bool = False,
+    filetype: str | None = None,
 ):
     from .cache_utils import clean_cache_duplicates
     from indexly.ignore import IgnoreRules
@@ -434,13 +435,22 @@ async def scan_and_index_files(
         and not ignore.should_ignore(Path(folder) / f, root_path)
     ]
     current_file_paths = list(file_paths)
+    if filetype:
+        normalized_filetype = filetype.lower()
+        if not normalized_filetype.startswith("."):
+            normalized_filetype = f".{normalized_filetype}"
+        file_paths = [
+            path
+            for path in file_paths
+            if Path(path).suffix.lower() == normalized_filetype
+        ]
     mode = _index_mode_label(
         only_changes=only_changes,
         month=month,
         log_file=log_file,
     )
     scanned_count = len(current_file_paths)
-    scoped_count = scanned_count
+    scoped_count = len(file_paths)
     skipped_unchanged_count = 0
     stat_error_count = 0
 
@@ -764,6 +774,7 @@ def handle_index(args):
         async def _run():
             return await scan_and_index_files(
                 root_dir=normalize_path(args.folder),
+                filetype=getattr(args, "filetype", None),
                 mtw_extended=args.mtw_extended,
                 force_ocr=args.ocr,
                 disable_ocr=args.no_ocr,
