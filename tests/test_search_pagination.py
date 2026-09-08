@@ -3,12 +3,20 @@
 from __future__ import annotations
 
 import io
+import re
 from types import SimpleNamespace
 
 import pytest
 
 from indexly import indexly as indexly_app
 from indexly import output_utils
+
+
+_ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+
+
+def _plain_tty_output(output: io.StringIO) -> str:
+    return _ANSI_ESCAPE.sub("", output.getvalue())
 
 
 class TtyStringIO(io.StringIO):
@@ -116,7 +124,7 @@ def test_enter_renders_one_page_at_a_time_with_progress_headers(monkeypatch):
         _results(21), "alpha", input_stream=TtyStringIO("\n\n"), output_stream=output
     )
 
-    rendered = output.getvalue()
+    rendered = _plain_tty_output(output)
     assert "Page 1 of 3 (results 1–10 of 21)" in rendered
     assert "Page 2 of 3 (results 11–20 of 21)" in rendered
     assert "Page 3 of 3 (results 21–21 of 21)" in rendered
@@ -132,7 +140,7 @@ def test_ten_interactive_results_render_once_without_a_navigation_prompt(monkeyp
         _results(10), "alpha", input_stream=TtyStringIO(), output_stream=output
     )
 
-    rendered = output.getvalue()
+    rendered = _plain_tty_output(output)
     assert "Found 10 matches:" in rendered
     assert "Page " not in rendered
     assert "Enter: next" not in rendered
@@ -147,7 +155,7 @@ def test_space_renders_every_remaining_result_without_more_prompts(monkeypatch):
         _results(21), "alpha", input_stream=TtyStringIO(" \n"), output_stream=output
     )
 
-    rendered = output.getvalue()
+    rendered = _plain_tty_output(output)
     assert rendered.count("Enter: next") == 1
     assert "Page 2 of" not in rendered
     assert "result-20.txt" in rendered
@@ -165,7 +173,7 @@ def test_quit_stops_only_later_terminal_rendering(monkeypatch, command):
         output_stream=output,
     )
 
-    rendered = output.getvalue()
+    rendered = _plain_tty_output(output)
     assert "result-09.txt" in rendered
     assert "result-10.txt" not in rendered
     assert "Page 2 of" not in rendered
@@ -182,7 +190,7 @@ def test_invalid_input_retries_without_rendering_the_page_again(monkeypatch):
         output_stream=output,
     )
 
-    rendered = output.getvalue()
+    rendered = _plain_tty_output(output)
     assert "Use Enter, Space, or q." in rendered
     assert rendered.count("result-00.txt") == 1
     assert rendered.count("Page 1 of 3") == 1
@@ -201,7 +209,7 @@ def test_eof_interrupt_and_unavailable_input_stop_cleanly(monkeypatch, input_str
         _results(11), "alpha", input_stream=input_stream, output_stream=output
     )
 
-    rendered = output.getvalue()
+    rendered = _plain_tty_output(output)
     assert "result-09.txt" in rendered
     assert "result-10.txt" not in rendered
 
@@ -228,7 +236,7 @@ def test_fts_output_retains_tags_and_snippet_text_for_paged_results(monkeypatch)
         _results(11), "alpha", input_stream=TtyStringIO(" \n"), output_stream=output
     )
 
-    rendered = output.getvalue()
+    rendered = _plain_tty_output(output)
     assert "[Tags: reviewed]" in rendered
     assert "alpha snippet 0" in rendered
     assert "alpha snippet 10" in rendered
@@ -273,7 +281,7 @@ def test_regex_pagination_honors_the_result_boundaries(
         output_stream=output,
     )
 
-    rendered = output.getvalue()
+    rendered = _plain_tty_output(output)
     assert ("Page 1 of" in rendered) is has_pages
     assert ("Enter: next" in rendered) is has_pages
     if count:
