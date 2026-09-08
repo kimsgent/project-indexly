@@ -1043,12 +1043,6 @@ def handle_regex(args):
     finally:
         ripple.stop()
 
-    # --- Result summary (user-facing) ---
-    if results:
-        print(f"\nFound {len(results)} matches:\n")
-    else:
-        print("\n🔍 No regex matches found.")
-
     if results:
         print_regex_results(results, pattern, args.context)
         if getattr(args, "export_format", None):
