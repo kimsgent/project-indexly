@@ -16,13 +16,12 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import quote
 
-from indexly import __version__
 from indexly.db_update import inspect_fts5_definition
 
 from .baseline import size_bucket
 from .evidence import PLANNER_OPTIMIZE_APPLY_MASK
 from .model import ActionOutcome, PerformanceRecord, utc_now
-from .probe import database_identity
+from .probe import _indexly_version, database_identity
 from .state import RecordValidationError, encode_record
 
 ActionName = Literal["planner-optimize", "fts-merge"]
@@ -354,7 +353,7 @@ def _validate_locked_database(
             "WAL mode became active; action aborted without changing journal mode"
         )
     latest = report.sessions[-1]
-    if latest.indexly_version != __version__:
+    if latest.indexly_version != _indexly_version():
         raise ActionPreconditionError(
             "Indexly version changed since the latest performance report"
         )

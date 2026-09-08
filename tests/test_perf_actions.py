@@ -148,8 +148,40 @@ def test_stale_or_wrong_database_report_fails_before_backup(tmp_path: Path) -> N
             backup_dir=backup_dir,
             report=report,
         )
-
     assert list(backup_dir.iterdir()) == []
+
+
+def test_action_accepts_the_version_recorded_by_live_collection(tmp_path: Path) -> None:
+    database = tmp_path / "index.db"
+    _create_db(database)
+    report = _current_report(database)
+
+    connection = sqlite3.connect(database)
+    try:
+        actions._validate_locked_database(connection, database, report, "fts-merge")
+    finally:
+        connection.close()
+
+
+def test_action_rejects_changed_installed_indexly_version(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    live_dir = tmp_path / "live"
+    backup_dir = tmp_path / "backups"
+    live_dir.mkdir()
+    backup_dir.mkdir()
+    database = live_dir / "index.db"
+    _create_db(database)
+    report = _current_report(database)
+    monkeypatch.setattr(actions, "_indexly_version", lambda: "changed-version")
+
+    with pytest.raises(actions.ActionPreconditionError, match="Indexly version changed"):
+        actions.execute_action(
+            "fts-merge",
+            db_path=database,
+            backup_dir=backup_dir,
+            report=report,
+        )
 
 
 def test_wal_is_rejected_without_checkpoint_or_sidecar_change(tmp_path: Path) -> None:
