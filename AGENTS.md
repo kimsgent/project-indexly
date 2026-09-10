@@ -4,6 +4,14 @@ Project-Indexly is production-grade software. Favor correctness, explicit risk
 assessment, backward compatibility, and evidence-backed validation over broad
 or speculative changes.
 
+## Shared Project Workflow
+
+Use the tracked [Project-Indexly governance skill](.agents/skills/project-indexly-governance/SKILL.md)
+for Project-Indexly analysis, implementation, review, and documentation work.
+It is the canonical shared workflow for branch discipline, environment checks,
+Codmem recall, validation, and completion reporting. It supplements this file;
+the essential rules below remain non-negotiable.
+
 ## Local Agent Discovery
 
 The local `.codex` directory is intentionally ignored by Git. When it is
@@ -44,18 +52,8 @@ They supplement this file and do not replace its repository-wide rules.
 
 ## Codmem Recall
 
-Before non-trivial Project-Indexly analysis or edits, consult Codmem from the
-private `indexly-codmem` repository. Discover that checkout from
-parent-provided context, `INDEXLY_CODMEM_ROOT`, `CODMEM_REPO_ROOT`, or a nearby
-sibling checkout, then run:
-
-```powershell
-tracking\system-test-risk-Coverage\codmem\codmem.cmd recall "<task, error, command, risk, defect, or suspected file>"
-```
-
-Treat recall output as context to verify against Project-Indexly source and
-tests, not as proof. Preserve the private memory boundary: do not copy private
-Codmem records into Project-Indexly release surfaces.
-
-If work changes tracking, risk records, Codmem inputs, or indexed
-documentation, follow the refresh workflow in the private Codmem repository.
+For non-trivial analysis or edits, follow the Codmem recall procedure in the
+shared project workflow. Treat recall output as context to verify against
+Project-Indexly source and tests, not as proof. Preserve the private memory
+boundary: do not copy private Codmem records into Project-Indexly release
+surfaces.
