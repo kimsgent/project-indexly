@@ -6,8 +6,27 @@ description: Apply Project-Indexly's shared branch, Codmem, validation, and hand
 # Project-Indexly Governance
 
 Read the repository's `AGENTS.md` first. This skill centralizes the workflow
-shared by Project-Indexly agent roles; role-specific expertise stays with the
-selected agent profile.
+shared by local agent roles. Role profiles retain only role-specific expertise
+and must not restate this workflow.
+
+## Shared workspace context
+
+This workspace spans four repositories:
+
+- Project-Indexly is a production-grade Python application with pytest,
+  Hugo/Docsy documentation, release surfaces, Netlify configuration, and
+  Homebrew packaging.
+- Indexly-Codmem is a private memory and risk repository. Keep its source,
+  records, and runtime data out of Project-Indexly distribution surfaces.
+- AutoDoctor is a lightweight, PowerShell-first diagnostics project with a
+  Python FastAPI service and static dashboard.
+- Dotfiles manages Linux, macOS, and Windows environment bootstraps. Package
+  managers, shell profiles, symlinks, and bootstrap behavior need idempotent,
+  reversible handling.
+
+Do not edit a sibling repository unless the task explicitly delegates it. A
+write-capable role edits only when its parent explicitly delegates the work;
+read-only roles must not mutate files, branches, dependencies, or services.
 
 ## Before work
 
