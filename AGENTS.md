@@ -1,9 +1,5 @@
 # Project-Indexly Agent Entry Point
 
-Project-Indexly is production-grade software. Favor correctness, explicit risk
-assessment, backward compatibility, and evidence-backed validation over broad
-or speculative changes.
-
 ## Shared Project Workflow
 
 Use the tracked [Project-Indexly governance skill](.agents/skills/project-indexly-governance/SKILL.md)

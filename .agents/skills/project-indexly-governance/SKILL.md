@@ -28,6 +28,12 @@ Do not edit a sibling repository unless the task explicitly delegates it. A
 write-capable role edits only when its parent explicitly delegates the work;
 read-only roles must not mutate files, branches, dependencies, or services.
 
+Favor correctness, explicit risk assessment, backward compatibility, and
+evidence-backed validation over broad or speculative changes. Do not accept
+generated tests as proof unless they establish the intended behavior. Do not
+use parallel write-capable agents on the same files, and keep environment work
+free of surprise global state changes.
+
 ## Before work
 
 - Inspect the working tree and preserve unrelated changes.
@@ -84,4 +90,6 @@ Use focused Conventional Commits. Report what changed, why, exact validation
 and outcomes, and residual risks or side effects. Project-Indexly changes
 normally use a pull request; when a user explicitly requests a local-only
 commit, report the commit and wait for their approval before any fast-forward
-or merge.
+or merge. Project-Indexly pull-request descriptions must state what changed,
+why, validation, and risks or side effects. If a critical file changes, include
+its impact and blast radius in the pull-request description.
