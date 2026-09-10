@@ -49,6 +49,43 @@ free of surprise global state changes.
   versions: development normalization such as `2.1.7b` to `2.1.7b0` is
   expected, but a different release version is a blocker to diagnose first.
 
+## SQLite performance-action environment
+
+Use `.venv-codex` for ordinary development and validation. Use the separate
+`.venv-codex-sqlite` environment only when diagnosing or testing performance
+actions that require SQLite 3.46 or newer, including `planner-optimize`.
+The ordinary Windows environment currently embeds SQLite 3.45.3 and cannot
+exercise that gate. The companion environment was verified with Python 3.14.4
+and SQLite 3.50.4; always inspect the actual interpreter rather than assuming
+those versions on another machine.
+
+If the companion environment is missing and this validation is needed, create
+it with a Python interpreter that embeds SQLite 3.46 or newer. On Windows, the
+verified setup is:
+
+```powershell
+if (-not (Test-Path .venv-codex-sqlite)) { py -3.14 -m venv .venv-codex-sqlite }
+& .\.venv-codex-sqlite\Scripts\python.exe -m pip install --upgrade pip
+& .\.venv-codex-sqlite\Scripts\python.exe -m pip install -r requirements-dev.txt
+& .\.venv-codex-sqlite\Scripts\python.exe -m pip install -e .
+& .\.venv-codex-sqlite\Scripts\python.exe -c "import sqlite3,sys; assert sqlite3.sqlite_version_info >= (3, 46, 0), sqlite3.sqlite_version; print(f'python={sys.version.split()[0]}'); print(f'sqlite={sqlite3.sqlite_version}')"
+```
+
+`requirements-dev.txt` is the required package baseline: it includes
+`requirements.txt` plus pytest, coverage, async-test, schema, formatting,
+type-checking, build, and cryptography dependencies. The editable install
+binds the environment to the current checkout. Do not add a separate SQLite
+wheel or package: the required SQLite library is supplied by the chosen Python
+interpreter.
+
+This environment clears only the SQLite-version gate. It does not make the
+full Windows performance-action suite a valid acceptance target: durable backup
+publication deliberately calls `os.open(directory, os.O_RDONLY)` and
+`os.fsync()` in `perf.actions._fsync_directory`, a directory path unsupported
+by the current Windows runtime. Do not weaken that recovery guarantee or mask
+the failure. Use a supported Linux environment for full action validation; on
+Windows, record the durable-backup limitation separately from SQLite coverage.
+
 ## Codmem and boundaries
 
 For non-trivial Project-Indexly analysis or edits, read
