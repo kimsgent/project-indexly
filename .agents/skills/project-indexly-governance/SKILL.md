@@ -30,8 +30,14 @@ For non-trivial Project-Indexly analysis or edits, read
 `.codex/codmem-instructions.md` when it is available. Discover the private
 Codmem checkout from parent-provided context, `INDEXLY_CODMEM_ROOT`,
 `CODMEM_REPO_ROOT`, or a nearby sibling checkout, then run the recall command
-specified by that local instruction. Treat recall results as leads to verify in
-source and tests, not as proof.
+specified by that local instruction. When the local instruction is unavailable,
+run this fallback from the discovered Codmem checkout:
+
+```powershell
+tracking\system-test-risk-Coverage\codmem\codmem.cmd recall "<task, error, command, risk, defect, or suspected file>"
+```
+
+Treat recall results as leads to verify in source and tests, not as proof.
 
 Keep Codmem's private records, paths, and source data out of Project-Indexly
 release surfaces. If a change updates Codmem-indexed documentation, tracking,
