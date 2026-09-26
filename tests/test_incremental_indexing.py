@@ -338,6 +338,56 @@ def test_only_changes_flag_parses_from_cli():
     assert args.only_changes is True
 
 
+def test_handle_index_forwards_filetype_to_scanner(monkeypatch, tmp_path):
+    args = build_parser().parse_args(
+        ["index", str(tmp_path), "--filetype", ".docx"]
+    )
+    captured = {}
+
+    class DummyRipple:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def start(self):
+            pass
+
+        def stop(self):
+            pass
+
+    async def record_scan(**kwargs):
+        captured.update(kwargs)
+        return []
+
+    monkeypatch.setattr(indexly_app, "Ripple", DummyRipple)
+    monkeypatch.setattr(indexly_app, "scan_and_index_files", record_scan)
+    monkeypatch.setattr(indexly_app, "shutdown_logger", lambda **kwargs: None)
+
+    indexly_app.handle_index(args)
+
+    assert captured["filetype"] == ".docx"
+
+
+def test_filetype_parameter_preserves_legacy_positional_arguments(
+    tmp_path, monkeypatch
+):
+    isolate_index_runtime(monkeypatch, tmp_path)
+    root = tmp_path / "docs"
+    root.mkdir()
+    file_path = root / "file.txt"
+    file_path.write_text("alpha", encoding="utf-8")
+    calls = []
+
+    async def record_call(path, *args):
+        calls.append((path, args))
+        return normalize_path(path), True
+
+    monkeypatch.setattr(indexly_app, "async_index_file", record_call)
+
+    asyncio.run(indexly_app.scan_and_index_files(str(root), True))
+
+    assert calls == [(str(file_path), (True, False, False))]
+
+
 def test_month_and_log_file_flags_parse_from_cli():
     parser = build_parser()
 
@@ -621,6 +671,112 @@ def test_index_plan_does_not_create_missing_database(tmp_path, monkeypatch):
     assert indexed == []
     assert not db_path.exists()
     assert logger.entries == []
+
+
+def test_filetype_plan_honors_explicit_ignore_and_preserves_full_prune_scope(
+    tmp_path, monkeypatch, capsys
+):
+    db_path, logger = isolate_index_runtime(monkeypatch, tmp_path)
+    root = tmp_path / "docs"
+    root.mkdir()
+    selected = root / "selected.docx"
+    ignored = root / "ignored.docx"
+    outside_scope = root / "outside.txt"
+    selected.write_text("selected", encoding="utf-8")
+    ignored.write_text("ignored", encoding="utf-8")
+    outside_scope.write_text("outside", encoding="utf-8")
+    ignore_path = tmp_path / "custom.indexlyignore"
+    ignore_path.write_text("ignored.docx\n", encoding="utf-8")
+    seed_index_row(
+        db_path,
+        outside_scope,
+        set_file_mtime(outside_scope, 1_700_000_000),
+        content="outside",
+    )
+    seed_index_row(
+        db_path,
+        ignored,
+        "2026-01-01T00:00:00",
+        content="ignored",
+    )
+
+    indexed = asyncio.run(
+        indexly_app.scan_and_index_files(
+            str(root),
+            filetype="docx",
+            ignore_path=str(ignore_path),
+            only_changes=True,
+            plan=True,
+        )
+    )
+
+    output = capsys.readouterr().out
+    assert indexed == []
+    assert logger.entries == []
+    assert "Scanned files: 2" in output
+    assert "Scoped files: 1" in output
+    assert "Files that would be indexed: 1" in output
+    assert "Stale rows that would be pruned: 1" in output
+
+
+def test_filetype_only_changes_honors_explicit_ignore_without_pruning_other_types(
+    tmp_path, monkeypatch
+):
+    db_path, _logger = isolate_index_runtime(monkeypatch, tmp_path)
+    root = tmp_path / "docs"
+    root.mkdir()
+    selected = root / "selected.docx"
+    ignored = root / "ignored.docx"
+    outside_scope = root / "outside.txt"
+    selected.write_text("selected", encoding="utf-8")
+    ignored.write_text("ignored", encoding="utf-8")
+    outside_scope.write_text("outside", encoding="utf-8")
+    ignore_path = tmp_path / "custom.indexlyignore"
+    ignore_path.write_text("ignored.docx\n", encoding="utf-8")
+    outside_normalized = seed_index_row(
+        db_path,
+        outside_scope,
+        set_file_mtime(outside_scope, 1_700_000_000),
+        content="outside",
+    )
+    ignored_normalized = seed_index_row(
+        db_path,
+        ignored,
+        "2026-01-01T00:00:00",
+        content="ignored",
+    )
+    calls = []
+
+    async def record_call(path, *args, **kwargs):
+        calls.append(path)
+        return normalize_path(path), True
+
+    monkeypatch.setattr(indexly_app, "async_index_file", record_call)
+
+    indexed = asyncio.run(
+        indexly_app.scan_and_index_files(
+            str(root),
+            filetype=".DOCX",
+            ignore_path=str(ignore_path),
+            only_changes=True,
+        )
+    )
+
+    conn = connect_db(str(db_path))
+    try:
+        outside_count = conn.execute(
+            "SELECT COUNT(*) FROM file_index WHERE path = ?", (outside_normalized,)
+        ).fetchone()[0]
+        ignored_count = conn.execute(
+            "SELECT COUNT(*) FROM file_index WHERE path = ?", (ignored_normalized,)
+        ).fetchone()[0]
+    finally:
+        conn.close()
+
+    assert calls == [str(selected)]
+    assert indexed == [normalize_path(str(selected))]
+    assert outside_count == 1
+    assert ignored_count == 0
 
 
 def test_month_filter_no_logs_falls_back_to_full_scan(tmp_path, monkeypatch):

@@ -958,6 +958,40 @@ def test_once_fixed_clock_exits_and_releases_root_lock(tmp_path, monkeypatch):
     lock.release()
 
 
+def test_once_tolerates_a_transient_clock_stall(tmp_path, monkeypatch):
+    path, incoming = _config(
+        tmp_path, settle_seconds=0.5, pattern="{title}", counter_format=""
+    )
+    source = incoming / "report.txt"
+    source.write_text("content", encoding="utf-8")
+    job = load_settings(str(path)).jobs[0]
+    current = [0.0]
+    sleeps = [0]
+
+    def advance_after_one_stall(delay):
+        sleeps[0] += 1
+        if sleeps[0] > 1:
+            current[0] += delay
+
+    monkeypatch.setattr(
+        "indexly.rename_watch.service.log_move", lambda *args, **kwargs: None
+    )
+    service = RenameWatchService(
+        [job],
+        state_root=tmp_path / "state",
+        clock=lambda: current[0],
+        sleeper=advance_after_one_stall,
+    )
+
+    service.run_once()
+
+    assert sleeps[0] >= 2
+    assert not source.exists()
+    assert (job.destination_path / "report.txt").read_text(
+        encoding="utf-8"
+    ) == "content"
+
+
 def test_once_budget_handles_huge_retry_count_without_exponentiation(tmp_path):
     path, _ = _config(tmp_path)
     job = load_settings(str(path)).jobs[0]

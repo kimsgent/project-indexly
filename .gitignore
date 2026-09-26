@@ -17,6 +17,8 @@ pip-wheel-metadata/
 # Virtual environments
 .venv/
 .venv-codex/
+.venv-indexly/
+.venv-codex-sqlite/
 venv/
 env/
 ENV/

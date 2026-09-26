@@ -47,6 +47,11 @@ def add_rename_watch_arguments(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Restore or requeue durable terminal failures",
     )
+    actions.add_argument(
+        "--resolve-recovery",
+        action="store_true",
+        help="Mark one narrowly validated recovery conflict as externally handled",
+    )
     actions.add_argument("--health", action="store_true", help="Report service liveness")
     actions.add_argument("--readiness", action="store_true", help="Report service readiness")
     actions.add_argument("--metrics", action="store_true", help="Report process metrics")
@@ -80,6 +85,9 @@ def add_rename_watch_arguments(parser: argparse.ArgumentParser) -> None:
         help="Emit rename-watch failures as one versioned JSON document",
     )
     parser.add_argument("--job", help="Exact, case-sensitive job id for operator actions")
+    parser.add_argument(
+        "--operation-id", help="Exact recovery operation UUID to resolve"
+    )
     reset_scope = parser.add_mutually_exclusive_group()
     reset_scope.add_argument("--date-key", help="Reset one existing counter date key")
     reset_scope.add_argument(

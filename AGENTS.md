@@ -42,6 +42,28 @@ They supplement this file and do not replace its repository-wide rules.
 - Do not edit sibling repositories unless the task explicitly delegates
   cross-repository work.
 
+## SQLite Performance-Action Environment
+
+Use `.venv-codex` for ordinary development and validation. Use the separate
+`.venv-codex-sqlite` environment only when diagnosing or testing performance
+actions that require SQLite 3.46 or newer, including `planner-optimize`.
+Inspect the interpreter's actual SQLite version; do not assume another
+machine's Python or SQLite version applies here.
+
+If this companion environment is missing and SQLite-gated validation is
+needed, create it with a Python interpreter that embeds SQLite 3.46 or newer,
+install `requirements-dev.txt`, and install this checkout in editable mode.
+Do not add a separate SQLite wheel or package: the selected Python interpreter
+supplies SQLite.
+
+This environment clears only the SQLite-version gate. It does not make the
+full Windows performance-action suite an acceptance target: durable backup
+publication uses directory `os.open(..., os.O_RDONLY)` and `os.fsync()` in
+`perf.actions._fsync_directory`, which the current Windows runtime does not
+support. Do not weaken or mask that recovery guarantee. Use a supported Linux
+environment for full action validation, and record the Windows durable-backup
+limitation separately from SQLite coverage.
+
 ## Codmem Recall
 
 Before non-trivial Project-Indexly analysis or edits, consult Codmem from the

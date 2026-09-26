@@ -30,7 +30,7 @@ def tmp_db(tmp_path):
 
 
 @pytest.fixture(autouse=True)
-def patch_db_file(tmp_db, monkeypatch):
+def patch_db_file(tmp_db, tmp_path, monkeypatch):
     """
     Automatically patch Indexly to use a temporary database during tests.
     Ensures that config.DB_FILE, db_utils.DB_FILE, and all internal references
@@ -51,6 +51,22 @@ def patch_db_file(tmp_db, monkeypatch):
 
     # Reload db_utils to rebind any stale module-level references
     importlib.reload(db_utils)
+
+    # Keep test audit events out of the developer's real platform data directory.
+    # This is especially important for Rename Watch checks, which deliberately
+    # probe that the configured log directory is writable.
+    import indexly.log_utils as log_utils
+    import indexly.rename_watch.logging as rename_watch_logging
+
+    log_dir = tmp_path.parent / f"{tmp_path.name}-indexly-test-log"
+    log_dir.mkdir()
+    monkeypatch.setattr(log_utils, "NDJSON_LOG_DIR", log_dir)
+    monkeypatch.setattr(
+        log_utils,
+        "_default_logger",
+        log_utils.LogManager(log_dir=log_dir, async_mode=False),
+    )
+    monkeypatch.setattr(rename_watch_logging, "NDJSON_LOG_DIR", log_dir)
 
     print(f"[conftest] Using temporary DB: {tmp_db}")
 

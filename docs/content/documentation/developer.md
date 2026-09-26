@@ -4,9 +4,9 @@ slug: "developer-guide"
 icon: "mdi:code-braces"
 weight: 220
 date: 2026-04-01
-lastmod: 2026-05-09
-summary: "Production-grade developer guide for Indexly: architecture, dependency policy, local setup, testing, packaging, and contribution workflow."
-description: "Learn how to develop Indexly safely and efficiently. Covers project structure, optional dependency design, command wiring, quality checks, and Homebrew-friendly packaging practices."
+lastmod: 2026-07-27
+summary: "Production-grade developer guide for Indexly: architecture, dependency policy, local setup, testing, performance diagnostics, packaging, and contribution workflow."
+description: "Learn how to develop Indexly safely and efficiently. Covers project structure, optional dependency design, command wiring, performance boundaries, quality checks, and Homebrew-friendly packaging practices."
 keywords: [
   "Indexly developer guide",
   "Indexly architecture",
@@ -143,6 +143,7 @@ project-indexly/
     ├── inference/
     ├── observers/
     ├── organize/
+    ├── perf/
     ├── visualization/
     └── assets/
 ```
@@ -161,6 +162,7 @@ project-indexly/
 | Compare | `compare/compare_engine.py`, `compare/file_compare.py`, `compare/folder_compare.py` | File/folder diff and similarity checks |
 | Backup/restore | `backup/cli.py`, `backup/restore.py`, `backup/compress.py` | Full/incremental backup and restore workflows |
 | Monitoring | `watcher.py`, `observers/runner.py`, `observers/registry.py` | Live folder watch, semantic observer runs, event callbacks, metrics, and audits |
+| Performance diagnostics | `perf/model.py`, `perf/probe.py`, `perf/baseline.py`, `perf/state.py`, `perf/cli.py` | Bounded read-only probes, versioned records, baseline classification, and non-mutating plans |
 | Health diagnostics | `doctor.py`, `db_update.py`, `db_schema_utils.py` | Runtime health checks, search/analysis DB diagnostics, guarded repair flow |
 
 ---
@@ -330,6 +332,151 @@ Add tests for:
 
 ---
 
+## Performance Internals
+
+The performance command routes before normal Indexly initialization in both
+supported executable entry points. That boundary matters because ordinary
+configuration and database helpers may create runtime directories or initialize
+tables.
+
+### Responsibility Boundary
+
+The `src/indexly/perf/` package separates:
+
+- `model.py`: versioned record and JSON contracts
+- `probe.py`: bounded read-only SQLite, file-size, and indexing-log probes
+- `baseline.py`: pure calculations and conservative status classification
+- `state.py`: strict validation, atomic replacement, and previous-record recovery
+- `evidence.py`: pure action-specific eligibility from validated records
+- `actions.py`: live preconditions, verified backup, bounded SQLite actions,
+  postconditions, and numeric audit
+- `cli.py`: early command routing and text/JSON rendering
+- `__init__.py`: the narrow status API consumed by Doctor
+
+`perf --show` may write only the performance-record files. `perf --read` must
+not open SQLite or create a directory, temporary file, lock, cache, database,
+or record. A live `--show` rejects WAL mode before opening SQLite so the
+read-only contract cannot create or update a shared-memory sidecar.
+Plan-only `perf --opti` is non-mutating.
+
+Doctor invokes only the performance package's conservative status API. It
+never calls probe, baseline, state-write, CLI, evidence, or action behavior,
+calculates performance metrics, or invokes a maintenance action.
+
+### Optimization and Apply Boundary
+
+`evidence.plan_optimizations()` does no I/O. It evaluates
+`planner-optimize` from SQLite 3.46+ dry-run evidence using mask `0x10013`.
+If that debug-only pragma returns `SQLITE_READONLY` on an FTS database, the
+probe reports an Indexly-derived count of known relational tables whose
+indexes lack `sqlite_stat1` coverage; it never inspects FTS shadow tables.
+It evaluates `fts-merge` only from three latest comparable FTS p95/generation
+observations with strictly advancing generations and two latest
+baseline-relative degradations. Status, database size, and generic capacity
+metrics never establish action eligibility.
+
+Before either action-specific branch, evidence evaluates
+`fts_schema_action_ready` conservatively:
+
+- absent legacy metric → `collect_evidence`
+- present but non-measured, unavailable, or invalid evidence → `unavailable`
+- measured `0` → `repair_required`
+- measured `1` → continue with action-specific evidence
+
+Only measured `0` establishes an inspected noncanonical, missing, drifted,
+external-content, malformed, unsupported, or uninspectable definition and
+routes the operator to Doctor. Unavailable readiness does not infer schema
+damage. The action layer repeats the structured `match` inspection under its
+writer reservation.
+
+Applied actions require a validated primary report no older than 24 hours.
+`actions.execute_action()` then matches database identity, schema fingerprint,
+Indexly and SQLite versions, journal mode, page size, page count, main-file
+bytes, the observed big-endian SQLite header change counter at offset 24,
+document count, size bucket, and search index generation. It refuses WAL mode
+or a `-wal` sidecar, validates a free-space-qualified existing non-symlink
+backup directory distinct from the live database directory, acquires
+`BEGIN IMMEDIATE`, and creates a verified generic SQLite backup.
+
+`planner-optimize` applies mask `0x10012`; `fts-merge` issues one positive
+500-page merge. Source, backup, and post-action verification use SQLite-side
+`quick_check` plus bounded logical invariants. The FTS action additionally
+runs FTS5 `integrity-check` against the completed backup and the post-action
+live database before commit. The CLI appends a numeric-only audit, retains at
+most 30 outcomes, refreshes the report, and returns a before/after/delta
+comparison. It never implements `VACUUM`, FTS rebuild, schema or tag
+migration, cache deletion, journal-mode changes, or automatic re-indexing.
+
+The backup becomes reportable only after file `fsync`, atomic rename, and
+backup-directory `fsync` all succeed. A directory synchronization failure
+triggers candidate cleanup, raises a backup failure, and prevents action
+execution.
+
+If candidate cleanup itself fails, `ActionBackupError` carries only the
+candidate path internally. The CLI emits `indexly.performance-error/v1` with
+`mutation_applied: false`, `backup_verified: false`,
+`cleanup_incomplete: true`, and `backup_filename`; it never exposes the
+directory path. The operator must resolve that filename within the configured
+backup directory and remove it before retrying.
+
+`baseline.build_record()` preserves action outcomes across a reset when the
+database identity is unchanged, including version, schema, journal, page-size,
+or size-bucket transitions. It clears outcomes only when identity changes.
+The CLI's post-action comparability check includes size bucket, so a bucket
+transition retains the audit but fails the comparison rather than publishing
+misleading deltas.
+
+Failure output preserves transaction state. Preflight failures and rolled-back
+actions exit `2`. A rollback with a retained verified backup uses
+`indexly.performance-action/v1`, sets `mutation_applied: false` and
+`rolled_back: true`, and exposes only the backup filename. If the action
+applies a mutation but audit persistence or the post-action report fails, the
+CLI sets `mutation_applied: true` and exits `3`; failed follow-up after a
+`no_op` remains exit `2`. Callers must not treat exit `3` as safe to retry
+blindly.
+
+### Evidence and Privacy Rules
+
+Every reported metric is labelled `Observed`, `Indexly-derived`, or
+`Theoretical`.
+Theoretical formulas are descriptive and never authorize a database action.
+Timeouts report an unavailable measurement instead of expanding into an
+unbounded scan.
+
+The record may contain bounded numeric samples, calculation context, a salted
+non-reversible database identity, and a reserved bounded action-outcomes list.
+It must not contain paths, filenames, indexed content, metadata JSON, query
+terms, usernames, hostnames, raw log records, or network telemetry.
+
+### Testing Requirements
+
+Performance changes require focused coverage for:
+
+- both early executable routes and parser/help consistency
+- no-write behavior for `--read` and database-read-only behavior for `--show`
+- bounded probe and global deadlines
+- formulas, units, comparable-baseline rules, and status transitions
+- record checksum/schema rejection, atomic replacement, and previous-copy recovery
+- absence of sensitive values in text, JSON, and local records
+- Doctor's status-only consumption and inability to invoke an optimizer
+- action-specific planner and FTS eligibility, including unavailable evidence
+- legacy/unavailable/measured-zero FTS readiness disposition boundaries
+- exact stale/identity/schema/journal/page/size/generation precondition failures
+- exact SQLite database-header change-counter binding
+- WAL/header/sidecar refusal without checkpoint or journal-mode change
+- backup, free-space, writer-lock, rollback, audit-retention, and post-action
+  comparison behavior
+- backup-directory synchronization failure before action execution
+- sanitized cleanup-incomplete reporting for an unverified backup candidate
+- same-identity audit retention and size-bucket postcheck rejection
+- backup and live FTS5 integrity verification for `fts-merge`
+- exit `2` rollback versus exit `3` committed partial-success output
+
+See [Performance Diagnostics and Optimization](performance-guide.md) for the
+public contract.
+
+---
+
 ## Doctor Internals
 
 The `indexly doctor` command is implemented in `src/indexly/doctor.py`.
@@ -346,6 +493,7 @@ It may inspect:
 - `search_cache.json`
 - optional dependency availability
 - external tools such as ExifTool and Tesseract
+- conservative performance status from the validated local record
 
 State-changing actions require explicit flags:
 
@@ -354,6 +502,10 @@ State-changing actions require explicit flags:
 - `--rebuild-fts` allows FTS5 virtual table rebuilds during repair
 
 `--full-integrity` is intentionally read-only. It enables SQLite `PRAGMA integrity_check` for inspected databases and should not imply repair.
+
+Doctor must not run performance probes, calculate baselines, display detailed
+performance metrics, or invoke `perf --opti`. Slow performance evidence does
+not establish corruption.
 
 ### Command Wiring
 
@@ -369,14 +521,28 @@ When adding or renaming a Doctor flag:
 ### FTS5 Safety Rule
 
 Do not silently rebuild FTS5 virtual tables.
-FTS5 table definitions do not guarantee that all path values can be reconstructed safely from a damaged or legacy virtual table.
-The repair layer in `db_update.py` therefore skips FTS5 rebuilds unless `allow_fts_rebuild=True`, which is exposed through:
+The repair layer uses one structured semantic definition for the FTS5 module,
+ordered columns and optional `UNINDEXED` markers, tokenizer, prefix sequence,
+and supported options.
+`uninspectable` definitions are never treated as matching and are never
+automatically rebuilt.
+
+`db_update.py` skips FTS5 rebuilds unless `allow_fts_rebuild=True`, which is
+exposed through:
 
 ```bash
 indexly doctor --fix-db --rebuild-fts
 ```
 
-Prefer re-indexing source folders or restoring a known-good backup when FTS data is suspect.
+The common rebuild engine must keep full integrity, definition, writable-path,
+free-space, verified SQLite snapshot, and lock checks ahead of mutation. It
+must keep data movement in SQLite, bound client memory, validate logical-row
+preservation and FTS behavior before swap, increment
+`search_index_generation` in the same transaction, and roll back transfer or
+verification failures. It must not run `VACUUM`.
+
+If post-commit reopening or verification fails, return the verified snapshot
+path and recovery guidance rather than success.
 
 ### Testing Requirements
 

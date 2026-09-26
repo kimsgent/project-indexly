@@ -23,6 +23,7 @@ from .planner import ExactNameCollision
 from .runtime_snapshot import METRIC_NAMES, RuntimeSnapshotWriter
 
 _IDENTITY_UNAVAILABLE = object()
+_MAX_STALLED_ONCE_SLEEPS = 3
 
 def _temporary(path: Path) -> bool:
     return path.name.startswith(("~$", ".~")) or path.name.lower().endswith((".tmp", ".lock"))
@@ -759,6 +760,7 @@ class RenameWatchService:
                 self._once_discovered_identities = {}
             for job in self.jobs: self.reconcile(job)
             deadlines, retry_versions = self._freeze_once_work()
+            stalled_sleeps = 0
             while self._has_pending():
                 tick_started = self.clock()
                 self.tick(reconcile=False)
@@ -774,7 +776,11 @@ class RenameWatchService:
                     before_sleep = self.clock()
                     self.sleeper(delay)
                     if delay > 0 and self.clock() <= before_sleep:
-                        self._expire_once_work(deadlines, float("inf"))
+                        stalled_sleeps += 1
+                        if stalled_sleeps >= _MAX_STALLED_ONCE_SLEEPS:
+                            self._expire_once_work(deadlines, float("inf"))
+                    else:
+                        stalled_sleeps = 0
         except BaseException as error:
             primary_error = error
             raise

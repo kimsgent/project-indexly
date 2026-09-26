@@ -1,8 +1,8 @@
 ---
 title: "Indexly Doctor"
 linkTitle: "Doctor"
-description: "Use indexly doctor to inspect Indexly health, runtime paths, search database readiness, analysis persistence, cache state, optional dependencies, and safe repair options."
-summary: "A practical guide to the Indexly health-check command, including read-only diagnostics, full SQLite integrity checks, cache cleanup, JSON output, and guarded database repair."
+description: "Use indexly doctor to inspect Indexly health, runtime paths, search database readiness, conservative performance status, analysis persistence, cache state, optional dependencies, and safe repair options."
+summary: "A practical guide to the Indexly health-check command, including read-only diagnostics, conservative performance status, full SQLite integrity checks, cache cleanup, JSON output, and guarded database repair."
 slug: "indexly-doctor"
 aliases:
   - "/en/documentation/doctor/"
@@ -30,7 +30,7 @@ categories:
 weight: 180
 type: docs
 date: "2025-10-15"
-lastmod: "2026-05-09"
+lastmod: "2026-07-27"
 draft: false
 toc: true
 params:
@@ -64,11 +64,13 @@ State-changing behavior requires explicit flags such as `--clear-cache`, `--fix-
 | Inspect a copied or local search database | `indexly doctor --db index.db` |
 | Include the analysis persistence database explicitly | `indexly doctor --analysis-db` |
 | Run full SQLite integrity checks | `indexly doctor --full-integrity` |
+| Collect the detailed performance report | `indexly perf --show` |
 | Output structured JSON | `indexly doctor --json` |
 | Clear the search cache after reporting cache state | `indexly doctor --clear-cache` |
 | Profile search database schema and relations | `indexly doctor --profile-db` |
 | Apply non-FTS schema fixes | `indexly doctor --fix-db` |
 | Allow a risky FTS5 rebuild during repair | `indexly doctor --fix-db --rebuild-fts` |
+| Inspect Homebrew-managed optional groups | `indexly extras status` |
 
 ## Syntax
 
@@ -87,10 +89,43 @@ Doctor reports these sections in Rich tables or JSON:
 | External tools | ExifTool and Tesseract availability |
 | Runtime paths | config directory, log directory, search DB path, cache file |
 | Search database | Indexly schema presence, FTS5 tables, row counts, vocabulary readiness, sample MATCH query |
+| Performance | Conservative status from the latest validated local performance record |
 | Analysis database | `cleaned_data` table, row count, JSON payload validity, SQLite integrity state |
 | Cache | `search_cache.json` size, parseability, stale path sample, explicit clearing |
 | Optional feature packs | analysis, documents, visualization, PDF export, OCR import availability |
 | Recommendations | Plain-language next steps based on warnings |
+
+For Homebrew installations, use `indexly extras status` alongside Doctor when
+an optional feature is missing. Doctor reports whether optional dependencies
+can be imported; `indexly extras` manages their lifecycle in the user-owned,
+Indexly-version, Python-ABI, and platform-scoped overlay outside the Homebrew
+Cellar.
+
+```bash
+command -v indexly
+indexly extras list
+indexly extras status
+indexly extras install documents
+indexly extras uninstall documents
+indexly extras reset
+```
+
+Use `reset` only when status reports an invalid current environment. It removes
+all managed packs for that Indexly/Python/platform runtime so you can reinstall
+the groups you need.
+
+After `brew upgrade indexly`, status may indicate that a group must be
+installed again for the new Indexly version, Python ABI, or platform. Do not
+repair a brewed installation with generic `pip`, `pip --user`, `sudo pip`, or
+`PYTHONPATH`. The managed command also works for pip installations; pip and
+virtual-environment users may instead use
+`python -m pip install "indexly[<group>]"` with the same interpreter that runs
+Indexly.
+
+Tesseract remains a separate external tool: the `documents` group installs
+ordinary PDF extraction and OCR integration dependencies, while OCR requires
+the Tesseract executable on `PATH` (`brew install tesseract` on Homebrew
+systems).
 
 ## Database Locations
 
@@ -225,6 +260,7 @@ Useful top-level fields:
   "external_tools": {},
   "paths": {},
   "search_database": {},
+  "performance": {},
   "analysis_database": {},
   "cache": {},
   "local_index_db": {},
@@ -241,6 +277,49 @@ Exit codes:
 | `0` | No warnings or errors. |
 | `1` | Warnings were found. Review recommendations. |
 | `2` | Errors were found. Doctor could not inspect one or more critical areas. |
+
+## Performance Status
+
+Doctor consumes one narrow, conservative status from the performance module.
+It does not run performance probes, calculate baselines, display detailed
+metrics, invoke an optimization plan, apply `planner-optimize` or `fts-merge`,
+or infer corruption from a slow result. Doctor never performs performance
+maintenance.
+
+| Status | Meaning |
+| --- | --- |
+| `Nominal` | A current report gives sufficient evidence of no material pressure. |
+| `Elevated` | Repeated baseline-relative degradation was observed; review the full report. |
+| `Constrained` | A bounded probe or sustained deviation is materially slow; investigate before maintenance. |
+
+Evidence states such as `not_assessed`, `collecting_baseline`, `baseline_stale`,
+`record_unavailable`, and `inconclusive` are not grades. Doctor must not present
+them as healthy.
+
+When Doctor reports performance pressure, collect the detailed report:
+
+```bash
+indexly perf --show
+```
+
+The live performance probe fails closed before opening a WAL-mode database,
+because even a nominally read-only SQLite connection can create or update
+shared-memory state. `indexly perf --read` can still inspect an existing
+validated record, and `indexly perf --opti` can still produce its non-mutating
+record-based plan. Neither Doctor nor `perf` checkpoints WAL or changes journal
+mode.
+
+The performance report is advisory. Use `indexly doctor --full-integrity` when
+you need a read-only corruption check, and keep repair behind its explicit
+flags. See [Performance Diagnostics and Optimization](performance-guide.md).
+
+If the performance plan reports `repair_required`, canonical Indexly FTS5
+schema readiness was measured as `0`. Missing, drifted, external-content,
+malformed, unsupported, or uninspectable FTS definitions are not performance
+actions; review Doctor's schema and integrity findings before any explicit
+repair. A missing legacy readiness metric instead reports `collect_evidence`,
+and unavailable readiness reports `unavailable`; neither state alone is
+evidence of schema damage.
 
 ## Repair Modes
 
@@ -274,7 +353,12 @@ indexly doctor --fix-db --auto-fix --json
 
 ### FTS5 rebuilds are guarded
 
-FTS5 virtual tables are not repaired like ordinary SQLite tables. Rebuilding an FTS5 table can lose path data when the existing table shape does not preserve the values needed to reconstruct it.
+FTS5 virtual tables are not repaired like ordinary SQLite tables. Doctor
+checks the module, ordered user columns and optional `UNINDEXED` markers,
+tokenizer, prefix sequence, and supported options as one semantic definition.
+Differences in case, whitespace, quote style, or option ordering alone do not
+trigger a rebuild. A malformed or unsupported definition is `uninspectable`
+and is never treated as matching or rebuilt automatically.
 
 For that reason, Doctor skips FTS5 rebuilds unless you explicitly allow them:
 
@@ -282,10 +366,29 @@ For that reason, Doctor skips FTS5 rebuilds unless you explicitly allow them:
 indexly doctor --fix-db --rebuild-fts
 ```
 
-{{< alert title="Use backups before FTS rebuilds" color="warning" >}}
-Prefer re-indexing source folders or restoring a known-good backup when an FTS5 virtual table is damaged.
-Use `--rebuild-fts` only when you understand the data-loss risk and have a recovery path.
+{{< alert title="FTS rebuilds are offline maintenance" color="warning" >}}
+Stop indexing, search-writing maintenance, and other writers before starting.
+The repair acquires an exclusive-writer lock and creates a verified
+SQLite-consistent snapshot, but you still need enough free space and a known
+recovery window.
 {{< /alert >}}
+
+Before changing the database, the rebuild runs full integrity, FTS-definition,
+writable-path, free-space, snapshot, and lock checks. A failed preflight leaves
+the database unchanged.
+
+The rebuild transfers common logical columns inside SQLite rather than loading
+the complete table into Python memory. Before swapping tables, it verifies row
+counts, null or empty paths, duplicate paths, a deterministic batched digest,
+the replacement FTS definition, vocabulary access, and representative `MATCH`
+behavior. The swap, vocabulary recreation, and search-cache generation bump
+share one transaction. A transfer or verification failure rolls that
+transaction back. Repair does not run `VACUUM`.
+
+After commit, Indexly reopens and checks the database. If that final check
+fails, the command reports the verified snapshot path and recovery direction
+instead of claiming success. Preserve that snapshot and stop database writers
+before restoring it or re-indexing source folders.
 
 ## Troubleshooting
 
@@ -384,6 +487,7 @@ When changing Doctor:
 
 - [Clear Search Results Safely](clear-search.md)
 - [Database Update & Migration Utilities](db-migration-utility.md)
+- [Performance Diagnostics and Optimization](performance-guide.md)
 - [Database Design](database-design.md)
 - [Indexly Logging System](indexly-logging-system.md)
 - [Developer Guide](developer.md)

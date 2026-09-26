@@ -5,9 +5,9 @@ icon: "mdi:play-circle"
 weight: 20
 type: docs
 date: 2026-04-01
-lastmod: 2026-07-16
-summary: "Learn the day-to-day Indexly workflow: install, index, search, tag, analyze, compare, and back up with practical command examples."
-description: "Practical Indexly usage guide for Windows, macOS, and Linux. Covers indexing, search, regex, tagging, analysis, organizing, backup/restore, and common troubleshooting."
+lastmod: 2026-07-27
+summary: "Learn the day-to-day Indexly workflow: install, index, search, tag, analyze, compare, measure performance, and back up with practical command examples."
+description: "Practical Indexly usage guide for Windows, macOS, and Linux. Covers indexing, search, regex, tagging, analysis, performance diagnostics, organizing, backup/restore, and common troubleshooting."
 keywords: [
   "Indexly usage guide",
   "Indexly search",
@@ -47,6 +47,7 @@ You will learn the most common workflows:
 - Rename, tag, and organize content
 - Analyze CSV and other structured files
 - Compare, back up, and restore safely
+- Measure search-database performance against a local baseline
 
 If you have not installed Indexly yet, start with [Install Indexly](indexly-installation.md).
 
@@ -58,6 +59,7 @@ If you have not installed Indexly yet, start with [Install Indexly](indexly-inst
 indexly --help
 indexly index /path/to/folder
 indexly search "invoice"
+indexly perf --show
 indexly clear-search --path /path/to/old-folder --dry-run
 indexly rename-file /path/to/incoming --pattern "{date}-{title}" --dry-run
 indexly regex "[A-Z]{3}-\\d{4}"
@@ -71,7 +73,27 @@ Use `indexly show-help` for a compact overview of all commands.
 
 For full platform-specific setup, use [Install Indexly](indexly-installation.md).
 
-Indexly has a lightweight core install. Optional capability packs are installed only when needed:
+Homebrew users install optional groups through Indexly's managed, user-owned
+overlay:
+
+```bash
+command -v indexly
+indexly extras list
+indexly extras install documents
+indexly extras status
+indexly extras uninstall documents
+```
+
+The groups are `documents`, `analysis`, `visualization`, `pdf_export`, and
+`backup`. The overlay is scoped to the brewed Indexly version, Python ABI, and
+platform architecture and is not installed in the Homebrew Cellar. After a
+Homebrew upgrade, run
+`indexly extras status` and reinstall a needed group if it is `not-installed`
+or `invalid` for the current runtime.
+
+The managed `indexly extras install <group>` command also works for pip
+installations. If you prefer to manage optional packages directly in a pip
+installation or virtual environment, use that environment's Python:
 
 ```bash
 python -m pip install "indexly[documents]"
@@ -86,6 +108,11 @@ Install all optional packs at once:
 ```bash
 python -m pip install "indexly[documents,analysis,visualization,pdf_export,backup]"
 ```
+
+Do not use generic `pip`, `pip --user`, `sudo pip`, or `PYTHONPATH` to extend a
+Homebrew installation. The `documents` group provides ordinary PDF extraction
+dependencies, but OCR also needs the external Tesseract executable
+(`brew install tesseract` on Homebrew systems).
 
 ---
 
@@ -431,6 +458,58 @@ indexly migrate check
 
 `indexly stats` gives a quick database summary: indexed files, tagged files, untagged files, tag coverage, database size, unique tags, total tag assignments, and top tags.
 
+Collect bounded performance evidence without changing the search database:
+
+```bash
+indexly perf --show
+indexly perf --read
+indexly perf --opti
+```
+
+`perf --show` opens non-WAL SQLite read-only and refreshes only the private
+local performance record. It refuses a WAL-mode database before opening
+SQLite, preventing shared-memory side effects; it never checkpoints WAL or
+changes journal mode. `perf --read` reads the validated record without opening
+SQLite or writing files. `perf --opti` is a non-mutating, action-specific plan.
+
+Only a recommended `planner-optimize` or `fts-merge` action can be applied.
+Apply requires a current primary report, an existing non-symlink backup
+directory separate from the live database directory, exact live-database
+precondition matches, sufficient free space, an immediate writer reservation,
+a verified SQLite backup, and exact terminal confirmation or `--yes`:
+
+```bash
+indexly perf --opti --action planner-optimize --apply \
+  --backup-dir /path/to/indexly-backups
+```
+
+Both actions require measured canonical Indexly FTS5 inspection state `match`.
+A legacy record missing the readiness metric returns `collect_evidence`; run a
+fresh `perf --show`. Unmeasured or budget-unavailable readiness returns
+`unavailable` without inferring schema damage. Measured readiness `0` for an
+actually inspected noncanonical, missing, drifted, external-content, malformed,
+unsupported, or uninspectable FTS definition returns `repair_required`; use
+Doctor. Apply also binds the report to SQLite's observed database change
+counter. A backup is not reported as complete and the action does not run
+unless both the backup file and its directory entry synchronize successfully.
+
+If backup failure also leaves cleanup incomplete, the named file is an
+unverified candidate, not a recovery backup. Inspect and remove that filename
+from the configured backup directory before retrying.
+
+Applied-action automation must distinguish exit `2` from exit `3`. Exit `2`
+means no database mutation committed, including a transaction that rolled back
+while retaining its verified backup or follow-up failure after a `no_op`.
+Exit `3` means a mutation was applied but audit persistence or the post-action
+report failed; preserve the reported backup and inspect state before retrying.
+A same-database size-bucket transition preserves the action audit but makes
+the post-action comparison non-comparable.
+
+Performance grades are baseline-relative and advisory. They do not establish
+database corruption, and a large index is not unhealthy merely because it is
+large. See [Performance Diagnostics and Optimization](performance-guide.md)
+for formulas, record recovery, privacy limits, and guarded maintenance.
+
 Semantic observers:
 
 ```bash
@@ -453,21 +532,25 @@ Live indexing:
 indexly watch /path/to/folder
 ```
 
-See [Indexly Doctor](indexly-doctor.md), [DB Migration Utility](db-migration-utility.md), and [Observers](observers.md).
+See [Indexly Doctor](indexly-doctor.md),
+[Performance Diagnostics and Optimization](performance-guide.md),
+[DB Migration Utility](db-migration-utility.md), and [Observers](observers.md).
 
 ---
 
 ## Friendly Missing-Dependency Messages
 
-When a feature needs an optional package group, Indexly prints a direct install hint.
+When a feature needs an optional package group, Indexly identifies the group
+and suggests `indexly extras install <group>`.
 
-Examples:
+Choose the installation path that matches your environment:
 
-- Analysis features: `Feature requires: pip install indexly[analysis]`
-- Document parsing features: `Feature requires: pip install indexly[documents]`
-- Visualization features: `Feature requires: pip install indexly[visualization]`
-- PDF export features: `Feature requires: pip install indexly[pdf_export]`
-- Encrypted backup/restore features: `Feature requires: pip install indexly[backup]`
+- Homebrew installs: run `indexly extras status`, then
+  `indexly extras install <group>` for a needed group that is not installed
+  for the current runtime.
+- pip/virtualenv installs: install `indexly[analysis]`, `indexly[documents]`,
+  `indexly[visualization]`, `indexly[pdf_export]`, or `indexly[backup]` with
+  `python -m pip`.
 
 This lets core commands like `indexly --help` and `indexly --version` remain usable even when optional packs are not installed.
 
@@ -488,6 +571,7 @@ This lets core commands like `indexly --help` and `indexly --version` remain usa
 - [Configuration](config.md)
 - [Search](/searching/)
 - [Clear Search Results Safely](clear-search.md)
+- [Performance Diagnostics and Optimization](performance-guide.md)
 - [Tagging](tagging.md)
 - [Rename File](rename-file.md)
 - [Rename Watch](/en/documentation/rename-watch/)

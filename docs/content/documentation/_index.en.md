@@ -16,7 +16,7 @@ weight: 1
 type: docs
 toc: true
 date: "2026-04-22"
-lastmod: "2026-07-17"
+lastmod: "2026-07-27"
 draft: false
 categories:
   - Overview
@@ -47,10 +47,10 @@ This documentation works best when you enter through the path that matches your 
 <div class="p-3 rounded" style="background:#ffffff; color:#1f2937;">
   <h4 class="mb-2" style="color:#0f172a;">What changed recently</h4>
   <ul class="mb-3">
+    <li>`v2.1.7` adds guarded search-database performance diagnostics, terminal search pagination, and improved incremental indexing.</li>
     <li>`v2.1.6` adds safe Rename Watch automation and requires Python 3.11 or newer.</li>
     <li>`v2.1.5` adds safe incremental indexing, log-based scope, plan previews, and quieter Excel processing.</li>
     <li>`v2.1.4` hardens universal loading, structured-data persistence, time-series visualization, and FTS cache generation.</li>
-    <li>`v2.1.3` adds analytical dataset routing, backend-aware inference, and safer optional dependency loading.</li>
   </ul>
   <a href="/en/releases/" class="btn btn-primary btn-sm me-2">View Release Notes</a>
   <a href="/en/documentation/data-analysis-pipeline/" class="btn btn-outline-secondary btn-sm">Open Analysis Guide</a>
@@ -68,6 +68,8 @@ This documentation works best when you enter through the path that matches your 
 - CSV analysis: [Analyze CSV](data-analysis.md)
 - CSV cleaning: [Clean CSV Data](clean-csv-data.md)
 - Configuration and filtering: [Configuration](config.md)
+- Local performance evidence and guarded action-specific maintenance:
+  [Performance Diagnostics and Optimization](performance-guide.md)
 - Engineering and contributions: [Developer Guide](developer.md)
 
 ## Quick Workflow
@@ -95,6 +97,7 @@ flowchart LR
 | Run Rename Watch under WinSW, systemd, or launchd | [Rename Watch Service Operation](rename-watch-service-operation.md) |
 | Remove stale search results without deleting files | [Clear Search Results Safely](clear-search.md) |
 | Diagnose search, cache, analysis DB, and integrity issues | [Indexly Doctor](indexly-doctor.md) |
+| Measure search-database performance and apply an eligible backed-up action | [Performance Diagnostics and Optimization](performance-guide.md) |
 | Get short answers for setup, paths, file support, and troubleshooting | [FAQ](faq.md) |
 | Choose the right analysis command and pipeline | [Data Analysis Overview](data-analysis-overview.md) |
 | Analyze JSON, NDJSON, search cache JSON, or Socrata-style JSON | [Analyze JSON And NDJSON Files](analyze-json-files.md) |
@@ -115,6 +118,7 @@ flowchart LR
 - [Indexing](indexing.md)
 - [Search](/searching/)
 - [Clear Search Results Safely](clear-search.md)
+- [Performance Diagnostics and Optimization](performance-guide.md)
 - [Rename File](rename-file.md)
 - [Tagging](tagging.md)
 - [Analyze CSV](data-analysis.md)

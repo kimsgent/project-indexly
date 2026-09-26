@@ -13,6 +13,10 @@ ARCHIVE_DIR = RELEASES_DIR / "Archive"
 INDEX_FILE = RELEASES_DIR / "_index.en.md"
 ARCHIVE_INDEX_FILE = ARCHIVE_DIR / "_index.en.md"
 API_FILE = BASE_DIR / "static" / "releases.json"
+# The default documentation language is configured to render in its own URL
+# subdirectory (docs/config/_default/config.toml). Keep generated Markdown
+# links aligned with the public API and the site navigation.
+SITE_LANGUAGE_PREFIX = "/en"
 
 
 def _read_keep_old() -> int:
@@ -41,8 +45,8 @@ def _release_path(version: str, archived: bool = False) -> Path:
 
 def _release_url(version: str, archived: bool = False) -> str:
     if archived:
-        return f"/releases/Archive/v{version}/"
-    return f"/releases/v{version}/"
+        return f"{SITE_LANGUAGE_PREFIX}/releases/archive/v{version}/"
+    return f"{SITE_LANGUAGE_PREFIX}/releases/v{version}/"
 
 
 def move_release_page(source: Path, target: Path) -> bool:
@@ -194,7 +198,7 @@ def main():
                 {
                     "version": v["version"],
                     "date": v["date"],
-                    "link": f"/en{url_path}",
+                    "link": url_path,
                     "summary": build_summary(v["changes"]),
                     "prerelease": is_prerelease(v["version"]),
                 }
@@ -205,7 +209,7 @@ def main():
         index_content.append("## Older Releases\n")
         index_content.append(
             f"- {len(archived_versions)} older releases moved to "
-            "[Archive](/releases/Archive/)."
+            f"[Archive]({SITE_LANGUAGE_PREFIX}/releases/archive/)."
         )
 
     # Build Archive index page (all archived releases)
@@ -242,7 +246,7 @@ def main():
         "latest": {
             "version": latest["version"],
             "date": latest["date"],
-            "link": f"/en{_release_url(latest['version'], archived=False)}",
+            "link": _release_url(latest["version"], archived=False),
             "summary": build_summary(latest["changes"]),
             "prerelease": is_prerelease(latest["version"]),
         }
@@ -253,7 +257,7 @@ def main():
         "archive": recent_list,
         "archived": {
             "count": len(archived_versions),
-            "link": "/en/releases/Archive/",
+            "link": f"{SITE_LANGUAGE_PREFIX}/releases/archive/",
         },
         "retention": {
             "max_old_releases": MAX_OLD_RELEASES,
