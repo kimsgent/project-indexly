@@ -123,6 +123,15 @@ implies permission to modify a database. An action requires `--action`,
 terminal must confirm by typing the exact action name. JSON-mode apply is
 non-interactive and therefore requires `--yes`.
 
+### Platform support for applied actions
+
+`--show`, `--read`, and plan-only `--opti` work on supported platforms. Applied
+`planner-optimize` and `fts-merge` actions additionally require a POSIX runtime
+that can durably synchronize the backup directory. Windows cannot provide the
+required directory `fsync` guarantee, so Indexly intentionally fails closed
+before changing SQLite. Run an applied action on a supported POSIX host; do not
+weaken the backup requirement to work around this limitation.
+
 ## Read the Report
 
 Every reported metric is labelled by where it came from:

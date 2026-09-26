@@ -15,6 +15,7 @@
         "feat(extras): add managed Homebrew optional-dependency overlays with status, repair, and safe recovery guidance",
         "fix(rename-watch): harden interrupted-move recovery and once-mode clock-stall handling",
         "fix(packaging): select compatible PyArrow bounds for Python 3.14",
+        "fix(deps): support Rich 15 for current release tooling compatibility",
         "breaking: none"
       ]
     },

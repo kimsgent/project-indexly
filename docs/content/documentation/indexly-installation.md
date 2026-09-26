@@ -100,11 +100,7 @@ indexly extras reset
 indexly extras install documents
 ```
 
-If `brew` is already installed on Linux but not available in the current shell, initialize Homebrew first:
-
-```bash
-eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
-```
+If `brew` is already installed on Linux but not available in the current shell, run the `brew shellenv` initialization command provided by that installation, then retry. The Homebrew prefix differs by host; do not copy a path from another machine.
 
 ## 2. Install on Windows with pip (Recommended)
 
@@ -296,7 +292,7 @@ health and readiness probes, log retention, upgrades, and rollback.
 - OCR unavailable after installing `documents`
   - Install Tesseract separately and confirm `tesseract` is on `PATH`.
 - Homebrew on Linux not detected
-  - Run `eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"` and retry.
+  - Run the `brew shellenv` initialization command provided by your Homebrew installation, then retry.
 - Need a quick environment check
   - Run `indexly doctor`.
 

@@ -83,7 +83,7 @@
   ],
   "archived": {
     "count": 37,
-    "link": "/en/releases/Archive/"
+    "link": "/en/releases/archive/"
   },
   "retention": {
     "max_old_releases": 5,
