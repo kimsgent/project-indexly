@@ -2,6 +2,24 @@
   "project": "FTS5 File Search Tool",
   "versions": [
     {
+      "version": "2.1.7",
+      "date": "2026-09-26",
+      "contributors": [
+        "N. K. Franklin-Gent",
+        "OpenAI Codex"
+      ],
+      "changes": [
+        "feat(perf): add local search-database diagnostics, evidence capture, and guarded optimization actions with verified backups",
+        "feat(search): add terminal result pagination with deterministic navigation and styled output coverage",
+        "fix(indexing): preserve filetype filtering during incremental index updates",
+        "feat(extras): add managed Homebrew optional-dependency overlays with status, repair, and safe recovery guidance",
+        "fix(rename-watch): harden interrupted-move recovery and once-mode clock-stall handling",
+        "fix(packaging): select compatible PyArrow bounds for Python 3.14",
+        "breaking: none"
+      ]
+    },
+
+    {
       "version": "2.1.6",
       "date": "2026-07-18",
       "contributors": [
