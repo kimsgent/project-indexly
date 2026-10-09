@@ -13,7 +13,11 @@ from pathlib import Path
 import pytest
 
 from indexly.cli_utils import build_parser
-from indexly.rename_watch.config import RenameWatchConfigError, initialize_settings, load_settings
+from indexly.rename_watch.config import (
+    RenameWatchConfigError,
+    initialize_settings,
+    load_settings,
+)
 from indexly.rename_watch import locking as locking_module
 from indexly.rename_watch import identity as identity_module
 from indexly.rename_watch import planner as planner_module
@@ -24,10 +28,18 @@ from indexly.rename_watch.service import RenameWatchService, handle_rename_watch
 
 
 def _config(tmp_path, **job_values):
-    incoming = tmp_path / "incoming"; incoming.mkdir(exist_ok=True)
-    job = {"id": "inbox", "watch_path": "incoming", "destination_subfolder": "processed", "settle_seconds": 0.01, "scan_interval_seconds": 10}
+    incoming = tmp_path / "incoming"
+    incoming.mkdir(exist_ok=True)
+    job = {
+        "id": "inbox",
+        "watch_path": "incoming",
+        "destination_subfolder": "processed",
+        "settle_seconds": 0.01,
+        "scan_interval_seconds": 10,
+    }
     job.update(job_values)
-    path = tmp_path / "rename-watch.json"; path.write_text(json.dumps({"version": 1, "jobs": [job]}), encoding="utf-8")
+    path = tmp_path / "rename-watch.json"
+    path.write_text(json.dumps({"version": 1, "jobs": [job]}), encoding="utf-8")
     return path, incoming
 
 
@@ -72,9 +84,14 @@ def test_config_rejects_nonfinite_timing_values(tmp_path, value):
 def test_planner_moves_and_creates_destination(tmp_path):
     path, incoming = _config(tmp_path, pattern="{date}-{title}-{counter}")
     job = load_settings(str(path)).jobs[0]
-    source = incoming / "My report.txt"; source.write_text("content", encoding="utf-8")
+    source = incoming / "My report.txt"
+    source.write_text("content", encoding="utf-8")
     target = PlanMoveLog(job, tmp_path / "state").plan_and_move(source)
-    assert target.exists() and target.parent == job.destination_path and not source.exists()
+    assert (
+        target.exists()
+        and target.parent == job.destination_path
+        and not source.exists()
+    )
 
 
 def test_recovery_resumes_prepared_counter_operation_without_consuming_another_counter(
@@ -234,7 +251,9 @@ def test_recovery_detects_completed_move_before_moved_transition(tmp_path, monke
     mover.complete(recovered.operation_id)
 
 
-def test_recovery_fails_closed_when_owned_destination_identity_changes(tmp_path, monkeypatch):
+def test_recovery_fails_closed_when_owned_destination_identity_changes(
+    tmp_path, monkeypatch
+):
     path, incoming = _config(tmp_path, pattern="{date}-{title}-{counter}")
     source = incoming / "report.txt"
     source.write_text("source", encoding="utf-8")
@@ -360,6 +379,123 @@ def test_service_recovers_moved_journal_and_audits_stable_operation_id(
     assert service.movers[job.job_id].journal.pending() == []
 
 
+def test_service_isolates_recovery_conflict_and_moves_unrelated_file(
+    tmp_path, monkeypatch
+):
+    path, incoming = _config(tmp_path, pattern="{title}")
+    job = load_settings(str(path)).jobs[0]
+    state_root = tmp_path / "state"
+    conflicted = incoming / "conflicted.txt"
+    conflicted.write_text("original", encoding="utf-8")
+    mover = PlanMoveLog(job, state_root)
+    destination = job.destination_path / "conflicted.txt"
+    destination.parent.mkdir()
+    source_identity = planner_module._identity_record(conflicted.stat())
+    record = mover.journal.prepare(
+        conflicted, destination, source_identity, job.pattern, 1
+    )
+    os.link(conflicted, destination)
+    destination_stat = destination.stat()
+    record = mover.journal.mark_destination_created(
+        record,
+        {
+            "device": int(destination_stat.st_dev),
+            "inode": int(destination_stat.st_ino),
+        },
+        "hard_link",
+    )
+    mover.journal.mark_destination_finalized(
+        record, planner_module._identity_record(destination_stat)
+    )
+    replacement = incoming / "replacement.txt"
+    replacement.write_text("replacement", encoding="utf-8")
+    os.replace(replacement, conflicted)
+    unrelated = incoming / "unrelated.txt"
+    unrelated.write_text("unrelated", encoding="utf-8")
+    failures = []
+    moves = []
+    monkeypatch.setattr(
+        "indexly.rename_watch.service.log_failure",
+        lambda *args, **kwargs: failures.append((args, kwargs)),
+    )
+    monkeypatch.setattr(
+        "indexly.rename_watch.service.log_move",
+        lambda *args, **kwargs: moves.append((args, kwargs)),
+    )
+
+    RenameWatchService([job], state_root=state_root).run_once()
+
+    retained = PlanMoveLog(job, state_root).journal.pending()
+    assert len(retained) == 1
+    assert retained[0]["state"] == "recovery_conflict"
+    assert retained[0]["recovery_state"] == "destination_finalized"
+    assert retained[0]["recovery_conflict_reason"] == "source identity changed"
+    assert conflicted.read_text(encoding="utf-8") == "replacement"
+    assert destination.read_text(encoding="utf-8") == "original"
+    assert not unrelated.exists()
+    assert (job.destination_path / "unrelated.txt").read_text(
+        encoding="utf-8"
+    ) == "unrelated"
+    assert len(failures) == 1
+    assert failures[0][1]["failure_reason"] == "recovery_conflict"
+    assert failures[0][1]["failure_disposition"] == "preserve-evidence"
+    assert len(moves) == 1
+
+    RenameWatchService([job], state_root=state_root).run_once()
+    assert len(failures) == 1
+    assert conflicted.read_text(encoding="utf-8") == "replacement"
+    assert destination.read_text(encoding="utf-8") == "original"
+
+
+def test_service_isolates_missing_finalized_destination_and_stays_operational(
+    tmp_path, monkeypatch
+):
+    path, incoming = _config(tmp_path, pattern="{title}")
+    job = load_settings(str(path)).jobs[0]
+    state_root = tmp_path / "state"
+    source = incoming / "missing.txt"
+    source.write_text("original", encoding="utf-8")
+    mover = PlanMoveLog(job, state_root)
+    destination = job.destination_path / "missing.txt"
+    destination.parent.mkdir()
+    record = mover.journal.prepare(
+        source,
+        destination,
+        planner_module._identity_record(source.stat()),
+        job.pattern,
+        1,
+    )
+    os.link(source, destination)
+    destination_stat = destination.stat()
+    record = mover.journal.mark_destination_created(
+        record,
+        {"device": int(destination_stat.st_dev), "inode": int(destination_stat.st_ino)},
+        "hard_link",
+    )
+    mover.journal.mark_destination_finalized(
+        record, planner_module._identity_record(destination_stat)
+    )
+    source.unlink()
+    destination.unlink()
+    unrelated = incoming / "unrelated.txt"
+    unrelated.write_text("unrelated", encoding="utf-8")
+    monkeypatch.setattr(
+        "indexly.rename_watch.service.log_failure", lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(
+        "indexly.rename_watch.service.log_move", lambda *args, **kwargs: None
+    )
+
+    RenameWatchService([job], state_root=state_root).run_once()
+
+    retained = mover.journal.pending()
+    assert retained[0]["state"] == "recovery_conflict"
+    assert retained[0]["recovery_conflict_reason"] == "finalized destination is missing"
+    assert (job.destination_path / "unrelated.txt").read_text(
+        encoding="utf-8"
+    ) == "unrelated"
+
+
 def test_audit_failure_retains_moved_journal_for_stable_retry(tmp_path, monkeypatch):
     path, incoming = _config(tmp_path, pattern="{date}-{title}-{counter}")
     source = incoming / "report.txt"
@@ -417,9 +553,7 @@ def test_moved_recovery_rejects_same_size_destination_modification(tmp_path):
 def test_no_counter_recovery_does_not_read_or_change_legacy_counter_state(
     tmp_path, monkeypatch
 ):
-    path, incoming = _config(
-        tmp_path, pattern="{date}-{title}", counter_format=""
-    )
+    path, incoming = _config(tmp_path, pattern="{date}-{title}", counter_format="")
     source = incoming / "report.txt"
     source.write_text("content", encoding="utf-8")
     job = load_settings(str(path)).jobs[0]
@@ -505,14 +639,14 @@ def test_once_ignores_empty_folder_without_logging(tmp_path, monkeypatch):
     path, _ = _config(tmp_path)
     job = load_settings(str(path)).jobs[0]
     calls = []
-    monkeypatch.setattr("indexly.rename_watch.service.log_move", lambda *args: calls.append(args))
+    monkeypatch.setattr(
+        "indexly.rename_watch.service.log_move", lambda *args: calls.append(args)
+    )
     RenameWatchService([job], state_root=tmp_path / "state").run_once()
     assert calls == []
 
 
-def test_once_waits_through_full_retry_schedule_and_can_succeed(
-    tmp_path, monkeypatch
-):
+def test_once_waits_through_full_retry_schedule_and_can_succeed(tmp_path, monkeypatch):
     path, incoming = _config(
         tmp_path,
         settle_seconds=0.5,
@@ -694,7 +828,9 @@ def test_once_freezes_initial_reconciliation_set(tmp_path, monkeypatch):
         if not later.exists():
             later.write_text("later", encoding="utf-8")
 
-    monkeypatch.setattr("indexly.rename_watch.service.log_move", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        "indexly.rename_watch.service.log_move", lambda *args, **kwargs: None
+    )
 
     RenameWatchService(
         [job],
@@ -724,7 +860,9 @@ def test_once_does_not_consume_replacement_at_frozen_path(tmp_path, monkeypatch)
             os.replace(replacement, source)
             replaced[0] = True
 
-    monkeypatch.setattr("indexly.rename_watch.service.log_move", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        "indexly.rename_watch.service.log_move", lambda *args, **kwargs: None
+    )
     RenameWatchService(
         [job],
         state_root=tmp_path / "state",
@@ -751,7 +889,9 @@ def test_once_identity_is_captured_during_reconciliation(tmp_path, monkeypatch):
         return real_freeze()
 
     service._freeze_once_work = replace_before_freeze
-    monkeypatch.setattr("indexly.rename_watch.service.log_move", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        "indexly.rename_watch.service.log_move", lambda *args, **kwargs: None
+    )
 
     service.run_once()
 
@@ -759,9 +899,7 @@ def test_once_identity_is_captured_during_reconciliation(tmp_path, monkeypatch):
     assert not job.destination_path.exists()
 
 
-def test_once_planner_boundary_rejects_last_moment_replacement(
-    tmp_path, monkeypatch
-):
+def test_once_planner_boundary_rejects_last_moment_replacement(tmp_path, monkeypatch):
     path, incoming = _config(
         tmp_path,
         settle_seconds=0.5,
@@ -794,7 +932,9 @@ def test_once_planner_boundary_rejects_last_moment_replacement(
         return real_plan(source_path, attempts, expected_source_identity)
 
     mover.plan_and_move_operation = replace_at_boundary
-    monkeypatch.setattr("indexly.rename_watch.service.log_move", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        "indexly.rename_watch.service.log_move", lambda *args, **kwargs: None
+    )
 
     service.run_once()
 
@@ -889,9 +1029,7 @@ def test_once_unavailable_discovery_identity_fails_closed_on_replacement(
     assert not job.destination_path.exists()
 
 
-def test_once_excludes_other_file_processing_time_from_deadlines(
-    tmp_path, monkeypatch
-):
+def test_once_excludes_other_file_processing_time_from_deadlines(tmp_path, monkeypatch):
     path, first_root = _config(tmp_path, settle_seconds=0.5)
     first_job = load_settings(str(path)).jobs[0]
     first_job = replace(first_job, retry=replace(first_job.retry, max_attempts=1))
@@ -923,7 +1061,9 @@ def test_once_excludes_other_file_processing_time_from_deadlines(
         return real_first_plan(source_path, attempts, expected_source_identity)
 
     first_mover.plan_and_move_operation = slow_first
-    monkeypatch.setattr("indexly.rename_watch.service.log_move", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        "indexly.rename_watch.service.log_move", lambda *args, **kwargs: None
+    )
 
     service.run_once()
 
@@ -995,7 +1135,7 @@ def test_once_tolerates_a_transient_clock_stall(tmp_path, monkeypatch):
 def test_once_budget_handles_huge_retry_count_without_exponentiation(tmp_path):
     path, _ = _config(tmp_path)
     job = load_settings(str(path)).jobs[0]
-    job = replace(job, retry=replace(job.retry, max_attempts=10 ** 1000))
+    job = replace(job, retry=replace(job.retry, max_attempts=10**1000))
 
     budget = RenameWatchService._once_budget(job)
 
@@ -1132,7 +1272,9 @@ def test_once_releases_watch_root_lock_after_failure(tmp_path, monkeypatch):
     job = load_settings(str(path)).jobs[0]
     state_root = tmp_path / "state"
     service = RenameWatchService([job], state_root=state_root)
-    monkeypatch.setattr(service, "reconcile", lambda _: (_ for _ in ()).throw(OSError("scan failed")))
+    monkeypatch.setattr(
+        service, "reconcile", lambda _: (_ for _ in ()).throw(OSError("scan failed"))
+    )
 
     with pytest.raises(OSError, match="scan failed"):
         service.run_once()
@@ -1151,9 +1293,7 @@ def test_service_deduplicates_same_canonical_watch_root_lock(tmp_path):
         watch_path=incoming / ".",
         destination_path=incoming / "other-processed",
     )
-    service = RenameWatchService(
-        [first_job, second_job], state_root=tmp_path / "state"
-    )
+    service = RenameWatchService([first_job, second_job], state_root=tmp_path / "state")
     service._prepare_watch_paths()
 
     service._acquire_root_locks()
@@ -1189,7 +1329,11 @@ def test_lock_namespace_ignores_process_temp_environment(tmp_path):
     )
     environment = os.environ.copy()
     environment.update(
-        {"TEMP": str(alternate_temp), "TMP": str(alternate_temp), "TMPDIR": str(alternate_temp)}
+        {
+            "TEMP": str(alternate_temp),
+            "TMP": str(alternate_temp),
+            "TMPDIR": str(alternate_temp),
+        }
     )
     process = subprocess.Popen(
         [sys.executable, "-c", script, str(watch_root)],
@@ -1335,10 +1479,13 @@ def test_initialize_creates_safe_template(tmp_path):
     else:
         raise AssertionError("must not overwrite existing configuration")
 
+
 def test_counter_format_is_required_only_when_counter_is_used(tmp_path):
     path, _ = _config(tmp_path, pattern="{date}-{title}", counter_format="")
     assert load_settings(str(path)).jobs[0].counter_format == ""
-    path, _ = _config(tmp_path, pattern="{date}-{title}-{counter}", counter_format="03d")
+    path, _ = _config(
+        tmp_path, pattern="{date}-{title}-{counter}", counter_format="03d"
+    )
     assert load_settings(str(path)).jobs[0].counter_format == "03d"
     path, _ = _config(tmp_path, pattern="{date}-{title}", counter_format="03d")
     try:
@@ -1495,7 +1642,9 @@ def test_collision_race_never_overwrites_existing_target(tmp_path, monkeypatch):
             expected_source_identity,
         )
 
-    monkeypatch.setattr(planner_module, "_move_without_overwrite", create_collision_then_move)
+    monkeypatch.setattr(
+        planner_module, "_move_without_overwrite", create_collision_then_move
+    )
 
     target = PlanMoveLog(job, tmp_path / "state").plan_and_move(source)
 
@@ -1525,7 +1674,9 @@ def test_copy_fallback_preserves_source_if_it_changes(tmp_path, monkeypatch):
     except OSError as exc:
         assert "Source changed" in str(exc)
     else:
-        raise AssertionError("a changing source must not be removed after fallback copying")
+        raise AssertionError(
+            "a changing source must not be removed after fallback copying"
+        )
 
     assert source.read_text(encoding="utf-8") == "changed after copy"
     assert target.read_text(encoding="utf-8") == "original"
@@ -1564,9 +1715,7 @@ def test_copy_fallback_rejects_unreliable_destination_identity(tmp_path, monkeyp
 
 
 @pytest.mark.parametrize("failing_phase", ["created", "finalized"])
-def test_hard_link_callback_failure_preserves_both_paths(
-    tmp_path, failing_phase
-):
+def test_hard_link_callback_failure_preserves_both_paths(tmp_path, failing_phase):
     source = tmp_path / "source.txt"
     target = tmp_path / "target.txt"
     source.write_text("content", encoding="utf-8")
@@ -1688,7 +1837,9 @@ def test_planner_final_guard_catches_destination_swap_before_target_creation(
     real_guard = mover._guard_destination
     swapped = []
 
-    def swap_after_journal_before_target(target=None, expected_destination_identity=None):
+    def swap_after_journal_before_target(
+        target=None, expected_destination_identity=None
+    ):
         if target is not None and mover.journal.pending() and not swapped:
             job.destination_path.rename(held_destination)
             job.destination_path.symlink_to(outside, target_is_directory=True)
@@ -1885,7 +2036,10 @@ def test_once_persistent_finalized_unlink_failure_logs_once_and_keeps_evidence(
     assert len(durable_failures) == 1
     assert durable_failures[0]["reason"] == "recovery_pending"
     assert durable_failures[0]["disposition"] == "leave-source"
-    assert durable_failures[0]["attempted_destination_path"] == pending[0]["destination_path"]
+    assert (
+        durable_failures[0]["attempted_destination_path"]
+        == pending[0]["destination_path"]
+    )
     destination = Path(pending[0]["destination_path"])
     assert destination.read_text(encoding="utf-8") == "content"
     if transfer_kind == "hard_link":
@@ -1916,7 +2070,9 @@ def test_counter_uses_rendered_filename_date_across_restarts(tmp_path):
     assert second_target.name == "20240115-second-001.txt"
 
 
-def test_observer_startup_creates_missing_path_and_cleans_up_on_failure(tmp_path, monkeypatch):
+def test_observer_startup_creates_missing_path_and_cleans_up_on_failure(
+    tmp_path, monkeypatch
+):
     path, incoming = _config(tmp_path, mode="event")
     first_job = load_settings(str(path)).jobs[0]
     incoming.rmdir()
@@ -2014,7 +2170,10 @@ def test_rename_watch_parser_accepts_stage_two_operator_flags(tmp_path):
         ({"init": True, "once": True}, "--init cannot be combined"),
         ({"check_config": True, "mode": "event"}, "--check-config cannot be combined"),
         ({"check_config": True, "once": True}, "--check-config cannot be combined"),
-        ({"dry_run": True, "once": True, "mode": "event"}, "--dry-run cannot be combined"),
+        (
+            {"dry_run": True, "once": True, "mode": "event"},
+            "--dry-run cannot be combined",
+        ),
     ],
 )
 def test_operator_handler_rejects_incompatible_actions_before_loading_config(
@@ -2060,7 +2219,7 @@ def test_check_config_creates_only_watch_root_and_has_no_runtime_side_effects(
 
 
 def test_check_config_strictly_reads_counter_and_journal_without_mutating_them(
-    tmp_path
+    tmp_path,
 ):
     path, _ = _config(tmp_path, pattern="{date}-{title}-{counter}")
     job = load_settings(str(path)).jobs[0]
@@ -2130,9 +2289,7 @@ def test_check_config_runtime_probe_failures_clean_artifacts_and_release_lock(
 
     if failure.startswith("mkdir"):
         denied_directory = (
-            job.destination_path
-            if failure == "mkdir-destination"
-            else state_root
+            job.destination_path if failure == "mkdir-destination" else state_root
         )
 
         def fail_probe_mkdir(path_value, *args, **kwargs):
@@ -2142,6 +2299,7 @@ def test_check_config_runtime_probe_failures_clean_artifacts_and_release_lock(
 
         monkeypatch.setattr(Path, "mkdir", fail_probe_mkdir)
     elif failure == "open":
+
         def fail_probe_open(path_value, *args, **kwargs):
             if ".indexly-rename-watch-check-" in os.fspath(path_value):
                 raise PermissionError("injected open failure")
@@ -2149,6 +2307,7 @@ def test_check_config_runtime_probe_failures_clean_artifacts_and_release_lock(
 
         monkeypatch.setattr(planner_module.os, "open", fail_probe_open)
     else:
+
         def fail_probe_replace(source_path, destination_path, *args, **kwargs):
             if ".indexly-rename-watch-check-" in os.fspath(destination_path):
                 raise PermissionError("injected replace failure")
@@ -2210,9 +2369,8 @@ def test_check_config_watch_root_probe_failure_with_existing_destination_cleans(
 
     def fail_watch_root_probe(path_value, *args, **kwargs):
         candidate = Path(path_value)
-        if (
-            candidate.parent == incoming
-            and candidate.name.startswith(".indexly-rename-watch-check-")
+        if candidate.parent == incoming and candidate.name.startswith(
+            ".indexly-rename-watch-check-"
         ):
             raise PermissionError("injected watch-root probe failure")
         return real_open(path_value, *args, **kwargs)
@@ -2380,9 +2538,7 @@ def test_dry_run_rejects_no_counter_collisions(tmp_path, collision_kind):
     job = load_settings(str(path)).jobs[0]
     if collision_kind == "existing":
         job.destination_path.mkdir()
-        (job.destination_path / "20240115.txt").write_text(
-            "existing", encoding="utf-8"
-        )
+        (job.destination_path / "20240115.txt").write_text("existing", encoding="utf-8")
     else:
         (incoming / "20240115-b.txt").write_text("second", encoding="utf-8")
 
@@ -2562,10 +2718,7 @@ def test_real_once_matches_dry_run_sorted_counter_mapping(tmp_path, monkeypatch)
         sleeper=lambda delay: current.__setitem__(0, current[0] + delay),
     ).run_once()
 
-    assert moved == [
-        (plan.source, plan.destination)
-        for plan in preview
-    ]
+    assert moved == [(plan.source, plan.destination) for plan in preview]
 
 
 def test_dry_run_reserves_sources_across_same_root_jobs_like_real_once(
@@ -2606,9 +2759,7 @@ def test_dry_run_reserves_sources_across_same_root_jobs_like_real_once(
         sleeper=lambda delay: current.__setitem__(0, current[0] + delay),
     ).run_once()
 
-    assert moved == [
-        (preview[0].job_id, preview[0].source, preview[0].destination)
-    ]
+    assert moved == [(preview[0].job_id, preview[0].source, preview[0].destination)]
 
 
 def test_handler_dispatches_check_and_dry_run_with_deterministic_output(

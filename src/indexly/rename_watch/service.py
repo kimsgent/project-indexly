@@ -1,4 +1,5 @@
 """Independent Watchdog and reconciliation service for rename-watch."""
+
 from __future__ import annotations
 import math, os, signal, stat, sys, threading, time
 from pathlib import Path
@@ -25,12 +26,20 @@ from .runtime_snapshot import METRIC_NAMES, RuntimeSnapshotWriter
 _IDENTITY_UNAVAILABLE = object()
 _MAX_STALLED_ONCE_SLEEPS = 3
 
+
 def _temporary(path: Path) -> bool:
-    return path.name.startswith(("~$", ".~")) or path.name.lower().endswith((".tmp", ".lock"))
+    return path.name.startswith(("~$", ".~")) or path.name.lower().endswith(
+        (".tmp", ".lock")
+    )
+
 
 def _inside(path: Path, parent: Path) -> bool:
-    try: path.resolve().relative_to(parent.resolve()); return True
-    except (ValueError, OSError): return False
+    try:
+        path.resolve().relative_to(parent.resolve())
+        return True
+    except (ValueError, OSError):
+        return False
+
 
 class RenameWatchService:
     def __init__(
@@ -41,7 +50,10 @@ class RenameWatchService:
         sleeper=time.sleep,
         service_settings=None,
     ):
-        self.jobs = jobs; self.clock = clock; self.sleeper = sleeper; self.stop_event = threading.Event()
+        self.jobs = jobs
+        self.clock = clock
+        self.sleeper = sleeper
+        self.stop_event = threading.Event()
         self.service_settings = service_settings or RenameWatchServiceSettings()
         self.state_root = state_root
         self._state_lock = threading.Lock()
@@ -60,18 +72,27 @@ class RenameWatchService:
             for job in jobs
             if not job.respect_indexlyignore
         }
-        self.pending = {}; self.snapshots = {}; self.next_scan = {j.job_id: 0.0 for j in jobs}
-        self.movers = {j.job_id: PlanMoveLog(j, state_root) for j in jobs}; self.observers = []; self.root_locks = []
+        self.pending = {}
+        self.snapshots = {}
+        self.next_scan = {j.job_id: 0.0 for j in jobs}
+        self.movers = {j.job_id: PlanMoveLog(j, state_root) for j in jobs}
+        self.observers = []
+        self.root_locks = []
         self.failure_stores = {
             job.job_id: FailureStore(job, state_root) for job in jobs
         }
         self._protected_subtrees = tuple(
             path
             for configured_job in jobs
-            for path in (configured_job.destination_path, configured_job.quarantine_path)
+            for path in (
+                configured_job.destination_path,
+                configured_job.quarantine_path,
+            )
             if path is not None
         )
         self._blocked_failure_sources = {}
+        self._blocked_recovery_sources = set()
+
     def _selection_policy(self, job):
         policy = self.selection_policies.get(job.job_id)
         if policy is None:
@@ -81,6 +102,7 @@ class RenameWatchService:
                 )
             )
         return policy
+
     def _load_selection_policies(self):
         loaded = []
         try:
@@ -92,15 +114,14 @@ class RenameWatchService:
             for job_id in loaded:
                 self.selection_policies.pop(job_id, None)
             raise
+
     def _eligible(self, job, path):
         path = Path(path)
         try:
             file_stat = path.lstat()
         except OSError:
             return False
-        is_reparse = bool(
-            getattr(file_stat, "st_file_attributes", 0) & 0x400
-        )
+        is_reparse = bool(getattr(file_stat, "st_file_attributes", 0) & 0x400)
         if (
             not stat.S_ISREG(file_stat.st_mode)
             or stat.S_ISLNK(file_stat.st_mode)
@@ -109,6 +130,11 @@ class RenameWatchService:
             or not _inside(path, job.watch_path)
             or any(_inside(path, protected) for protected in self._protected_subtrees)
         ):
+            return False
+        if (
+            job.job_id,
+            os.path.normcase(os.path.abspath(os.fspath(path))),
+        ) in self._blocked_recovery_sources:
             return False
         blocked = self._blocked_failure_sources.get(
             (job.job_id, os.path.normcase(os.path.abspath(os.fspath(path))))
@@ -121,10 +147,25 @@ class RenameWatchService:
         }:
             return False
         return self._selection_policy(job).accepts_file(path, file_stat.st_size)
-    def schedule(self, job, path, attempts=0, delay=0.0, reset_settle=False, required_delay=False, assume_eligible=False, accept_during_drain=False):
+
+    def schedule(
+        self,
+        job,
+        path,
+        attempts=0,
+        delay=0.0,
+        reset_settle=False,
+        required_delay=False,
+        assume_eligible=False,
+        accept_during_drain=False,
+    ):
         path = Path(path)
-        if not assume_eligible and not self._eligible(job, path): return
-        resolved = path.resolve(); key = (job.job_id, str(resolved)); now = self.clock(); due = now + delay
+        if not assume_eligible and not self._eligible(job, path):
+            return
+        resolved = path.resolve()
+        key = (job.job_id, str(resolved))
+        now = self.clock()
+        due = now + delay
         with self._state_lock:
             if not self._accepting_events and not accept_during_drain:
                 return
@@ -162,6 +203,7 @@ class RenameWatchService:
                 self.metrics["scheduled"] += 1
             if attempts > previous_attempts:
                 self.metrics["retries"] += 1
+
     def _claim_one_due(self, now):
         with self._state_lock:
             for key, value in self.pending.items():
@@ -169,6 +211,7 @@ class RenameWatchService:
                     del self.pending[key]
                     return key, value
         return None
+
     def _claim_due(self, now):
         """Atomically claim a due batch for compatibility with batch callers."""
         claimed = []
@@ -178,17 +221,25 @@ class RenameWatchService:
                     claimed.append((key, value))
                     del self.pending[key]
         return claimed
+
     def _has_pending(self):
         with self._state_lock:
             return bool(self.pending)
+
     def _discard_snapshot(self, key):
         with self._state_lock:
             self.snapshots.pop(key, None)
+
     def _prepare_watch_paths(self):
         for job in self.jobs:
-            ensure_watch_directory(job.watch_path, "job '{0}' watch_path".format(job.job_id))
+            ensure_watch_directory(
+                job.watch_path, "job '{0}' watch_path".format(job.job_id)
+            )
+
     def _discover_candidates(self, job):
-        ensure_watch_directory(job.watch_path, "job '{0}' watch_path".format(job.job_id))
+        ensure_watch_directory(
+            job.watch_path, "job '{0}' watch_path".format(job.job_id)
+        )
         if job.recursive:
             eligible = self._discover_recursive_candidates(job)
         else:
@@ -205,6 +256,7 @@ class RenameWatchService:
             eligible,
             key=lambda path: os.path.normcase(os.path.abspath(os.fspath(path))),
         )
+
     def _discover_recursive_candidates(self, job):
         policy = self._selection_policy(job)
         eligible = []
@@ -233,9 +285,7 @@ class RenameWatchService:
                 if (
                     not stat.S_ISDIR(current_stat.st_mode)
                     or stat.S_ISLNK(current_stat.st_mode)
-                    or bool(
-                        getattr(current_stat, "st_file_attributes", 0) & 0x400
-                    )
+                    or bool(getattr(current_stat, "st_file_attributes", 0) & 0x400)
                     or not _inside(current, job.watch_path)
                     or _inside(current, job.destination_path)
                 ):
@@ -246,8 +296,7 @@ class RenameWatchService:
                     candidate = current / name
                     try:
                         linked = candidate.is_symlink() or bool(
-                            getattr(candidate.lstat(), "st_file_attributes", 0)
-                            & 0x400
+                            getattr(candidate.lstat(), "st_file_attributes", 0) & 0x400
                         )
                     except OSError:
                         linked = True
@@ -279,6 +328,7 @@ class RenameWatchService:
         except OSError as exc:
             scan_error(exc)
         return eligible
+
     def _audit_move(self, job, result):
         self._audit(
             lambda: log_move(
@@ -304,9 +354,40 @@ class RenameWatchService:
         for record in store.records():
             if os.path.normcase(os.path.abspath(record["current_path"])) == source_key:
                 store.resolve(record)
+
     def _recover_job(self, job):
-        for result in self.movers[job.job_id].recover_pending():
+        for result in self.movers[job.job_id].recover_pending(
+            conflict_handler=lambda record, error: self._record_recovery_conflict(
+                job, record, error
+            )
+        ):
             self._audit_move(job, result)
+        self._load_recovery_conflict_blocks(job)
+
+    def _record_recovery_conflict(self, job, record, error):
+        """Audit a conflict only after its immutable journal evidence is durable."""
+        source = Path(record["source_path"])
+        destination = Path(record["destination_path"])
+        self._blocked_recovery_sources.add(
+            (job.job_id, os.path.normcase(os.path.abspath(os.fspath(source))))
+        )
+        self._audit(
+            lambda: log_failure(
+                job.job_id,
+                source,
+                destination,
+                job.pattern,
+                record["attempts"],
+                error,
+                operation_id=record["operation_id"],
+                job_namespace=state_namespace(job.watch_path, job.job_id),
+                failure_reason="recovery_conflict",
+                failure_disposition="preserve-evidence",
+                current_path=source,
+            )
+        )
+        self._increment_metric("terminal_failures")
+
     def _recover_pending_moves(self):
         for job in self.jobs:
             # A retry uses the normal move journal. Recover it before validating
@@ -321,7 +402,9 @@ class RenameWatchService:
             self._load_failure_blocks(job)
 
     def _load_failure_blocks(self, job):
-        for key in [key for key in self._blocked_failure_sources if key[0] == job.job_id]:
+        for key in [
+            key for key in self._blocked_failure_sources if key[0] == job.job_id
+        ]:
             self._blocked_failure_sources.pop(key, None)
         for record in self.failure_stores[job.job_id].records():
             if record["state"] != "active":
@@ -332,14 +415,32 @@ class RenameWatchService:
             )
             self._blocked_failure_sources[key] = record["source_identity"]
 
+    def _load_recovery_conflict_blocks(self, job):
+        self._blocked_recovery_sources = {
+            key for key in self._blocked_recovery_sources if key[0] != job.job_id
+        }
+        for record in self.movers[job.job_id].journal.pending():
+            if record["state"] == "recovery_conflict":
+                self._blocked_recovery_sources.add(
+                    (
+                        job.job_id,
+                        os.path.normcase(
+                            os.path.abspath(os.fspath(record["source_path"]))
+                        ),
+                    )
+                )
+
     def _validate_failure_state(self):
         for job in self.jobs:
             records = self.failure_stores[job.job_id].records()
-            if any(record["state"] not in {"active", "quarantined"} for record in records):
+            if any(
+                record["state"] not in {"active", "quarantined"} for record in records
+            ):
                 raise RenameWatchConfigError(
                     "job '{0}' has an unfinished failure transition".format(job.job_id)
                 )
             self._load_failure_blocks(job)
+
     def _acquire_root_locks(self):
         locks = []
         covered_keys = set()
@@ -353,7 +454,8 @@ class RenameWatchService:
         acquired = []
         try:
             for lock in locks:
-                lock.acquire(); acquired.append(lock)
+                lock.acquire()
+                acquired.append(lock)
         except BaseException:
             self.root_locks = acquired
             try:
@@ -367,21 +469,26 @@ class RenameWatchService:
         except BaseException:
             self._release_root_locks()
             raise
+
     def _release_root_locks(self):
         first_error = None
         for lock in reversed(self.root_locks):
             try:
                 lock.release()
             except BaseException as exc:
-                if first_error is None: first_error = exc
+                if first_error is None:
+                    first_error = exc
         self.root_locks = []
-        if first_error is not None: raise first_error
+        if first_error is not None:
+            raise first_error
+
     def _release_root_locks_preserving_primary(self, primary_error):
         try:
             self._release_root_locks()
         except BaseException:
             if primary_error is None:
                 raise
+
     def _stop_and_release(self):
         first_error = None
         try:
@@ -391,11 +498,15 @@ class RenameWatchService:
         try:
             self._release_root_locks()
         except BaseException as exc:
-            if first_error is None: first_error = exc
-        if first_error is not None: raise first_error
+            if first_error is None:
+                first_error = exc
+        if first_error is not None:
+            raise first_error
+
     def reconcile(self, job):
         self._increment_metric("scans")
-        for path in self._discover_candidates(job): self.schedule(job, path)
+        for path in self._discover_candidates(job):
+            self.schedule(job, path)
 
     def _increment_metric(self, name, value=1):
         with self._state_lock:
@@ -418,6 +529,7 @@ class RenameWatchService:
         except Exception:
             self._increment_metric("audit_write_failures")
             raise
+
     def _commit_terminal_failure(
         self,
         job,
@@ -470,14 +582,23 @@ class RenameWatchService:
         self._increment_metric("terminal_failures")
         return result
 
-    def _handle_processing_error(self, job, source, key, attempts, error, force_retry=False):
+    def _handle_processing_error(
+        self, job, source, key, attempts, error, force_retry=False
+    ):
         self._discard_snapshot(key)
         source_available = force_retry or source.exists()
-        immediate_collision = isinstance(error, ExactNameCollision) and error.policy in {
-            "quarantine", "leave-source"
-        }
-        if not immediate_collision and attempts + 1 < job.retry.max_attempts and source_available:
-            delay = min(job.retry.initial_delay_seconds * (2 ** attempts), job.retry.max_delay_seconds)
+        immediate_collision = isinstance(
+            error, ExactNameCollision
+        ) and error.policy in {"quarantine", "leave-source"}
+        if (
+            not immediate_collision
+            and attempts + 1 < job.retry.max_attempts
+            and source_available
+        ):
+            delay = min(
+                job.retry.initial_delay_seconds * (2**attempts),
+                job.retry.max_delay_seconds,
+            )
             self.schedule(
                 job,
                 source,
@@ -507,11 +628,7 @@ class RenameWatchService:
                         job.job_id
                     )
                 )
-            target = (
-                error.target
-                if isinstance(error, ExactNameCollision)
-                else None
-            )
+            target = error.target if isinstance(error, ExactNameCollision) else None
             self._commit_terminal_failure(
                 job,
                 source,
@@ -524,6 +641,7 @@ class RenameWatchService:
                 ),
                 attempted_destination=target,
             )
+
     def _process(self, job, source, attempts):
         key = (job.job_id, str(source))
         try:
@@ -545,15 +663,24 @@ class RenameWatchService:
             self._discard_snapshot(key)
             return
         try:
-            recovered = self.movers[job.job_id].recover_pending(source, attempts + 1)
+            recovered = self.movers[job.job_id].recover_pending(
+                source,
+                attempts + 1,
+                conflict_handler=lambda record, error: self._record_recovery_conflict(
+                    job, record, error
+                ),
+            )
         except (PermissionError, OSError) as error:
             self._handle_processing_error(job, source, key, attempts, error)
             return
         for recovered_result in recovered:
             self._audit_move(job, recovered_result)
-        if not self._eligible(job, source): self._discard_snapshot(key); return
+        if not self._eligible(job, source):
+            self._discard_snapshot(key)
+            return
         try:
-            stat = source.stat(); fingerprint = (stat.st_size, stat.st_mtime_ns)
+            stat = source.stat()
+            fingerprint = (stat.st_size, stat.st_mtime_ns)
             with self._state_lock:
                 previous = self.snapshots.get(key)
                 if previous != fingerprint:
@@ -562,7 +689,11 @@ class RenameWatchService:
                 rescheduled = replacement is not None
                 if replacement is not None and replacement[3] < attempts:
                     self.pending[key] = (
-                        replacement[0], replacement[1], replacement[2], attempts, replacement[4]
+                        replacement[0],
+                        replacement[1],
+                        replacement[2],
+                        attempts,
+                        replacement[4],
                     )
             if previous != fingerprint:
                 self.schedule(
@@ -572,7 +703,8 @@ class RenameWatchService:
                     job.settle_seconds,
                     required_delay=True,
                     accept_during_drain=True,
-                ); return
+                )
+                return
             if rescheduled:
                 return
             if not self._eligible(job, source):
@@ -592,12 +724,17 @@ class RenameWatchService:
         else:
             self._discard_snapshot(key)
             self._audit_move(job, result)
+
     def tick(self, reconcile=True):
         now = self.clock()
         if reconcile:
             for job in self.jobs:
-                if job.mode in ("interval", "hybrid") and now >= self.next_scan[job.job_id]:
-                    self.reconcile(job); self.next_scan[job.job_id] = now + job.scan_interval_seconds
+                if (
+                    job.mode in ("interval", "hybrid")
+                    and now >= self.next_scan[job.job_id]
+                ):
+                    self.reconcile(job)
+                    self.next_scan[job.job_id] = now + job.scan_interval_seconds
         while True:
             with self._state_lock:
                 deadline = self._shutdown_deadline
@@ -611,6 +748,7 @@ class RenameWatchService:
             _, (job, path, _, attempts, _) = claimed
             self._increment_metric("processed")
             self._process(job, path, attempts)
+
     @staticmethod
     def _safe_duration_product(value, count):
         try:
@@ -618,6 +756,7 @@ class RenameWatchService:
         except OverflowError:
             return sys.float_info.max
         return result if math.isfinite(result) else sys.float_info.max
+
     @staticmethod
     def _retry_delay_total(job, start_attempt=0):
         remaining = max(0, job.retry.max_attempts - 1 - start_attempt)
@@ -641,6 +780,7 @@ class RenameWatchService:
                 return sys.float_info.max
             total += capped
         return total
+
     @classmethod
     def _once_budget(cls, job):
         settling = cls._safe_duration_product(
@@ -649,6 +789,7 @@ class RenameWatchService:
         retries = cls._retry_delay_total(job)
         budget = settling + retries + 0.1
         return budget if math.isfinite(budget) else sys.float_info.max
+
     def _freeze_once_work(self):
         started = self.clock()
         with self._state_lock:
@@ -661,12 +802,11 @@ class RenameWatchService:
             }
         with self._state_lock:
             self._once_identities = {
-                key: self._once_discovered_identities.get(
-                    key, _IDENTITY_UNAVAILABLE
-                )
+                key: self._once_discovered_identities.get(key, _IDENTITY_UNAVAILABLE)
                 for key in values
             }
         return deadlines, {key: 0 for key in deadlines}
+
     @staticmethod
     def _capture_once_identity(source):
         stat = source.stat()
@@ -677,6 +817,7 @@ class RenameWatchService:
                 )
             )
         return stat.st_dev, stat.st_ino
+
     def _once_source_replaced(self, key, source):
         with self._state_lock:
             if self._once_identities is None or key not in self._once_identities:
@@ -693,12 +834,11 @@ class RenameWatchService:
         except FileNotFoundError:
             return True
         return not stat.st_ino or (stat.st_dev, stat.st_ino) != expected
+
     def _refresh_once_deadlines(self, deadlines, retry_versions, now):
         with self._state_lock:
             values = {
-                key: value
-                for key, value in self.pending.items()
-                if key in deadlines
+                key: value for key, value in self.pending.items() if key in deadlines
             }
         for key, value in values.items():
             attempts = value[3]
@@ -716,6 +856,7 @@ class RenameWatchService:
                 + 0.1
             )
             deadlines[key] = max(deadlines[key], now + remaining)
+
     def _expire_once_work(self, deadlines, now):
         expired = []
         with self._state_lock:
@@ -740,6 +881,7 @@ class RenameWatchService:
                 reason="settle_timeout",
                 attempted_destination=None,
             )
+
     def _next_once_delay(self, deadlines, now):
         with self._state_lock:
             wake_times = [
@@ -750,15 +892,18 @@ class RenameWatchService:
         if not wake_times:
             return 0.0
         return max(0.0, min(wake_times) - now)
+
     def run_once(self):
-        self._prepare_watch_paths(); self._acquire_root_locks()
+        self._prepare_watch_paths()
+        self._acquire_root_locks()
         primary_error = None
         try:
             self._recover_pending_moves()
             with self._state_lock:
                 self._once_capture = True
                 self._once_discovered_identities = {}
-            for job in self.jobs: self.reconcile(job)
+            for job in self.jobs:
+                self.reconcile(job)
             deadlines, retry_versions = self._freeze_once_work()
             stalled_sleeps = 0
             while self._has_pending():
@@ -791,8 +936,10 @@ class RenameWatchService:
                 self._once_capture = False
                 self._once_discovered_identities = {}
             self._release_root_locks_preserving_primary(primary_error)
+
     def check_config(self):
-        self._prepare_watch_paths(); self._acquire_root_locks()
+        self._prepare_watch_paths()
+        self._acquire_root_locks()
         primary_error = None
         try:
             validate_log_policy()
@@ -806,14 +953,14 @@ class RenameWatchService:
             raise
         finally:
             self._release_root_locks_preserving_primary(primary_error)
+
     def dry_run_once(self):
-        self._prepare_watch_paths(); self._acquire_root_locks()
+        self._prepare_watch_paths()
+        self._acquire_root_locks()
         primary_error = None
         try:
             self._validate_failure_state()
-            frozen = [
-                (job, self._discover_candidates(job)) for job in self.jobs
-            ]
+            frozen = [(job, self._discover_candidates(job)) for job in self.jobs]
             reservations = set()
             source_reservations = set()
             plans = []
@@ -826,9 +973,7 @@ class RenameWatchService:
                     source_reservations.add(source_key)
                     unique_sources.append(source)
                 plans.extend(
-                    self.movers[job.job_id].preview(
-                        unique_sources, reservations
-                    )
+                    self.movers[job.job_id].preview(unique_sources, reservations)
                 )
             return plans
         except BaseException as error:
@@ -836,25 +981,38 @@ class RenameWatchService:
             raise
         finally:
             self._release_root_locks_preserving_primary(primary_error)
+
     def _start_observers(self):
         service = self
+
         class Handler(FileSystemEventHandler):
-            def __init__(self, job): self.job = job
+            def __init__(self, job):
+                self.job = job
+
             def on_created(self, event):
                 if event.is_directory:
-                    if self.job.recursive: service.reconcile(self.job)
+                    if self.job.recursive:
+                        service.reconcile(self.job)
                 else:
                     service.schedule(self.job, event.src_path, reset_settle=True)
+
             def on_modified(self, event):
-                if not event.is_directory: service.schedule(self.job, event.src_path, reset_settle=True)
+                if not event.is_directory:
+                    service.schedule(self.job, event.src_path, reset_settle=True)
+
             def on_moved(self, event):
                 if event.is_directory:
-                    if self.job.recursive: service.reconcile(self.job)
+                    if self.job.recursive:
+                        service.reconcile(self.job)
                 else:
                     service.schedule(self.job, event.dest_path, reset_settle=True)
+
         for job in self.jobs:
-            if job.mode not in ("event", "hybrid"): continue
-            ensure_watch_directory(job.watch_path, "job '{0}' watch_path".format(job.job_id))
+            if job.mode not in ("event", "hybrid"):
+                continue
+            ensure_watch_directory(
+                job.watch_path, "job '{0}' watch_path".format(job.job_id)
+            )
             observer = Observer()
             self.observers.append(observer)
             try:
@@ -870,6 +1028,7 @@ class RenameWatchService:
                         job.job_id, job.watch_path, exc
                     )
                 ) from exc
+
     def request_shutdown(self, interrupted=False):
         with self._state_lock:
             self._shutdown_requests += 1
@@ -877,8 +1036,7 @@ class RenameWatchService:
             self._accepting_events = False
             if self._shutdown_requests == 1:
                 self._shutdown_deadline = (
-                    self.clock()
-                    + self.service_settings.shutdown_drain_timeout_seconds
+                    self.clock() + self.service_settings.shutdown_drain_timeout_seconds
                 )
             else:
                 self._shutdown_deadline = self.clock()
@@ -905,9 +1063,7 @@ class RenameWatchService:
                         break
                     now = self.clock()
                     timeout = (
-                        0.1
-                        if deadline is None
-                        else min(0.1, max(0.0, deadline - now))
+                        0.1 if deadline is None else min(0.1, max(0.0, deadline - now))
                     )
                     if timeout <= 0:
                         break
@@ -915,7 +1071,9 @@ class RenameWatchService:
                     after = self.clock()
                     if publish_draining and after >= next_snapshot:
                         self._write_runtime_snapshot("draining")
-                        next_snapshot = after + self.service_settings.health_interval_seconds
+                        next_snapshot = (
+                            after + self.service_settings.health_interval_seconds
+                        )
                     if after <= now and observer.is_alive():
                         break
             except BaseException as exc:
@@ -960,7 +1118,8 @@ class RenameWatchService:
         finalized = False
         previous_handlers = {}
         try:
-            self._prepare_watch_paths(); self._acquire_root_locks()
+            self._prepare_watch_paths()
+            self._acquire_root_locks()
             self._write_runtime_snapshot("starting")
             self._recover_pending_moves()
             self._start_observers()
@@ -976,7 +1135,9 @@ class RenameWatchService:
                     previous_handlers[signum] = signal.getsignal(signum)
                     signal.signal(
                         signum,
-                        lambda _signum, _frame, interrupted=interrupted: self.request_shutdown(interrupted),
+                        lambda _signum, _frame, interrupted=interrupted: self.request_shutdown(
+                            interrupted
+                        ),
                     )
             while not self.stop_event.is_set():
                 self.tick()
@@ -1030,8 +1191,10 @@ class RenameWatchService:
                     cleanup_error = error
             if primary_error is None and cleanup_error is not None:
                 raise cleanup_error
+
     def stop(self):
         self.request_shutdown()
+
 
 def handle_rename_watch(args):
     initialize = getattr(args, "init", False)
@@ -1042,9 +1205,13 @@ def handle_rename_watch(args):
     if dry_run and not once:
         raise RenameWatchUsageError("--dry-run requires --once")
     if initialize and (once or dry_run or mode or check_config):
-        raise RenameWatchUsageError("--init cannot be combined with --once, --dry-run, --mode, or --check-config")
+        raise RenameWatchUsageError(
+            "--init cannot be combined with --once, --dry-run, --mode, or --check-config"
+        )
     if check_config and (once or dry_run or mode or initialize):
-        raise RenameWatchUsageError("--check-config cannot be combined with --once, --dry-run, --mode, or --init")
+        raise RenameWatchUsageError(
+            "--check-config cannot be combined with --once, --dry-run, --mode, or --init"
+        )
     if dry_run and mode:
         raise RenameWatchUsageError("--dry-run cannot be combined with --mode")
     if initialize:
@@ -1068,11 +1235,9 @@ def handle_rename_watch(args):
                     plan.job_id,
                     plan.source,
                     plan.destination,
-                        (
-                            " disposition={0}".format(
-                                getattr(plan, "disposition", "move")
-                            )
-                            if getattr(plan, "disposition", "move") != "move"
+                    (
+                        " disposition={0}".format(getattr(plan, "disposition", "move"))
+                        if getattr(plan, "disposition", "move") != "move"
                         else ""
                     ),
                 )

@@ -22,6 +22,7 @@ STATES = {
     "destination_finalized",
     "moved",
     "audited",
+    "recovery_conflict",
 }
 
 
@@ -54,7 +55,9 @@ def _sync_directory(path: Path) -> None:
 def atomic_write_json(path: Path, data: Dict[str, Any]) -> None:
     """Atomically replace a JSON file after flushing its contents."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary = tempfile.mkstemp(prefix=path.name + ".", dir=str(path.parent))
+    descriptor, temporary = tempfile.mkstemp(
+        prefix=path.name + ".", dir=str(path.parent)
+    )
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
             json.dump(data, handle, sort_keys=True)
@@ -92,7 +95,9 @@ class MoveJournal:
 
     def __init__(self, job: RenameWatchJob, state_root: Optional[Path] = None):
         self.job = job
-        self.directory = state_directory(state_root) / "journals" / _operation_namespace(job)
+        self.directory = (
+            state_directory(state_root) / "journals" / _operation_namespace(job)
+        )
 
     def pending(self) -> List[Dict[str, Any]]:
         if not self.directory.exists():
@@ -103,7 +108,9 @@ class MoveJournal:
                 raw = json.loads(path.read_text(encoding="utf-8"))
             except (OSError, ValueError, TypeError) as exc:
                 raise RenameWatchConfigError(
-                    "rename-watch recovery journal is unreadable: {0} ({1})".format(path, exc)
+                    "rename-watch recovery journal is unreadable: {0} ({1})".format(
+                        path, exc
+                    )
                 ) from exc
             records.append(self._validate(raw, path))
         return records
@@ -175,9 +182,22 @@ class MoveJournal:
     def mark_audited(self, record: Dict[str, Any]) -> Dict[str, Any]:
         return self._transition(record, "audited", record.get("destination_identity"))
 
-    def update_attempts(
-        self, record: Dict[str, Any], attempts: int
+    def mark_recovery_conflict(
+        self, record: Dict[str, Any], reason: str
     ) -> Dict[str, Any]:
+        """Retain an ambiguous recovery as durable, non-mutating evidence."""
+        if record.get("state") == "recovery_conflict":
+            return record
+        updated = dict(record)
+        updated["recovery_state"] = updated["state"]
+        updated["state"] = "recovery_conflict"
+        updated["recovery_conflict_reason"] = reason
+        updated["recovery_conflicted_at"] = datetime.now(timezone.utc).isoformat()
+        path = self._path(updated["operation_id"])
+        atomic_write_json(path, updated)
+        return self._validate(updated, path)
+
+    def update_attempts(self, record: Dict[str, Any], attempts: int) -> Dict[str, Any]:
         updated = dict(record)
         updated["attempts"] = attempts
         path = self._path(updated["operation_id"])
@@ -220,8 +240,26 @@ class MoveJournal:
             self._invalid(path, "operation_id is invalid")
         if parsed_id != operation_id or path != self._path(operation_id):
             self._invalid(path, "operation_id does not match the journal filename")
-        if raw.get("state") not in STATES:
+        state = raw.get("state")
+        if state not in STATES:
             self._invalid(path, "state is invalid")
+        effective_state = state
+        if state == "recovery_conflict":
+            effective_state = raw.get("recovery_state")
+            if effective_state not in STATES - {"recovery_conflict"}:
+                self._invalid(path, "recovery_state is invalid")
+            reason = raw.get("recovery_conflict_reason")
+            if not isinstance(reason, str) or not reason or len(reason) > 1024:
+                self._invalid(path, "recovery_conflict_reason is invalid")
+            timestamp = raw.get("recovery_conflicted_at")
+            if not isinstance(timestamp, str) or not timestamp:
+                self._invalid(path, "recovery_conflicted_at is invalid")
+            try:
+                parsed_timestamp = datetime.fromisoformat(timestamp)
+            except ValueError:
+                self._invalid(path, "recovery_conflicted_at is invalid")
+            if parsed_timestamp.tzinfo is None:
+                self._invalid(path, "recovery_conflicted_at is invalid")
         if raw.get("job_id") != self.job.job_id:
             self._invalid(path, "job_id does not match the configured job")
         for key in ("watch_root", "source_path", "destination_path"):
@@ -232,21 +270,30 @@ class MoveJournal:
                 self._invalid(path, "watch_root does not match the configured job")
             source = Path(raw["source_path"])
             destination = Path(raw["destination_path"])
-            if not _inside(source, self.job.watch_path) or _inside(source, self.job.destination_path):
+            if not _inside(source, self.job.watch_path) or _inside(
+                source, self.job.destination_path
+            ):
                 self._invalid(path, "source_path is outside the configured input root")
             if not _inside(destination, self.job.destination_path):
-                self._invalid(path, "destination_path is outside the configured destination")
+                self._invalid(
+                    path, "destination_path is outside the configured destination"
+                )
         except (OSError, ValueError, RuntimeError) as exc:
             self._invalid(path, "path values are invalid: {0}".format(exc))
         identity = raw.get("source_identity")
         required_identity = {"device", "inode", "size", "mtime_ns"}
         if not isinstance(identity, dict) or set(identity) != required_identity:
             self._invalid(path, "source_identity is invalid")
-        if any(isinstance(identity[key], bool) or not isinstance(identity[key], int) for key in required_identity):
+        if any(
+            isinstance(identity[key], bool) or not isinstance(identity[key], int)
+            for key in required_identity
+        ):
             self._invalid(path, "source_identity values must be integers")
         destination_identity = raw.get("destination_identity")
         if destination_identity is not None:
-            if not isinstance(destination_identity, dict) or set(destination_identity) != {"device", "inode"}:
+            if not isinstance(destination_identity, dict) or set(
+                destination_identity
+            ) != {"device", "inode"}:
                 self._invalid(path, "destination_identity is invalid")
             if any(
                 isinstance(destination_identity[key], bool)
@@ -254,12 +301,16 @@ class MoveJournal:
                 for key in ("device", "inode")
             ):
                 self._invalid(path, "destination_identity values must be integers")
-        if raw.get("state") in {
-            "destination_created",
-            "destination_finalized",
-            "moved",
-            "audited",
-        } and destination_identity is None:
+        if (
+            effective_state
+            in {
+                "destination_created",
+                "destination_finalized",
+                "moved",
+                "audited",
+            }
+            and destination_identity is None
+        ):
             self._invalid(path, "destination_identity is required for this state")
         transfer_kind = raw.get("transfer_kind")
         if transfer_kind not in (None, "hard_link", "copy"):
@@ -277,7 +328,10 @@ class MoveJournal:
                 for key in required_identity
             ):
                 self._invalid(path, "destination_fingerprint values must be integers")
-        if raw.get("state") in {"destination_finalized", "moved", "audited"} and destination_fingerprint is None:
+        if (
+            effective_state in {"destination_finalized", "moved", "audited"}
+            and destination_fingerprint is None
+        ):
             self._invalid(path, "destination_fingerprint is required for this state")
         uses_counter = raw.get("uses_counter")
         if not isinstance(uses_counter, bool):
@@ -286,13 +340,25 @@ class MoveJournal:
             if not isinstance(raw.get("date_key"), str):
                 self._invalid(path, "date_key is required for a counter operation")
             for key in ("counter", "counter_next"):
-                if isinstance(raw.get(key), bool) or not isinstance(raw.get(key), int) or raw[key] < 0:
+                if (
+                    isinstance(raw.get(key), bool)
+                    or not isinstance(raw.get(key), int)
+                    or raw[key] < 0
+                ):
                     self._invalid(path, "{0} is invalid".format(key))
-        elif any(raw.get(key) is not None for key in ("date_key", "counter", "counter_next")):
-            self._invalid(path, "counter fields must be empty for a no-counter operation")
+        elif any(
+            raw.get(key) is not None for key in ("date_key", "counter", "counter_next")
+        ):
+            self._invalid(
+                path, "counter fields must be empty for a no-counter operation"
+            )
         if not isinstance(raw.get("pattern"), str) or not raw["pattern"]:
             self._invalid(path, "pattern is invalid")
-        if isinstance(raw.get("attempts"), bool) or not isinstance(raw.get("attempts"), int) or raw["attempts"] < 1:
+        if (
+            isinstance(raw.get("attempts"), bool)
+            or not isinstance(raw.get("attempts"), int)
+            or raw["attempts"] < 1
+        ):
             self._invalid(path, "attempts is invalid")
         return raw
 
