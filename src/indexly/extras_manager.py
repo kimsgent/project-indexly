@@ -70,6 +70,7 @@ EXTRA_REQUIREMENTS: dict[str, tuple[str, ...]] = {
 MANIFEST_SCHEMA = 2
 OVERLAY_DIRECTORY = "environment"
 MUTATION_LOCK_FILE = ".mutation.lock"
+ROOT_MUTATION_LOCK_FILE = ".cleanup.lock"
 _THREAD_LOCKS: dict[str, threading.Lock] = {}
 _THREAD_LOCKS_GUARD = threading.Lock()
 _SAFE_COMPONENT_CHARS = frozenset(
@@ -139,6 +140,32 @@ class StaleOverlay:
             "indexly_version": self.indexly_version,
             "python_abi": self.python_abi,
             "platform_tag": self.platform_tag,
+            "groups": list(self.groups),
+            "reason": self.reason,
+        }
+
+
+@dataclass(frozen=True)
+class ExtrasCleanup:
+    """One obsolete environment eligible for safe cleanup."""
+
+    path: Path
+    indexly_version: str
+    python_abi: str
+    platform_tag: str
+    size_bytes: int
+    groups: tuple[str, ...]
+    reason: str
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return stable, JSON-serializable cleanup-plan fields."""
+
+        return {
+            "path": str(self.path),
+            "indexly_version": self.indexly_version,
+            "python_abi": self.python_abi,
+            "platform_tag": self.platform_tag,
+            "size_bytes": self.size_bytes,
             "groups": list(self.groups),
             "reason": self.reason,
         }
@@ -378,6 +405,128 @@ def list_stale_overlays(*, base_dir: Path | None = None) -> tuple[StaleOverlay, 
     return tuple(stale)
 
 
+def extras_status_report(*, base_dir: Path | None = None) -> dict[str, Any]:
+    """Describe the executing runtime and current and obsolete overlays.
+
+    This is intentionally additive to the per-group statuses returned by
+    :func:`list_extras`; callers which consumed the earlier status shape can
+    continue to use ``current`` and ``stale`` unchanged.
+    """
+
+    path, manifest, error = _inspect_overlay(base_dir=base_dir)
+    selected = _manifest_selected_groups(manifest)
+    if error:
+        state = "invalid"
+    elif manifest is None:
+        state = "not-installed"
+    else:
+        state = "valid"
+    version = running_version()
+    abi = python_abi()
+    platform_name = platform_tag()
+    stale = list_stale_overlays(base_dir=base_dir)
+    return {
+        "runtime": {
+            "indexly_version": version,
+            "python_abi": abi,
+            "platform_tag": platform_name,
+            "python_executable": sys.executable,
+            "python_version": sys.version.split()[0],
+        },
+        "current_overlay": {
+            "path": str(path),
+            "state": state,
+            "selected_groups": list(selected),
+            "error": error,
+        },
+        "current": [status.as_dict() for status in list_extras(base_dir=base_dir)],
+        "stale": [item.as_dict() for item in stale],
+        "obsolete": [item.as_dict() for item in stale],
+    }
+
+
+def list_extras_cleanup(*, base_dir: Path | None = None) -> tuple[ExtrasCleanup, ...]:
+    """List stale managed environments eligible for cleanup without mutating."""
+
+    runtime_root = Path(base_dir) if base_dir is not None else resolve_base_dir()
+    extras_root = runtime_root / "extras"
+    if extras_root.is_symlink():
+        raise ExtrasError(f"Refusing to scan symlinked extras root: {extras_root}")
+    if not extras_root.exists():
+        return ()
+    if not extras_root.is_dir():
+        raise ExtrasError(f"Extras root is not a directory: {extras_root}")
+
+    current = (running_version(), python_abi(), platform_tag())
+    candidates: list[ExtrasCleanup] = []
+    try:
+        for version_dir in sorted(extras_root.iterdir(), key=lambda path: path.name):
+            if version_dir.is_symlink() or not version_dir.is_dir():
+                continue
+            for abi_dir in sorted(version_dir.iterdir(), key=lambda path: path.name):
+                if abi_dir.is_symlink() or not abi_dir.is_dir():
+                    continue
+                for platform_dir in sorted(
+                    abi_dir.iterdir(), key=lambda path: path.name
+                ):
+                    if platform_dir.is_symlink() or not platform_dir.is_dir():
+                        continue
+                    scope = (version_dir.name, abi_dir.name, platform_dir.name)
+                    if scope == current:
+                        continue
+                    environment = platform_dir / OVERLAY_DIRECTORY
+                    if environment.is_symlink():
+                        raise ExtrasError(
+                            f"Refusing symlinked obsolete extras environment: {environment}"
+                        )
+                    if not environment.exists():
+                        continue
+                    if not environment.is_dir():
+                        raise ExtrasError(
+                            f"Obsolete extras environment is not a directory: {environment}"
+                        )
+                    reason = (
+                        "indexly-version"
+                        if version_dir.name != current[0]
+                        else "python-abi" if abi_dir.name != current[1] else "platform"
+                    )
+                    candidates.append(
+                        ExtrasCleanup(
+                            path=environment,
+                            indexly_version=version_dir.name,
+                            python_abi=abi_dir.name,
+                            platform_tag=platform_dir.name,
+                            size_bytes=_directory_size(environment),
+                            groups=_read_stale_selected_groups(platform_dir),
+                            reason=reason,
+                        )
+                    )
+    except OSError as exc:
+        raise ExtrasError(
+            f"Could not inspect obsolete extras environments: {exc}"
+        ) from exc
+    return tuple(candidates)
+
+
+def cleanup_extras(
+    *, yes: bool = False, base_dir: Path | None = None
+) -> tuple[ExtrasCleanup, ...]:
+    """Remove only obsolete managed environments after explicit confirmation.
+
+    Calling without ``yes`` is a dry run.  The current runtime scope is never
+    returned or removed, and cleanup neither follows nor removes symlinks.
+    """
+
+    if not yes:
+        return list_extras_cleanup(base_dir=base_dir)
+    with _root_mutation_lock(base_dir=base_dir):
+        candidates = list_extras_cleanup(base_dir=base_dir)
+        for candidate in candidates:
+            scope = candidate.path.parent
+            _remove_directory(candidate.path, scope)
+        return candidates
+
+
 def external_tools_status() -> dict[str, bool]:
     """Report external tools used by extras without attempting installation."""
 
@@ -550,8 +699,25 @@ def _is_owned_remnant_name(name: str) -> bool:
 def _mutation_lock(*, base_dir: Path | None):
     """Hold an exclusive process- and thread-safe lock for the current scope."""
 
-    scope = _validated_scope(base_dir=base_dir, create=True)
-    lock_path = scope / MUTATION_LOCK_FILE
+    with _root_mutation_lock(base_dir=base_dir):
+        scope = _validated_scope(base_dir=base_dir, create=True)
+        with _locked_regular_file(scope / MUTATION_LOCK_FILE):
+            yield
+
+
+@contextmanager
+def _root_mutation_lock(*, base_dir: Path | None):
+    """Serialize cleanup with mutations made by every runtime scope."""
+
+    extras_root = _validated_extras_root(base_dir=base_dir, create=True)
+    with _locked_regular_file(extras_root / ROOT_MUTATION_LOCK_FILE):
+        yield
+
+
+@contextmanager
+def _locked_regular_file(lock_path: Path):
+    """Lock one owned regular file without following symbolic links."""
+
     thread_lock = _thread_lock_for(lock_path)
     with thread_lock:
         if lock_path.is_symlink():
@@ -786,22 +952,12 @@ def _validated_scope(
         if platform_name is None
         else _validate_component(platform_name, "Python platform tag")
     )
-    runtime_root = Path(base_dir) if base_dir is not None else resolve_base_dir()
-    extras_root = runtime_root / "extras"
+    extras_root = _validated_extras_root(base_dir=base_dir, create=create)
     version_root = extras_root / safe_version
     abi_root = version_root / safe_abi
     scope = abi_root / safe_platform
 
-    if create:
-        try:
-            runtime_root.mkdir(parents=True, exist_ok=True)
-        except OSError as exc:
-            raise ExtrasError(
-                f"Could not prepare the Indexly runtime directory: {exc}"
-            ) from exc
-
     for path, label in (
-        (extras_root, "extras root"),
         (version_root, "Indexly-version directory"),
         (abi_root, "Python-ABI directory"),
         (scope, "platform directory"),
@@ -818,6 +974,34 @@ def _validated_scope(
             if path.is_symlink() or not path.is_dir():
                 raise ExtrasError(f"Could not safely create {label}: {path}")
     return scope
+
+
+def _validated_extras_root(*, base_dir: Path | None, create: bool) -> Path:
+    """Return the managed extras root after validating its safe ownership."""
+
+    runtime_root = Path(base_dir) if base_dir is not None else resolve_base_dir()
+    extras_root = runtime_root / "extras"
+    if create:
+        try:
+            runtime_root.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            raise ExtrasError(
+                f"Could not prepare the Indexly runtime directory: {exc}"
+            ) from exc
+    if extras_root.is_symlink():
+        raise ExtrasError(f"Refusing symlinked extras root: {extras_root}")
+    if extras_root.exists() and not extras_root.is_dir():
+        raise ExtrasError(f"Extras extras root is not a directory: {extras_root}")
+    if create and not extras_root.exists():
+        try:
+            extras_root.mkdir(exist_ok=True)
+        except OSError as exc:
+            raise ExtrasError(
+                f"Could not create extras root '{extras_root}': {exc}"
+            ) from exc
+        if extras_root.is_symlink() or not extras_root.is_dir():
+            raise ExtrasError(f"Could not safely create extras root: {extras_root}")
+    return extras_root
 
 
 def _validate_scope_ancestors(scope: Path) -> None:
@@ -878,6 +1062,36 @@ def _remove_directory(path: Path, scope: Path) -> None:
         if not path.is_dir():
             raise ExtrasError(f"Refusing to remove non-directory overlay path: {path}")
         shutil.rmtree(path)
+
+
+def _directory_size(path: Path) -> int:
+    """Return a safe logical size without following links outside ``path``."""
+
+    total = 0
+    stack = [path]
+    while stack:
+        current = stack.pop()
+        try:
+            with os.scandir(current) as entries:
+                for entry in entries:
+                    value = entry.stat(follow_symlinks=False)
+                    if stat.S_ISLNK(value.st_mode):
+                        raise ExtrasError(
+                            f"Refusing to size symlinked extras entry: {entry.path}"
+                        )
+                    if stat.S_ISDIR(value.st_mode):
+                        stack.append(Path(entry.path))
+                    elif stat.S_ISREG(value.st_mode):
+                        total += value.st_size
+                    else:
+                        raise ExtrasError(
+                            f"Refusing to size non-regular extras entry: {entry.path}"
+                        )
+        except ExtrasError:
+            raise
+        except OSError as exc:
+            raise ExtrasError(f"Could not calculate extras disk usage: {exc}") from exc
+    return total
 
 
 def _require_direct_child(path: Path, scope: Path) -> None:

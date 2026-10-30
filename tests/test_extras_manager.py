@@ -486,6 +486,73 @@ def test_status_is_json_serializable_and_reports_selection(runtime: Path) -> Non
     json.dumps(missing)
 
 
+def test_status_report_identifies_runtime_and_current_overlay(runtime: Path) -> None:
+    current = _create_overlay(runtime, ("documents", "backup"))
+    _create_overlay(runtime, ("analysis",), version="2.1.5")
+
+    report = extras_manager.extras_status_report()
+
+    assert report["runtime"] == {
+        "indexly_version": "2.1.6",
+        "python_abi": "cpython-313",
+        "platform_tag": "macosx-15-arm64",
+        "python_executable": sys.executable,
+        "python_version": sys.version.split()[0],
+    }
+    assert report["current_overlay"] == {
+        "path": str(current),
+        "state": "valid",
+        "selected_groups": ["documents", "backup"],
+        "error": None,
+    }
+    assert report["obsolete"] == report["stale"]
+    assert report["obsolete"][0]["indexly_version"] == "2.1.5"
+
+
+def test_cleanup_is_dry_run_by_default_and_removes_only_obsolete_environment(
+    runtime: Path,
+) -> None:
+    current = _create_overlay(runtime, ("documents",))
+    obsolete = _create_overlay(runtime, ("analysis",), version="2.1.5")
+    (obsolete / "manifest.json").write_text("not json", encoding="utf-8")
+
+    planned = extras_manager.cleanup_extras()
+
+    assert len(planned) == 1
+    assert planned[0].path == obsolete
+    assert planned[0].size_bytes > 0
+    assert obsolete.exists()
+    assert current.exists()
+
+    removed = extras_manager.cleanup_extras(yes=True)
+
+    assert removed == planned
+    assert not obsolete.exists()
+    assert current.exists()
+
+
+def test_empty_cleanup_dry_run_does_not_create_managed_state(runtime: Path) -> None:
+    assert extras_manager.cleanup_extras() == ()
+    assert not (runtime / "extras").exists()
+
+
+def test_cleanup_refuses_symlinked_obsolete_environment(
+    runtime: Path, tmp_path: Path
+) -> None:
+    scope = _scope(runtime, version="2.1.5")
+    scope.mkdir(parents=True)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    environment = scope / extras_manager.OVERLAY_DIRECTORY
+    try:
+        environment.symlink_to(outside, target_is_directory=True)
+    except OSError:
+        pytest.skip("creating a symlink is unavailable on this platform")
+
+    with pytest.raises(extras_manager.ExtrasError, match="symlinked obsolete"):
+        extras_manager.cleanup_extras()
+
+
 def test_stale_report_reads_selected_groups_from_shared_manifest(
     runtime: Path, tmp_path: Path
 ) -> None:
