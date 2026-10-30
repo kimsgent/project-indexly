@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import threading
+import time
 import tomllib
 from pathlib import Path
 
@@ -551,6 +553,67 @@ def test_cleanup_refuses_symlinked_obsolete_environment(
 
     with pytest.raises(extras_manager.ExtrasError, match="symlinked obsolete"):
         extras_manager.cleanup_extras()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="exercises the POSIX legacy lock")
+def test_cleanup_waits_for_legacy_runtime_scope_lock(runtime: Path) -> None:
+    obsolete = _create_overlay(runtime, ("analysis",), version="2.1.5")
+    lock_path = obsolete.parent / extras_manager.MUTATION_LOCK_FILE
+    ready_path = runtime / "legacy-lock-ready"
+    holder = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import fcntl, os, pathlib, sys; "
+                "lock = pathlib.Path(sys.argv[1]); "
+                "lock.parent.mkdir(parents=True, exist_ok=True); "
+                "fd = os.open(lock, os.O_RDWR | os.O_CREAT, 0o600); "
+                "fcntl.flock(fd, fcntl.LOCK_EX); "
+                "pathlib.Path(sys.argv[2]).write_text('ready'); "
+                "sys.stdin.buffer.read(1)"
+            ),
+            str(lock_path),
+            str(ready_path),
+        ],
+        stdin=subprocess.PIPE,
+    )
+    try:
+        for _ in range(100):
+            if ready_path.exists():
+                break
+            time.sleep(0.01)
+        assert ready_path.exists()
+
+        completed = threading.Event()
+        errors: list[BaseException] = []
+
+        def cleanup() -> None:
+            try:
+                extras_manager.cleanup_extras(yes=True)
+            except BaseException as exc:
+                errors.append(exc)
+            finally:
+                completed.set()
+
+        worker = threading.Thread(target=cleanup)
+        worker.start()
+        assert not completed.wait(timeout=0.2)
+        assert obsolete.exists()
+
+        assert holder.stdin is not None
+        holder.stdin.close()
+        assert holder.wait(timeout=3) == 0
+        worker.join(timeout=3)
+        assert completed.is_set()
+        assert errors == []
+        assert not obsolete.exists()
+    finally:
+        if holder.poll() is None:
+            if holder.stdin is not None and not holder.stdin.closed:
+                holder.stdin.close()
+            holder.terminate()
+            holder.wait(timeout=3)
 
 
 def test_stale_report_reads_selected_groups_from_shared_manifest(

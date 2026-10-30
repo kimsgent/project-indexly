@@ -521,10 +521,55 @@ def cleanup_extras(
         return list_extras_cleanup(base_dir=base_dir)
     with _root_mutation_lock(base_dir=base_dir):
         candidates = list_extras_cleanup(base_dir=base_dir)
+        current = (running_version(), python_abi(), platform_tag())
+        removed: list[ExtrasCleanup] = []
         for candidate in candidates:
             scope = candidate.path.parent
-            _remove_directory(candidate.path, scope)
-        return candidates
+            # Older Indexly runtimes predate the root lock but already use this
+            # per-scope lock. Taking it keeps cleanup from racing their swap.
+            with _locked_regular_file(scope / MUTATION_LOCK_FILE):
+                confirmed = _confirmed_cleanup_candidate(candidate, current)
+                if confirmed is None:
+                    continue
+                _remove_directory(confirmed.path, scope)
+                removed.append(confirmed)
+        return tuple(removed)
+
+
+def _confirmed_cleanup_candidate(
+    candidate: ExtrasCleanup, current: tuple[str, str, str]
+) -> ExtrasCleanup | None:
+    """Recheck one candidate while both cleanup and legacy locks are held."""
+
+    scope = candidate.path.parent
+    _validate_scope_ancestors(scope)
+    _require_direct_child(candidate.path, scope)
+    identity = (scope.parent.parent.name, scope.parent.name, scope.name)
+    if identity == current:
+        return None
+    if candidate.path.is_symlink():
+        raise ExtrasError(
+            f"Refusing symlinked obsolete extras environment: {candidate.path}"
+        )
+    if not candidate.path.exists():
+        return None
+    if not candidate.path.is_dir():
+        raise ExtrasError(
+            f"Obsolete extras environment is not a directory: {candidate.path}"
+        )
+    return ExtrasCleanup(
+        path=candidate.path,
+        indexly_version=identity[0],
+        python_abi=identity[1],
+        platform_tag=identity[2],
+        size_bytes=_directory_size(candidate.path),
+        groups=_read_stale_selected_groups(scope),
+        reason=(
+            "indexly-version"
+            if identity[0] != current[0]
+            else "python-abi" if identity[1] != current[1] else "platform"
+        ),
+    )
 
 
 def external_tools_status() -> dict[str, bool]:
