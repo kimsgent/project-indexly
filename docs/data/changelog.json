@@ -2,6 +2,19 @@
   "project": "FTS5 File Search Tool",
   "versions": [
     {
+      "version": "2.1.8b0",
+      "date": "2026-10-30",
+      "contributors": [
+        "N. K. Franklin-Gent",
+        "OpenAI Codex"
+      ],
+      "changes": [
+        "feat(extras): report the executing runtime and current managed-environment state, and safely clean obsolete managed environments with an explicit confirmation",
+        "fix(rename-watch): isolate recovery conflicts without blocking unrelated eligible files",
+        "breaking: none"
+      ]
+    },
+    {
       "version": "2.1.7",
       "date": "2026-09-26",
       "contributors": [

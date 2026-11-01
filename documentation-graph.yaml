@@ -1,0 +1,366 @@
+schema_version: 1
+graph_id: indexly-documentation-navigation
+title: Project-Indexly documentation and release navigation graph
+scope: >-
+  Cross-platform navigation metadata for agents changing Project-Indexly. It maps
+  product areas and high-value modules to focused tests, Hugo documentation, and
+  release-metadata work. It is an index, not a replacement for source, tests,
+  release contracts, or Codmem's private tracking records.
+
+navigation_contract:
+  use_order:
+    - Resolve changed paths against module and area source_paths before broad search.
+    - Open the mapped source, focused tests, and Hugo documentation targets.
+    - For non-trivial work, use the Codmem recall process in AGENTS.md; verify its output against this repository.
+    - Follow the release_preparation branch only for a release-preparation assignment.
+    - Treat every mapped documentation target as a review obligation, not an automatic edit.
+  authority_boundary:
+    - Source code, tests, and generated-output contracts are authoritative for behavior.
+    - Hugo pages are authoritative for published user-facing guidance.
+    - Codmem is private context discovered at runtime; do not copy its defect or risk prose here.
+    - This graph cannot authorize a release, publication, destructive operation, or workflow change.
+  portability:
+    - All paths are repository-relative POSIX paths.
+    - Do not require a sibling checkout or a machine-specific absolute path.
+
+vocabulary:
+  node_kinds: [area, module, documentation, release_contract, validation, automation, agent_route]
+  relationship_types: [belongs_to, documents, requires_review_of, validates, generates, routes_to, requires]
+  change_classes: [behavior, documentation, release, packaging, workflow, windows]
+
+hugo:
+  content_root: docs/content
+  user_documentation_root: docs/content/documentation
+  release_content_root: docs/content/releases
+  configuration: docs/config/_default/config.toml
+  public_language_prefix: /en
+  conventions:
+    - Preserve existing front matter, slugs, aliases, and relative links unless the behavior change requires them to change.
+    - Do not hand-edit generated release indexes or docs/static/releases.json; run scripts/generate_releases.py.
+    - A mapped page is reviewed for accuracy; add or edit it only when user-visible behavior, commands, safety, or compatibility changed.
+
+release_preparation:
+  task_name: Indexly Release Prep
+  task_id: indexly-release-prep
+  role: >-
+    Existing Codex task/automation. This graph tells agents where release documentation
+    lives; it does not amend, invoke, or replace that task.
+  local_contract_paths:
+    - .codex/skills/skill.md
+    - .codex/skills/technical_writer_skill.md
+    - .codex/skills/analyst_auditor_skill.md
+    - .codex/skills/implementation_reviewer_skill.md
+  release_inputs:
+    - docs/data/changelog.json
+    - docs/content/releases
+    - docs/content/documentation/_index.en.md
+  generated_outputs:
+    - docs/content/releases/_index.en.md
+    - docs/content/releases/Archive/_index.en.md
+    - docs/static/releases.json
+    - docs/content/releases/Archive/
+  metadata_requirements:
+    - release_id
+    - version
+    - released_at
+    - area_ids
+    - risk_ids
+    - mapping_confidence
+    - source_commit_range
+    - change_ids
+  required_actions:
+    - Pin and inspect the candidate commit range before writing release metadata.
+    - Verify area and risk identifiers through Codmem recall; IDs in this graph are navigation hints only.
+    - Run scripts/generate_releases.py twice and require the second run to be idempotent.
+    - Run scripts/validate_release_metadata.py --release-version vX.Y.Z for the target release.
+    - Preserve the task's no-push/no-publish boundary unless that run explicitly authorizes a remote action.
+  prohibited_actions:
+    - Do not edit the Indexly Release Prep task, automation, or local skill contracts as a consequence of this graph.
+    - Do not publish, tag, push, create a pull request, or merge merely because a graph edge reaches a release node.
+
+agent_routing:
+  analyst_auditor:
+    when: Change impact, documentation impact, area/risk mapping, or release evidence is uncertain.
+    actions: [resolve_areas, review_hugo_targets, codmem_recall, report_risks_and_gaps]
+  python_developer:
+    when: Python behavior, CLI, data, persistence, or test changes are in scope.
+    actions: [resolve_modules, run_focused_tests, flag_hugo_targets, preserve_safety_boundaries]
+  technical_writer:
+    when: Hugo content, README guidance, changelog, release page, or metadata changes are in scope.
+    actions: [review_hugo_targets, preserve_hugo_routes, validate_release_metadata_when_applicable]
+  implementation_reviewer:
+    when: Reviewing a change set or release-preparation result independently.
+    actions: [verify_graph_targets_were_considered, inspect_docs_code_test_coherence, check_generated_release_outputs]
+  webui_developer:
+    when: Hugo/Docsy presentation, navigation, templates, or site build behavior changes.
+    actions: [review_hugo_configuration, validate_documentation_routes]
+  powershell_developer:
+    when: Windows scripts, service templates, setup, or Windows-only behavior changes.
+    actions: [review_windows_documentation, preserve_cross_platform_paths]
+
+nodes:
+  IDX-01:
+    kind: area
+    title: CLI shell, configuration, profiles, and help
+    source_paths: [src/indexly/__main__.py, src/indexly/indexly.py, src/indexly/cli_utils.py, src/indexly/config.py, src/indexly/profiles.py, src/indexly/runtime_paths.py]
+    test_paths: [tests/test_doctor.py, tests/test_extras_cli.py, tests/test_search.py]
+    documentation_targets: [DOC-USAGE, DOC-CONFIG, DOC-INSTALL, DOC-DEVELOPER]
+    risk_ids: [IDX-RISK-001]
+    change_classes: [behavior, documentation]
+  IDX-02:
+    kind: area
+    title: Indexing, extraction, semantic text, and metadata
+    source_paths: [src/indexly/incremental_indexing.py, src/indexly/extract_utils.py, src/indexly/universal_loader.py, src/indexly/semantic_index.py, src/indexly/filetype_utils.py, src/indexly/ignore]
+    test_paths: [tests/test_incremental_indexing.py, tests/test_universal_loader.py, tests/test_docx_extraction.py, tests/test_excel_warning_handling.py, tests/test_ignore_presets.py]
+    documentation_targets: [DOC-INDEXING, DOC-SEMANTIC-OVERVIEW, DOC-SEMANTIC-VOCAB, DOC-IGNORE]
+    risk_ids: [IDX-RISK-002, IDX-RISK-003, IDX-RISK-006]
+    change_classes: [behavior, documentation]
+  IDX-03:
+    kind: area
+    title: Search, regex, tags, cache, and deletion
+    source_paths: [src/indexly/search_core.py, src/indexly/fts_core.py, src/indexly/delete_search.py, src/indexly/cache_utils.py, src/indexly/db_utils.py]
+    test_paths: [tests/test_search.py, tests/test_search_pagination.py, tests/test_tagging.py, tests/test_delete_search.py]
+    documentation_targets: [DOC-USAGE, DOC-SEARCH-INTERNALS, DOC-TAGGING, DOC-CLEAR-SEARCH, DOC-CONFIG]
+    risk_ids: [IDX-RISK-002, IDX-RISK-007]
+    change_classes: [behavior, documentation]
+  IDX-04:
+    kind: area
+    title: Structured analysis and persistence
+    source_paths: [src/indexly/analysis_orchestrator.py, src/indexly/csv_pipeline.py, src/indexly/json_pipeline.py, src/indexly/yaml_pipeline.py, src/indexly/xml_pipeline.py, src/indexly/db_pipeline.py, src/indexly/persist.py]
+    test_paths: [tests/test_csv_pipeline_regressions.py, tests/test_json_pipeline_ndjson.py, tests/test_db_pipeline_analysis.py, tests/test_yaml_persistence.py, tests/test_analysis_orchestrator_no_persist.py]
+    documentation_targets: [DOC-ANALYSIS-OVERVIEW, DOC-ANALYZE-JSON, DOC-ANALYZE-SQLITE, DOC-CLEAN-CSV, DOC-DATABASE-DESIGN]
+    risk_ids: [IDX-RISK-004, IDX-RISK-006]
+    change_classes: [behavior, documentation]
+  IDX-05:
+    kind: area
+    title: Dataset registry, cleaned artifacts, and inference
+    source_paths: [src/indexly/datasets, src/indexly/inference, src/indexly/cleaning]
+    test_paths: [tests/test_dataset_routing.py, tests/test_inference_engine_regressions.py, tests/test_analytical_backend.py, tests/test_merge_diagnostics.py]
+    documentation_targets: [DOC-INFERENCE, DOC-INFERENCE-HOW, DOC-INFERENCE-API, DOC-CLEAN-CSV]
+    risk_ids: [IDX-RISK-005]
+    change_classes: [behavior, documentation]
+  IDX-06:
+    kind: area
+    title: Visualization and time-series output
+    source_paths: [src/indexly/visualization, src/indexly/visualize_timeseries.py, src/indexly/timeseries_utils.py]
+    test_paths: [tests/test_timeseries_visualization.py, tests/test_boxplot_preprocessor.py, tests/test_boxplot_render_static.py, tests/test_infer_boxplot_backend_integration.py]
+    documentation_targets: [DOC-TIMESERIES, DOC-INFERENCE, DOC-ANALYSIS-OVERVIEW]
+    risk_ids: [IDX-RISK-006, IDX-RISK-011]
+    change_classes: [behavior, documentation]
+  IDX-07:
+    kind: area
+    title: Organizer, lister, and rename
+    source_paths: [src/indexly/organize, src/indexly/rename_utils.py, src/indexly/rename_constants.py]
+    test_paths: [tests/test_organizer_module.py, tests/test_lister_module.py, tests/test_rename_module.py]
+    documentation_targets: [DOC-ORGANIZER, DOC-LISTER, DOC-RENAME, DOC-IGNORE]
+    risk_ids: [IDX-RISK-003, IDX-RISK-008]
+    change_classes: [behavior, documentation]
+  IDX-08:
+    kind: area
+    title: Watchers, observers, logs, and audit events
+    source_paths: [src/indexly/watcher.py, src/indexly/observers, src/indexly/log_utils.py, src/indexly/rename_watch]
+    test_paths: [tests/test_observer_runner.py, tests/test_observers_config.py, tests/test_csv_observer.py, tests/test_logger_stress.py, tests/test_rename_watch.py]
+    documentation_targets: [DOC-OBSERVERS, DOC-LOGGING, DOC-RENAME-WATCH, DOC-RENAME-WATCH-SERVICE]
+    risk_ids: [IDX-RISK-009]
+    change_classes: [behavior, documentation, windows]
+  IDX-09:
+    kind: area
+    title: Backup and restore
+    source_paths: [src/indexly/backup]
+    test_paths: [tests/test_backup_critical_fixes.py]
+    documentation_targets: [DOC-BACKUP, DOC-USAGE, DOC-INSTALL]
+    risk_ids: [IDX-RISK-006, IDX-RISK-007]
+    change_classes: [behavior, documentation]
+  IDX-10:
+    kind: area
+    title: Compare
+    source_paths: [src/indexly/compare]
+    test_paths: [tests/test_compare_module.py]
+    documentation_targets: [DOC-COMPARE, DOC-USAGE, DOC-IGNORE]
+    risk_ids: [IDX-RISK-003, IDX-RISK-010]
+    change_classes: [behavior, documentation]
+  IDX-11:
+    kind: area
+    title: Database health, migrations, and diagnostics
+    source_paths: [src/indexly/doctor.py, src/indexly/db_update.py, src/indexly/migration_manager.py, src/indexly/migrate_db.py, src/indexly/perf]
+    test_paths: [tests/test_doctor.py, tests/test_db_update.py, tests/test_perf.py, tests/test_perf_actions.py, tests/test_perf_cli.py]
+    documentation_targets: [DOC-DOCTOR, DOC-DB-MIGRATION, DOC-DATABASE-DESIGN, DOC-PERFORMANCE]
+    risk_ids: [IDX-RISK-007]
+    change_classes: [behavior, documentation, windows]
+  IDX-12:
+    kind: area
+    title: Packaging, docs, release, and CI-adjacent surfaces
+    source_paths: [pyproject.toml, Formula/indexly.rb, scripts, .github/workflows, docs/data/changelog.json]
+    test_paths: [tests/test_generate_releases.py, tests/test_release_versions.py, tests/test_update_homebrew_tap.py, tests/test_extras_manager.py, tests/test_extras_cli.py]
+    documentation_targets: [DOC-INSTALL, DOC-DEVELOPER, DOC-RELEASES, DOC-DOCUMENTATION-HUB]
+    risk_ids: [IDX-RISK-012]
+    change_classes: [documentation, release, packaging, workflow]
+
+  MOD-CLI:
+    kind: module
+    title: CLI and runtime configuration
+    source_paths: [src/indexly/indexly.py, src/indexly/cli_utils.py, src/indexly/config.py, src/indexly/runtime_paths.py]
+    test_paths: [tests/test_doctor.py, tests/test_extras_cli.py, tests/test_search.py]
+    area_ids: [IDX-01]
+    documentation_targets: [DOC-USAGE, DOC-CONFIG, DOC-INSTALL]
+  MOD-INDEXING:
+    kind: module
+    title: Indexing and extraction pipeline
+    source_paths: [src/indexly/incremental_indexing.py, src/indexly/extract_utils.py, src/indexly/universal_loader.py]
+    test_paths: [tests/test_incremental_indexing.py, tests/test_universal_loader.py, tests/test_ignore_presets.py]
+    area_ids: [IDX-02]
+    documentation_targets: [DOC-INDEXING, DOC-IGNORE, DOC-SEMANTIC-OVERVIEW]
+  MOD-SEARCH:
+    kind: module
+    title: Search, cache, tags, and deletion
+    source_paths: [src/indexly/search_core.py, src/indexly/fts_core.py, src/indexly/delete_search.py, src/indexly/cache_utils.py]
+    test_paths: [tests/test_search.py, tests/test_search_pagination.py, tests/test_tagging.py, tests/test_delete_search.py]
+    area_ids: [IDX-03]
+    documentation_targets: [DOC-USAGE, DOC-SEARCH-INTERNALS, DOC-TAGGING, DOC-CLEAR-SEARCH]
+  MOD-ANALYSIS:
+    kind: module
+    title: Structured analysis and persistence pipeline
+    source_paths: [src/indexly/analysis_orchestrator.py, src/indexly/csv_pipeline.py, src/indexly/json_pipeline.py, src/indexly/db_pipeline.py, src/indexly/persist.py]
+    test_paths: [tests/test_csv_pipeline_regressions.py, tests/test_json_pipeline_ndjson.py, tests/test_db_pipeline_analysis.py]
+    area_ids: [IDX-04]
+    documentation_targets: [DOC-ANALYSIS-OVERVIEW, DOC-CLEAN-CSV, DOC-ANALYZE-JSON, DOC-ANALYZE-SQLITE]
+  MOD-INFERENCE:
+    kind: module
+    title: Dataset and inference pipeline
+    source_paths: [src/indexly/datasets, src/indexly/inference, src/indexly/cleaning]
+    test_paths: [tests/test_dataset_routing.py, tests/test_inference_engine_regressions.py, tests/test_analytical_backend.py]
+    area_ids: [IDX-05]
+    documentation_targets: [DOC-INFERENCE, DOC-INFERENCE-HOW, DOC-INFERENCE-API]
+  MOD-VISUALIZATION:
+    kind: module
+    title: Visualization and time-series rendering
+    source_paths: [src/indexly/visualization, src/indexly/visualize_timeseries.py, src/indexly/timeseries_utils.py]
+    test_paths: [tests/test_timeseries_visualization.py, tests/test_boxplot_preprocessor.py, tests/test_boxplot_render_static.py]
+    area_ids: [IDX-06]
+    documentation_targets: [DOC-TIMESERIES, DOC-ANALYSIS-OVERVIEW]
+  MOD-FILE-OPERATIONS:
+    kind: module
+    title: Organizer, lister, and rename operations
+    source_paths: [src/indexly/organize, src/indexly/rename_utils.py, src/indexly/rename_constants.py]
+    test_paths: [tests/test_organizer_module.py, tests/test_lister_module.py, tests/test_rename_module.py]
+    area_ids: [IDX-07]
+    documentation_targets: [DOC-ORGANIZER, DOC-LISTER, DOC-RENAME]
+  MOD-OBSERVABILITY:
+    kind: module
+    title: Watchers, observers, and event logging
+    source_paths: [src/indexly/watcher.py, src/indexly/observers, src/indexly/log_utils.py]
+    test_paths: [tests/test_observer_runner.py, tests/test_observers_config.py, tests/test_logger_stress.py]
+    area_ids: [IDX-08]
+    documentation_targets: [DOC-OBSERVERS, DOC-LOGGING]
+  MOD-RENAME-WATCH:
+    kind: module
+    title: Rename Watch runtime and service integration
+    source_paths: [src/indexly/rename_watch]
+    test_paths: [tests/test_rename_watch.py, tests/test_rename_watch_service_operation.py]
+    area_ids: [IDX-08]
+    documentation_targets: [DOC-RENAME-WATCH, DOC-RENAME-WATCH-SERVICE]
+  MOD-BACKUP:
+    kind: module
+    title: Backup and restore
+    source_paths: [src/indexly/backup]
+    test_paths: [tests/test_backup_critical_fixes.py]
+    area_ids: [IDX-09]
+    documentation_targets: [DOC-BACKUP]
+  MOD-COMPARE:
+    kind: module
+    title: File and folder comparison
+    source_paths: [src/indexly/compare]
+    test_paths: [tests/test_compare_module.py]
+    area_ids: [IDX-10]
+    documentation_targets: [DOC-COMPARE]
+  MOD-HEALTH:
+    kind: module
+    title: Doctor, database migrations, and performance actions
+    source_paths: [src/indexly/doctor.py, src/indexly/db_update.py, src/indexly/migration_manager.py, src/indexly/perf]
+    test_paths: [tests/test_doctor.py, tests/test_db_update.py, tests/test_perf.py, tests/test_perf_actions.py]
+    area_ids: [IDX-11]
+    documentation_targets: [DOC-DOCTOR, DOC-DB-MIGRATION, DOC-PERFORMANCE]
+
+  DOC-DOCUMENTATION-HUB: {kind: documentation, title: Documentation hub, path: docs/content/documentation/_index.en.md}
+  DOC-USAGE: {kind: documentation, title: Usage guide, path: docs/content/documentation/usage.md}
+  DOC-CONFIG: {kind: documentation, title: Configuration and runtime files, path: docs/content/documentation/config.md}
+  DOC-INSTALL: {kind: documentation, title: Installation, path: docs/content/documentation/indexly-installation.md}
+  DOC-DEVELOPER: {kind: documentation, title: Developer guide, path: docs/content/documentation/developer.md}
+  DOC-INDEXING: {kind: documentation, title: Indexing, path: docs/content/documentation/indexing.md}
+  DOC-SEMANTIC-OVERVIEW: {kind: documentation, title: Semantic indexing overview, path: docs/content/documentation/semantic-indexing-overview.md}
+  DOC-SEMANTIC-VOCAB: {kind: documentation, title: Semantic indexing vocabulary, path: docs/content/documentation/semantic-indexing-vocab.md}
+  DOC-IGNORE: {kind: documentation, title: Ignore rules and index hygiene, path: docs/content/documentation/ignore-rules-index-hygiene.md}
+  DOC-SEARCH-INTERNALS: {kind: documentation, title: Search internals, path: docs/content/searching/search-internals.md}
+  DOC-TAGGING: {kind: documentation, title: Tagging, path: docs/content/documentation/tagging.md}
+  DOC-CLEAR-SEARCH: {kind: documentation, title: Clear search results safely, path: docs/content/documentation/clear-search.md}
+  DOC-ANALYSIS-OVERVIEW: {kind: documentation, title: Data analysis overview, path: docs/content/documentation/data-analysis-overview.md}
+  DOC-ANALYZE-JSON: {kind: documentation, title: Analyze JSON and NDJSON, path: docs/content/documentation/analyze-json-files.md}
+  DOC-ANALYZE-SQLITE: {kind: documentation, title: Analyze SQLite databases, path: docs/content/documentation/analyze-sqlite-databases.md}
+  DOC-CLEAN-CSV: {kind: documentation, title: Clean CSV data, path: docs/content/documentation/clean-csv-data.md}
+  DOC-DATABASE-DESIGN: {kind: documentation, title: Database design, path: docs/content/documentation/database-design.md}
+  DOC-INFERENCE: {kind: documentation, title: CSV inference, path: docs/content/documentation/inference.md}
+  DOC-INFERENCE-HOW: {kind: documentation, title: Inference how it works, path: docs/content/inference/how-it-works.md}
+  DOC-INFERENCE-API: {kind: documentation, title: Inference developer API, path: docs/content/inference/developer-api.md}
+  DOC-TIMESERIES: {kind: documentation, title: Time-series visualization, path: docs/content/documentation/time-series-visualization.md}
+  DOC-ORGANIZER: {kind: documentation, title: Organizer, path: docs/content/documentation/organizer.md}
+  DOC-LISTER: {kind: documentation, title: Lister, path: docs/content/documentation/lister.md}
+  DOC-RENAME: {kind: documentation, title: Rename file, path: docs/content/documentation/rename-file.md}
+  DOC-RENAME-WATCH: {kind: documentation, title: Rename Watch, path: docs/content/documentation/rename-watch.md}
+  DOC-RENAME-WATCH-SERVICE: {kind: documentation, title: Rename Watch service operation, path: docs/content/documentation/rename-watch-service-operation.md}
+  DOC-OBSERVERS: {kind: documentation, title: Semantic observers, path: docs/content/documentation/observers.md}
+  DOC-LOGGING: {kind: documentation, title: Indexly logging system, path: docs/content/documentation/indexly-logging-system.md}
+  DOC-BACKUP: {kind: documentation, title: Backup and restore, path: docs/content/documentation/backup-restore.md}
+  DOC-COMPARE: {kind: documentation, title: File and folder comparison, path: docs/content/documentation/file-folder-comparison.md}
+  DOC-DOCTOR: {kind: documentation, title: Indexly Doctor, path: docs/content/documentation/indexly-doctor.md}
+  DOC-DB-MIGRATION: {kind: documentation, title: Database migration utility, path: docs/content/documentation/db-migration-utility.md}
+  DOC-PERFORMANCE: {kind: documentation, title: Performance diagnostics and optimization, path: docs/content/documentation/performance-guide.md}
+  DOC-RELEASES: {kind: documentation, title: Release notes, path: docs/content/releases}
+
+  RELEASE-PREP:
+    kind: release_contract
+    title: Indexly Release Prep documentation branch
+    path: scripts/validate_release_metadata.py
+    documentation_targets: [DOC-RELEASES, DOC-DOCUMENTATION-HUB]
+  VALIDATE-GRAPH: {kind: validation, title: Documentation graph validator, path: scripts/validate_documentation_graph.py}
+  VALIDATE-RELEASE-METADATA: {kind: validation, title: Release metadata validator, path: scripts/validate_release_metadata.py}
+  GENERATE-RELEASES: {kind: validation, title: Release page generator, path: scripts/generate_releases.py}
+  AUTOMATION-INDEXLY-RELEASE-PREP:
+    kind: automation
+    title: Indexly Release Prep
+    summary: Existing Codex task identified by indexly-release-prep; task body is authoritative when invoked.
+  ROUTE-WINDOWS:
+    kind: agent_route
+    title: Windows-sensitive change route
+    summary: Require Windows-focused review when a mapped change touches PowerShell, WinSW, Windows service templates, or platform-specific filesystem behavior.
+
+edges:
+  - {from: MOD-CLI, to: IDX-01, type: belongs_to}
+  - {from: MOD-INDEXING, to: IDX-02, type: belongs_to}
+  - {from: MOD-SEARCH, to: IDX-03, type: belongs_to}
+  - {from: MOD-ANALYSIS, to: IDX-04, type: belongs_to}
+  - {from: MOD-INFERENCE, to: IDX-05, type: belongs_to}
+  - {from: MOD-VISUALIZATION, to: IDX-06, type: belongs_to}
+  - {from: MOD-FILE-OPERATIONS, to: IDX-07, type: belongs_to}
+  - {from: MOD-OBSERVABILITY, to: IDX-08, type: belongs_to}
+  - {from: MOD-RENAME-WATCH, to: IDX-08, type: belongs_to}
+  - {from: MOD-BACKUP, to: IDX-09, type: belongs_to}
+  - {from: MOD-COMPARE, to: IDX-10, type: belongs_to}
+  - {from: MOD-HEALTH, to: IDX-11, type: belongs_to}
+  - {from: IDX-01, to: DOC-USAGE, type: requires_review_of}
+  - {from: IDX-02, to: DOC-INDEXING, type: requires_review_of}
+  - {from: IDX-03, to: DOC-SEARCH-INTERNALS, type: requires_review_of}
+  - {from: IDX-04, to: DOC-ANALYSIS-OVERVIEW, type: requires_review_of}
+  - {from: IDX-05, to: DOC-INFERENCE, type: requires_review_of}
+  - {from: IDX-06, to: DOC-TIMESERIES, type: requires_review_of}
+  - {from: IDX-07, to: DOC-ORGANIZER, type: requires_review_of}
+  - {from: IDX-08, to: DOC-OBSERVERS, type: requires_review_of}
+  - {from: IDX-09, to: DOC-BACKUP, type: requires_review_of}
+  - {from: IDX-10, to: DOC-COMPARE, type: requires_review_of}
+  - {from: IDX-11, to: DOC-DOCTOR, type: requires_review_of}
+  - {from: IDX-12, to: DOC-RELEASES, type: requires_review_of}
+  - {from: RELEASE-PREP, to: AUTOMATION-INDEXLY-RELEASE-PREP, type: routes_to}
+  - {from: RELEASE-PREP, to: VALIDATE-RELEASE-METADATA, type: requires}
+  - {from: RELEASE-PREP, to: GENERATE-RELEASES, type: requires}
+  - {from: GENERATE-RELEASES, to: DOC-RELEASES, type: generates}
+  - {from: IDX-08, to: ROUTE-WINDOWS, type: routes_to}
+  - {from: IDX-11, to: ROUTE-WINDOWS, type: routes_to}
