@@ -100,6 +100,20 @@ indexly extras reset
 indexly extras install documents
 ```
 
+`extras status` identifies the executing Indexly version, Python ABI,
+platform, interpreter, current managed-environment state, selected packs, and
+obsolete environments. It does not activate or modify obsolete environments.
+After confirming a listed environment belongs to a runtime you no longer need,
+preview its reclaimable space and explicitly clean it up:
+
+```bash
+indexly extras cleanup --dry-run
+indexly extras cleanup --yes
+```
+
+Cleanup excludes the current runtime, refuses unsafe paths, and does not modify
+the Homebrew Cellar. `reset` remains limited to current-runtime recovery.
+
 If `brew` is already installed on Linux but not available in the current shell, run the `brew shellenv` initialization command provided by that installation, then retry. The Homebrew prefix differs by host; do not copy a path from another machine.
 
 ## 2. Install on Windows with pip (Recommended)
@@ -204,14 +218,9 @@ indexly extras install documents
 
 Older overlays are never loaded, but Indexly retains them so an older runtime
 can still use them. They can be large, and `brew uninstall indexly` does not
-remove them. To reclaim space:
-
-1. Run `indexly extras status --json`.
-2. Review entries under `stale`; each `path` names one exact old
-   `environment` directory.
-3. After confirming that runtime is no longer needed, remove only that
-   displayed `environment` directory with your file manager or operating-system
-   tools.
+remove them. `indexly extras cleanup --dry-run` lists each exact stale
+`environment` directory and its size; `indexly extras cleanup --yes` removes
+only those managed directories after explicit confirmation.
 
 Do not delete the whole `INDEXLY_HOME` directory: it also contains search
 indexes, profiles, cache data, and logs. `indexly extras reset` intentionally

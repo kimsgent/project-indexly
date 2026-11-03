@@ -46,6 +46,7 @@ Indexly stores search runtime state outside the source tree by default. The main
 | `perf/performance-v1.json` | Current checksummed local performance record |
 | `perf/performance-v1.previous.json` | Previous validated record used for read-only recovery |
 | `extras/<indexly-version>/<python-abi>/<platform>/environment/` | User-owned optional-dependency environment managed by `indexly extras` |
+| `extras/.cleanup.lock` | Internal cross-runtime mutation lock for safe extras cleanup |
 
 Default runtime directories:
 

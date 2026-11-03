@@ -42,6 +42,7 @@ def test_parser_supports_extras_commands() -> None:
     listing = parser.parse_args(["extras", "list"])
     uninstall = parser.parse_args(["extras", "uninstall", "backup"])
     reset = parser.parse_args(["extras", "reset"])
+    cleanup = parser.parse_args(["extras", "cleanup", "--dry-run", "--json"])
 
     assert (install.extras_action, install.group) == ("install", "documents")
     assert (status.extras_action, status.group, status.json) == (
@@ -52,6 +53,12 @@ def test_parser_supports_extras_commands() -> None:
     assert listing.extras_action == "list"
     assert (uninstall.extras_action, uninstall.group) == ("uninstall", "backup")
     assert reset.extras_action == "reset"
+    assert (cleanup.extras_action, cleanup.dry_run, cleanup.yes, cleanup.json) == (
+        "cleanup",
+        True,
+        False,
+        True,
+    )
 
 
 def test_extras_list_json_is_serializable(
@@ -130,6 +137,73 @@ def test_extras_reset_reports_recovery_command(
     output = capsys.readouterr().out
     assert "Removed all managed extras" in output
     assert "indexly extras install <pack>" in output
+
+
+def test_extras_status_and_cleanup_are_explicit_about_runtime_and_mutation(
+    monkeypatch: pytest.MonkeyPatch, tmp_path, capsys
+) -> None:
+    report = {
+        "runtime": {
+            "indexly_version": "2.1.8b0",
+            "python_abi": "cpython-313",
+            "platform_tag": "macosx-15-arm64",
+            "python_executable": "/runtime/python",
+            "python_version": "3.13.0",
+        },
+        "current_overlay": {
+            "path": str(tmp_path / "environment"),
+            "state": "invalid",
+            "selected_groups": ["documents"],
+            "error": "Manifest is unavailable or invalid.",
+        },
+        "current": [
+            {
+                "group": "documents",
+                "state": "invalid",
+                "installed": False,
+                "selected": True,
+                "path": str(tmp_path / "environment"),
+                "manifest": None,
+                "error": "Manifest is unavailable or invalid.",
+            }
+        ],
+        "stale": [],
+        "obsolete": [],
+    }
+    monkeypatch.setattr(extras_manager, "extras_status_report", lambda: report)
+
+    cli_utils._handle_extras(
+        SimpleNamespace(extras_action="status", group=None, json=False)
+    )
+
+    output = capsys.readouterr().out
+    assert "Executing runtime" in output
+    assert "Current managed environment: invalid" in output
+
+    candidate = extras_manager.ExtrasCleanup(
+        path=tmp_path / "obsolete-environment",
+        indexly_version="2.1.7",
+        python_abi="cpython-313",
+        platform_tag="macosx-15-arm64",
+        size_bytes=123,
+        groups=("documents",),
+        reason="indexly-version",
+    )
+    confirmations: list[bool] = []
+    monkeypatch.setattr(
+        extras_manager,
+        "cleanup_extras",
+        lambda *, yes: (confirmations.append(yes), (candidate,))[1],
+    )
+
+    cli_utils._handle_extras(
+        SimpleNamespace(extras_action="cleanup", yes=False, json=False)
+    )
+
+    output = capsys.readouterr().out
+    assert confirmations == [False]
+    assert "Would remove" in output
+    assert "cleanup --yes" in output
 
 
 def test_extras_manager_errors_are_user_facing(

@@ -701,14 +701,12 @@ def run_stats(args):
         cursor = conn.cursor()
 
         total_files = cursor.execute("SELECT COUNT(*) FROM file_index").fetchone()[0]
-        total_tagged = cursor.execute(
-            """
+        total_tagged = cursor.execute("""
             SELECT COUNT(DISTINCT ft.path)
             FROM file_tags ft
             JOIN file_index fi ON fi.path = ft.path
             WHERE ft.tags IS NOT NULL AND TRIM(ft.tags) != ''
-            """
-        ).fetchone()[0]
+            """).fetchone()[0]
         untagged_files = max(total_files - total_tagged, 0)
         tag_coverage = (total_tagged / total_files * 100) if total_files else 0
         db_size = os.path.getsize(DB_FILE) / 1024 if os.path.exists(DB_FILE) else 0
@@ -722,14 +720,12 @@ def run_stats(args):
         print(f"- DB Size: {db_size:.1f} KB")
 
         print("\n🏷️ Top Tags:")
-        rows = cursor.execute(
-            """
+        rows = cursor.execute("""
             SELECT DISTINCT ft.path, ft.tags
             FROM file_tags ft
             JOIN file_index fi ON fi.path = ft.path
             WHERE ft.tags IS NOT NULL AND TRIM(ft.tags) != ''
-            """
-        ).fetchall()
+            """).fetchall()
         all_tags = []
 
         for row in rows:
@@ -1519,7 +1515,10 @@ def handle_show_help(args):
                     scope = _markdown_escape(_scope_for(command))
                     usage = _markdown_escape(_command_usage(subparser))
                     option_limit = 9 if command == "doctor" else 6
-                    options = ", ".join(_extract_key_options(subparser, limit=option_limit)) or "—"
+                    options = (
+                        ", ".join(_extract_key_options(subparser, limit=option_limit))
+                        or "—"
+                    )
                     options = _markdown_escape(options)
                     print(
                         f"| `{command}` | {summary} | {scope} | {modes} | "
@@ -1555,7 +1554,10 @@ def handle_show_help(args):
                 modes = ", ".join(_extract_modes(subparser)) or "—"
                 usage = _command_usage(subparser)
                 option_limit = 9 if command == "doctor" else 6
-                key_flags = ", ".join(_extract_key_options(subparser, limit=option_limit)) or "—"
+                key_flags = (
+                    ", ".join(_extract_key_options(subparser, limit=option_limit))
+                    or "—"
+                )
 
                 body = Text()
                 body.append("What it does: ", style="bold")
@@ -1640,28 +1642,33 @@ def main():
     # ----------------------------------
     # 2) Automatic update check
     # ----------------------------------
-    rename_watch_status = (
-        getattr(args, "command", None) == "rename-watch"
-        and (
-            getattr(args, "json_errors", False)
-            or any(
+    rename_watch_status = getattr(args, "command", None) == "rename-watch" and (
+        getattr(args, "json_errors", False)
+        or any(
             (
                 getattr(args, "status", False),
                 getattr(args, "inspect_counters", False),
                 getattr(args, "reset_counters", False),
                 getattr(args, "retry_failures", False),
             )
-            )
         )
     )
-    extras_read_only = getattr(args, "command", None) == "extras" and getattr(
-        args, "extras_action", None
-    ) in {"list", "status"}
+    extras_action = getattr(args, "extras_action", None)
+    extras_machine_readable = (
+        getattr(args, "command", None) == "extras"
+        and extras_action == "cleanup"
+        and getattr(args, "json", False)
+    )
+    extras_read_only = getattr(args, "command", None) == "extras" and (
+        extras_action in {"list", "status"}
+        or (extras_action == "cleanup" and not getattr(args, "yes", False))
+    )
     perf_early_route = getattr(args, "command", None) == "perf"
     if (
         not getattr(args, "no_update_check", False)
         and not rename_watch_status
         and not extras_read_only
+        and not extras_machine_readable
         and not perf_early_route
     ):
         try:
