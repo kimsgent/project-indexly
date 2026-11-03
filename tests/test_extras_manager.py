@@ -33,6 +33,21 @@ def _scope(
     return runtime / "extras" / version / abi / platform
 
 
+def _create_junction(path: Path, target: Path) -> None:
+    if os.name != "nt":
+        pytest.skip("NTFS junctions are Windows-only")
+    result = subprocess.run(
+        ["cmd.exe", "/c", "mklink", "/J", str(path), str(target)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode:
+        pytest.skip(
+            f"could not create an NTFS junction: {result.stderr or result.stdout}"
+        )
+
+
 def _write_distribution(package_dir: Path, name: str, version: str = "1.0") -> None:
     metadata = package_dir / f"{name.replace('-', '_')}-{version}.dist-info"
     metadata.mkdir()
@@ -553,6 +568,58 @@ def test_cleanup_refuses_symlinked_obsolete_environment(
 
     with pytest.raises(extras_manager.ExtrasError, match="symlinked obsolete"):
         extras_manager.cleanup_extras()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="exercises NTFS junction safety")
+def test_cleanup_refuses_junctioned_obsolete_environment(
+    runtime: Path, tmp_path: Path
+) -> None:
+    scope = _scope(runtime, version="2.1.5")
+    scope.mkdir(parents=True)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    marker = outside / "keep.txt"
+    marker.write_text("outside data", encoding="utf-8")
+    _create_junction(scope / extras_manager.OVERLAY_DIRECTORY, outside)
+
+    with pytest.raises(extras_manager.ExtrasError, match="reparse point"):
+        extras_manager.cleanup_extras(yes=True)
+
+    assert marker.exists()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="exercises NTFS junction safety")
+def test_directory_size_refuses_nested_junction(
+    runtime: Path, tmp_path: Path
+) -> None:
+    environment = _create_overlay(runtime, ("analysis",), version="2.1.5")
+    outside = tmp_path / "outside-size-target"
+    outside.mkdir()
+    (outside / "outside.txt").write_text("outside data", encoding="utf-8")
+    _create_junction(environment / "linked-dir", outside)
+
+    with pytest.raises(extras_manager.ExtrasError, match="reparse point"):
+        extras_manager._directory_size(environment)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="exercises NTFS junction safety")
+def test_cleanup_refuses_junctioned_obsolete_ancestor(
+    runtime: Path, tmp_path: Path
+) -> None:
+    outside_home = tmp_path / "outside-home"
+    outside_environment = _create_overlay(
+        outside_home, ("analysis",), version="2.1.5"
+    )
+    marker = outside_environment / "outside-marker.txt"
+    marker.write_text("outside data", encoding="utf-8")
+    junction = runtime / "extras" / "2.1.5"
+    junction.parent.mkdir(parents=True)
+    _create_junction(junction, _scope(outside_home, version="2.1.5").parent.parent)
+
+    with pytest.raises(extras_manager.ExtrasError, match="reparse point"):
+        extras_manager.cleanup_extras(yes=True)
+
+    assert marker.exists()
 
 
 @pytest.mark.skipif(os.name == "nt", reason="exercises the POSIX legacy lock")
