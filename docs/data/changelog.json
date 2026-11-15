@@ -2,14 +2,15 @@
   "project": "FTS5 File Search Tool",
   "versions": [
     {
-      "version": "2.1.8b0",
-      "date": "2026-10-30",
+      "version": "2.1.8",
+      "date": "2026-11-15",
       "contributors": [
         "N. K. Franklin-Gent",
         "OpenAI Codex"
       ],
       "changes": [
         "feat(extras): report the executing runtime and current managed-environment state, and safely clean obsolete managed environments with an explicit confirmation",
+        "fix(extras): reject symlinks and filesystem reparse points during managed-environment cleanup and size traversal",
         "fix(rename-watch): isolate recovery conflicts without blocking unrelated eligible files",
         "breaking: none"
       ]
