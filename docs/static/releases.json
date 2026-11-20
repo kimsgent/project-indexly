@@ -2,7 +2,7 @@
   "project": "FTS5 File Search Tool",
   "latest": {
     "version": "2.1.8",
-    "date": "2026-11-15",
+    "date": "2026-11-20",
     "link": "/en/releases/v2.1.8/",
     "summary": "feat(extras): report the executing runtime and current managed-environment state, and safely clean obsolete managed environments with an explicit confirmation | fix(extras): reject symlinks and filesystem reparse points during managed-environment cleanup and size traversal",
     "prerelease": false
