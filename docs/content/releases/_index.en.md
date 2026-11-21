@@ -7,7 +7,7 @@ weight: 10
 
 _Retention policy: latest release + 5 previous releases are shown here. Older releases are moved to Archive._
 
-## Latest Release: v2.1.8 (2026-11-20)
+## Latest Release: v2.1.8 (2026-11-21)
 
 ### Changes
 - feat(extras): report the executing runtime and current managed-environment state, and safely clean obsolete managed environments with an explicit confirmation
