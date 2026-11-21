@@ -218,6 +218,25 @@ indexly --help
 pytest -q
 ```
 
+### Agent change navigation
+
+Agents and maintainers can use
+[`documentation-graph.yaml`](documentation-graph.yaml) to map a changed module
+to its focused tests, Hugo documentation review targets, and release-metadata
+follow-up. It is a tracked cross-platform navigation index, not user
+documentation or a replacement for source and tests. Validate graph updates
+with:
+
+```bash
+.venv-codex/bin/python scripts/validate_documentation_graph.py
+```
+
+In Windows PowerShell, run:
+
+```powershell
+.\.venv-codex\Scripts\python.exe scripts\validate_documentation_graph.py
+```
+
 ## Troubleshooting
 
 - If `indexly` is not found, restart your terminal after installation.

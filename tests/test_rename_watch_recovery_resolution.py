@@ -131,6 +131,31 @@ def test_externally_handled_resolution_preserves_renamed_payload_and_unblocks_ru
     ) == "payload"
 
 
+def test_externally_handled_resolution_can_retire_isolated_conflict(
+    tmp_path, monkeypatch
+):
+    config, job, _watch, state, mover, journal, _failure = _conflict(
+        tmp_path, monkeypatch
+    )
+    conflict = mover.journal.mark_recovery_conflict(journal, "source identity changed")
+    source = Path(conflict["source_path"])
+    destination = Path(conflict["destination_path"])
+    destination.unlink()
+    source.rename(source.with_name("handled-externally.txt"))
+
+    result = resolve_recovery(
+        str(config),
+        job_id=job.job_id,
+        operation_id=conflict["operation_id"],
+        yes=True,
+        state_root=state,
+    )
+
+    receipt = json.loads(Path(result["receipt_path"]).read_text(encoding="utf-8"))
+    assert receipt["journal_evidence"] == conflict
+    assert mover.journal.pending() == []
+
+
 @pytest.mark.skipif(
     os.name != "nt",
     reason="requires Windows delete-sharing semantics",

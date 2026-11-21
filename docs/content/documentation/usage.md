@@ -91,6 +91,17 @@ Homebrew upgrade, run
 `indexly extras status` and reinstall a needed group if it is `not-installed`
 or `invalid` for the current runtime.
 
+Status shows the executing runtime identity, selected packs, and obsolete
+managed environments. To reclaim obsolete environments after reviewing their
+paths and byte counts, run:
+
+```bash
+indexly extras cleanup --dry-run
+indexly extras cleanup --yes
+```
+
+Cleanup never removes the current runtime or Homebrew Cellar content.
+
 The managed `indexly extras install <group>` command also works for pip
 installations. If you prefer to manage optional packages directly in a pip
 installation or virtual environment, use that environment's Python:

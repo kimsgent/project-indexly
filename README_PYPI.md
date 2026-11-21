@@ -79,9 +79,10 @@ If `indexly extras status` reports an invalid managed environment, run
 `indexly extras reset`, then reinstall the groups you need.
 
 Upgrade-created stale overlays are reported but never loaded. They remain after
-`brew uninstall` and can consume substantial space; inspect
-`indexly extras status --json` and remove only an obsolete stale
-`environment` path after confirming it is no longer needed.
+`brew uninstall` and can consume substantial space; inspect their paths and
+sizes with `indexly extras cleanup --dry-run`, then run
+`indexly extras cleanup --yes` to remove only obsolete managed `environment`
+directories. Cleanup never removes the current runtime.
 
 ## Optional Extras for pip and virtual environments
 

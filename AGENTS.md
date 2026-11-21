@@ -20,6 +20,22 @@ The local profiles currently cover analysis/audit, implementation review,
 Python, PowerShell, web UI, technical writing, and environment stewardship.
 They supplement this file and do not replace its repository-wide rules.
 
+## Documentation Graph
+
+Before broad discovery for a behavior, documentation, release, or review
+change, consult [`documentation-graph.yaml`](documentation-graph.yaml). Resolve
+the changed module or path to its `IDX-*` area, then review the mapped focused
+tests and Hugo targets. The graph is navigation metadata: source, tests, and
+published documentation remain authoritative, and a mapped page is a review
+obligation rather than an automatic edit.
+
+For non-trivial work, retain the separate Codmem recall workflow below. Do not
+copy private Codmem record content into this repository. For release preparation,
+follow the graph's `release_preparation` branch and the existing **Indexly
+Release Prep** task (`indexly-release-prep`); this repository graph must not
+alter that task, its automation, or its local skill contracts. The root graph is
+tracked so Windows and other local agent configurations use the same mapping.
+
 ## Essential Rules
 
 - Create or use a branch named `codex/<short-task-name>` before making changes.
@@ -28,6 +44,10 @@ They supplement this file and do not replace its repository-wide rules.
   `requirements-dev.txt` plus only task-specific dependencies.
 - Before Project-Indexly bug analysis, verify that the installed Indexly
   development version aligns with the version in `pyproject.toml`.
+- After changing `documentation-graph.yaml` or its mapped paths, run
+  `.venv-codex/bin/python scripts/validate_documentation_graph.py` on macOS or
+  Linux, or `.\.venv-codex\Scripts\python.exe scripts\validate_documentation_graph.py`
+  in Windows PowerShell.
 - Keep changes minimal, safe, reversible, readable, and maintainable.
 - Use Conventional Commits and keep commits small and focused.
 - Project-Indexly changes normally require a pull request. Never merge

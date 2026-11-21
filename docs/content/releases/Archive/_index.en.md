@@ -9,6 +9,7 @@ weight: 25
 
 These are older releases archived automatically. The main release page keeps only the latest + 5 older releases.
 
+- [Release v2.1.2](/en/releases/archive/v2.1.2/) (2026-05-23)
 - [Release v2.1.1](/en/releases/archive/v2.1.1/) (2026-05-16)
 - [Release v2.1.0](/en/releases/archive/v2.1.0/) (2026-05-09)
 - [Release v2.0.2](/en/releases/archive/v2.0.2/) (2026-04-18)

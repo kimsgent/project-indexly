@@ -1,4 +1,5 @@
 """Pure planning and filesystem moves owned by rename-watch."""
+
 from __future__ import annotations
 import errno
 import os
@@ -46,6 +47,19 @@ class ExactNameCollision(FileExistsError):
         super().__init__("Destination already exists: {0}".format(target))
 
 
+class RecoveryConflict(RenameWatchConfigError):
+    """An ambiguous recovery that must preserve both filesystem payloads."""
+
+    def __init__(self, record: Dict[str, object], reason: str):
+        self.record = record
+        self.reason = reason
+        super().__init__(
+            "job '{0}' recovery conflict for operation {1}: {2}".format(
+                record["job_id"], record["operation_id"], reason
+            )
+        )
+
+
 def _lexical_absolute(path: Path) -> Path:
     return Path(os.path.abspath(os.fspath(path)))
 
@@ -62,10 +76,23 @@ def _directory_identity(value) -> Tuple[int, int]:
 
 
 def _slug(value: str) -> str:
-    value = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii").lower()
+    value = (
+        unicodedata.normalize("NFKD", value)
+        .encode("ascii", "ignore")
+        .decode("ascii")
+        .lower()
+    )
     return re.sub(r"-+", "-", re.sub(r"[^a-z0-9]+", "-", value)).strip("-") or "file"
 
-def render_name(source: Path, pattern: str, date_format: str, counter_format: str, title_format: str, counter: int) -> str:
+
+def render_name(
+    source: Path,
+    pattern: str,
+    date_format: str,
+    counter_format: str,
+    title_format: str,
+    counter: int,
+) -> str:
     if title_format == "standard":
         rendered = generate_new_filename(
             source,
@@ -80,7 +107,14 @@ def render_name(source: Path, pattern: str, date_format: str, counter_format: st
         if title_format == "camel-case":
             parts = title.split("-")
             title = parts[0] + "".join(part.capitalize() for part in parts[1:])
-        values = {"date": date, "title": title, "counter": format(counter, counter_format) if "{counter}" in pattern else "", "prefix": ""}
+        values = {
+            "date": date,
+            "title": title,
+            "counter": (
+                format(counter, counter_format) if "{counter}" in pattern else ""
+            ),
+            "prefix": "",
+        }
         name = pattern
         for key, value in values.items():
             name = name.replace("{" + key + "}", value)
@@ -108,7 +142,9 @@ def _identity_record(value) -> Dict[str, int]:
     }
 
 
-def _destination_identity(value, transfer_kind: Optional[str] = None) -> Dict[str, object]:
+def _destination_identity(
+    value, transfer_kind: Optional[str] = None
+) -> Dict[str, object]:
     identity = {"device": value.st_dev, "inode": value.st_ino}
     if transfer_kind is not None:
         identity["transfer_kind"] = transfer_kind
@@ -141,9 +177,7 @@ def _copy_without_overwrite(
             and _stat_identity(before) != expected_source_identity
         ):
             raise OSError(
-                "Source identity changed after the --once snapshot: {0}".format(
-                    source
-                )
+                "Source identity changed after the --once snapshot: {0}".format(source)
             )
         target_stat = os.fstat(target_handle.fileno())
         if target_stat.st_ino == 0:
@@ -156,15 +190,26 @@ def _copy_without_overwrite(
             on_destination_created(_destination_identity(target_stat, "copy"))
         shutil.copyfileobj(source_handle, target_handle)
         after = os.fstat(source_handle.fileno())
-        if _stat_fingerprint(before) != _stat_fingerprint(after) or target_handle.tell() != before.st_size:
-            raise OSError("Source changed while it was being copied: {0}".format(source))
+        if (
+            _stat_fingerprint(before) != _stat_fingerprint(after)
+            or target_handle.tell() != before.st_size
+        ):
+            raise OSError(
+                "Source changed while it was being copied: {0}".format(source)
+            )
         target_handle.flush()
         os.fsync(target_handle.fileno())
     if _stat_identity(target.stat()) != _stat_identity(target_stat):
-        raise OSError("Destination changed while it was being copied: {0}".format(target))
+        raise OSError(
+            "Destination changed while it was being copied: {0}".format(target)
+        )
     shutil.copystat(source, target)
     if _stat_fingerprint(source.stat()) != _stat_fingerprint(before):
-        raise OSError("Source changed before the copied file could be finalized: {0}".format(source))
+        raise OSError(
+            "Source changed before the copied file could be finalized: {0}".format(
+                source
+            )
+        )
     if on_destination_finalized is not None:
         on_destination_finalized()
     if _stat_identity(target.stat()) != _stat_identity(target_stat):
@@ -225,6 +270,7 @@ def _move_without_overwrite(
         raise OSError("Destination changed before source removal: {0}".format(target))
 
     source.unlink()
+
 
 @dataclass(frozen=True)
 class MoveResult:
@@ -320,7 +366,11 @@ class PlanMoveLog:
                 destination_stat = component_stat
 
         if expected_destination_identity is not None:
-            if destination_stat is None or _directory_identity(destination_stat) != expected_destination_identity:
+            if (
+                destination_stat is None
+                or _directory_identity(destination_stat)
+                != expected_destination_identity
+            ):
                 raise RenameWatchConfigError(
                     "job '{0}' destination directory changed during the operation: {1}".format(
                         self.job.job_id, self.destination
@@ -419,7 +469,7 @@ class PlanMoveLog:
         )
         with self.state.lock:
             self._guard_destination()
-            if self.journal.pending():
+            if self._blocking_recovery_records():
                 raise RenameWatchConfigError(
                     "job '{0}' has an unfinished recovery operation; dry-run cannot continue".format(
                         self.job.job_id
@@ -467,7 +517,11 @@ class PlanMoveLog:
                             )
                         )
                     counter += 1
-                if plans and plans[-1].source == source and plans[-1].disposition != "move":
+                if (
+                    plans
+                    and plans[-1].source == source
+                    and plans[-1].disposition != "move"
+                ):
                     continue
                 reservations.add(reservation)
                 if uses_counter:
@@ -496,9 +550,11 @@ class PlanMoveLog:
         source = source.resolve()
         with self.state.lock:
             self._guard_destination()
-            if self.journal.pending():
+            if self._blocking_recovery_records():
                 raise RenameWatchConfigError(
-                    "job '{0}' has an unfinished recovery operation".format(self.job.job_id)
+                    "job '{0}' has an unfinished recovery operation".format(
+                        self.job.job_id
+                    )
                 )
             initial_source_stat = source.stat()
             if (
@@ -601,19 +657,26 @@ class PlanMoveLog:
                 return self._result(record, recovered=False)
 
     def recover_pending(
-        self, source: Optional[Path] = None, attempts: Optional[int] = None
+        self,
+        source: Optional[Path] = None,
+        attempts: Optional[int] = None,
+        conflict_handler=None,
     ) -> List[MoveResult]:
         results = []
         resolved_source = source.resolve() if source is not None else None
         with self.state.lock:
             for record in self.journal.pending():
+                if record["state"] == "recovery_conflict":
+                    continue
                 self._guard_record(record)
                 if record["state"] == "audited":
                     self.journal.delete(record)
                     continue
                 if record["uses_counter"]:
                     self._guard_record(record)
-                    self.state.ensure_at_least(record["date_key"], record["counter_next"])
+                    self.state.ensure_at_least(
+                        record["date_key"], record["counter_next"]
+                    )
                 if (
                     resolved_source is not None
                     and canonical_root_identity(Path(record["source_path"]))
@@ -623,9 +686,25 @@ class PlanMoveLog:
                 ):
                     self._guard_record(record)
                     record = self.journal.update_attempts(record, attempts)
-                record = self._recover_move(record)
+                try:
+                    record = self._recover_move(record)
+                except RecoveryConflict as error:
+                    if conflict_handler is None:
+                        raise
+                    conflicted = self.journal.mark_recovery_conflict(
+                        record, error.reason
+                    )
+                    conflict_handler(conflicted, error)
+                    continue
                 results.append(self._result(record, recovered=True))
         return results
+
+    def _blocking_recovery_records(self) -> List[Dict[str, object]]:
+        return [
+            record
+            for record in self.journal.pending()
+            if record["state"] != "recovery_conflict"
+        ]
 
     def complete(self, operation_id: str) -> None:
         with self.state.lock:
@@ -642,9 +721,7 @@ class PlanMoveLog:
                 record = self.journal.mark_audited(record)
             self.journal.delete(record)
 
-    def _retire_externally_handled_locked(
-        self, evidence: Dict[str, object]
-    ) -> None:
+    def _retire_externally_handled_locked(self, evidence: Dict[str, object]) -> None:
         records = [
             record
             for record in self.journal.pending()
@@ -658,10 +735,7 @@ class PlanMoveLog:
             )
         record = records[0]
         self._guard_record(record)
-        if (
-            record["state"] != "destination_finalized"
-            or record.get("transfer_kind") != "hard_link"
-        ):
+        if not self.externally_handled_eligible(record):
             raise RenameWatchConfigError(
                 "rename-watch recovery journal is not eligible for external resolution"
             )
@@ -671,6 +745,16 @@ class PlanMoveLog:
         """Delete only the exact journal record proven by a resolution receipt."""
         with self.state.lock:
             self._retire_externally_handled_locked(evidence)
+
+    @staticmethod
+    def externally_handled_eligible(record: Dict[str, object]) -> bool:
+        return record.get("transfer_kind") == "hard_link" and (
+            record.get("state") == "destination_finalized"
+            or (
+                record.get("state") == "recovery_conflict"
+                and record.get("recovery_state") == "destination_finalized"
+            )
+        )
 
     def abort_unstarted(
         self, source: Path, allow_source_replaced: bool = False
@@ -703,9 +787,7 @@ class PlanMoveLog:
                 self.journal.delete(record)
         return True
 
-    def finalized_operation(
-        self, source: Path
-    ) -> Optional[Tuple[str, Path]]:
+    def finalized_operation(self, source: Path) -> Optional[Tuple[str, Path]]:
         """Return preserved evidence for a transfer awaiting source deletion."""
         expected_source = canonical_root_identity(source)
         with self.state.lock:
@@ -731,13 +813,18 @@ class PlanMoveLog:
             self._conflict(record, "destination is no longer a regular file")
         source_stat = source.stat() if source_exists else None
         target_stat = target.stat() if target_exists else None
-        if source_stat is not None and _identity_record(source_stat) != record["source_identity"]:
+        if (
+            source_stat is not None
+            and _identity_record(source_stat) != record["source_identity"]
+        ):
             self._conflict(record, "source identity changed")
 
         destination_identity = record.get("destination_identity")
         if target_stat is not None and destination_identity is not None:
             if destination_identity["inode"] == 0:
-                self._conflict(record, "destination identity is not reliable on this filesystem")
+                self._conflict(
+                    record, "destination identity is not reliable on this filesystem"
+                )
             if _destination_identity(target_stat) != destination_identity:
                 self._conflict(record, "destination identity changed")
 
@@ -788,7 +875,9 @@ class PlanMoveLog:
                 or destination_identity is None
                 or record["state"] != "destination_finalized"
             ):
-                self._conflict(record, "source is missing and the destination is not verified")
+                self._conflict(
+                    record, "source is missing and the destination is not verified"
+                )
             if _identity_record(target_stat) != record["destination_fingerprint"]:
                 self._conflict(record, "recovered destination metadata changed")
             return self.journal.mark_moved(record)
@@ -828,8 +917,4 @@ class PlanMoveLog:
         )
 
     def _conflict(self, record: Dict[str, object], reason: str) -> None:
-        raise RenameWatchConfigError(
-            "job '{0}' recovery conflict for operation {1}: {2}".format(
-                self.job.job_id, record["operation_id"], reason
-            )
-        )
+        raise RecoveryConflict(record, reason)

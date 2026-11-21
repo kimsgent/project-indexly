@@ -644,7 +644,11 @@ finalized phase but source deletion was temporarily blocked, recovery retries
 only the source deletion. A persistent deletion failure emits one terminal
 record and preserves both paths and the journal for a later run. Other
 interruptions that leave both paths—including an unfinalized hard link or a
-partial copy—stop that job with a clear conflict and preserve both paths.
+partial copy—are recorded as a durable `recovery_conflict` and preserve both
+paths. The service keeps that recorded source path out of further automatic
+intake and continues with unrelated eligible files, rather than exiting into a
+manager restart loop. `--status` reports the job as degraded until an operator
+handles the retained evidence.
 Recovery also fails closed when filesystem identities are unavailable, a path
 was replaced externally, or a configured destination component becomes a
 symlink or Windows reparse point; it never deletes a pre-existing destination.

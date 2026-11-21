@@ -445,10 +445,11 @@ that one `recovery_pending` operation was handled outside Indexly:
 indexly rename-watch --config "./rename-watch.json" --resolve-recovery --job inbox --operation-id 3f7bbf87-842b-4a68-a3a8-1450d36f47f5
 ```
 
-The command accepts only an exact job and operation UUID whose journal says
-`destination_finalized` with transfer kind `hard_link`, and only when both the
-recorded source and recorded destination are absent. It does not search for the
-inode, associate a renamed source, or create, delete, or move any payload.
+The command accepts only an exact job and operation UUID whose journal records
+`destination_finalized` with transfer kind `hard_link` (including a retained
+`recovery_conflict` from that phase), and only when both the recorded source and
+recorded destination are absent. It does not search for the inode, associate a
+renamed source, or create, delete, or move any payload.
 Confirmation requires `RESOLVE <operation-id>`; non-interactive use, `--json`,
 and `--json-errors` require `--yes`. The reported disposition is
 **EXTERNALLY HANDLED**, not a claim that Indexly completed the move.
@@ -461,8 +462,9 @@ It then removes only that exact journal and at most one exactly matching active
 state. If cleanup is interrupted after the receipt is written, rerun the same
 command; it validates the unchanged receipt and any surviving evidence before
 finishing cleanup. Any existing recorded path, changed evidence, wrong transfer
-kind or phase, or ambiguous matching failures is refused and normal startup
-continues to fail closed.
+kind or phase, or ambiguous matching failures is refused. A retained conflict
+does not restart-loop the service: status is degraded, the recorded source path
+is not reprocessed automatically, and unrelated eligible files continue.
 
 ### Windows startup troubleshooting
 

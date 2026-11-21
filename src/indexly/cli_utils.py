@@ -121,8 +121,9 @@ def _extra_status_payload(status) -> dict:
 def _handle_extras(args):
     from .extras_manager import (
         ExtrasError,
+        cleanup_extras,
+        extras_status_report,
         external_tools_status,
-        extra_status,
         install_extra,
         list_extras,
         list_stale_overlays,
@@ -169,12 +170,69 @@ def _handle_extras(args):
                 print("ℹ️ No managed extras environment exists for this runtime.")
             return
 
-        statuses = (
-            (extra_status(args.group),)
-            if action == "status" and getattr(args, "group", None)
-            else list_extras()
-        )
-        stale_overlays = list_stale_overlays()
+        if action == "cleanup":
+            removed = cleanup_extras(yes=getattr(args, "yes", False))
+            total_size = sum(item.size_bytes for item in removed)
+            payload = {
+                "dry_run": not getattr(args, "yes", False),
+                "environments": [item.as_dict() for item in removed],
+                "environment_count": len(removed),
+                "size_bytes": total_size,
+            }
+            if getattr(args, "json", False):
+                print(json.dumps(payload, indent=2, sort_keys=True))
+                return
+            if not removed:
+                print("ℹ️ No obsolete managed extras environments were found.")
+                return
+            verb = "Would remove" if payload["dry_run"] else "Removed"
+            print(
+                f"{verb} {payload['environment_count']} obsolete managed extras "
+                f"environment(s) ({total_size} bytes):"
+            )
+            for item in removed:
+                print(f"  {item.path} ({item.size_bytes} bytes; {item.reason})")
+            if payload["dry_run"]:
+                print("Run again with: indexly extras cleanup --yes")
+            return
+
+        if action == "status":
+            report = extras_status_report()
+            if getattr(args, "group", None):
+                report["current"] = [
+                    status
+                    for status in report["current"]
+                    if status["group"] == args.group
+                ]
+            if getattr(args, "json", False):
+                print(json.dumps(report, indent=2, sort_keys=True))
+                return
+
+            runtime = report["runtime"]
+            current_overlay = report["current_overlay"]
+            print("Executing runtime:")
+            print(
+                "  Indexly {0}; {1}; {2}".format(
+                    runtime["indexly_version"],
+                    runtime["python_abi"],
+                    runtime["platform_tag"],
+                )
+            )
+            print(f"  Python: {runtime['python_executable']}")
+            detail = (
+                f" — {current_overlay['error']}" if current_overlay["error"] else ""
+            )
+            selected = ", ".join(current_overlay["selected_groups"]) or "none"
+            print(
+                f"Current managed environment: {current_overlay['state']} "
+                f"({selected}){detail}"
+            )
+            statuses = report["current"]
+            stale_overlays = report["stale"]
+        else:
+            statuses = list_extras()
+            stale_overlays = [stale.as_dict() for stale in list_stale_overlays()]
+
         if getattr(args, "json", False):
             print(
                 json.dumps(
@@ -182,7 +240,7 @@ def _handle_extras(args):
                         "current": [
                             _extra_status_payload(status) for status in statuses
                         ],
-                        "stale": [stale.as_dict() for stale in stale_overlays],
+                        "stale": stale_overlays,
                     },
                     indent=2,
                     sort_keys=True,
@@ -192,6 +250,15 @@ def _handle_extras(args):
 
         print("Optional feature packs:")
         for status in statuses:
+            if isinstance(status, dict):
+                marker = (
+                    "✅" if status["installed"] else "⚠️" if status["error"] else "○"
+                )
+                detail = f" — {status['error']}" if status["error"] else ""
+                print(f"  {marker} {status['group']}: {status['state']}{detail}")
+                if status["installed"]:
+                    print(f"     {status['path']}")
+                continue
             marker = "✅" if status.installed else "⚠️" if status.error else "○"
             detail = f" — {status.error}" if status.error else ""
             print(f"  {marker} {status.group}: {status.state}{detail}")
@@ -203,13 +270,15 @@ def _handle_extras(args):
                 "Python runtime:"
             )
             for stale in stale_overlays:
-                groups = ", ".join(stale.groups) or "no recognized packs"
+                groups = ", ".join(stale["groups"]) or "no recognized packs"
                 print(
-                    f"  ⚠️ {stale.indexly_version}/{stale.python_abi}/"
-                    f"{stale.platform_tag}: "
-                    f"{groups} ({stale.reason})"
+                    f"  ⚠️ {stale['indexly_version']}/{stale['python_abi']}/"
+                    f"{stale['platform_tag']}: "
+                    f"{groups} ({stale['reason']})"
                 )
             print("  Reinstall needed packs with: indexly extras install <pack>")
+            if action == "status":
+                print("  Preview removal with: indexly extras cleanup --dry-run")
     except ExtrasError as exc:
         raise ValueError(str(exc)) from exc
 
@@ -672,7 +741,9 @@ def build_parser():
     watch_parser.add_argument("folder", help="Folder to watch")
     watch_parser.set_defaults(func=run_watch)
 
-    rename_watch_parser = subparsers.add_parser("rename-watch", help="Watch configured folders and rename/move files")
+    rename_watch_parser = subparsers.add_parser(
+        "rename-watch", help="Watch configured folders and rename/move files"
+    )
     from indexly.rename_watch.cli_arguments import add_rename_watch_arguments
 
     add_rename_watch_arguments(rename_watch_parser)
@@ -2164,6 +2235,24 @@ def build_parser():
         ),
     )
     extras_reset.set_defaults(func=_handle_extras)
+
+    extras_cleanup = extras_sub.add_parser(
+        "cleanup",
+        help="Remove obsolete managed environments; dry-run unless --yes is supplied.",
+    )
+    cleanup_confirmation = extras_cleanup.add_mutually_exclusive_group()
+    cleanup_confirmation.add_argument(
+        "--yes",
+        action="store_true",
+        help="Remove the obsolete environments shown by the cleanup plan.",
+    )
+    cleanup_confirmation.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show obsolete environments and their disk usage without removing them.",
+    )
+    extras_cleanup.add_argument("--json", action="store_true", help="Output JSON.")
+    extras_cleanup.set_defaults(func=_handle_extras)
 
     # -------------------------------------------------------------------
     # doctor command

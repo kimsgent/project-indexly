@@ -289,8 +289,7 @@ def _validate_receipt(
     )
     if (
         journal["operation_id"] != receipt["operation_id"]
-        or journal["state"] != "destination_finalized"
-        or journal.get("transfer_kind") != "hard_link"
+        or not mover.externally_handled_eligible(journal)
     ):
         raise RenameWatchConfigError(
             "rename-watch recovery resolution receipt evidence is ineligible"
@@ -408,10 +407,7 @@ def resolve_recovery(
                     )
                 journal = current[0]
                 mover._guard_record(journal)
-                if (
-                    journal["state"] != "destination_finalized"
-                    or journal.get("transfer_kind") != "hard_link"
-                ):
+                if not mover.externally_handled_eligible(journal):
                     raise RenameWatchConfigError(
                         "rename-watch recovery operation is not a finalized hard-link transfer"
                     )

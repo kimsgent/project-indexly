@@ -114,6 +114,19 @@ Use `reset` only when status reports an invalid current environment. It removes
 all managed packs for that Indexly/Python/platform runtime so you can reinstall
 the groups you need.
 
+`indexly extras status` reports the actual executing runtime and identifies the
+current managed environment as `valid`, `invalid`, or `not-installed`. It lists
+obsolete environments separately without activating them. To remove only
+obsolete managed environments, inspect the dry-run and then confirm cleanup:
+
+```bash
+indexly extras cleanup --dry-run
+indexly extras cleanup --yes
+```
+
+Cleanup excludes the current runtime, refuses unsafe paths, and never changes
+the Homebrew Cellar. It is not a replacement for `reset`.
+
 After `brew upgrade indexly`, status may indicate that a group must be
 installed again for the new Indexly version, Python ABI, or platform. Do not
 repair a brewed installation with generic `pip`, `pip --user`, `sudo pip`, or

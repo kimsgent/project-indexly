@@ -53,4 +53,5 @@ jobs:
           brew update
           brew tap-new --no-git indexly/ci
           cp Formula/indexly.rb "$(brew --repository indexly/ci)/Formula/indexly.rb"
+          brew trust --formula indexly/ci/indexly
           brew audit --strict indexly/ci/indexly

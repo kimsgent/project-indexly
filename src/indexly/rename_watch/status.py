@@ -661,6 +661,19 @@ def _read_journal_records(
                         "destination_path": record["destination_path"],
                         "attempts": record["attempts"],
                         "created_at": _iso(created),
+                        **(
+                            {
+                                "recovery_state": record["recovery_state"],
+                                "recovery_conflict_reason": record[
+                                    "recovery_conflict_reason"
+                                ],
+                                "recovery_conflicted_at": record[
+                                    "recovery_conflicted_at"
+                                ],
+                            }
+                            if record["state"] == "recovery_conflict"
+                            else {}
+                        ),
                         "_sort": (created, record["operation_id"]),
                     }
                 )
@@ -742,6 +755,9 @@ def build_status(
         failures = sorted(
             failures, key=lambda value: value[failure_order], reverse=True
         )
+        recovery_conflicts = [
+            record for record in pending if record["state"] == "recovery_conflict"
+        ]
         jobs.append(
             {
                 "id": job.job_id,
@@ -757,7 +773,9 @@ def build_status(
                 "watch_path_status": _watch_path_status(job.watch_path),
                 "pending_queue_available": False,
                 "pending_queue": None,
-                "recovery_state": "available",
+                "recovery_state": (
+                    "recovery_conflict" if recovery_conflicts else "available"
+                ),
                 "pending_recovery_operations": pending,
                 "last_successful_move": last_move,
                 "retained_terminal_failure_count": len(failures),
@@ -771,7 +789,9 @@ def build_status(
         "version": VERSION,
         "observed_at": _iso(observed),
         "config_path": os.fspath(settings.config_path),
-        "degraded": bool(warnings) or not scan["complete"],
+        "degraded": bool(warnings)
+        or not scan["complete"]
+        or any(job["recovery_state"] == "recovery_conflict" for job in jobs),
         "warnings": warnings,
         "log_scan": scan,
         "jobs": jobs,
@@ -821,12 +841,8 @@ def render_human(status: dict) -> str:
                 "  Recent terminal failures (newest 10 retained): {0}".format(
                     _quoted(job["recent_terminal_failures"])
                 ),
-                "  Durable active failures: {0}".format(
-                    job["active_failure_count"]
-                ),
-                "  Durable failure detail: {0}".format(
-                    _quoted(job["active_failures"])
-                ),
+                "  Durable active failures: {0}".format(job["active_failure_count"]),
+                "  Durable failure detail: {0}".format(_quoted(job["active_failures"])),
             ]
         )
     if status["warnings"]:

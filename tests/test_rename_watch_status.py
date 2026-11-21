@@ -311,6 +311,36 @@ def test_valid_journal_is_sorted_rendered_and_not_mutated(tmp_path):
     assert _tree_bytes(state_root) == before
 
 
+def test_status_reports_retained_recovery_conflict_as_degraded(tmp_path):
+    config = _config(tmp_path)
+    job = load_settings(str(config)).jobs[0]
+    state_root = tmp_path / "state"
+    source = job.watch_path / "report.txt"
+    source.write_text("content", encoding="utf-8")
+    journal = MoveJournal(job, state_root)
+    record = journal.prepare(
+        source,
+        job.destination_path / "report.txt",
+        {"device": 1, "inode": 2, "size": 7, "mtime_ns": 3},
+        job.pattern,
+        1,
+    )
+    journal.mark_recovery_conflict(record, "source identity changed")
+
+    result = status_module.build_status(
+        str(config), log_root=tmp_path / "logs", state_root=state_root
+    )
+
+    assert result["degraded"] is True
+    job_status = result["jobs"][0]
+    assert job_status["recovery_state"] == "recovery_conflict"
+    assert job_status["pending_recovery_operations"][0]["recovery_state"] == "prepared"
+    assert (
+        job_status["pending_recovery_operations"][0]["recovery_conflict_reason"]
+        == "source identity changed"
+    )
+
+
 @pytest.mark.parametrize("kind", ["corrupt", "journal_link", "parent_link"])
 def test_active_journal_corruption_and_links_fail_closed(tmp_path, kind):
     config = _config(tmp_path)
