@@ -33,6 +33,49 @@ h1, h2, h3, h4 {
   padding-top: 4.5rem !important;
 }
 
+.hero-content {
+  padding-top: clamp(3rem, 7vw, 5rem);
+  padding-bottom: clamp(3rem, 7vw, 5rem);
+}
+
+.hero-content h1 {
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.hero-content .lead {
+  max-width: 42rem;
+  margin: 1.25rem auto 2rem;
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.75rem;
+}
+
+.hero-actions .btn-outline-secondary {
+  color: #fff;
+  border-color: #cbd5e1;
+}
+
+.hero-actions .btn-outline-secondary:hover,
+.hero-actions .btn-outline-secondary:focus-visible {
+  color: #1f2937;
+  background-color: #fff;
+}
+
+.home-features {
+  margin-top: 4rem;
+  margin-bottom: 4rem;
+}
+
+.home-features p {
+  max-width: 22rem;
+  margin: 0 auto;
+}
+
 .flex-fill {
   margin-top: 0 !important;
 }

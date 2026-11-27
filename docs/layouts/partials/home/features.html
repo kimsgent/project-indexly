@@ -1,8 +1,8 @@
-<section class="container text-center my-5">
-  <div class="row">
+<section class="container text-center home-features">
+  <div class="row g-4">
     {{ range .Params.features }}
-    <div class="col-md-4 mb-4">
-      <i class="fa fa-{{ .icon }} fa-2x mb-3 text-primary"></i>
+    <div class="col-md-4">
+      <i class="fa fa-{{ .icon }} fa-2x mb-3 text-primary" aria-hidden="true"></i>
       <h4>{{ .title }}</h4>
       <p>{{ .description }}</p>
     </div>
