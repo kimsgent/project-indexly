@@ -253,6 +253,7 @@ The planner also requires measured canonical Indexly FTS5 inspection state
 missing/uninspectable definition returns `repair_required`, regardless of
 timing or generation evidence. Missing legacy readiness requests a fresh
 `perf --show`; unavailable readiness does not establish schema damage.
+
 ---
 ## Next Steps
 
